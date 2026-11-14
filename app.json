@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schemas.sufficit.com.br/genius/workspace-app-v1.json",
+  "schemaVersion": 1,
+  "runtime": "python",
+  "source": "app",
+  "port": 8000,
+  "healthPath": "/health",
+  "spaFallback": false,
+  "notFound": null
+}

@@ -1,0 +1,180 @@
+@page "/"
+@implements IDisposable
+@inject IJSRuntime JS
+
+<div class="game-shell">
+    <header class="hud hud-top">
+        <div>
+            <h1>Ultima</h1>
+            <p class="subtitle">Protótipo M1 — C# no navegador (Blazor WebAssembly + Babylon.js) · open source, MIT</p>
+        </div>
+        <div class="engine-status" role="status">
+            @if (string.IsNullOrEmpty(_renderer))
+            {
+                <span class="chip">Iniciando motor 3D…</span>
+            }
+            else
+            {
+                <span class="chip ok-chip" title="Adaptador de vídeo detectado pelo Babylon.js">GPU: @_renderer</span>
+                <span class="chip">FPS: @_fps.ToString("0")</span>
+            }
+        </div>
+    </header>
+
+    <main class="viewport">
+        <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D do jogo: use W A S D para andar e E para conversar"></canvas>
+
+        @if (!string.IsNullOrEmpty(_renderer))
+        {
+            <div class="overlay overlay-status" aria-hidden="true">
+                <span>pos (@_posX.ToString("F1"), @_posZ.ToString("F1"))</span>
+            </div>
+        }
+
+        @if (_near && !_dialogOpen)
+        {
+            <div class="overlay overlay-hint" role="status">
+                Perto da Guardiã — pressione <kbd>E</kbd> para conversar
+            </div>
+        }
+
+        @if (_dialogOpen)
+        {
+            <section class="dialog" role="dialog" aria-label="Conversa com a Guardiã">
+                <p class="speaker">@_lines[_line].Speaker</p>
+                <p class="line" aria-live="polite">@_lines[_line].Text</p>
+                <div class="dialog-actions">
+                    <button type="button" @onclick="Advance">
+                        @(_line + 1 < _lines.Length ? "Continuar · E" : "Encerrar · E")
+                    </button>
+                    <button type="button" class="secondary" @onclick="CloseDialog">Fechar · Esc</button>
+                </div>
+            </section>
+        }
+    </main>
+
+    <footer class="hud hud-bottom">
+        <p class="controls">
+            <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ou setas andam · <kbd>E</kbd> conversa ·
+            <kbd>Esc</kbd> fecha · arraste com o mouse para girar a câmera
+        </p>
+        <button type="button" @onclick="Restart">Voltar ao início da trilha</button>
+    </footer>
+</div>
+
+@code {
+    private DotNetObjectReference<GameInterop>? _bridge;
+    private string _renderer = string.Empty;
+    private bool _near;
+    private bool _dialogOpen;
+    private int _line;
+    private double _posX, _posZ, _fps;
+
+    // Falas fixas do M1. No marco futuro de LLM local (WebGPU), a resposta da
+    // Guardiã passará a ser gerada na placa de vídeo de quem joga.
+    private readonly (string Speaker, string Text)[] _lines =
+    [
+        ("Guardiã do Jardim", "Olá, caminhante. Você chegou ao jardim que existe para testar uma ideia."),
+        ("Você", "Que ideia?"),
+        ("Guardiã do Jardim", "Um jogo inteiro escrito em C#, rodando no seu navegador, com o mundo 3D desenhado pela sua placa de vídeo."),
+        ("Guardiã do Jardim", "Um dia vou conversar de verdade com você: meus pensamentos vão rodar na GPU de quem joga. Hoje, sou só falas fixas."),
+        ("Você", "Até lá, boa trilha!")
+    ];
+
+    protected override void OnInitialized()
+    {
+        var interop = new GameInterop(
+            onEngineReady: renderer =>
+            {
+                _renderer = renderer;
+                StateHasChanged();
+            },
+            onNearChanged: near =>
+            {
+                _near = near;
+                StateHasChanged();
+            },
+            onInteract: OnInteract,
+            onClose: CloseDialog,
+            onMoveTick: (x, z, fps) =>
+            {
+                _posX = x;
+                _posZ = z;
+                _fps = fps;
+                StateHasChanged();
+            });
+        _bridge = DotNetObjectReference.Create(interop);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _bridge is null)
+        {
+            return;
+        }
+
+        await JS.InvokeVoidAsync("game.init", "game-canvas", _bridge);
+    }
+
+    private void OnInteract()
+    {
+        if (_dialogOpen)
+        {
+            Advance();
+        }
+        else if (_near)
+        {
+            _line = 0;
+            _dialogOpen = true;
+            _ = SetFrozen(true);
+            StateHasChanged();
+        }
+    }
+
+    private void Advance()
+    {
+        if (!_dialogOpen)
+        {
+            return;
+        }
+
+        if (_line + 1 < _lines.Length)
+        {
+            _line++;
+        }
+        else
+        {
+            CloseDialog();
+            return;
+        }
+
+        StateHasChanged();
+    }
+
+    private void CloseDialog()
+    {
+        if (!_dialogOpen)
+        {
+            return;
+        }
+
+        _dialogOpen = false;
+        _ = SetFrozen(false);
+        StateHasChanged();
+    }
+
+    private async Task Restart()
+    {
+        if (_dialogOpen)
+        {
+            _dialogOpen = false;
+            await SetFrozen(false);
+        }
+
+        await JS.InvokeVoidAsync("game.resetPlayer");
+    }
+
+    private Task SetFrozen(bool frozen) => JS.InvokeVoidAsync("game.setFrozen", frozen).AsTask();
+
+    public void Dispose() => _bridge?.Dispose();
+}

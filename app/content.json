@@ -1,0 +1,44 @@
+{
+  "$schema": "ultima-content-v1",
+  "version": "2026.11.14-r1",
+  "announcements": [
+    {
+      "id": "boas-vindas",
+      "level": "info",
+      "text": "Bem-vindo ao Ultima! Este protótipo recebe conteúdo dinâmico da equipe quando a API está online."
+    }
+  ],
+  "npcs": {
+    "guardia": {
+      "displayName": "Guardiã do Jardim",
+      "greeting": "Olá, caminhante.",
+      "lines": [
+        "Olá, caminhante. Este jardim é um protótipo vivo: o que eu digo pode mudar sem nova versão do jogo.",
+        "A equipe cuida do jardim à distância e atualiza minhas orientações pela API de conteúdo.",
+        "Siga a trilha, experimente os controles e volte sempre — algo novo pode ter brotado."
+      ],
+      "guidance": "Converse com todos os NPCS e teste os controles; o conteúdo desta fala veio da API."
+    }
+  },
+  "quests": [
+    {
+      "id": "primeiros-passos",
+      "title": "Primeiros passos",
+      "objectives": [
+        "Ande pela trilha com W, A, S, D",
+        "Encontre a Guardiã e converse com E"
+      ],
+      "reward": "Familiaridade com o jardim (a trilha ao norte será desbloqueada num marco futuro)."
+    }
+  ],
+  "world": {
+    "name": "Ultima",
+    "ambient": "tarde serena",
+    "timeScale": 1.0,
+    "hint": "Arraste o mouse para girar a câmera e use a roda para aproximar."
+  },
+  "client": {
+    "fetchTimeoutMs": 3000,
+    "refreshIntervalSec": 300
+  }
+}

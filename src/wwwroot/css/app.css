@@ -1,0 +1,218 @@
+/* Ultima — UI do protótipo (HUD em Blazor, canvas 3D em Babylon.js). */
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #0b0e15;
+    color: #e8ecf3;
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+}
+
+#app, .game-shell {
+    height: 100%;
+}
+
+.game-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.hud {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.6rem 1rem;
+    background: rgba(10, 14, 22, 0.92);
+    border-bottom: 1px solid #1e2637;
+    flex-wrap: wrap;
+}
+
+.hud-bottom {
+    border-bottom: none;
+    border-top: 1px solid #1e2637;
+}
+
+h1 {
+    margin: 0;
+    font-size: 1.15rem;
+    letter-spacing: 0.02em;
+}
+
+.subtitle {
+    margin: 0.15rem 0 0;
+    font-size: 0.75rem;
+    color: #9fb0c9;
+}
+
+.engine-status {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.chip {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border: 1px solid #2a3550;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    color: #b8c4d9;
+    background: #131a28;
+    max-width: 40vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ok-chip {
+    border-color: #2f6b46;
+    color: #9fe0b5;
+}
+
+.viewport {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+}
+
+#game-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    outline: none;
+    touch-action: none;
+}
+
+.overlay {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.45rem 0.9rem;
+    border-radius: 0.6rem;
+    font-size: 0.85rem;
+    background: rgba(9, 13, 20, 0.82);
+    border: 1px solid #26304a;
+    pointer-events: none;
+}
+
+.overlay-status {
+    bottom: 0.9rem;
+    color: #9fb0c9;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.75rem;
+}
+
+.overlay-hint {
+    top: 1rem;
+    color: #ffd97a;
+}
+
+kbd {
+    display: inline-block;
+    min-width: 1.5rem;
+    text-align: center;
+    padding: 0.1rem 0.35rem;
+    margin: 0 0.1rem;
+    border: 1px solid #3a466a;
+    border-bottom-width: 2px;
+    border-radius: 0.35rem;
+    background: #1a2234;
+    font-family: inherit;
+    font-size: 0.75rem;
+}
+
+.dialog {
+    position: absolute;
+    left: 50%;
+    bottom: 1.2rem;
+    transform: translateX(-50%);
+    width: min(640px, calc(100% - 2rem));
+    padding: 0.9rem 1.1rem 0.8rem;
+    border-radius: 0.8rem;
+    background: rgba(11, 16, 26, 0.96);
+    border: 1px solid #33507a;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+}
+
+.dialog .speaker {
+    margin: 0 0 0.2rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #ffd97a;
+}
+
+.dialog .line {
+    margin: 0 0 0.7rem;
+    font-size: 0.95rem;
+    line-height: 1.45;
+}
+
+.dialog-actions {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+button {
+    padding: 0.45rem 1rem;
+    border-radius: 0.55rem;
+    border: 1px solid #2f6b46;
+    background: #1d5c39;
+    color: #eafff2;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #267449;
+}
+
+button.secondary {
+    border-color: #3a466a;
+    background: #1a2234;
+    color: #c6d2e8;
+}
+
+button.secondary:hover {
+    background: #232d44;
+}
+
+.controls {
+    margin: 0;
+    font-size: 0.75rem;
+    color: #9fb0c9;
+}
+
+#blazor-error-ui {
+    display: none;
+    background: #3a1220;
+    color: #ffd7de;
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+}
+
+#blazor-error-ui.visible {
+    display: block;
+}
+
+@media (max-width: 640px) {
+    .hud {
+        padding: 0.5rem 0.7rem;
+    }
+
+    .subtitle {
+        display: none;
+    }
+
+    .dialog .line {
+        font-size: 0.9rem;
+    }
+}

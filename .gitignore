@@ -1,0 +1,12 @@
+# Build do Blazor WebAssembly
+src/bin/
+src/obj/
+src/publish/
+
+# Metadados locais do Genius (não fazem parte do projeto publicado)
+.genius/
+/workspace.json
+
+# Sistema
+.DS_Store
+*.user
