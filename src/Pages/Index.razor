@@ -1,6 +1,7 @@
 @page "/"
 @implements IDisposable
 @inject IJSRuntime JS
+@inject HttpClient Http
 
 <div class="game-shell">
     <header class="hud hud-top">
@@ -18,10 +19,15 @@
                 <span class="chip ok-chip" title="Adaptador de vídeo detectado pelo Babylon.js">GPU: @_renderer</span>
                 <span class="chip">FPS: @_fps.ToString("0")</span>
             }
+            <span class="chip" title="A API é opcional; sem conexão, são usadas falas locais">@_contentSource</span>
         </div>
     </header>
 
     <main class="viewport">
+        @if (!string.IsNullOrEmpty(_announcement))
+        {
+            <div class="overlay overlay-announce" role="note">@_announcement</div>
+        }
         <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D do jogo: use W A S D para andar e E para conversar"></canvas>
 
         @if (!string.IsNullOrEmpty(_renderer))
@@ -69,10 +75,18 @@
     private bool _dialogOpen;
     private int _line;
     private double _posX, _posZ, _fps;
+    private string? _announcement;
+    private string _contentSource = "Conteúdo local";
 
-    // Falas fixas do M1. No marco futuro de LLM local (WebGPU), a resposta da
-    // Guardiã passará a ser gerada na placa de vídeo de quem joga.
-    private readonly (string Speaker, string Text)[] _lines =
+    // A API é somente um complemento: falas locais abaixo mantêm o jogo jogável offline.
+    private const string ContentApi = "https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br";
+    private sealed record NpcDto(string? DisplayName, string[]? Lines);
+    private sealed record AnnouncementDto(string? Text);
+    private sealed record AnnouncementsDto(AnnouncementDto[]? Items);
+
+    // Falas fixas de reserva. No marco futuro de LLM local (WebGPU), a resposta
+    // da Guardiã passará a ser gerada na placa de vídeo de quem joga.
+    private (string Speaker, string Text)[] _lines =
     [
         ("Guardiã do Jardim", "Olá, caminhante. Você chegou ao jardim que existe para testar uma ideia."),
         ("Você", "Que ideia?"),
@@ -114,6 +128,40 @@
         }
 
         await JS.InvokeVoidAsync("game.init", "game-canvas", _bridge);
+        // Não bloqueia a primeira renderização/jogabilidade enquanto a API responde.
+        _ = LoadRemoteContentAsync();
+    }
+
+    private async Task LoadRemoteContentAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            var npcRequest = Http.GetFromJsonAsync<NpcDto>($"{ContentApi}/v1/npcs/guardia", cts.Token);
+            var announcementsRequest = Http.GetFromJsonAsync<AnnouncementsDto>($"{ContentApi}/v1/announcements", cts.Token);
+            await Task.WhenAll(npcRequest, announcementsRequest);
+
+            var npc = await npcRequest;
+            var announcements = await announcementsRequest;
+            await InvokeAsync(() =>
+            {
+                if (npc?.Lines is { Length: > 0 and <= 50 } remoteLines &&
+                    remoteLines.All(line => !string.IsNullOrWhiteSpace(line) && line.Length <= 1000))
+                {
+                    var name = string.IsNullOrWhiteSpace(npc.DisplayName) ? "Guardiã do Jardim" : npc.DisplayName;
+                    _lines = remoteLines.Select(line => (name, line)).ToArray();
+                }
+
+                _announcement = announcements?.Items?
+                    .FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Text) && item.Text.Length <= 300)?.Text;
+                _contentSource = "Conteúdo remoto";
+                StateHasChanged();
+            });
+        }
+        catch (Exception)
+        {
+            // API offline, timeout, CORS ou JSON inválido: mantém falas locais e jogo funcional.
+        }
     }
 
     private void OnInteract()

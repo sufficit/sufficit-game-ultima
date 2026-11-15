@@ -6,28 +6,33 @@ Sem servidor centralizado de jogo — tudo acontece no cliente.
 
 - **Jogue agora:** https://sufficit.github.io/sufficit-game-ultima/ (GitHub Pages, deploy automático a cada push em `main`).
 - **Licença:** MIT (veja [LICENSE](LICENSE)).
-- **Marco atual (M1):** mundo 3D andável (WASD) e um NPC com diálogo de falas fixas.
+- **Marco atual (M1):** mundo 3D andável (WASD) e uma Guardiã com diálogo.
 - **Marcos futuros:** multiplayer P2P (WebRTC DataChannels) e conversas do NPC com
   LLM executada localmente na GPU do jogador (WebGPU + WebLLM).
 
 ## Publicação (GitHub Pages)
 
-O workflow [`.github/workflows/pages.yml`](.github/workflows/pages.yml) publica
+O workflow [` .github/workflows/pages.yml`](.github/workflows/pages.yml) publica
 automaticamente a cada push em `main`:
 
 1. `dotnet publish src/Ultima.csproj -c Release`;
 2. ajusta o `base href` para `/sufficit-game-ultima/` (caminho do Pages);
-3. gera `404.html` e `.nojekyll` (arquivos `.br`/`.gz` do Blazor passam intactos);
+3. gera `404.html` e `.nojekyll`;
 4. publica o artefato em https://sufficit.github.io/sufficit-game-ultima/.
 
-## API de conteúdo dinâmico (planejada — o jogo funciona sem ela)
+## API de conteúdo dinâmico (opcional)
 
-O jogo **não depende** da API para funcionar; ela é usada em eventos específicos
-para injetar conteúdo atualizável em tempo real, sem publicar uma nova versão do
-jogo: orientações e falas dos NPCs, missões, detalhes de mapa, clima/tempo do
-mundo e avisos da equipe. Enquanto a API está offline ou inacessível, o jogo usa
-o conteúdo embutido (fallback determinístico). O contrato REST será documentado
-em `docs/api.md` e o contrato de dados fica versionado no próprio repositório.
+A API pública em
+`https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br/` fornece conteúdo
+atualizável sem republicar o jogo. O cliente busca as falas da Guardiã em
+`/v1/npcs/guardia` e avisos em `/v1/announcements` depois que o mundo já começou
+a renderizar. Cada resposta tem limite de três segundos; indisponibilidade,
+timeout, CORS ou conteúdo inválido preserva as falas fixas embutidas e não impede
+o jogo de funcionar. O HUD indica se o conteúdo veio da API ou do fallback local.
+
+A API também expõe `/health`, `/v1/manifest`, `/v1/worlds/ultima` e `/v1/quests`.
+O conteúdo editável fica em `app/content.json`; serviço implementado em Python
+stdlib em `app/main.py`.
 
 ## Como rodar localmente
 
@@ -62,7 +67,7 @@ python3 -m http.server -d publish/wwwroot 8080
 | Tecla | Ação |
 | --- | --- |
 | `W` `A` `S` `D` ou setas | andar |
-| `E` | conversar com o NPC próximo |
+| `E` | conversar com a Guardiã próxima |
 | `Esc` | fechar o diálogo |
 | arrastar o mouse | girar a câmera |
 | roda do mouse | aproximar / afastar |
@@ -73,9 +78,10 @@ python3 -m http.server -d publish/wwwroot 8080
 PROJECT.md          objetivos, premissas e marcos
 LICENSE             MIT
 .github/workflows/  deploy automático no GitHub Pages
+app/                API Python e conteúdo remoto opcional
 src/                projeto Blazor WebAssembly (Ultima)
-  Pages/Index.razor HUD e diálogo em C#
-  GAME.JsInterop.cs ponte C# ⇄ JS (JSInvokable)
+  Pages/Index.razor HUD, diálogo e cliente opcional da API
+  GAME.JsInterop.cs ponte C# ↔ JS (JSInvokable)
   wwwroot/js/game.js   Babylon.js: cena, câmera, movimento, gatilhos
   wwwroot/index.html   HTML raiz (Babylon.js com SRI)
   wwwroot/css/app.css  estilos do HUD e do diálogo
@@ -86,4 +92,5 @@ src/                projeto Blazor WebAssembly (Ultima)
 C# cuida do estado do jogo e da UI; JavaScript é apenas a fina camada de
 renderização 3D e entrada; a ponte usa JSInterop com chamadas unidirecionais
 (`game.init`, `game.setFrozen`, `game.resetPlayer` de C#→JS; `OnEngineReady`,
-`OnNearChanged`, `OnInteract`, `OnClose`, `OnMoveTick` de JS→C#).
+`OnNearChanged`, `OnInteract`, `OnClose`, `OnMoveTick` de JS→C#). A API HTTP é
+opcional e não faz parte do caminho crítico de inicialização do jogo.

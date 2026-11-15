@@ -109,8 +109,16 @@ h1 {
     font-size: 0.75rem;
 }
 
+.overlay-announce {
+    top: 0.6rem;
+    max-width: calc(100% - 2rem);
+    text-align: center;
+    color: #cfe3ff;
+    z-index: 1;
+}
+
 .overlay-hint {
-    top: 1rem;
+    top: 3.4rem;
     color: #ffd97a;
 }
 
