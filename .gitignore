@@ -10,3 +10,4 @@ src/publish/
 # Sistema
 .DS_Store
 *.user
+__pycache__/

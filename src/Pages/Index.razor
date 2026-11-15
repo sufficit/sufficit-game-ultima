@@ -7,7 +7,7 @@
     <header class="hud hud-top">
         <div>
             <h1>Ultima</h1>
-            <p class="subtitle">Protótipo M1 — C# no navegador (Blazor WebAssembly + Babylon.js) · open source, MIT</p>
+            <p class="subtitle">C# · Blazor WebAssembly · Babylon.js · controles de gamepad, toque, voz e P2P</p>
         </div>
         <div class="engine-status" role="status">
             @if (string.IsNullOrEmpty(_renderer))
@@ -19,7 +19,7 @@
                 <span class="chip ok-chip" title="Adaptador de vídeo detectado pelo Babylon.js">GPU: @_renderer</span>
                 <span class="chip">FPS: @_fps.ToString("0")</span>
             }
-            <span class="chip" title="A API é opcional; sem conexão, são usadas falas locais">@_contentSource</span>
+            <span class="chip" title="A API de conteúdo é opcional">@_contentSource</span>
         </div>
     </header>
 
@@ -28,31 +28,77 @@
         {
             <div class="overlay overlay-announce" role="note">@_announcement</div>
         }
-        <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D do jogo: use W A S D para andar e E para conversar"></canvas>
+        <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D. WASD, setas, joystick ou controles de toque movem; E/A conversa."></canvas>
 
-        @if (!string.IsNullOrEmpty(_renderer))
-        {
-            <div class="overlay overlay-status" aria-hidden="true">
-                <span>pos (@_posX.ToString("F1"), @_posZ.ToString("F1"))</span>
-            </div>
-        }
+        <div class="overlay overlay-status" aria-hidden="true">
+            pos (@_posX.ToString("F1"), @_posZ.ToString("F1"))
+        </div>
 
         @if (_near && !_dialogOpen)
         {
-            <div class="overlay overlay-hint" role="status">
-                Perto da Guardiã — pressione <kbd>E</kbd> para conversar
-            </div>
+            <div class="overlay overlay-hint" role="status">Perto da Guardiã — pressione <kbd>E</kbd> ou <kbd>A</kbd> para conversar</div>
         }
+
+        <aside class="network-panel" aria-label="Multiplayer e áudio">
+            <div class="net-heading"><strong>Multiplayer P2P</strong><span>@_remoteCount jogador(es) remoto(s)</span></div>
+            <div class="net-status" role="status">@_netStatus</div>
+            <div class="net-actions">
+                <button type="button" class="secondary" @onclick="CopyInviteAsync">Copiar convite</button>
+                <button type="button" class="secondary" @onclick="ToggleMicAsync" aria-pressed="@_micEnabled">
+                    @(_micEnabled ? "Desligar voz" : "Ativar voz")
+                </button>
+                <button type="button" class="secondary" @onclick="ToggleSpeakAsync" aria-pressed="@_speakEnabled">
+                    @(_speakEnabled ? "🔊 Fala ligada" : "🔈 Ler falas")
+                </button>
+            </div>
+            <div class="mic-meter" role="meter" aria-label="Nível do microfone" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@((int)(_micLevel * 100))">
+                <span style="width: @((int)(_micLevel * 100))%"></span>
+            </div>
+            <small>@_micStatus</small>
+        </aside>
+
+        @if (_chat.Count > 0)
+        {
+            <section class="chat-log" aria-label="Mensagens dos jogadores" aria-live="polite">
+                @foreach (var message in _chat.TakeLast(4))
+                {
+                    <p><strong>@message.From:</strong> @message.Text</p>
+                }
+            </section>
+        }
+        <form class="network-chat" @onsubmit="SendChatAsync" @onsubmit:preventDefault="true">
+            <label class="sr-only" for="network-chat-input">Mensagem para outros jogadores</label>
+            <input id="network-chat-input" @bind="_chatDraft" @bind:event="oninput" maxlength="300" placeholder="Mensagem para outros jogadores…" autocomplete="off" />
+            <button type="submit">Enviar</button>
+        </form>
+
+        <div class="touch-controls" aria-label="Controles táteis">
+            <div id="move-stick" class="touch-stick" aria-label="Analógico para andar"><span id="move-thumb"></span><small>ANDAR</small></div>
+            <div class="touch-right-controls">
+                <div id="look-stick" class="touch-stick look-stick" aria-label="Analógico para câmera"><span id="look-thumb"></span><small>CÂMERA</small></div>
+                <button id="touch-action" type="button" aria-label="Conversar com a Guardiã">A</button>
+            </div>
+        </div>
 
         @if (_dialogOpen)
         {
-            <section class="dialog" role="dialog" aria-label="Conversa com a Guardiã">
+            <section class="dialog" role="dialog" aria-modal="false" aria-label="Conversa com a Guardiã">
                 <p class="speaker">@_lines[_line].Speaker</p>
                 <p class="line" aria-live="polite">@_lines[_line].Text</p>
-                <div class="dialog-actions">
-                    <button type="button" @onclick="Advance">
-                        @(_line + 1 < _lines.Length ? "Continuar · E" : "Encerrar · E")
+                <form class="dialog-compose" @onsubmit="SubmitDialogAsync" @onsubmit:preventDefault="true">
+                    <label class="sr-only" for="dialog-input">Escreva para a Guardiã</label>
+                    <input id="dialog-input" @bind="_dialogDraft" @bind:event="oninput" maxlength="300" placeholder="Escreva algo para a Guardiã…" autocomplete="off" />
+                    <button type="submit">Enviar</button>
+                    <button type="button" class="secondary" @onclick="ToggleDictationAsync" aria-pressed="@_dictating">
+                        @(_dictating ? "Parar ditado" : "🎙 Ditar")
                     </button>
+                </form>
+                @if (!string.IsNullOrEmpty(_speechError))
+                {
+                    <small class="speech-error">@_speechError</small>
+                }
+                <div class="dialog-actions">
+                    <button type="button" @onclick="AdvanceAsync">@(_line + 1 < _lines.Length ? "Continuar · E/A" : "Encerrar · E/A")</button>
                     <button type="button" class="secondary" @onclick="CloseDialog">Fechar · Esc</button>
                 </div>
             </section>
@@ -60,10 +106,7 @@
     </main>
 
     <footer class="hud hud-bottom">
-        <p class="controls">
-            <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ou setas andam · <kbd>E</kbd> conversa ·
-            <kbd>Esc</kbd> fecha · arraste com o mouse para girar a câmera
-        </p>
+        <p class="controls"><kbd>WASD</kbd>/<kbd>↑↓←→</kbd> andar · gamepad: <kbd>LS</kbd> mover, <kbd>RS</kbd> câmera, <kbd>A</kbd> interagir · analógicos táteis · <kbd>E</kbd> conversa · <kbd>Esc</kbd> fecha · mouse gira câmera</p>
         <button type="button" @onclick="Restart">Voltar ao início da trilha</button>
     </footer>
 </div>
@@ -74,61 +117,65 @@
     private bool _near;
     private bool _dialogOpen;
     private int _line;
-    private double _posX, _posZ, _fps;
+    private double _posX, _posZ, _fps, _micLevel;
+    private int _remoteCount;
     private string? _announcement;
     private string _contentSource = "Conteúdo local";
+    private string _netStatus = "Conectando…";
+    private string _micStatus = "Microfone desligado; o áudio só é transmitido quando você ativa a voz.";
+    private string _speechError = string.Empty;
+    private string _dialogDraft = string.Empty;
+    private string _chatDraft = string.Empty;
+    private bool _micEnabled;
+    private bool _speakEnabled;
+    private bool _dictating;
+    private readonly List<ChatMessage> _chat = [];
+    private sealed record ChatMessage(string From, string Text);
 
-    // A API é somente um complemento: falas locais abaixo mantêm o jogo jogável offline.
     private const string ContentApi = "https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br";
     private sealed record NpcDto(string? DisplayName, string[]? Lines);
     private sealed record AnnouncementDto(string? Text);
     private sealed record AnnouncementsDto(AnnouncementDto[]? Items);
 
-    // Falas fixas de reserva. No marco futuro de LLM local (WebGPU), a resposta
-    // da Guardiã passará a ser gerada na placa de vídeo de quem joga.
     private (string Speaker, string Text)[] _lines =
     [
         ("Guardiã do Jardim", "Olá, caminhante. Você chegou ao jardim que existe para testar uma ideia."),
         ("Você", "Que ideia?"),
         ("Guardiã do Jardim", "Um jogo inteiro escrito em C#, rodando no seu navegador, com o mundo 3D desenhado pela sua placa de vídeo."),
-        ("Guardiã do Jardim", "Um dia vou conversar de verdade com você: meus pensamentos vão rodar na GPU de quem joga. Hoje, sou só falas fixas."),
+        ("Guardiã do Jardim", "Um dia vou conversar de verdade com você. Hoje, posso ouvir o que você escreve e responder com falas locais."),
         ("Você", "Até lá, boa trilha!")
     ];
 
     protected override void OnInitialized()
     {
-        var interop = new GameInterop(
-            onEngineReady: renderer =>
-            {
-                _renderer = renderer;
-                StateHasChanged();
-            },
-            onNearChanged: near =>
-            {
-                _near = near;
-                StateHasChanged();
-            },
-            onInteract: OnInteract,
-            onClose: CloseDialog,
-            onMoveTick: (x, z, fps) =>
-            {
-                _posX = x;
-                _posZ = z;
-                _fps = fps;
-                StateHasChanged();
-            });
+        var interop = new GameInterop
+        {
+            EngineReady = renderer => _ = InvokeAsync(() => { _renderer = renderer; StateHasChanged(); }),
+            NearChanged = near => _ = InvokeAsync(() => { _near = near; StateHasChanged(); }),
+            Interact = () => _ = InvokeAsync(OnInteractAsync),
+            Close = () => _ = InvokeAsync(CloseDialog),
+            MoveTick = (x, z, fps) => _ = InvokeAsync(() => { _posX = x; _posZ = z; _fps = fps; StateHasChanged(); }),
+            NetStatus = (state, peers) => _ = InvokeAsync(() => { _netStatus = state; StateHasChanged(); }),
+            Chat = (from, text) => _ = InvokeAsync(() => { AddChat(from, text); StateHasChanged(); }),
+            RemoteCount = count => _ = InvokeAsync(() => { _remoteCount = count; StateHasChanged(); }),
+            MicState = state => _ = InvokeAsync(() => { _micEnabled = state == "ligada"; _micStatus = state; StateHasChanged(); }),
+            MicLevel = level => _ = InvokeAsync(() => { _micLevel = Math.Clamp(level, 0, 1); StateHasChanged(); }),
+            SpeechTranscript = text => _ = InvokeAsync(() => { _dialogDraft = text; StateHasChanged(); }),
+            SpeechError = message => _ = InvokeAsync(() => { _speechError = message; StateHasChanged(); }),
+            Dictation = listening => _ = InvokeAsync(() => { _dictating = listening; StateHasChanged(); })
+        };
         _bridge = DotNetObjectReference.Create(interop);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _bridge is null)
-        {
-            return;
-        }
+        if (!firstRender || _bridge is null) return;
 
         await JS.InvokeVoidAsync("game.init", "game-canvas", _bridge);
-        // Não bloqueia a primeira renderização/jogabilidade enquanto a API responde.
+        await JS.InvokeVoidAsync("game.net.init", _bridge);
+        await JS.InvokeVoidAsync("game.voice.init", _bridge);
+        _speakEnabled = await JS.InvokeAsync<bool>("game.voice.getSpeakPref");
+        StateHasChanged();
         _ = LoadRemoteContentAsync();
     }
 
@@ -140,7 +187,6 @@
             var npcRequest = Http.GetFromJsonAsync<NpcDto>($"{ContentApi}/v1/npcs/guardia", cts.Token);
             var announcementsRequest = Http.GetFromJsonAsync<AnnouncementsDto>($"{ContentApi}/v1/announcements", cts.Token);
             await Task.WhenAll(npcRequest, announcementsRequest);
-
             var npc = await npcRequest;
             var announcements = await announcementsRequest;
             await InvokeAsync(() =>
@@ -149,76 +195,111 @@
                     remoteLines.All(line => !string.IsNullOrWhiteSpace(line) && line.Length <= 1000))
                 {
                     var name = string.IsNullOrWhiteSpace(npc.DisplayName) ? "Guardiã do Jardim" : npc.DisplayName;
-                    _lines = remoteLines.Select(line => (name, line)).ToArray();
+                    _lines = remoteLines.Select(line => (name!, line)).ToArray();
                 }
-
-                _announcement = announcements?.Items?
-                    .FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Text) && item.Text.Length <= 300)?.Text;
+                _announcement = announcements?.Items?.FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Text) && item.Text.Length <= 300)?.Text;
                 _contentSource = "Conteúdo remoto";
                 StateHasChanged();
             });
         }
-        catch (Exception)
-        {
-            // API offline, timeout, CORS ou JSON inválido: mantém falas locais e jogo funcional.
-        }
+        catch (Exception) { /* API offline: falas locais e jogo continuam funcionando. */ }
     }
 
-    private void OnInteract()
+    private async Task OnInteractAsync()
     {
-        if (_dialogOpen)
-        {
-            Advance();
-        }
+        if (_dialogOpen) { await AdvanceAsync(); }
         else if (_near)
         {
             _line = 0;
             _dialogOpen = true;
-            _ = SetFrozen(true);
+            await SetFrozen(true);
+            await SpeakCurrentAsync();
             StateHasChanged();
         }
     }
 
-    private void Advance()
+    private async Task AdvanceAsync()
     {
-        if (!_dialogOpen)
-        {
-            return;
-        }
+        if (!_dialogOpen) return;
+        if (_line + 1 < _lines.Length) _line++;
+        else { CloseDialog(); return; }
+        await SpeakCurrentAsync();
+        StateHasChanged();
+    }
 
-        if (_line + 1 < _lines.Length)
-        {
-            _line++;
-        }
-        else
-        {
-            CloseDialog();
-            return;
-        }
-
+    private async Task SubmitDialogAsync()
+    {
+        var text = _dialogDraft.Trim();
+        if (!_dialogOpen || text.Length == 0) return;
+        if (text.Length > 300) text = text[..300];
+        _dialogDraft = string.Empty;
+        var name = _lines.FirstOrDefault(line => line.Speaker != "Você").Speaker ?? "Guardiã do Jardim";
+        _lines = [.. _lines, ("Você", text), (name, $"Entendi. Você disse: “{text}”. O que gostaria de descobrir sobre este jardim?")];
+        _line = _lines.Length - 1;
+        _speechError = string.Empty;
+        await SpeakCurrentAsync();
         StateHasChanged();
     }
 
     private void CloseDialog()
     {
-        if (!_dialogOpen)
-        {
-            return;
-        }
-
+        if (!_dialogOpen) return;
         _dialogOpen = false;
+        _ = JS.InvokeVoidAsync("game.voice.stopDictation");
         _ = SetFrozen(false);
         StateHasChanged();
     }
 
+    private async Task SpeakCurrentAsync()
+    {
+        if (_speakEnabled && _line >= 0 && _line < _lines.Length)
+            await JS.InvokeVoidAsync("game.voice.speak", _lines[_line].Text, _lines[_line].Speaker);
+    }
+
+    private async Task ToggleSpeakAsync()
+    {
+        _speakEnabled = !_speakEnabled;
+        await JS.InvokeVoidAsync("game.voice.setSpeakPref", _speakEnabled);
+        if (_speakEnabled && _dialogOpen) await SpeakCurrentAsync();
+    }
+
+    private async Task ToggleDictationAsync()
+    {
+        _speechError = string.Empty;
+        if (_dictating) await JS.InvokeVoidAsync("game.voice.stopDictation");
+        else await JS.InvokeVoidAsync("game.voice.startDictation");
+    }
+
+    private async Task ToggleMicAsync()
+    {
+        if (_micEnabled) await JS.InvokeVoidAsync("game.voice.stopMic");
+        else await JS.InvokeVoidAsync("game.voice.startMic");
+    }
+
+    private async Task CopyInviteAsync()
+    {
+        var result = await JS.InvokeAsync<string>("game.net.copyInvite");
+        _netStatus = result;
+    }
+
+    private async Task SendChatAsync()
+    {
+        var text = _chatDraft.Trim();
+        if (text.Length == 0) return;
+        _chatDraft = string.Empty;
+        AddChat("Você", text);
+        await JS.InvokeVoidAsync("game.net.sendChat", text);
+    }
+
+    private void AddChat(string from, string text)
+    {
+        _chat.Add(new ChatMessage(from.Length > 40 ? from[..40] : from, text.Length > 300 ? text[..300] : text));
+        if (_chat.Count > 30) _chat.RemoveAt(0);
+    }
+
     private async Task Restart()
     {
-        if (_dialogOpen)
-        {
-            _dialogOpen = false;
-            await SetFrozen(false);
-        }
-
+        if (_dialogOpen) { _dialogOpen = false; await SetFrozen(false); }
         await JS.InvokeVoidAsync("game.resetPlayer");
     }
 

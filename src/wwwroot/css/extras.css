@@ -1,0 +1,61 @@
+/* Ultima — painel P2P, chat, diálogo digitável e controles de toque. */
+.sr-only {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+input {
+    padding: 0.45rem 0.7rem; border-radius: 0.5rem; border: 1px solid #33507a;
+    background: #0d1422; color: #e8ecf3; font-size: 0.85rem; min-width: 0; flex: 1;
+}
+input:focus, button:focus-visible { outline: 2px solid #ffd97a; outline-offset: 1px; }
+
+.network-panel {
+    position: absolute; top: 3.4rem; right: 0.7rem; width: min(280px, calc(100% - 1.4rem));
+    padding: 0.6rem 0.7rem; border-radius: 0.7rem; background: rgba(9, 13, 20, 0.86);
+    border: 1px solid #26304a; font-size: 0.75rem; z-index: 2;
+}
+.net-heading { display: flex; justify-content: space-between; gap: 0.5rem; color: #cfe3ff; }
+.net-status { margin: 0.25rem 0 0.4rem; color: #9fe0b5; }
+.net-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.net-actions button { padding: 0.3rem 0.55rem; font-size: 0.72rem; }
+.mic-meter { height: 6px; margin: 0.5rem 0 0.3rem; border-radius: 99px; background: #1a2234; overflow: hidden; }
+.mic-meter span { display: block; height: 100%; background: #38d9a9; transition: width 0.12s; }
+
+.chat-log {
+    position: absolute; left: 0.7rem; bottom: 4.1rem; max-width: min(360px, calc(100% - 1.4rem));
+    padding: 0.4rem 0.7rem; border-radius: 0.6rem; background: rgba(9, 13, 20, 0.8);
+    border: 1px solid #26304a; font-size: 0.78rem; z-index: 2;
+}
+.chat-log p { margin: 0.15rem 0; overflow-wrap: anywhere; }
+.network-chat {
+    position: absolute; left: 0.7rem; bottom: 0.7rem; display: flex; gap: 0.4rem;
+    width: min(360px, calc(100% - 1.4rem)); z-index: 2;
+}
+
+.dialog { z-index: 4; }
+.dialog-compose { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
+.speech-error { display: block; margin-bottom: 0.5rem; color: #ff9fb2; }
+
+.touch-controls { display: none; }
+@media (pointer: coarse), (max-width: 760px) {
+    .touch-controls {
+        display: flex; justify-content: space-between; align-items: flex-end;
+        position: absolute; left: 0; right: 0; bottom: 3.6rem; padding: 0 1rem;
+        pointer-events: none; z-index: 3;
+    }
+    .touch-stick, #touch-action { pointer-events: auto; }
+    .network-panel { top: 3rem; }
+}
+.touch-right-controls { display: flex; align-items: flex-end; gap: 0.8rem; }
+.touch-stick {
+    position: relative; width: 112px; height: 112px; border-radius: 50%;
+    background: rgba(20, 30, 50, 0.55); border: 2px solid #3a466a; touch-action: none;
+    display: flex; align-items: center; justify-content: center;
+}
+.touch-stick small { position: absolute; bottom: -1.1rem; font-size: 0.6rem; color: #9fb0c9; }
+.touch-stick span {
+    width: 46px; height: 46px; border-radius: 50%; background: rgba(120, 170, 255, 0.7);
+    border: 2px solid #cfe3ff;
+}
+#touch-action { width: 64px; height: 64px; border-radius: 50%; font-size: 1.2rem; font-weight: 700; }
