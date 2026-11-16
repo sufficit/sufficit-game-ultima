@@ -59,3 +59,9 @@ input:focus, button:focus-visible { outline: 2px solid #ffd97a; outline-offset: 
     border: 2px solid #cfe3ff;
 }
 #touch-action { width: 64px; height: 64px; border-radius: 50%; font-size: 1.2rem; font-weight: 700; }
+
+/* Dica de controles conforme o último dispositivo usado */
+.hint-pad, .hint-touch { display: none; }
+body[data-input="gamepad"] .hint-kb, body[data-input="touch"] .hint-kb { display: none; }
+body[data-input="gamepad"] .hint-pad { display: inline; }
+body[data-input="touch"] .hint-touch { display: inline; }
