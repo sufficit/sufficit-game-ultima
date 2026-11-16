@@ -44,7 +44,7 @@ input:focus, button:focus-visible { outline: 2px solid #ffd97a; outline-offset: 
         position: absolute; left: 0; right: 0; bottom: 3.6rem; padding: 0 1rem;
         pointer-events: none; z-index: 3;
     }
-    .touch-stick, #touch-action { pointer-events: auto; }
+    .touch-stick, #touch-action, #touch-cancel { pointer-events: auto; }
     .network-panel { top: 3rem; }
 }
 .touch-right-controls { display: flex; align-items: flex-end; gap: 0.8rem; }
@@ -58,7 +58,8 @@ input:focus, button:focus-visible { outline: 2px solid #ffd97a; outline-offset: 
     width: 46px; height: 46px; border-radius: 50%; background: rgba(120, 170, 255, 0.7);
     border: 2px solid #cfe3ff;
 }
-#touch-action { width: 64px; height: 64px; border-radius: 50%; font-size: 1.2rem; font-weight: 700; }
+#touch-action, #touch-cancel { width: 64px; height: 64px; border-radius: 50%; font-size: 1.2rem; font-weight: 700; touch-action: none; }
+#touch-cancel { width: 52px; height: 52px; }
 
 /* Dica de controles conforme o último dispositivo usado */
 .hint-pad, .hint-touch { display: none; }
