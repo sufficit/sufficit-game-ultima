@@ -41,6 +41,8 @@
 
         <aside class="network-panel" aria-label="Multiplayer e áudio">
             <div class="net-heading"><strong>Multiplayer P2P</strong><span>@_remoteCount jogador(es) remoto(s)</span></div>
+            <label class="player-name-label" for="player-name">Seu nome</label>
+            <input id="player-name" class="player-name-input" value="@_playerName" oninput="game.net.setName(this.value)" maxlength="40" autocomplete="nickname" />
             <div class="net-status" role="status">@_netStatus</div>
             <div class="net-actions">
                 <button type="button" class="secondary" @onclick="CopyInviteAsync">Copiar convite</button>
@@ -127,6 +129,7 @@
     private string _speechError = string.Empty;
     private string _dialogDraft = string.Empty;
     private string _chatDraft = string.Empty;
+    private string _playerName = string.Empty;
     private bool _micEnabled;
     private bool _speakEnabled;
     private bool _dictating;
@@ -176,6 +179,7 @@
         await JS.InvokeVoidAsync("game.net.init", _bridge);
         await JS.InvokeVoidAsync("game.voice.init", _bridge);
         _speakEnabled = await JS.InvokeAsync<bool>("game.voice.getSpeakPref");
+        _playerName = await JS.InvokeAsync<string>("game.net.getName");
         StateHasChanged();
         _ = LoadRemoteContentAsync();
     }
@@ -275,6 +279,12 @@
     {
         if (_micEnabled) await JS.InvokeVoidAsync("game.voice.stopMic");
         else await JS.InvokeVoidAsync("game.voice.startMic");
+    }
+
+    private async Task OnPlayerNameInput(ChangeEventArgs e)
+    {
+        _playerName = e.Value?.ToString() ?? string.Empty;
+        await JS.InvokeVoidAsync("game.net.setName", _playerName);
     }
 
     private async Task CopyInviteAsync()
