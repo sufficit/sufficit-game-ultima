@@ -32,6 +32,8 @@ jobs:
           sed -i 's|<base href="/" />|<base href="/${{ github.event.repository.name }}/" />|' publish/wwwroot/index.html
           cp publish/wwwroot/index.html publish/wwwroot/404.html
           touch publish/wwwroot/.nojekyll
+          sed -i "s|__BUILD__|${GITHUB_SHA}|g" publish/wwwroot/index.html publish/wwwroot/404.html
+          echo "{\"build\":\"${GITHUB_SHA}\"}" > publish/wwwroot/build.json
 
       - uses: actions/configure-pages@v5
 
