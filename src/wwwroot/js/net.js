@@ -1,5 +1,10 @@
 // Ultima — multiplayer P2P: WebRTC DataChannel (posições + chat) e faixa de áudio (voz),
 // com sinalização HTTP opcional. A API só apresenta os navegadores; o tráfego é direto.
+//
+// Robustez (corrige jogadores invisíveis):
+// - offer é reenviada em loop até o canal abrir (sinal pode se perder com delivered:0);
+// - avatar é criado assim que o peer entra na sala, antes mesmo do handshake;
+// - dois servidores STUN e restartIce antes de abandonar uma conexão falhada.
 (function () {
     'use strict';
 
@@ -8,8 +13,33 @@
     const API = (qs.get('api') || window.ULTIMA_API || FALLBACK_API).replace(/\/+$/, '');
     const room = ((qs.get('sala') || 'jardim').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24)) || 'jardim';
     const enabled = qs.get('rede') !== '0' && !!window.RTCPeerConnection;
-    const myId = Math.random().toString(16).slice(2, 10);
-    const ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    // Identidade estável: sobrevive a F5. sessionStorage (por aba) tem prioridade; senão reaproveita
+    // o ID salvo em localStorage, a menos que outra aba aberta o esteja usando (heartbeat).
+    const myId = (function () {
+        const fresh = () => Math.random().toString(16).slice(2, 10).padEnd(8, '0');
+        const valid = (v) => typeof v === 'string' && /^[0-9a-f]{8}$/.test(v);
+        let id = null;
+        try {
+            const tab = sessionStorage.getItem('ultima-id-aba');
+            if (valid(tab)) { id = tab; }
+            else {
+                const saved = localStorage.getItem('ultima-id');
+                let live = null;
+                try { live = JSON.parse(localStorage.getItem('ultima-id-vivo') || 'null'); } catch (e) { live = null; }
+                const busy = live && live.id === saved && Date.now() - live.ts < 6000;
+                id = valid(saved) && !busy ? saved : fresh();
+                if (!valid(saved)) { localStorage.setItem('ultima-id', id); }
+            }
+            sessionStorage.setItem('ultima-id-aba', id);
+            const beat = () => { try { localStorage.setItem('ultima-id-vivo', JSON.stringify({ id: id, ts: Date.now() })); } catch (e) { /* sem storage */ } };
+            beat();
+            setInterval(beat, 2000);
+        } catch (e) { id = id || fresh(); }
+        return id;
+    })();
+    const ICE = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] };
+    const OFFER_RETRY_MS = 2500;
+    const OFFER_RETRY_MAX = 24; // ~1 minuto tentando
 
     let dotnet = null;
     let localStream = null;
@@ -83,7 +113,7 @@
         if (!c) { return; }
         if (msg.t === 'hi') {
             c.name = String(msg.name || 'Jogador').slice(0, 40);
-            if (window.game) { game.addRemote(pid, c.name); }
+            if (window.game) { game.renameRemote(pid, c.name); }
         } else if (msg.t === 'pos') {
             if (window.game) { game.updateRemote(pid, Number(msg.x) || 0, Number(msg.z) || 0, Number(msg.ry) || 0); }
         } else if (msg.t === 'chat') {
@@ -92,11 +122,33 @@
         }
     }
 
+    function stopOfferRetry(c) {
+        if (c.offerTimer) { clearInterval(c.offerTimer); c.offerTimer = 0; }
+    }
+
+    // Reenvia a offer local até o canal abrir: sinalização HTTP pode perder mensagens
+    // (por exemplo, quando o destino ainda não se registrou na sala).
+    function startOfferRetry(pid, c) {
+        stopOfferRetry(c);
+        let tries = 0;
+        c.offerTimer = setInterval(() => {
+            tries += 1;
+            const open = c.channel && c.channel.readyState === 'open';
+            const answered = c.pc.remoteDescription && c.pc.remoteDescription.type === 'answer';
+            if (open || answered || stopped || tries > OFFER_RETRY_MAX) { stopOfferRetry(c); return; }
+            const desc = c.pc.localDescription;
+            if (desc && desc.type === 'offer' && !c.settingRemoteAnswerPending) {
+                sendSignal(pid, 'offer', toJs(desc));
+            }
+        }, OFFER_RETRY_MS);
+    }
+
     function bindChannel(pid, channel) {
         const c = conns.get(pid);
         if (!c) { try { channel.close(); } catch (e) { /* já fechado */ } return; }
         c.channel = channel;
         channel.onopen = () => {
+            stopOfferRetry(c);
             try { channel.send(JSON.stringify({ t: 'hi', name: playerName() })); } catch (e) { /* idem */ }
             status('Sala: ' + room);
         };
@@ -114,9 +166,14 @@
             settingRemoteAnswerPending: false,
             pendingIce: [],
             channel: null,
-            name: null
+            name: null,
+            offerTimer: 0,
+            iceRestarts: 0
         };
         conns.set(pid, c);
+
+        // Avatar aparece assim que o peer consta na sala; o nome real chega no 'hi'.
+        if (window.game) { game.addRemote(pid, null); }
 
         c.pc.onnegotiationneeded = async () => {
             try {
@@ -133,11 +190,21 @@
         };
         c.pc.ondatachannel = (e) => bindChannel(pid, e.channel);
         c.pc.onconnectionstatechange = () => {
-            if (c.pc.connectionState === 'failed' || c.pc.connectionState === 'closed') { dropPeer(pid, false); }
+            const s = c.pc.connectionState;
+            if (s === 'failed') {
+                if (c.iceRestarts < 2) {
+                    c.iceRestarts += 1;
+                    try { c.pc.restartIce(); } catch (err) { dropPeer(pid, false); }
+                } else { dropPeer(pid, false); }
+            } else if (s === 'closed') { dropPeer(pid, false); }
         };
 
-        // Apenas o lado "impaciente" cria o canal; o outro o recebe via ondatachannel.
-        if (!c.polite) { bindChannel(pid, c.pc.createDataChannel('game')); }
+        // Apenas o lado "impaciente" cria o canal e insiste com a offer;
+        // o outro lado o recebe via ondatachannel e responde com answer.
+        if (!c.polite) {
+            bindChannel(pid, c.pc.createDataChannel('game'));
+            startOfferRetry(pid, c);
+        }
         if (localStream) {
             for (const track of localStream.getTracks()) { c.pc.addTrack(track, localStream); }
         }
@@ -192,6 +259,7 @@
         const c = conns.get(pid);
         if (!c) { return; }
         conns.delete(pid);
+        stopOfferRetry(c);
         try { if (c.channel) { c.channel.close(); } } catch (e) { /* já fechado */ }
         try { c.pc.close(); } catch (e) { /* idem */ }
         if (notify) { sendSignal(pid, 'bye', null); }
@@ -202,7 +270,12 @@
     function syncPeers(list) {
         const ids = Array.isArray(list) ? list.filter((x) => typeof x === 'string' && x !== myId) : [];
         for (const pid of ids) { if (!conns.has(pid)) { connect(pid); } }
-        for (const pid of Array.from(conns.keys())) { if (!ids.includes(pid)) { dropPeer(pid, false); } }
+        // Presença pode expirar (aba em segundo plano); só derruba quem não tem canal aberto.
+        for (const pid of Array.from(conns.keys())) {
+            const c = conns.get(pid);
+            const open = c.channel && c.channel.readyState === 'open';
+            if (!ids.includes(pid) && !open) { dropPeer(pid, false); }
+        }
         status(conns.size ? 'Sala: ' + room : 'Sala: ' + room + ' (sozinho)');
     }
 
@@ -273,6 +346,19 @@
         sendPos,
         attachStream,
         detachStream,
-        info() { return { id: myId, room: room, api: API, peers: Array.from(conns.keys()) }; }
+        info() { return { id: myId, room: room, api: API, peers: Array.from(conns.keys()) }; },
+        debug() {
+            return {
+                id: myId, room: room, api: API, stopped: stopped,
+                peers: Array.from(conns.entries()).map(([pid, c]) => ({
+                    pid: pid,
+                    polite: c.polite,
+                    channel: c.channel ? c.channel.readyState : null,
+                    pc: c.pc.connectionState,
+                    signaling: c.pc.signalingState,
+                    name: c.name
+                }))
+            };
+        }
     };
 })();
