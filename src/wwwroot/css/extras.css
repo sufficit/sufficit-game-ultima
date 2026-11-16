@@ -16,6 +16,8 @@ input:focus, button:focus-visible { outline: 2px solid #ffd97a; outline-offset: 
     border: 1px solid #26304a; font-size: 0.75rem; z-index: 2;
 }
 .net-heading { display: flex; justify-content: space-between; gap: 0.5rem; color: #cfe3ff; }
+.player-name-label { display: block; margin-top: 0.35rem; color: #9fb4d8; }
+.player-name-input { width: 100%; box-sizing: border-box; margin-top: 0.15rem; padding: 0.3rem 0.45rem; font-size: 0.8rem; }
 .net-status { margin: 0.25rem 0 0.4rem; color: #9fe0b5; }
 .net-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .net-actions button { padding: 0.3rem 0.55rem; font-size: 0.72rem; }
