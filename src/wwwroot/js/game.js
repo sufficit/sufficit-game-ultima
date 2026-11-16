@@ -39,6 +39,7 @@
     }
 
     function onKeyDown(e) {
+        setActiveInput('keyboard');
         if (editable(e.target)) {
             if (e.code === 'Escape') { e.preventDefault(); if (dotnet) { dotnet.invokeMethodAsync('OnClose'); } }
             return;
@@ -69,6 +70,7 @@
         let pointer = null;
         const reset = () => { pointer = null; set({ x: 0, y: 0 }); thumb.style.transform = 'translate(0, 0)'; };
         host.addEventListener('pointerdown', (e) => {
+            setActiveInput('touch');
             pointer = e.pointerId;
             try { host.setPointerCapture(pointer); } catch (err) { /* captura opcional */ }
             e.preventDefault();
@@ -95,7 +97,7 @@
         setupVirtualStick('look-stick', 'look-thumb', () => lookStick, (v) => { lookStick = v; });
         const action = document.getElementById('touch-action');
         if (action) {
-            action.addEventListener('pointerdown', (e) => { e.preventDefault(); interact(); });
+            action.addEventListener('pointerdown', (e) => { setActiveInput('touch'); e.preventDefault(); interact(); });
         }
     }
 
@@ -616,26 +618,45 @@
         } catch (e) { console.warn('Partículas indisponíveis:', e); }
     }
 
-    function applyDeadzone(v) {
-        if (Math.abs(v) < DEADZONE) { return 0; }
-        return Math.sign(v) * (Math.abs(v) - DEADZONE) / (1 - DEADZONE);
+    // Deadzone radial (skill input-systems): preserva direção diagonal e reescala a magnitude restante.
+    function radialDeadzone(x, y) {
+        const m = Math.hypot(x, y);
+        if (m < DEADZONE) { return { x: 0, y: 0 }; }
+        const scaled = Math.min(1, (m - DEADZONE) / (1 - DEADZONE));
+        return { x: (x / m) * scaled, y: (y / m) * scaled };
     }
 
+    // Dispositivo ativo mais recente: a dica de controles na tela acompanha (body[data-input]).
+    let activeInput = 'keyboard';
+    function setActiveInput(kind) {
+        if (kind === activeInput) { return; }
+        activeInput = kind;
+        if (document.body) { document.body.dataset.input = kind; }
+    }
+    let cancelWasDown = false;
+
     function pollGamepad() {
-        let x = 0, y = 0, lookX = 0, lookY = 0, action = false;
+        let x = 0, y = 0, lookX = 0, lookY = 0, action = false, cancel = false;
         try {
             const pads = navigator.getGamepads ? navigator.getGamepads() : [];
             const pad = Array.from(pads || []).find((p) => p && p.connected);
             if (pad) {
-                x = applyDeadzone(pad.axes[0] || 0);
-                y = -applyDeadzone(pad.axes[1] || 0);
-                lookX = applyDeadzone(pad.axes[2] || 0);
-                lookY = applyDeadzone(pad.axes[3] || 0);
-                action = !!(pad.buttons[0] && pad.buttons[0].pressed);
+                const l = radialDeadzone(pad.axes[0] || 0, pad.axes[1] || 0);
+                const r = radialDeadzone(pad.axes[2] || 0, pad.axes[3] || 0);
+                x = l.x; y = -l.y; lookX = r.x; lookY = r.y;
+                const down = (i) => !!(pad.buttons[i] && pad.buttons[i].pressed);
+                action = down(0);                 // A / Cruz
+                cancel = down(1) || down(9);      // B / Círculo ou Start
+                // D-pad como alternativa ao stick esquerdo.
+                if (down(14)) { x -= 1; } if (down(15)) { x += 1; }
+                if (down(12)) { y += 1; } if (down(13)) { y -= 1; }
+                if (x || y || lookX || lookY || action || cancel) { setActiveInput('gamepad'); }
             }
         } catch (e) { /* Gamepad API indisponível */ }
         if (action && !actionWasDown) { interact(); }
+        if (cancel && !cancelWasDown && dotnet) { dotnet.invokeMethodAsync('OnClose'); }
         actionWasDown = action;
+        cancelWasDown = cancel;
         return { x: x, y: y, lookX: lookX, lookY: lookY };
     }
 
@@ -797,6 +818,7 @@
             engine = new BABYLON.Engine(canvas, true, { adaptToDeviceRatio: true, stencil: false });
             buildScene(canvas);
             setupTouchControls();
+            window.addEventListener('gamepaddisconnected', () => { actionWasDown = false; cancelWasDown = false; setActiveInput('keyboard'); });
             window.addEventListener('keydown', onKeyDown);
             window.addEventListener('keyup', onKeyUp);
             window.addEventListener('blur', () => {
