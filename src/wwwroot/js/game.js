@@ -1,13 +1,18 @@
 // Ultima — cena Babylon.js com terreno procedural realista, teclado, Gamepad API e analógicos virtuais.
 // Terreno: ruído Perlin 2D próprio (sem bibliotecas externas), coloração por vértice
-// (grama/terra/rocha), trilha sinuosa aplainada, bordas montanhosas, céu com gradiente.
+// (grama/terra/rocha/neve), trilha sinuosa aplainada, montanhas com neve no perímetro,
+// céu com nuvens, sol com sombras, tone mapping ACES e escala realista em metros.
 (function () {
     'use strict';
 
-    const WORLD_HALF = 24;
+    const WORLD_HALF = 48;
     const NPC_POSITION = { x: 0, z: -14 };
+    // Escala realista: personagem com ~1,75 m; os olhos ficam a ~1,62 m do chão.
     const NEAR_RADIUS = 3.2;
-    const SPEED = 6;
+    const WALK_SPEED = 3.5;   // m/s (caminhada rápida)
+    const RUN_SPEED = 6.5;    // m/s (corrida leve, Shift ou analógico no fim do curso)
+    const PLAYER_HEIGHT = 1.75;
+    const PLAYER_RADIUS = 0.25;
     const TICK_MS = 200;
     const DEADZONE = 0.18;
 
@@ -26,7 +31,7 @@
     const remotes = new Map();
     const keys = Object.create(null);
 
-    const gameCodes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    const gameCodes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
     const editable = (el) => !!(el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)));
 
     function interact() {
@@ -135,16 +140,23 @@
     function pathBlend(x, z) { return smoothstep(1.5, 3.4, Math.abs(x - pathOffset(z))); }
 
     function terrainHeight(x, z) {
-        let h = noise(x * 0.045, z * 0.045) * 2.6;
-        h += noise(x * 0.11 + 40.2, z * 0.11 - 17.4) * 0.9;
-        h += noise(x * 0.28 - 9.3, z * 0.28 + 23.8) * 0.22;
-        const rim = smoothstep(WORLD_HALF - 9, WORLD_HALF - 2, Math.hypot(x, z));
-        h += rim * (2.6 + noise(x * 0.2 + 5, z * 0.2 - 5) * 1.3);
-        const flat = 1 - pathBlend(x, z);
-        h = lerp(h, 0.06, flat * 0.92);
-        const spawn = smoothstep(2.5, 6, Math.hypot(x, z));
-        h = lerp(0.05, h, spawn);
-        return h;
+        const r = Math.hypot(x, z);
+        // Montanhas em cristas no perímetro, subindo até ~25 m.
+        const edge = r + noise(x * 0.07 - 51.7, z * 0.07 + 91.3) * 5.0;
+        const rim = smoothstep(24, 45, edge);
+        let h = Math.pow(rim, 1.5) * (21 + noise(x * 0.04 + 5, z * 0.04 - 5) * 7.0);
+        h += rim * Math.abs(noise(x * 0.16 + 3, z * 0.16 - 8)) * 3.5;
+        // Colinas suaves no vale e microrrelevo.
+        h += noise(x * 0.03, z * 0.03) * 2.2;
+        h += noise(x * 0.085 + 40.2, z * 0.085 - 17.4) * 0.6;
+        h += noise(x * 0.3 - 9.3, z * 0.3 + 23.8) * 0.15;
+        // A trilha aplaina o terreno, mas se dissolve nas montanhas.
+        const flat = (1 - pathBlend(x, z)) * (1 - smoothstep(22, 34, r));
+        h = lerp(h, Math.max(0, h * 0.12), flat * 0.9);
+        // Clareiras planas no ponto de partida e junto da Guardiã.
+        h = lerp(0.05, h, smoothstep(3.2, 9, r));
+        const npcFlat = smoothstep(6, 3, Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z));
+        return lerp(h, 0.05, npcFlat * 0.9);
     }
 
     function slopeAt(x, z) {
@@ -159,15 +171,25 @@
         const sky = BABYLON.MeshBuilder.CreateSphere('sky', { diameter: 180, segments: 12, sideOrientation: BABYLON.Mesh.BACKSIDE }, scene);
         sky.infiniteDistance = true;
         sky.isPickable = false;
-        const texture = new BABYLON.DynamicTexture('skyTex', { width: 16, height: 256 }, scene, false);
+        const texture = new BABYLON.DynamicTexture('skyTex', { width: 64, height: 512 }, scene, false);
         const ctx = texture.getContext();
-        const grad = ctx.createLinearGradient(0, 0, 0, 256);
-        grad.addColorStop(0, '#2b4f8e');
-        grad.addColorStop(0.5, '#7fa3cf');
-        grad.addColorStop(0.72, '#c3d3e3');
-        grad.addColorStop(1, '#e3e9ee');
+        const grad = ctx.createLinearGradient(0, 0, 0, 512);
+        grad.addColorStop(0, '#4d7dc4');
+        grad.addColorStop(0.52, '#9fc0e0');
+        grad.addColorStop(0.75, '#d3e2ee');
+        grad.addColorStop(1, '#eef1f2');
         ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, 16, 256);
+        ctx.fillRect(0, 0, 64, 512);
+        // Nuvens translúcidas distribuídas na faixa do horizonte.
+        for (let i = 0; i < 46; i++) {
+            const cx = Math.random() * 64;
+            const cy = 60 + Math.random() * 230;
+            const s = 5 + Math.random() * 13;
+            ctx.fillStyle = 'rgba(255,255,255,' + (0.10 + Math.random() * 0.22).toFixed(2) + ')';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, s, s * 0.42, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
         texture.update(false);
         const mat = new BABYLON.StandardMaterial('skyMat', scene);
         mat.disableLighting = true;
@@ -178,33 +200,80 @@
         sky.material = mat;
     }
 
+    // Granulação de solo/grama (multiplica a cor por vértice); ladrilha sem emenda visível.
+    function makeDetailTexture() {
+        const N = 256;
+        const tex = new BABYLON.DynamicTexture('groundDetail', { width: N, height: N }, scene, true);
+        const ctx = tex.getContext();
+        const img = ctx.createImageData(N, N);
+        const rnd = makeNoise(777);
+        for (let y = 0; y < N; y++) {
+            for (let x = 0; x < N; x++) {
+                // Ruído periódico: soma de ruídos amostrados em círculo (sem costura).
+                const u = x / N * Math.PI * 2, v = y / N * Math.PI * 2;
+                const c1 = rnd(Math.cos(u) * 3 + 10, Math.sin(u) * 3 + Math.cos(v) * 3);
+                const c2 = rnd(Math.cos(u * 3) * 4 - 7, Math.sin(v * 3) * 4 + Math.sin(u * 3) * 4);
+                const grain = (Math.random() - 0.5) * 0.22;
+                const val = 0.84 + c1 * 0.10 + c2 * 0.07 + grain;
+                const k = Math.max(0, Math.min(255, val * 255)) | 0;
+                const i = (y * N + x) * 4;
+                img.data[i] = k; img.data[i + 1] = k; img.data[i + 2] = Math.min(255, k + 2); img.data[i + 3] = 255;
+            }
+        }
+        ctx.putImageData(img, 0, 0);
+        tex.update(true);
+        tex.anisotropicFilteringLevel = 8;
+        return tex;
+    }
+
     function buildTerrain() {
         const size = WORLD_HALF * 2 + 8;
-        const ground = BABYLON.MeshBuilder.CreateGround('ground', { width: size, height: size, subdivisions: 64 }, scene);
+        const ground = BABYLON.MeshBuilder.CreateGround('ground', { width: size, height: size, subdivisions: 192 }, scene);
         const positions = ground.getVerticesData(BABYLON.VertexBuffer.PositionKind);
         const colors = new Float32Array((positions.length / 3) * 4);
 
-        const grassDark = [0.13, 0.29, 0.12];
-        const grassLight = [0.32, 0.46, 0.17];
-        const dirt = [0.50, 0.39, 0.25];
-        const rock = [0.45, 0.43, 0.40];
+        // Paleta: grama em duas tonalidades, terra da trilha, rocha úmida e neve.
+        const grassDark = [0.16, 0.34, 0.13];
+        const grassLight = [0.38, 0.52, 0.20];
+        const grassDry = [0.55, 0.55, 0.26];
+        const dirt = [0.47, 0.36, 0.23];
+        const dirtLight = [0.58, 0.47, 0.32];
+        const rock = [0.42, 0.41, 0.40];
+        const rockLight = [0.55, 0.54, 0.52];
+        const snow = [0.93, 0.95, 0.97];
 
         for (let i = 0; i < positions.length; i += 3) {
             const x = positions[i], z = positions[i + 2];
             const y = terrainHeight(x, z);
             positions[i + 1] = y;
 
-            const variation = noise(x * 0.15 + 100, z * 0.15 - 60) * 0.5 + 0.5;
-            let r = lerp(grassDark[0], grassLight[0], Math.max(0, Math.min(1, y * 0.14 + 0.4 + variation * 0.3)));
-            let g = lerp(grassDark[1], grassLight[1], Math.max(0, Math.min(1, y * 0.14 + 0.4 + variation * 0.3)));
-            let b = lerp(grassDark[2], grassLight[2], Math.max(0, Math.min(1, y * 0.14 + 0.4 + variation * 0.3)));
+            // Manchas de grama seca e variação fina de tom (quebra a monotonia).
+            const patch = noise(x * 0.11 + 100, z * 0.11 - 60);
+            const fine = noise(x * 0.85 - 13.7, z * 0.85 + 77.1) * 0.5 + 0.5;
+            const t = Math.max(0, Math.min(1, y * 0.16 + 0.42 + patch * 0.45 + (fine - 0.5) * 0.18));
+            let r = lerp(lerp(grassDark[0], grassLight[0], t), grassDry[0], Math.max(0, patch - 0.35) * 1.4);
+            let g = lerp(lerp(grassDark[1], grassLight[1], t), grassDry[1], Math.max(0, patch - 0.35) * 1.4);
+            let b = lerp(lerp(grassDark[2], grassLight[2], t), grassDry[2], Math.max(0, patch - 0.35) * 1.4);
 
+            // Trilha de terra batida, mais clara no centro.
             const path = pathBlend(x, z);
-            r = lerp(dirt[0], r, path); g = lerp(dirt[1], g, path); b = lerp(dirt[2], b, path);
+            const core = 1 - smoothstep(0.4, 2.6, Math.abs(x - pathOffset(z)));
+            const dr = lerp(dirtLight[0], dirt[0], path), dg = lerp(dirtLight[1], dirt[1], path), db = lerp(dirtLight[2], dirt[2], path);
+            r = lerp(dr, r, path); g = lerp(dg, g, path); b = lerp(db, b, path);
+            r = lerp(r, dr * 1.08, (1 - path) * core * 0.5);
+            g = lerp(g, dg * 1.08, (1 - path) * core * 0.5);
+            b = lerp(b, db * 1.08, (1 - path) * core * 0.5);
 
+            // Encostas íngremes viram rocha exposta.
             const slope = slopeAt(x, z);
-            const rocky = Math.max(0, Math.min(1, (slope - 0.45) / 0.5));
-            r = lerp(r, rock[0], rocky); g = lerp(g, rock[1], rocky); b = lerp(b, rock[2], rocky);
+            const rocky = Math.max(0, Math.min(1, (slope - 0.55) / 0.55));
+            const rr = lerp(rock[0], rockLight[0], fine);
+            r = lerp(r, rr, rocky); g = lerp(g, lerp(rock[1], rockLight[1], fine), rocky); b = lerp(b, lerp(rock[2], rockLight[2], fine), rocky);
+
+            // Neve acima de ~8,5 m, avançando antes nos pontos abrigados do ruído.
+            const snowLine = 8.5 + noise(x * 0.18 + 7.7, z * 0.18 - 3.3) * 1.6 - rocky * 1.2;
+            const snowy = Math.max(0, Math.min(1, (y - snowLine) / 1.6));
+            r = lerp(r, snow[0], snowy); g = lerp(g, snow[1], snowy); b = lerp(b, snow[2], snowy);
 
             const ci = (i / 3) * 4;
             colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b; colors[ci + 3] = 1;
@@ -218,25 +287,104 @@
         const groundMat = new BABYLON.StandardMaterial('groundMat', scene);
         groundMat.diffuseColor = new BABYLON.Color3(1, 1, 1);
         groundMat.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
+        const detail = makeDetailTexture();
+        detail.uScale = size / 3; detail.vScale = size / 3;   // um ladrilho a cada ~3 m
+        groundMat.diffuseTexture = detail;
         ground.material = groundMat;
+        ground.receiveShadows = true;
         return ground;
     }
 
-    function scatterOnTerrain(proto, count, tries, minScale, maxScale, yPad) {
+    // ---------- Texturas procedurais de vegetação ----------
+    function makeGrassTexture() {
+        const tex = new BABYLON.DynamicTexture('grassTex', { width: 128, height: 128 }, scene, true);
+        const ctx = tex.getContext();
+        ctx.clearRect(0, 0, 128, 128);
+        const tones = ['#3d6b21', '#4d7d2a', '#5d8f33', '#35591c'];
+        for (let i = 0; i < 16; i++) {
+            const x0 = 6 + Math.random() * 116;
+            const h = 40 + Math.random() * 70;
+            const bend = (Math.random() - 0.5) * 34;
+            ctx.strokeStyle = tones[(Math.random() * tones.length) | 0];
+            ctx.lineWidth = 2 + Math.random() * 2;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(x0, 128);
+            ctx.quadraticCurveTo(x0 + bend * 0.4, 128 - h * 0.6, x0 + bend, 128 - h);
+            ctx.stroke();
+        }
+        tex.update(true);
+        tex.hasAlpha = true;
+        return tex;
+    }
+
+    // Tufo de grama: dois planos cruzados com lâminas desenhadas (transparência).
+    function buildGrassPatch() {
+        const quad = BABYLON.MeshBuilder.CreatePlane('grassQuad', { width: 0.8, height: 0.45 }, scene);
+        const mat = new BABYLON.StandardMaterial('grassMat', scene);
+        mat.diffuseTexture = makeGrassTexture();
+        mat.useAlphaFromDiffuseTexture = true;
+        mat.specularColor = new BABYLON.Color3(0, 0, 0);
+        mat.backFaceCulling = false;
+        quad.material = mat;
+        quad.position.y = 0.225;
+        const q2 = quad.clone('grassQuad2');
+        q2.rotation.y = Math.PI / 2;
+        const merged = BABYLON.Mesh.MergeMeshes([quad, q2], true, true, undefined, false, true);
+        merged.isVisible = false;
+        merged.isPickable = false;
+        return merged;
+    }
+
+    // Árvores realistas (4–7 m): tronco + copa em cones, mesma escala por árvore.
+    function scatterTrees(trunkProto, crownProto, count) {
         const placed = [];
-        let attempt = 0;
-        while (placed.length < count && attempt < tries) {
-            attempt += 1;
-            const x = (Math.random() * 2 - 1) * (WORLD_HALF + 2);
-            const z = (Math.random() * 2 - 1) * (WORLD_HALF + 2);
-            if (pathBlend(x, z) < 0.6) { continue; }
-            if (Math.hypot(x, z) < 4.5) { continue; }
-            if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 3.6) { continue; }
-            const scale = minScale + Math.random() * (maxScale - minScale);
+        let tries = 0;
+        while (placed.length < count && tries < 2400) {
+            tries += 1;
+            const x = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
+            const z = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
+            const r = Math.hypot(x, z);
+            if (r < 6.5) { continue; }                                                     // clareira inicial
+            if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 5.5) { continue; }    // clareira da Guardiã
+            if (pathBlend(x, z) < 0.75) { continue; }                                      // longe da trilha
+            const y = terrainHeight(x, z);
+            if (y > 17) { continue; }                                                      // acima da linha das árvores
+            if (slopeAt(x, z) > 0.5) { continue; }                                         // encosta íngreme
+            const s = 0.75 + Math.random() * 0.9;
+            const trunk = trunkProto.createInstance('tree-trunk-' + placed.length);
+            trunk.position.set(x, y - 0.1, z);
+            trunk.scaling.set(s, s * (0.9 + Math.random() * 0.5), s);
+            trunk.rotation.y = Math.random() * Math.PI * 2;
+            const crown = crownProto.createInstance('tree-crown-' + placed.length);
+            crown.position.set(x, y - 0.1, z);
+            crown.scaling.copyFrom(trunk.scaling);
+            crown.rotation.y = Math.random() * Math.PI * 2;
+            placed.push(trunk);
+        }
+        return placed;
+    }
+
+    // Espalha instâncias de um protótipo com filtros de altitude/inclinação.
+    function scatterInstances(proto, count, opts) {
+        const placed = [];
+        let tries = 0;
+        while (placed.length < count && tries < count * 40) {
+            tries += 1;
+            const x = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
+            const z = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
+            const r = Math.hypot(x, z);
+            if (r < (opts.minR || 5)) { continue; }
+            if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 4.5) { continue; }
+            if (pathBlend(x, z) < 0.72) { continue; }
+            const y = terrainHeight(x, z);
+            if (opts.maxAlt !== undefined && y > opts.maxAlt) { continue; }
+            if (slopeAt(x, z) > (opts.maxSlope || 0.6)) { continue; }
+            const s = opts.minScale + Math.random() * ((opts.maxScale || opts.minScale) - opts.minScale);
             const inst = proto.createInstance(proto.name + '-i' + placed.length);
-            inst.position.set(x, terrainHeight(x, z) + yPad * scale, z);
+            inst.position.set(x, y + (opts.sink || 0) * s, z);
             inst.rotation.y = Math.random() * Math.PI * 2;
-            inst.scaling.set(scale, scale * (0.85 + Math.random() * 0.5), scale);
+            inst.scaling.set(s, s * (0.85 + Math.random() * 0.5), s);
             placed.push(inst);
         }
         return placed;
@@ -244,66 +392,110 @@
 
     function buildScene(canvas) {
         scene = new BABYLON.Scene(engine);
-        const horizon = new BABYLON.Color3(0.62, 0.70, 0.78);
+        const horizon = new BABYLON.Color3(0.72, 0.80, 0.88);
         scene.clearColor = new BABYLON.Color4(horizon.r, horizon.g, horizon.b, 1);
         scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
         scene.fogColor = horizon;
-        scene.fogDensity = 0.014;
-        scene.ambientColor = new BABYLON.Color3(0.3, 0.33, 0.35);
+        scene.fogDensity = 0.0105;
+        scene.ambientColor = new BABYLON.Color3(0.26, 0.30, 0.34);
 
-        const hemi = new BABYLON.HemisphericLight('hemi', new BABYLON.Vector3(0, 1, 0), scene);
-        hemi.intensity = 0.65;
-        hemi.groundColor = new BABYLON.Color3(0.35, 0.42, 0.30);
-        const sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-0.4, -1, 0.6), scene);
-        sun.position = new BABYLON.Vector3(20, 32, -24);
-        sun.intensity = 1.15;
-        sun.diffuse = new BABYLON.Color3(1, 0.96, 0.88);
+        // Tone mapping ACES: realça luz e sombra sem estourar os claros.
+        const proc = scene.imageProcessingConfiguration;
+        proc.toneMappingEnabled = true;
+        proc.toneMappingType = BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
+        proc.exposure = 1.25;
+        proc.contrast = 1.1;
+        proc.vignetteEnabled = true;
+        proc.vignetteWeight = 0.8;
+
+        const hemi = new BABYLON.HemisphericLight('hemi', new BABYLON.Vector3(0.2, 1, 0.1), scene);
+        hemi.intensity = 0.85;
+        hemi.diffuse = new BABYLON.Color3(0.65, 0.72, 0.85);      // luz fria do céu
+        hemi.groundColor = new BABYLON.Color3(0.38, 0.42, 0.30);  // ricochete do chão
+
+        const sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-0.7, -0.8, -0.3).normalize(), scene);
+        sun.position = new BABYLON.Vector3(60, 70, 25);
+        sun.intensity = 1.6;
+        sun.diffuse = new BABYLON.Color3(1.0, 0.95, 0.85);        // sol da tarde
+        sun.specular = new BABYLON.Color3(1.0, 0.97, 0.9);
+
+        const shadows = new BABYLON.ShadowGenerator(2048, sun);
+        shadows.useBlurExponentialShadowMap = true;
+        shadows.blurKernel = 16;
+        shadows.depthScale = 45;
+        shadows.darkness = 0.35;
 
         skyDome();
-        buildTerrain();
+        const ground = buildTerrain();
 
-        const treeProto = BABYLON.MeshBuilder.CreateCylinder('treeProto',
-            { diameterTop: 0, diameterBottom: 1.7, height: 3.6, tessellation: 7 }, scene);
-        const treeMat = new BABYLON.StandardMaterial('treeMat', scene);
-        treeMat.diffuseColor = new BABYLON.Color3(0.11, 0.32, 0.15);
-        treeMat.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
-        treeProto.material = treeMat;
-        treeProto.isVisible = false;
-        scatterOnTerrain(treeProto, 36, 400, 0.7, 1.7, 1.7);
+        // Árvores: tronco + copa em cones (4–7 m de altura real).
+        const trunkProto = BABYLON.MeshBuilder.CreateCylinder('trunkProto', { diameterBottom: 0.36, diameterTop: 0.22, height: 2.6, tessellation: 7 }, scene);
+        const trunkMat = new BABYLON.StandardMaterial('trunkMat', scene);
+        trunkMat.diffuseColor = new BABYLON.Color3(0.36, 0.25, 0.16);
+        trunkMat.specularColor = new BABYLON.Color3(0.01, 0.01, 0.01);
+        trunkProto.material = trunkMat;
+        const crownLow = BABYLON.MeshBuilder.CreateCylinder('crownLow', { diameterBottom: 3.0, diameterTop: 0, height: 3.2, tessellation: 9 }, scene);
+        crownLow.position.y = 3.6;
+        const crownTop = BABYLON.MeshBuilder.CreateCylinder('crownTop', { diameterBottom: 2.1, diameterTop: 0, height: 2.2, tessellation: 9 }, scene);
+        crownTop.position.y = 5.2;
+        const crownProto = BABYLON.Mesh.MergeMeshes([crownLow, crownTop], true, true, undefined, false, true);
+        const crownMat = new BABYLON.StandardMaterial('crownMat', scene);
+        crownMat.diffuseColor = new BABYLON.Color3(0.13, 0.33, 0.15);
+        crownMat.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
+        crownMat.emissiveColor = new BABYLON.Color3(0.015, 0.045, 0.02);
+        crownProto.material = crownMat;
+        trunkProto.isVisible = false;
+        crownProto.isVisible = false;
+        shadows.addShadowCaster(trunkProto);
+        shadows.addShadowCaster(crownProto);
+        scatterTrees(trunkProto, crownProto, 64);
 
-        const rockProto = BABYLON.MeshBuilder.CreateIcoSphere('rockProto', { radius: 0.6, subdivisions: 1 }, scene);
+        // Pedras nas encostas e altitudes maiores.
+        const rockProto = BABYLON.MeshBuilder.CreateIcoSphere('rockProto', { radius: 0.7, subdivisions: 1 }, scene);
         const rockMat = new BABYLON.StandardMaterial('rockMat', scene);
-        rockMat.diffuseColor = new BABYLON.Color3(0.44, 0.42, 0.40);
-        rockMat.specularColor = new BABYLON.Color3(0.03, 0.03, 0.03);
+        rockMat.diffuseColor = new BABYLON.Color3(0.46, 0.44, 0.42);
+        rockMat.specularColor = new BABYLON.Color3(0.04, 0.04, 0.04);
         rockProto.material = rockMat;
         rockProto.isVisible = false;
-        scatterOnTerrain(rockProto, 14, 200, 0.5, 1.4, 0.25);
+        shadows.addShadowCaster(rockProto);
+        scatterInstances(rockProto, 26, { minScale: 0.6, maxScale: 2.2, maxAlt: 26, maxSlope: 0.9, sink: -0.25, minR: 6 });
 
-        player = BABYLON.MeshBuilder.CreateSphere('player', { diameter: 1.1, segments: 16 }, scene);
-        player.position = new BABYLON.Vector3(0, terrainHeight(0, 0) + 0.55, 0);
+        // Tufos de grama no vale (só onde há solo de grama).
+        const grassProto = buildGrassPatch();
+        scatterInstances(grassProto, 420, { minScale: 0.7, maxScale: 1.5, maxAlt: 14, maxSlope: 0.55, sink: 0, minR: 4.5 });
+
+        // Jogador: cápsula humana de 1,75 m.
+        player = BABYLON.MeshBuilder.CreateCapsule('player', { height: PLAYER_HEIGHT, radius: PLAYER_RADIUS, subdivisions: 4 }, scene);
+        player.position = new BABYLON.Vector3(0, terrainHeight(0, 0) + PLAYER_HEIGHT / 2 + 0.03, 0);
         const playerMat = new BABYLON.StandardMaterial('playerMat', scene);
-        playerMat.diffuseColor = new BABYLON.Color3(0.22, 0.55, 0.95);
+        playerMat.diffuseColor = new BABYLON.Color3(0.20, 0.50, 0.92);
+        playerMat.specularColor = new BABYLON.Color3(0.15, 0.15, 0.15);
         player.material = playerMat;
+        shadows.addShadowCaster(player);
 
-        const npc = BABYLON.MeshBuilder.CreateCylinder('npc', { diameterTop: 0, diameterBottom: 1.4, height: 2.4, tessellation: 12 }, scene);
-        npc.position = new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 1.2, NPC_POSITION.z);
+        // Guardiã: cápsula dourada (1,7 m) com anel de destaque no chão.
+        const npc = BABYLON.MeshBuilder.CreateCapsule('npc', { height: 1.7, radius: 0.26, subdivisions: 4 }, scene);
+        npc.position = new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.88, NPC_POSITION.z);
         const npcMat = new BABYLON.StandardMaterial('npcMat', scene);
-        npcMat.diffuseColor = new BABYLON.Color3(0.85, 0.62, 0.16);
-        npcMat.emissiveColor = new BABYLON.Color3(0.25, 0.16, 0.02);
+        npcMat.diffuseColor = new BABYLON.Color3(0.88, 0.66, 0.22);
+        npcMat.emissiveColor = new BABYLON.Color3(0.18, 0.11, 0.02);
+        npcMat.specularColor = new BABYLON.Color3(0.30, 0.25, 0.10);
         npc.material = npcMat;
+        shadows.addShadowCaster(npc);
 
-        const marker = BABYLON.MeshBuilder.CreateTorus('npcMarker', { diameter: 2.4, thickness: 0.12, tessellation: 32 }, scene);
-        marker.position = new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.08, NPC_POSITION.z);
+        const marker = BABYLON.MeshBuilder.CreateTorus('npcMarker', { diameter: 1.5, thickness: 0.08, tessellation: 32 }, scene);
+        marker.position = new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.06, NPC_POSITION.z);
         const markerMat = new BABYLON.StandardMaterial('markerMat', scene);
         markerMat.emissiveColor = new BABYLON.Color3(0.95, 0.75, 0.2);
         marker.material = markerMat;
         scene.registerBeforeRender(() => { marker.rotation.y += 0.02; });
 
-        camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, Math.PI / 3.2, 15, player.position.clone(), scene);
-        camera.lowerRadiusLimit = 6;
-        camera.upperRadiusLimit = 32;
-        camera.upperBetaLimit = Math.PI / 2.15;
+        camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 1.12, 7.5, player.position.clone(), scene);
+        camera.lowerRadiusLimit = 2.4;
+        camera.upperRadiusLimit = 40;
+        camera.upperBetaLimit = Math.PI / 2.08;
         camera.wheelDeltaPercentage = 0.01;
+        camera.fov = 0.85;
         camera.attachControl(canvas, true);
     }
 
@@ -347,8 +539,10 @@
         let dz = (fz / flen) * iz + nz * ix;
         const len = Math.hypot(dx, dz) || 1;
         const magnitude = Math.min(1, Math.hypot(ix, iz));
-        player.position.x += (dx / len) * SPEED * magnitude * deltaSeconds;
-        player.position.z += (dz / len) * SPEED * magnitude * deltaSeconds;
+        const run = keys.ShiftLeft || keys.ShiftRight || magnitude > 0.92;
+        const speed = run ? RUN_SPEED : WALK_SPEED;
+        player.position.x += (dx / len) * speed * magnitude * deltaSeconds;
+        player.position.z += (dz / len) * speed * magnitude * deltaSeconds;
         clampToWorld(player);
         player.rotation.y = Math.atan2(dx, dz);
     }
@@ -370,15 +564,15 @@
     function addRemote(id, name) {
         if (remotes.has(id) || !scene) { return; }
         const serial = remoteSerial++;
-        const avatar = BABYLON.MeshBuilder.CreateSphere('remote-' + id, { diameter: 1.15, segments: 12 }, scene);
-        avatar.position = new BABYLON.Vector3((serial % 5 - 2) * 1.5, terrainHeight(0, -2) + 0.58, -2 - Math.floor(serial / 5) * 2);
+        const avatar = BABYLON.MeshBuilder.CreateCapsule('remote-' + id, { height: PLAYER_HEIGHT, radius: PLAYER_RADIUS, subdivisions: 4 }, scene);
+        avatar.position = new BABYLON.Vector3((serial % 5 - 2) * 1.5, terrainHeight(0, -2) + PLAYER_HEIGHT / 2 + 0.03, -2 - Math.floor(serial / 5) * 2);
         const mat = new BABYLON.StandardMaterial('remote-mat-' + id, scene);
         mat.diffuseColor = new BABYLON.Color3(0.76, 0.32, 0.92);
         mat.emissiveColor = new BABYLON.Color3(0.10, 0.025, 0.14);
         avatar.material = mat;
 
-        const label = BABYLON.MeshBuilder.CreatePlane('remote-label-' + id, { width: 2.8, height: 0.55 }, scene);
-        label.position = avatar.position.add(new BABYLON.Vector3(0, 1.0, 0));
+        const label = BABYLON.MeshBuilder.CreatePlane('remote-label-' + id, { width: 1.8, height: 0.36 }, scene);
+        label.position = avatar.position.add(new BABYLON.Vector3(0, 1.05, 0));
         label.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
         const texture = new BABYLON.DynamicTexture('remote-name-' + id, { width: 512, height: 100 }, scene, false);
         texture.hasAlpha = true;
@@ -403,11 +597,11 @@
         if (!p) { return; }
         p.avatar.position.x = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, x));
         p.avatar.position.z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, z));
-        p.avatar.position.y = terrainHeight(p.avatar.position.x, p.avatar.position.z) + 0.58;
+        p.avatar.position.y = terrainHeight(p.avatar.position.x, p.avatar.position.z) + PLAYER_HEIGHT / 2 + 0.03;
         p.avatar.rotation.y = ry;
         p.label.position.x = p.avatar.position.x;
         p.label.position.z = p.avatar.position.z;
-        p.label.position.y = p.avatar.position.y + 1.0;
+        p.label.position.y = p.avatar.position.y + 1.05;
     }
 
     function removeRemote(id) {
@@ -452,7 +646,7 @@
                     camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + (pad.lookY + lookStick.y) * delta * 1.7));
                 }
                 movePlayer(delta, pad);
-                if (player) { player.position.y = terrainHeight(player.position.x, player.position.z) + 0.55; }
+                if (player) { player.position.y = terrainHeight(player.position.x, player.position.z) + PLAYER_HEIGHT / 2 + 0.03; }
                 checkNear();
                 camera.setTarget(player.position);
                 scene.render();
@@ -477,7 +671,7 @@
         },
         resetPlayer() {
             if (player) { player.position.x = 0; player.position.z = 0; player.rotation.y = 0; }
-            if (camera) { camera.alpha = -Math.PI / 2; camera.beta = Math.PI / 3.2; }
+            if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 7.5; }
         },
         addRemote,
         renameRemote,
