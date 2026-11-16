@@ -53,10 +53,39 @@
         if (dotnet) { dotnet.invokeMethodAsync('OnNetStatus', state, conns.size); }
     }
 
+    // Nome: texto simples, sem controles, até 40 caracteres; vazio volta ao padrão.
+    function cleanName(v) {
+        return String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    }
+
     function playerName() {
         let saved = null;
         try { saved = localStorage.getItem('ultima-nome'); } catch (e) { /* sem storage */ }
-        return (saved || 'Jogador ' + myId.slice(0, 4)).slice(0, 40);
+        return cleanName(saved) || 'Jogador ' + myId.slice(0, 4);
+    }
+
+    function getName() {
+        return playerName();
+    }
+
+    let nameTimer = 0;
+    function setName(value) {
+        const clean = cleanName(value);
+        try {
+            if (clean) { localStorage.setItem('ultima-nome', clean); } else { localStorage.removeItem('ultima-nome'); }
+        } catch (e) { /* sem storage: vale só nesta sessão */ }
+        // Espera o jogador parar de digitar antes de avisar peers e servidor.
+        clearTimeout(nameTimer);
+        nameTimer = setTimeout(() => {
+            const hi = JSON.stringify({ t: 'hi', name: playerName() });
+            for (const c of conns.values()) {
+                if (c.channel && c.channel.readyState === 'open') {
+                    try { c.channel.send(hi); } catch (e) { /* canal caindo */ }
+                }
+            }
+            if (enabled && !stopped) { join(); }
+        }, 600);
+        return clean;
     }
 
     async function api(path, body, timeoutMs) {
@@ -342,6 +371,8 @@
                 api('/v1/net/' + room + '/leave', { peer: myId }, 3000).catch(() => { /* saída silenciosa */ });
             });
         },
+        getName,
+        setName,
         sendChat,
         sendPos,
         attachStream,
