@@ -167,6 +167,30 @@
     }
 
     // ---------- Cena ----------
+    // Distorce levemente vértices do protótipo: silhueta orgânica replicada nas instâncias.
+    function jitterMesh(mesh, amount, seed) {
+        const pos=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind); if(!pos)return;
+        const rnd=makeNoise(seed);
+        for(let i=0;i<pos.length;i+=3){
+            const x=pos[i],y=pos[i+1],z=pos[i+2]; if(Math.hypot(x,y,z)<1e-5)continue;
+            const n=rnd(x*2.3+y*1.1,z*2.3-y*0.7),f=1+(n-0.5)*2*amount;
+            pos[i]=x*f;pos[i+1]=y*f;pos[i+2]=z*f;
+        }
+        mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind,pos);
+    }
+
+    // Estria o tronco por ângulo, preservando veios paralelos à altura.
+    function fluteMesh(mesh, amount, seed) {
+        const pos=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind); if(!pos)return;
+        const rnd=makeNoise(seed);
+        for(let i=0;i<pos.length;i+=3){
+            const x=pos[i],z=pos[i+2];if(Math.hypot(x,z)<1e-5)continue;
+            const a=Math.atan2(z,x),n=rnd(Math.cos(a)*3+5,Math.sin(a)*3+5),f=1+(n-0.5)*2*amount;
+            pos[i]=x*f;pos[i+2]=z*f;
+        }
+        mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind,pos);
+    }
+
     function skyDome() {
         const sky = BABYLON.MeshBuilder.CreateSphere('sky', { diameter: 180, segments: 12, sideOrientation: BABYLON.Mesh.BACKSIDE }, scene);
         sky.infiniteDistance = true;
@@ -295,7 +319,84 @@
         return ground;
     }
 
+    // ---------- v3: relevo (normal map) e oclusão ambiente nos vértices ----------
+    // Converte o mapa de alturas guardado em tex._h num mapa de normais (relevo real sob a luz).
+    function makeBumpTexture(srcTex, N, strength) {
+        const h = srcTex._h, tex = new BABYLON.DynamicTexture('bump-' + srcTex.name, { width: N, height: N }, scene, true);
+        const ctx = tex.getContext(), img = ctx.createImageData(N, N);
+        const at = (x, y) => h[((y + N) % N) * N + ((x + N) % N)];
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+            const dx = (at(x + 1, y) - at(x - 1, y)) * strength, dy = (at(x, y + 1) - at(x, y - 1)) * strength;
+            const inv = 1 / Math.hypot(dx, dy, 1), i = (y * N + x) * 4;
+            img.data[i] = ((-dx * inv) * 0.5 + 0.5) * 255; img.data[i + 1] = ((-dy * inv) * 0.5 + 0.5) * 255;
+            img.data[i + 2] = (inv * 0.5 + 0.5) * 255; img.data[i + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0); tex.update(true); return tex;
+    }
+
+    // AO "assado": escurece a base e variações por vértice (copas mais densas por baixo).
+    function bakeVertexAO(mesh, darkest, seed) {
+        const pos = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+        let minY = Infinity, maxY = -Infinity;
+        for (let i = 1; i < pos.length; i += 3) { minY = Math.min(minY, pos[i]); maxY = Math.max(maxY, pos[i]); }
+        const rnd = makeNoise(seed), col = new Float32Array((pos.length / 3) * 4);
+        for (let v = 0; v < pos.length / 3; v++) {
+            const t = (pos[v * 3 + 1] - minY) / Math.max(0.001, maxY - minY);
+            const k = darkest + (1 - darkest) * Math.pow(t, 0.7) + (rnd(pos[v * 3] * 1.7, pos[v * 3 + 2] * 1.7) - 0.5) * 0.12;
+            const c = Math.max(0.2, Math.min(1.05, k));
+            col[v * 4] = c; col[v * 4 + 1] = c; col[v * 4 + 2] = c * 0.97; col[v * 4 + 3] = 1;
+        }
+        mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind, col);
+    }
+
     // ---------- Texturas procedurais de vegetação ----------
+    // Casca: veios verticais irregulares, sem costura na horizontal.
+    function makeBarkTexture() {
+        const W = 128, H = 128;
+        const tex = new BABYLON.DynamicTexture('barkTex', { width: W, height: H }, scene, true);
+        const ctx = tex.getContext(); const img = ctx.createImageData(W, H); const rnd = makeNoise(421); const hgt = (tex._h = new Float32Array(W * H));
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+            const u = x / W * Math.PI * 2;
+            const ridge = rnd(Math.cos(u) * 6 + 3, Math.sin(u) * 6 + 3);
+            const fibre = rnd(Math.cos(u) * 14 - 9, y * 0.35 + Math.sin(u) * 14);
+            const val = 0.52 + ridge * 0.30 + (fibre - 0.5) * 0.22, i = (y * W + x) * 4;
+            hgt[y * W + x] = val; img.data[i] = Math.max(0, Math.min(255, val * 190)) | 0;
+            img.data[i+1] = Math.max(0, Math.min(255, val * 135)) | 0;
+            img.data[i+2] = Math.max(0, Math.min(255, val * 88)) | 0; img.data[i+3] = 255;
+        }
+        ctx.putImageData(img, 0, 0); tex.update(true); return tex;
+    }
+
+    // Folhagem: manchas procedurais de verde, em vez de uma cor plana.
+    function makeFoliageTexture() {
+        const N = 128, tex = new BABYLON.DynamicTexture('foliageTex', { width: N, height: N }, scene, true);
+        const ctx = tex.getContext(), img = ctx.createImageData(N, N), rnd = makeNoise(907);
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+            const u = x / N * Math.PI * 2, v = y / N * Math.PI * 2;
+            const blob = rnd(Math.cos(u)*5+1, Math.sin(u)*5+Math.cos(v)*5);
+            const leaf = rnd(Math.cos(u)*16+8, Math.sin(v)*16-4), t = blob*0.7+leaf*0.3, i=(y*N+x)*4;
+            img.data[i] = Math.max(0,Math.min(255,(0.10+t*0.22)*255))|0;
+            img.data[i+1] = Math.max(0,Math.min(255,(0.26+t*0.42)*255))|0;
+            img.data[i+2] = Math.max(0,Math.min(255,(0.10+t*0.16)*255))|0; img.data[i+3]=255;
+        }
+        ctx.putImageData(img,0,0); tex.update(true); return tex;
+    }
+
+    // Rocha com variação de cor e salpicos minerais procedurais.
+    function makeRockTexture() {
+        const N=128, tex=new BABYLON.DynamicTexture('rockTex',{width:N,height:N},scene,true);
+        const ctx=tex.getContext(), img=ctx.createImageData(N,N), rnd=makeNoise(577), hgt=(tex._h=new Float32Array(N*N));
+        for(let y=0;y<N;y++) for(let x=0;x<N;x++) {
+            const u=x/N*Math.PI*2,v=y/N*Math.PI*2;
+            const blotch=rnd(Math.cos(u)*5-3,Math.sin(v)*5+4), speck=rnd(Math.cos(u)*18+6,Math.sin(v)*18-7);
+            const val=0.58+blotch*0.24+(speck-0.5)*0.10,i=(y*N+x)*4;
+            hgt[y*N+x]=val; img.data[i]=Math.max(0,Math.min(255,val*118))|0;
+            img.data[i+1]=Math.max(0,Math.min(255,val*114))|0;
+            img.data[i+2]=Math.max(0,Math.min(255,val*108))|0; img.data[i+3]=255;
+        }
+        ctx.putImageData(img,0,0); tex.update(true); return tex;
+    }
+
     function makeGrassTexture() {
         const tex = new BABYLON.DynamicTexture('grassTex', { width: 128, height: 128 }, scene, true);
         const ctx = tex.getContext();
@@ -420,67 +521,53 @@
         sun.specular = new BABYLON.Color3(1.0, 0.97, 0.9);
 
         const shadows = new BABYLON.ShadowGenerator(2048, sun);
-        shadows.useBlurExponentialShadowMap = true;
-        shadows.blurKernel = 16;
-        shadows.depthScale = 45;
-        shadows.darkness = 0.35;
+        shadows.usePercentageCloserFiltering = true;       // sombra de bordas suaves (WebGL2)
+        shadows.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM;
+        shadows.bias = 0.0006;
+        shadows.normalBias = 0.02;
+        shadows.darkness = 0.3;
 
         skyDome();
         const ground = buildTerrain();
 
-        // Árvores: tronco + copa em cones (4–7 m de altura real).
-        const trunkProto = BABYLON.MeshBuilder.CreateCylinder('trunkProto', { diameterBottom: 0.36, diameterTop: 0.22, height: 2.6, tessellation: 7 }, scene);
+        // Árvores: tronco estriado com casca + copa irregular com textura de folhagem.
+        const trunkProto = BABYLON.MeshBuilder.CreateCylinder('trunkProto', { diameterBottom: 0.36, diameterTop: 0.22, height: 2.6, tessellation: 9 }, scene);
+        fluteMesh(trunkProto, 0.10, 311);
         const trunkMat = new BABYLON.StandardMaterial('trunkMat', scene);
-        trunkMat.diffuseColor = new BABYLON.Color3(0.36, 0.25, 0.16);
-        trunkMat.specularColor = new BABYLON.Color3(0.01, 0.01, 0.01);
-        trunkProto.material = trunkMat;
-        const crownLow = BABYLON.MeshBuilder.CreateCylinder('crownLow', { diameterBottom: 3.0, diameterTop: 0, height: 3.2, tessellation: 9 }, scene);
+        const barkTex = makeBarkTexture(); trunkMat.diffuseTexture = barkTex; trunkMat.bumpTexture = makeBumpTexture(barkTex, 128, 3.2); trunkMat.bumpTexture.level = 1.1; trunkMat.diffuseTexture.uScale = 2; trunkMat.specularColor = new BABYLON.Color3(0.01, 0.01, 0.01); trunkProto.material = trunkMat;
+        const crownLow = BABYLON.MeshBuilder.CreateCylinder('crownLow', { diameterBottom: 3.0, diameterTop: 0, height: 3.2, tessellation: 11 }, scene);
         crownLow.position.y = 3.6;
-        const crownTop = BABYLON.MeshBuilder.CreateCylinder('crownTop', { diameterBottom: 2.1, diameterTop: 0, height: 2.2, tessellation: 9 }, scene);
+        const crownTop = BABYLON.MeshBuilder.CreateCylinder('crownTop', { diameterBottom: 2.1, diameterTop: 0, height: 2.2, tessellation: 11 }, scene);
         crownTop.position.y = 5.2;
         const crownProto = BABYLON.Mesh.MergeMeshes([crownLow, crownTop], true, true, undefined, false, true);
+        jitterMesh(crownProto, 0.09, 613); bakeVertexAO(crownProto, 0.45, 91);
         const crownMat = new BABYLON.StandardMaterial('crownMat', scene);
-        crownMat.diffuseColor = new BABYLON.Color3(0.13, 0.33, 0.15);
-        crownMat.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
-        crownMat.emissiveColor = new BABYLON.Color3(0.015, 0.045, 0.02);
-        crownProto.material = crownMat;
-        trunkProto.isVisible = false;
-        crownProto.isVisible = false;
-        shadows.addShadowCaster(trunkProto);
-        shadows.addShadowCaster(crownProto);
+        crownMat.diffuseTexture = makeFoliageTexture(); crownMat.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
+        crownMat.emissiveColor = new BABYLON.Color3(0.015, 0.045, 0.02); crownProto.material = crownMat;
+        trunkProto.isVisible = false; crownProto.isVisible = false;
+        shadows.addShadowCaster(trunkProto); shadows.addShadowCaster(crownProto);
         scatterTrees(trunkProto, crownProto, 64);
 
-        // Pedras nas encostas e altitudes maiores.
-        const rockProto = BABYLON.MeshBuilder.CreateIcoSphere('rockProto', { radius: 0.7, subdivisions: 1 }, scene);
+        // Pedras irregulares com manchas minerais procedurais.
+        const rockProto = BABYLON.MeshBuilder.CreateIcoSphere('rockProto', { radius: 0.7, subdivisions: 2 }, scene);
+        jitterMesh(rockProto, 0.22, 733); bakeVertexAO(rockProto, 0.55, 17);
         const rockMat = new BABYLON.StandardMaterial('rockMat', scene);
-        rockMat.diffuseColor = new BABYLON.Color3(0.46, 0.44, 0.42);
-        rockMat.specularColor = new BABYLON.Color3(0.04, 0.04, 0.04);
-        rockProto.material = rockMat;
-        rockProto.isVisible = false;
-        shadows.addShadowCaster(rockProto);
+        const rockTex = makeRockTexture(); rockMat.diffuseTexture = rockTex; rockMat.bumpTexture = makeBumpTexture(rockTex, 128, 4.0); rockMat.specularColor = new BABYLON.Color3(0.04, 0.04, 0.04); rockProto.material = rockMat;
+        rockProto.isVisible = false; shadows.addShadowCaster(rockProto);
         scatterInstances(rockProto, 26, { minScale: 0.6, maxScale: 2.2, maxAlt: 26, maxSlope: 0.9, sink: -0.25, minR: 6 });
 
         // Tufos de grama no vale (só onde há solo de grama).
         const grassProto = buildGrassPatch();
         scatterInstances(grassProto, 420, { minScale: 0.7, maxScale: 1.5, maxAlt: 14, maxSlope: 0.55, sink: 0, minR: 4.5 });
 
-        // Jogador: cápsula humana de 1,75 m.
-        player = BABYLON.MeshBuilder.CreateCapsule('player', { height: PLAYER_HEIGHT, radius: PLAYER_RADIUS, subdivisions: 4 }, scene);
+        // Jogador: humanoide de 1,75 m (tronco azul, calça escura e pele).
+        player = buildHumanoid('player', { shirt:new BABYLON.Color3(0.20,0.50,0.92), pants:new BABYLON.Color3(0.20,0.22,0.28), skin:new BABYLON.Color3(0.90,0.72,0.58) });
         player.position = new BABYLON.Vector3(0, terrainHeight(0, 0) + PLAYER_HEIGHT / 2 + 0.03, 0);
-        const playerMat = new BABYLON.StandardMaterial('playerMat', scene);
-        playerMat.diffuseColor = new BABYLON.Color3(0.20, 0.50, 0.92);
-        playerMat.specularColor = new BABYLON.Color3(0.15, 0.15, 0.15);
-        player.material = playerMat;
         shadows.addShadowCaster(player);
 
-        // Guardiã: cápsula dourada (1,7 m) com anel de destaque no chão.
-        const npc = BABYLON.MeshBuilder.CreateCapsule('npc', { height: 1.7, radius: 0.26, subdivisions: 4 }, scene);
+        // Guardiã: figura encapuzada dourada (1,7 m) com anel de destaque no chão.
+        const npc = buildGuardian('npc');
         npc.position = new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.88, NPC_POSITION.z);
-        const npcMat = new BABYLON.StandardMaterial('npcMat', scene);
-        npcMat.diffuseColor = new BABYLON.Color3(0.88, 0.66, 0.22);
-        npcMat.emissiveColor = new BABYLON.Color3(0.18, 0.11, 0.02);
-        npcMat.specularColor = new BABYLON.Color3(0.30, 0.25, 0.10);
-        npc.material = npcMat;
         shadows.addShadowCaster(npc);
 
         const marker = BABYLON.MeshBuilder.CreateTorus('npcMarker', { diameter: 1.5, thickness: 0.08, tessellation: 32 }, scene);
@@ -497,6 +584,36 @@
         camera.wheelDeltaPercentage = 0.01;
         camera.fov = 0.85;
         camera.attachControl(canvas, true);
+
+        // v3: pós-processamento (MSAA 4x, bloom discreto, nitidez) com recuo gracioso.
+        try {
+            const pipeline = new BABYLON.DefaultRenderingPipeline('pipe', true, scene, [camera]);
+            pipeline.samples = 4;
+            pipeline.fxaaEnabled = false;
+            pipeline.bloomEnabled = true;
+            pipeline.bloomThreshold = 0.85; pipeline.bloomWeight = 0.22; pipeline.bloomKernel = 48; pipeline.bloomScale = 0.5;
+            pipeline.sharpenEnabled = true; pipeline.sharpen.edgeAmount = 0.22;
+        } catch (e) { console.warn('Pós-processamento indisponível:', e); }
+
+        // v3: poeira/pólen em suspensão ao redor do jogador (textura de disco suave desenhada em canvas).
+        try {
+            const dot = new BABYLON.DynamicTexture('moteTex', { width: 64, height: 64 }, scene, false);
+            const dctx = dot.getContext(), grad = dctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            grad.addColorStop(0, 'rgba(255,248,210,1)'); grad.addColorStop(0.4, 'rgba(255,240,180,0.45)'); grad.addColorStop(1, 'rgba(255,240,180,0)');
+            dctx.fillStyle = grad; dctx.fillRect(0, 0, 64, 64); dot.update(); dot.hasAlpha = true;
+            const motes = new BABYLON.ParticleSystem('motes', 260, scene);
+            motes.particleTexture = dot;
+            motes.emitter = player.position.clone();
+            motes.minEmitBox = new BABYLON.Vector3(-22, 0.2, -22); motes.maxEmitBox = new BABYLON.Vector3(22, 6, 22);
+            motes.color1 = new BABYLON.Color4(1, 0.95, 0.7, 0.55); motes.color2 = new BABYLON.Color4(0.9, 1, 0.8, 0.35);
+            motes.colorDead = new BABYLON.Color4(1, 1, 0.8, 0);
+            motes.minSize = 0.05; motes.maxSize = 0.14; motes.minLifeTime = 6; motes.maxLifeTime = 11; motes.emitRate = 34;
+            motes.direction1 = new BABYLON.Vector3(-0.15, 0.06, -0.15); motes.direction2 = new BABYLON.Vector3(0.15, 0.2, 0.15);
+            motes.minEmitPower = 0.2; motes.maxEmitPower = 0.5; motes.gravity = new BABYLON.Vector3(0, 0, 0);
+            motes.blendMode = BABYLON.ParticleSystem.BLENDMODE_ADD;
+            motes.start();
+            scene.registerBeforeRender(() => { if (player) { motes.emitter.copyFrom(player.position); } });
+        } catch (e) { console.warn('Partículas indisponíveis:', e); }
     }
 
     function applyDeadzone(v) {
@@ -556,6 +673,58 @@
         }
     }
 
+    // Humanoide de escala métrica: pernas, tronco, braços e cabeça em cores distintas.
+    function buildHumanoid(name, colors) {
+        const H=colors.height||PLAYER_HEIGHT, legH=H*0.44, torsoH=H*0.38, armH=H*0.36, headR=H*0.07;
+        const legR=H*0.040, torsoR=H*0.088, armR=H*0.026, feet=-H/2;
+        const mat=(label,c)=>{const m=new BABYLON.StandardMaterial(name+'-'+label,scene);m.diffuseColor=c;m.specularColor=new BABYLON.Color3(0.08,0.08,0.08);return m;};
+        const pants=mat('pants',colors.pants), shirt=mat('shirt',colors.shirt), skin=mat('skin',colors.skin), parts=[];
+        for(const sx of [-1,1]){
+            const leg=BABYLON.MeshBuilder.CreateCapsule(name+'-leg',{height:legH,radius:legR,subdivisions:4},scene);
+            leg.position.set(sx*torsoR*0.5,feet+legH/2,0);leg.material=pants;parts.push(leg);
+            const arm=BABYLON.MeshBuilder.CreateCapsule(name+'-arm',{height:armH,radius:armR,subdivisions:2},scene);
+            arm.position.set(sx*(torsoR+armR*1.3),feet+legH+torsoH-H*0.20,0);arm.material=shirt;parts.push(arm);
+        }
+        const torso=BABYLON.MeshBuilder.CreateCapsule(name+'-torso',{height:torsoH,radius:torsoR,subdivisions:5},scene);
+        torso.position.y=feet+legH+torsoH/2;torso.material=shirt;parts.push(torso);
+        const head=BABYLON.MeshBuilder.CreateSphere(name+'-head',{diameter:headR*2,segments:8},scene);
+        head.position.y=H/2-headR;head.material=skin;parts.push(head);
+        // v3: sapatos, mãos, cabelo e olhos para leitura de silhueta e rosto.
+        const shoeMat=mat('shoe',new BABYLON.Color3(0.13,0.10,0.09)), hairMat=mat('hair',colors.hair||new BABYLON.Color3(0.20,0.13,0.08)), eyeMat=mat('eye',new BABYLON.Color3(0.05,0.05,0.06));
+        for(const sx of [-1,1]){
+            const shoe=BABYLON.MeshBuilder.CreateSphere(name+'-shoe',{diameter:legR*2.5,segments:8},scene);
+            shoe.scaling.set(1,0.55,1.9);shoe.position.set(sx*torsoR*0.5,feet+legR*0.55,legR*0.9);shoe.material=shoeMat;parts.push(shoe);
+            const hand=BABYLON.MeshBuilder.CreateSphere(name+'-hand',{diameter:armR*2.6,segments:8},scene);
+            hand.position.set(sx*(torsoR+armR*1.3),feet+legH+torsoH-H*0.20-armH/2,0);hand.material=skin;parts.push(hand);
+            const eye=BABYLON.MeshBuilder.CreateSphere(name+'-eye',{diameter:headR*0.22,segments:6},scene);
+            eye.position.set(sx*headR*0.36,H/2-headR+headR*0.1,headR*0.9);eye.material=eyeMat;parts.push(eye);
+        }
+        const neck=BABYLON.MeshBuilder.CreateCylinder(name+'-neck',{diameter:headR*0.9,height:headR*0.7,tessellation:10},scene);
+        neck.position.y=H/2-headR*2+headR*0.1;neck.material=skin;parts.push(neck);
+        const hair=BABYLON.MeshBuilder.CreateSphere(name+'-hair',{diameter:headR*2.18,segments:10},scene);
+        hair.scaling.set(1,0.82,1.02);hair.position.set(0,H/2-headR+headR*0.28,-headR*0.14);hair.material=hairMat;parts.push(hair);
+        const body=BABYLON.Mesh.MergeMeshes(parts,true,true,undefined,true,true);body.name=name;return body;
+    }
+
+    // Guardiã com manto, túnica, rosto e capuz em escala de 1,7 m.
+    function buildGuardian(name) {
+        const H=1.7, robeH=H*0.52, torsoH=H*0.30, headR=H*0.075, feet=-H/2;
+        const mat=(label,c,e)=>{const m=new BABYLON.StandardMaterial(name+'-'+label,scene);m.diffuseColor=c;m.emissiveColor=e||new BABYLON.Color3(0,0,0);return m;};
+        const gold=mat('gold',new BABYLON.Color3(0.85,0.64,0.20),new BABYLON.Color3(0.10,0.06,0.01));
+        const dark=mat('dark',new BABYLON.Color3(0.66,0.48,0.14),new BABYLON.Color3(0.08,0.05,0.01));
+        const skin=mat('skin',new BABYLON.Color3(0.92,0.76,0.60)), hood=mat('hood',new BABYLON.Color3(0.52,0.36,0.10),new BABYLON.Color3(0.06,0.035,0.008));
+        const parts=[];
+        const robe=BABYLON.MeshBuilder.CreateCylinder(name+'-robe',{diameterTop:0.30,diameterBottom:0.66,height:robeH,tessellation:12},scene);
+        robe.position.y=feet+robeH/2;robe.material=gold;parts.push(robe);
+        const torso=BABYLON.MeshBuilder.CreateCapsule(name+'-torso',{height:torsoH,radius:H*0.085,subdivisions:3},scene);
+        torso.position.y=feet+robeH+torsoH/2;torso.material=dark;parts.push(torso);
+        const head=BABYLON.MeshBuilder.CreateSphere(name+'-head',{diameter:headR*2,segments:8},scene);
+        head.position.y=H/2-headR;head.material=skin;parts.push(head);
+        const cap=BABYLON.MeshBuilder.CreateCylinder(name+'-hood',{diameterTop:0,diameterBottom:0.34,height:0.30,tessellation:10},scene);
+        cap.position.y=H/2+0.09;cap.material=hood;parts.push(cap);
+        const body=BABYLON.Mesh.MergeMeshes(parts,true,true,undefined,true,true);body.name=name;return body;
+    }
+
     function drawRemoteLabel(texture, name) {
         texture.clear();
         texture.drawText(String(name || 'Jogador').slice(0, 28), 12, 70, 'bold 42px sans-serif', '#ffffff', 'transparent', true);
@@ -564,12 +733,8 @@
     function addRemote(id, name) {
         if (remotes.has(id) || !scene) { return; }
         const serial = remoteSerial++;
-        const avatar = BABYLON.MeshBuilder.CreateCapsule('remote-' + id, { height: PLAYER_HEIGHT, radius: PLAYER_RADIUS, subdivisions: 4 }, scene);
+        const avatar = buildHumanoid('remote-' + id, { shirt:new BABYLON.Color3(0.66,0.30,0.82), pants:new BABYLON.Color3(0.24,0.18,0.30), skin:new BABYLON.Color3(0.88,0.70,0.56) });
         avatar.position = new BABYLON.Vector3((serial % 5 - 2) * 1.5, terrainHeight(0, -2) + PLAYER_HEIGHT / 2 + 0.03, -2 - Math.floor(serial / 5) * 2);
-        const mat = new BABYLON.StandardMaterial('remote-mat-' + id, scene);
-        mat.diffuseColor = new BABYLON.Color3(0.76, 0.32, 0.92);
-        mat.emissiveColor = new BABYLON.Color3(0.10, 0.025, 0.14);
-        avatar.material = mat;
 
         const label = BABYLON.MeshBuilder.CreatePlane('remote-label-' + id, { width: 1.8, height: 0.36 }, scene);
         label.position = avatar.position.add(new BABYLON.Vector3(0, 1.05, 0));
@@ -582,7 +747,7 @@
         labelMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
         labelMat.opacityTexture = texture;
         label.material = labelMat;
-        remotes.set(id, { avatar: avatar, label: label, material: mat, texture: texture, labelMat: labelMat });
+        remotes.set(id, { avatar: avatar, label: label, texture: texture, labelMat: labelMat });
         if (dotnet) { dotnet.invokeMethodAsync('OnRemoteCount', remotes.size); }
     }
 
@@ -607,7 +772,7 @@
     function removeRemote(id) {
         const p = remotes.get(id);
         if (!p) { return; }
-        p.avatar.dispose(); p.label.dispose(); p.material.dispose(); p.texture.dispose(); p.labelMat.dispose();
+        p.avatar.dispose(false, true); p.label.dispose(); p.texture.dispose(); p.labelMat.dispose();
         remotes.delete(id);
         if (dotnet) { dotnet.invokeMethodAsync('OnRemoteCount', remotes.size); }
     }
@@ -616,7 +781,8 @@
         if (nowMs - lastTick < TICK_MS) { return; }
         lastTick = nowMs;
         if (dotnet && player) {
-            dotnet.invokeMethodAsync('OnMoveTick', player.position.x, player.position.z, engine.getFps());
+            const fin = (v) => (Number.isFinite(v) ? v : 0);
+            dotnet.invokeMethodAsync('OnMoveTick', fin(player.position.x), fin(player.position.z), fin(engine.getFps()));
         }
         if (window.game && game.net && game.net.sendPos && player) {
             game.net.sendPos(player.position.x, player.position.z, player.rotation.y);
