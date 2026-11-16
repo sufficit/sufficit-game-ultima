@@ -79,6 +79,9 @@
         host.addEventListener('pointermove', (e) => { if (e.pointerId === pointer) { update(e); } });
         host.addEventListener('pointerup', (e) => { if (e.pointerId === pointer) { reset(); } });
         host.addEventListener('pointercancel', (e) => { if (e.pointerId === pointer) { reset(); } });
+        // Perda de captura ou de foco da janela não pode deixar o stick preso.
+        host.addEventListener('lostpointercapture', (e) => { if (e.pointerId === pointer) { reset(); } });
+        window.addEventListener('blur', reset);
         function update(e) {
             const r = host.getBoundingClientRect();
             const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
@@ -102,6 +105,13 @@
         const action = document.getElementById('touch-action');
         if (action) {
             action.addEventListener('pointerdown', (e) => { setActiveInput('touch'); e.preventDefault(); interact(); });
+        }
+        const cancelBtn = document.getElementById('touch-cancel');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('pointerdown', (e) => {
+                setActiveInput('touch'); e.preventDefault();
+                if (dotnet) { dotnet.invokeMethodAsync('OnClose'); }
+            });
         }
     }
 
