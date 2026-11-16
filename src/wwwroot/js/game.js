@@ -86,8 +86,12 @@
             let dx = (e.clientX - cx) / radius, dy = (e.clientY - cy) / radius;
             const length = Math.hypot(dx, dy);
             if (length > 1) { dx /= length; dy /= length; }
+            // Zona morta radial: o polegar segue o dedo e o jogo recebe o vetor reescalado.
+            const magnitude = Math.hypot(dx, dy);
+            const scaled = magnitude <= DEADZONE ? 0 : Math.min(1, (magnitude - DEADZONE) / (1 - DEADZONE));
             thumb.style.transform = `translate(${dx * radius}px, ${dy * radius}px)`;
-            set({ x: dx, y: -dy });
+            const dir = magnitude > 0 ? scaled / magnitude : 0;
+            set({ x: dx * dir, y: -dy * dir });
         }
         void get;
     }
