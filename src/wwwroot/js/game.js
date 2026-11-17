@@ -875,6 +875,16 @@
             if (player) { player.position.x = 0; player.position.z = 0; player.rotation.y = 0; }
             if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 7.5; }
         },
+        teleportToGuardian() {
+            if (!player || !camera) return false;
+            player.position.x = NPC_POSITION.x;
+            player.position.z = NPC_POSITION.z + 2.0;
+            player.position.y = terrainHeight(player.position.x, player.position.z) + PLAYER_HEIGHT / 2 + 0.03;
+            player.rotation.y = Math.PI;
+            camera.setTarget(player.position);
+            checkNear();
+            return true;
+        },
         addRemote,
         renameRemote,
         updateRemote,
