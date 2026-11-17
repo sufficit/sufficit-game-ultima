@@ -138,6 +138,9 @@
 
     private const string ContentApi = "https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br";
     private sealed record NpcDto(string? DisplayName, string[]? Lines);
+    private sealed record ChatReplyDto(string? Reply, string? Source);
+    private readonly string _chatSession = Guid.NewGuid().ToString("N");
+    private bool _thinking;
     private sealed record AnnouncementDto(string? Text);
     private sealed record AnnouncementsDto(AnnouncementDto[]? Items);
 
@@ -239,11 +242,33 @@
         if (text.Length > 300) text = text[..300];
         _dialogDraft = string.Empty;
         var name = _lines.FirstOrDefault(line => line.Speaker != "Você").Speaker ?? "Guardiã do Jardim";
-        _lines = [.. _lines, ("Você", text), (name, $"Entendi. Você disse: “{text}”. O que gostaria de descobrir sobre este jardim?")];
+        if (_thinking) return;
+        _lines = [.. _lines, ("Você", text), (name, "…")];
         _line = _lines.Length - 1;
         _speechError = string.Empty;
+        _thinking = true;
+        StateHasChanged();
+        var reply = await AskGuardianAsync(text);
+        _thinking = false;
+        if (_lines.Length > 0) _lines[^1] = (name, reply);
         await SpeakCurrentAsync();
         StateHasChanged();
+    }
+
+    // A Guardiã responde pela API do jogo (IA quando configurada, regras caso contrário);
+    // sem rede, cai numa resposta local para o diálogo nunca travar.
+    private async Task<string> AskGuardianAsync(string text)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var res = await Http.PostAsJsonAsync($"{ContentApi}/v1/npcs/guardia/chat",
+                new { message = text, session = _chatSession, player = _playerName }, cts.Token);
+            var body = await res.Content.ReadFromJsonAsync<ChatReplyDto>(cts.Token);
+            if (!string.IsNullOrWhiteSpace(body?.Reply)) return body!.Reply!.Length > 500 ? body.Reply[..500] : body.Reply;
+        }
+        catch (Exception) { /* offline ou lento: resposta local abaixo */ }
+        return "Os ventos do jardim estão agitados e mal ouço você. Tente de novo em instantes, caminhante.";
     }
 
     private void CloseDialog()
