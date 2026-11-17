@@ -138,7 +138,6 @@
 
     private const string ContentApi = "https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br";
     private sealed record NpcDto(string? DisplayName, string[]? Lines);
-    private sealed record ChatReplyDto(string? Reply, string? Source);
     private readonly string _chatSession = Guid.NewGuid().ToString("N");
     private bool _thinking;
     private sealed record AnnouncementDto(string? Text);
@@ -262,12 +261,25 @@
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            using var res = await Http.PostAsJsonAsync($"{ContentApi}/v1/npcs/guardia/chat",
-                new { message = text, session = _chatSession, player = _playerName }, cts.Token);
-            var body = await res.Content.ReadFromJsonAsync<ChatReplyDto>(cts.Token);
-            if (!string.IsNullOrWhiteSpace(body?.Reply)) return body!.Reply!.Length > 500 ? body.Reply[..500] : body.Reply;
+            // JSON montado/lido sem reflexão: imune ao trimming do build Release.
+            var payload = new Dictionary<string, string>
+            {
+                ["message"] = text,
+                ["session"] = _chatSession,
+                ["player"] = _playerName ?? string.Empty
+            };
+            var json = System.Text.Json.JsonSerializer.Serialize(payload);
+            using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            using var res = await Http.PostAsync($"{ContentApi}/v1/npcs/guardia/chat", content, cts.Token);
+            var raw = await res.Content.ReadAsStringAsync(cts.Token);
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("reply", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                var reply = r.GetString();
+                if (!string.IsNullOrWhiteSpace(reply)) return reply!.Length > 500 ? reply[..500] : reply;
+            }
         }
-        catch (Exception) { /* offline ou lento: resposta local abaixo */ }
+        catch (Exception ex) { Console.WriteLine($"[npc] chat falhou: {ex.GetType().Name}: {ex.Message}"); }
         return "Os ventos do jardim estão agitados e mal ouço você. Tente de novo em instantes, caminhante.";
     }
 
