@@ -179,6 +179,7 @@
 
         await JS.InvokeVoidAsync("game.init", "game-canvas", _bridge);
         await JS.InvokeVoidAsync("game.net.init", _bridge);
+        await JS.InvokeVoidAsync("game.live.init", _bridge);
         await JS.InvokeVoidAsync("game.voice.init", _bridge);
         _speakEnabled = await JS.InvokeAsync<bool>("game.voice.getSpeakPref");
         _playerName = await JS.InvokeAsync<string>("game.net.getName");
