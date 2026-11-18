@@ -14,6 +14,7 @@ Contrato real em produção no `app/main.py` (todas as rotas testadas contra ser
 | POST | `/v1/game/command` `{action, ...}` | `move{dx,dz,dur}` · `moveto{x,z}` · `look{yaw}` · `stop` · `say{text}` · `interact` · `dig{cx,cz|x,z}` · `stop_job` · `start_job` |
 | GET | `/v1/game/events?since=N&wait=S` | long-poll de eventos (percepção do agente): `join/leave/say/npc/snapshot/job_started/job_done/job_cancelled` |
 | GET | `/v1/game/map` | mapa persistido `{revision, tiles, jobs}` |
+| POST | `/v1/game/map/edits` (header `X-Game-Token` ou body `token`) | aplica até 100 edições atômicas `{edits:[{cx,cz,type}]}`; tipos `path`, `water`, `rock`, `pit`, `erase`; incrementa `revision`, persiste e emite `map_edited`; células com job ativo respondem 409 |
 | POST | `/v1/game/leave` | encerra sessão |
 
 Constantes do mundo espelham o cliente (game.js): `WORLD_HALF=48`, `WALK_SPEED=3.5`, Guardiã em `(0,-14)`, célula editável de 4 m.
