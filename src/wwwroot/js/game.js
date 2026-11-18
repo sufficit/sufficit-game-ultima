@@ -819,25 +819,38 @@
 
     function cellWorld(cx, cz) { return { x: cx * MAP_CELL, z: cz * MAP_CELL }; }
 
+    const MAP_TILE_STYLES = {
+        pit: { color: [0.22, 0.15, 0.10], alpha: 0.92 },   // terra escavada
+        path: { color: [0.78, 0.68, 0.48], alpha: 0.90 },  // caminho de terra batida
+        water: { color: [0.16, 0.42, 0.72], alpha: 0.80 }, // água
+        rock: { color: [0.45, 0.45, 0.48], alpha: 1.0 }    // rocha
+    };
+
     function setMapTiles(tiles) {
         if (!scene) { return; }
         const seen = new Set();
         for (const key of Object.keys(tiles || {})) {
             const t = tiles[key] || {};
             seen.add(key);
-            if (mapTileMeshes.has(key) || t.type !== 'pit') { continue; }
+            const type = MAP_TILE_STYLES[t.type] ? t.type : null;
+            if (!type) { continue; }
+            const existing = mapTileMeshes.get(key);
+            if (existing && existing.metadata && existing.metadata.type === type) { continue; }
+            if (existing) { existing.dispose(); mapTileMeshes.delete(key); }
             const parts = String(key).split(',');
             const cx = Number(parts[0]), cz = Number(parts[1]);
             if (!Number.isFinite(cx) || !Number.isFinite(cz)) { continue; }
             const w = cellWorld(cx, cz);
-            const disc = BABYLON.MeshBuilder.CreateDisc('tile-pit-' + key, { radius: 1.9, tessellation: 24 }, scene);
+            const style = MAP_TILE_STYLES[type];
+            const disc = BABYLON.MeshBuilder.CreateDisc('tile-' + type + '-' + key, { radius: 1.9, tessellation: 24 }, scene);
             disc.rotation.x = Math.PI / 2;
             disc.position.set(w.x, terrainHeight(w.x, w.z) + 0.05, w.z);
-            const mat = new BABYLON.StandardMaterial('tile-pit-mat-' + key, scene);
-            mat.diffuseColor = new BABYLON.Color3(0.22, 0.15, 0.10); // terra escavada
+            const mat = new BABYLON.StandardMaterial('tile-' + type + '-mat-' + key, scene);
+            mat.diffuseColor = new BABYLON.Color3(style.color[0], style.color[1], style.color[2]);
             mat.specularColor = new BABYLON.Color3(0, 0, 0);
-            mat.alpha = 0.92;
+            mat.alpha = style.alpha;
             disc.material = mat;
+            disc.metadata = { type: type };
             mapTileMeshes.set(key, disc);
         }
         for (const key of Array.from(mapTileMeshes.keys())) {
