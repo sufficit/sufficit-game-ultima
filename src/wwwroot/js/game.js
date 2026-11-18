@@ -812,6 +812,85 @@
         if (dotnet) { dotnet.invokeMethodAsync('OnRemoteCount', remotes.size); }
     }
 
+    // --- Mapa editável persistido (servidor autoritativo): tiles + jobs ---
+    const MAP_CELL = 4.0; // deve espelhar CELL do backend (app/main.py)
+    const mapTileMeshes = new Map(); // "cx,cz" -> mesh
+    const mapJobMeshes = new Map();  // job.id -> { ring, label, texture, mat }
+
+    function cellWorld(cx, cz) { return { x: cx * MAP_CELL, z: cz * MAP_CELL }; }
+
+    function setMapTiles(tiles) {
+        if (!scene) { return; }
+        const seen = new Set();
+        for (const key of Object.keys(tiles || {})) {
+            const t = tiles[key] || {};
+            seen.add(key);
+            if (mapTileMeshes.has(key) || t.type !== 'pit') { continue; }
+            const parts = String(key).split(',');
+            const cx = Number(parts[0]), cz = Number(parts[1]);
+            if (!Number.isFinite(cx) || !Number.isFinite(cz)) { continue; }
+            const w = cellWorld(cx, cz);
+            const disc = BABYLON.MeshBuilder.CreateDisc('tile-pit-' + key, { radius: 1.9, tessellation: 24 }, scene);
+            disc.rotation.x = Math.PI / 2;
+            disc.position.set(w.x, terrainHeight(w.x, w.z) + 0.05, w.z);
+            const mat = new BABYLON.StandardMaterial('tile-pit-mat-' + key, scene);
+            mat.diffuseColor = new BABYLON.Color3(0.22, 0.15, 0.10); // terra escavada
+            mat.specularColor = new BABYLON.Color3(0, 0, 0);
+            mat.alpha = 0.92;
+            disc.material = mat;
+            mapTileMeshes.set(key, disc);
+        }
+        for (const key of Array.from(mapTileMeshes.keys())) {
+            if (!seen.has(key)) {
+                mapTileMeshes.get(key).dispose();
+                mapTileMeshes.delete(key);
+            }
+        }
+    }
+
+    function setMapJobs(jobs) {
+        if (!scene) { return; }
+        const seen = new Set();
+        for (const job of (jobs || [])) {
+            if (!job || !job.id) { continue; }
+            seen.add(job.id);
+            const w = cellWorld(Number(job.cx), Number(job.cz));
+            const y = terrainHeight(w.x, w.z);
+            let entry = mapJobMeshes.get(job.id);
+            if (!entry) {
+                const ring = BABYLON.MeshBuilder.CreateTorus('job-' + job.id, { diameter: 3.2, thickness: 0.2, tessellation: 24 }, scene);
+                ring.position.set(w.x, y + 0.3, w.z);
+                const rmat = new BABYLON.StandardMaterial('job-mat-' + job.id, scene);
+                rmat.emissiveColor = new BABYLON.Color3(0.95, 0.62, 0.12);
+                rmat.diffuseColor = new BABYLON.Color3(0, 0, 0);
+                ring.material = rmat;
+                const label = BABYLON.MeshBuilder.CreatePlane('job-label-' + job.id, { width: 2.6, height: 0.55 }, scene);
+                label.position.set(w.x, y + 1.7, w.z);
+                label.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+                const texture = new BABYLON.DynamicTexture('job-tex-' + job.id, { width: 512, height: 110 }, scene, false);
+                texture.hasAlpha = true;
+                const lmat = new BABYLON.StandardMaterial('job-lmat-' + job.id, scene);
+                lmat.diffuseTexture = texture;
+                lmat.opacityTexture = texture;
+                lmat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+                label.material = lmat;
+                entry = { ring: ring, label: label, texture: texture, mat: lmat };
+                mapJobMeshes.set(job.id, entry);
+            }
+            const pct = Math.round(Math.max(0, Math.min(1, Number(job.progress) || 0)) * 100);
+            entry.texture.clear();
+            entry.texture.drawText((job.ownerName || '?') + ' — ' + pct + '%', 10, 74,
+                'bold 44px sans-serif', '#ffd27d', 'transparent', true, true);
+        }
+        for (const id of Array.from(mapJobMeshes.keys())) {
+            if (!seen.has(id)) {
+                const entry = mapJobMeshes.get(id);
+                entry.ring.dispose(); entry.label.dispose(); entry.texture.dispose(); entry.mat.dispose();
+                mapJobMeshes.delete(id);
+            }
+        }
+    }
+
     function tick(nowMs) {
         if (nowMs - lastTick < TICK_MS) { return; }
         lastTick = nowMs;
@@ -821,6 +900,9 @@
         }
         if (window.game && game.net && game.net.sendPos && player) {
             game.net.sendPos(player.position.x, player.position.z, player.rotation.y);
+        }
+        if (window.game && game.live && game.live.pose && player) {
+            game.live.pose(player.position.x, player.position.z, player.rotation.y);
         }
     }
 
@@ -888,6 +970,8 @@
         addRemote,
         renameRemote,
         updateRemote,
-        removeRemote
+        removeRemote,
+        setMapTiles,
+        setMapJobs
     };
 })();
