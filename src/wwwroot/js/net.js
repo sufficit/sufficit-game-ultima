@@ -133,6 +133,7 @@
                 try { c.channel.send(JSON.stringify({ t: 'chat', text: clean })); } catch (e) { /* idem */ }
             }
         }
+        if (window.game && game.live && game.live.sendChat) { game.live.sendChat(clean); }
     }
 
     function handleChannelMessage(pid, raw) {
@@ -387,6 +388,9 @@
                     channel: c.channel ? c.channel.readyState : null,
                     pc: c.pc.connectionState,
                     signaling: c.pc.signalingState,
+                    recvAudio: c.pc.getReceivers().filter((r) => r.track && r.track.kind === 'audio')
+                        .map((r) => r.track.readyState + (r.track.muted ? ':muted' : ':live')),
+                    sendAudio: c.pc.getSenders().filter((s) => s.track && s.track.kind === 'audio').length,
                     name: c.name
                 }))
             };
