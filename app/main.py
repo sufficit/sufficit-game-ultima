@@ -593,6 +593,61 @@ def game_map() -> dict:
         return {"revision": m["revision"], "tiles": m["tiles"], "jobs": [_job_public(j) for j in m["jobs"]]}
 
 
+def game_map_edit(token: object, data: dict) -> tuple[int, dict]:
+    """Aplica uma edição em lote ao mapa compartilhado, persistindo e emitindo evento."""
+    edits = data.get("edits")
+    if not isinstance(edits, list) or not edits or len(edits) > 100:
+        return 400, {"error": "edits_must_be_array_1_to_100"}
+    allowed = {"path", "water", "rock", "pit", "erase"}
+    parsed: list[tuple[int, int, str]] = []
+    seen: set[str] = set()
+    for item in edits:
+        if not isinstance(item, dict) or isinstance(item.get("cx"), bool) or isinstance(item.get("cz"), bool):
+            return 400, {"error": "invalid_edit"}
+        try:
+            cx, cz = int(item["cx"]), int(item["cz"])
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return 400, {"error": "cx_cz_required"}
+        if item["cx"] != cx or item["cz"] != cz:
+            return 400, {"error": "cx_cz_must_be_integers"}
+        if abs(cx) > WORLD_HALF / CELL or abs(cz) > WORLD_HALF / CELL:
+            return 400, {"error": "cell_out_of_world", "cell": f"{cx},{cz}"}
+        tile_type = str(item.get("type") or "").strip().lower()
+        if tile_type not in allowed:
+            return 400, {"error": "invalid_tile_type", "allowed": sorted(allowed)}
+        key = f"{cx},{cz}"
+        if key in seen:
+            return 400, {"error": "duplicate_cell", "cell": key}
+        seen.add(key)
+        parsed.append((cx, cz, tile_type))
+
+    with GAME_LOCK:
+        ch = _session(token)
+        if ch is None:
+            return 401, {"error": "invalid_token"}
+        jobs_by_cell = {j["cell"] for j in GAME["map"]["jobs"]}
+        busy = sorted(key for key in seen if key in jobs_by_cell)
+        if busy:
+            return 409, {"error": "cell_has_active_job", "cells": busy}
+        now = time.time()
+        tiles = GAME["map"]["tiles"]
+        for cx, cz, tile_type in parsed:
+            key = f"{cx},{cz}"
+            if tile_type == "erase":
+                tiles.pop(key, None)
+            else:
+                tiles[key] = {"type": tile_type, "by": ch["name"], "at": round(now, 3)}
+        GAME["map"]["revision"] += 1
+        revision = GAME["map"]["revision"]
+        for cx, cz, tile_type in parsed:
+            if tile_type != "erase":
+                tiles[f"{cx},{cz}"]["rev"] = revision
+        _map_save(locked=False)
+        _emit({"type": "map_edited", "revision": revision, "cells": sorted(seen), "by": ch["name"]})
+        return 200, {"ok": True, "revision": revision, "tiles": {key: tiles[key] for key in seen if key in tiles},
+                     "erased": sorted(key for key in seen if key not in tiles)}
+
+
 def game_sessions() -> dict:
     with GAME_LOCK:
         return {"characters": [_char_public(c) for c in GAME["chars"].values()],
@@ -833,7 +888,7 @@ class Handler(BaseHTTPRequestHandler):
                               "/v1/quests", "/v1/announcements",
                               "/v1/net/rooms", "/v1/net/{room}/join", "/v1/net/{room}/signal", "/v1/net/{room}/poll/{peer}",
                               "POST /v1/game/sessions", "/v1/game/sessions", "/v1/game/state",
-                              "POST /v1/game/command", "/v1/game/events", "/v1/game/map",
+                              "POST /v1/game/command", "/v1/game/events", "/v1/game/map", "POST /v1/game/map/edits",
                               "POST /v1/game/leave"],
             })
         elif path == "/v1/worlds/ultima":
@@ -850,6 +905,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlsplit(self.path).path.rstrip("/") or "/"
+
+        if path == "/v1/game/map/edits":
+            data = self._body()
+            if data is None:
+                self._json({"error": "bad_request"}, 400, cache="no-store")
+                return
+            status, payload = game_map_edit(self.headers.get("X-Game-Token") or data.get("token"), data)
+            self._json(payload, status, cache="no-store")
+            return
 
         if path in ("/v1/game/sessions", "/v1/game/command", "/v1/game/leave"):
             data = self._body()
