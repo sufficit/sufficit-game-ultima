@@ -105,6 +105,8 @@
             if (dotnet && (!ev.to || ev.to === myId)) { dotnet.invokeMethodAsync('OnChat', ev.name || 'Guardiã', ev.text || ''); }
         } else if (kind === 'job_started' || kind === 'job_done' || kind === 'job_cancelled') {
             refreshMap();
+        } else if (kind === 'map_edited') {
+            refreshMap();
         }
     }
 
