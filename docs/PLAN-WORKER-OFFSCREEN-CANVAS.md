@@ -34,17 +34,31 @@ Critérios de aceite:
 
 ## Checkpoints
 
-1. [pendente] Protótipo em branch: worker mínimo com OffscreenCanvas renderizando
-   a cena existente; aceitar ou rejeitar o custo do bundle com medidas.
+1. [concluído] Protótipo em branch: worker mínimo com OffscreenCanvas renderizando;
+   custo do bundle medido e **aceito**. Branch `worker-proto` (commit `d3eed90`,
+   `src/wwwroot/js/game-worker.js` + `worker-proto.html`): Babylon 9.36 sobe no
+   Web Worker via `importScripts` do mesmo CDN, mesma cena dos dois lados.
+   Medidas (Chromium headless/SwiftShader): **FPS idêntico** (60 estável),
+   **DynamicTexture OK no worker** (OffscreenCanvas 2D — pré-requisito das
+   texturas procedurais), init do worker 24 ms, criação total 340 ms — os
+   ~316 ms extras são fetch (cache HTTP) + parse/compile do bundle no contexto
+   do worker, custo único por visita com RAM extra (~5–7 MB). Veredito:
+   aceitável em troca da main thread livre; `attachControl` não serve no
+   worker (input chega por mensagem, como planejado).
 2. [pendente] Migrar câmera, WASD e limites de mundo para o protocolo de mensagens
-   (input no DOM → worker).
+   (input no DOM → worker). Ponto de atenção encontrado: `makeGrassTexture` usa
+   `document.createElement('canvas')` — no worker trocar por `new OffscreenCanvas`;
+   o restante das texturas já usa `ImageData`/contexto da própria DynamicTexture.
 3. [pendente] Integrar `ai.js`/WebGPU ao device do worker; validar status da
-   Guardiã e watchdog de travamento.
+   Guardiã e watchdog de travamento. (Nota do protótipo: `ai.js` usa WebGPU na
+   main thread de forma independente — a integração é de COORDENAÇÃO das
+   mensagens, não de compartilhar o device.)
 4. [pendente] Fallback para navegadores sem suporte; aviso no HUD e teste no site
    publicado.
 5. [pendente] Publicar, validar o site ao vivo e converter este plano em atividade.
 
 ## Próxima ação
 
-Criar o protótipo do checkpoint 1 em branch e medir: FPS, tempo de main thread
-ociosa e bytes do bundle do worker.
+Checkpoint 2: extrair do game.js o protocolo de mensagens (init/input/comandos)
+reaproveitando o worker do protótipo; a página do protótipo (branch
+`worker-proto`) serve de teste A/B durante a migração.
