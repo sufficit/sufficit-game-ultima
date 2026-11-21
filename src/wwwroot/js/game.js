@@ -950,7 +950,7 @@
         lastTick = nowMs;
         if (dotnet && player) {
             const fin = (v) => (Number.isFinite(v) ? v : 0);
-            dotnet.invokeMethodAsync('OnMoveTick', fin(player.position.x), fin(player.position.z), fin(engine.getFps()));
+            dotnet.invokeMethodAsync('OnMoveTick', fin(player.position.x), fin(player.position.y), fin(player.position.z), fin(engine.getFps()));
         }
         if (window.game && game.net && game.net.sendPos && player) {
             game.net.sendPos(player.position.x, player.position.z, player.rotation.y);

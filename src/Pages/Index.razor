@@ -32,7 +32,7 @@
         <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D. WASD, setas, joystick ou controles de toque movem; E/A conversa."></canvas>
 
         <div class="overlay overlay-status" aria-hidden="true">
-            pos (@_posX.ToString("F1"), @_posZ.ToString("F1"))
+            pos (@_posX.ToString("F1"), @_posZ.ToString("F1")) · alt @_posY.ToString("F1")
         </div>
 
         @if (_near && !_dialogOpen)
@@ -121,7 +121,7 @@
     private bool _near;
     private bool _dialogOpen;
     private int _line;
-    private double _posX, _posZ, _fps, _micLevel;
+    private double _posX, _posY, _posZ, _fps, _micLevel;
     private int _remoteCount;
     private string? _announcement;
     private string _contentSource = "Conteúdo local";
@@ -161,7 +161,7 @@
             NearChanged = near => _ = InvokeAsync(() => { _near = near; StateHasChanged(); }),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
             Close = () => _ = InvokeAsync(CloseDialog),
-            MoveTick = (x, z, fps) => _ = InvokeAsync(() => { _posX = x; _posZ = z; _fps = fps; StateHasChanged(); }),
+            MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; StateHasChanged(); }),
             NetStatus = (state, peers) => _ = InvokeAsync(() => { _netStatus = state; StateHasChanged(); }),
             Chat = (from, text) => _ = InvokeAsync(() => { AddChat(from, text); StateHasChanged(); }),
             RemoteCount = count => _ = InvokeAsync(() => { _remoteCount = count; StateHasChanged(); }),

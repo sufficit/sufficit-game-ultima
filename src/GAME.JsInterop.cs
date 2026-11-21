@@ -12,7 +12,7 @@ public sealed class GameInterop
     public Action<bool>? NearChanged { get; init; }
     public Action? Interact { get; init; }
     public Action? Close { get; init; }
-    public Action<double, double, double>? MoveTick { get; init; }
+    public Action<double, double, double, double>? MoveTick { get; init; }
     public Action<string, int>? NetStatus { get; init; }
     public Action<string, string>? Chat { get; init; }
     public Action<int>? RemoteCount { get; init; }
@@ -26,7 +26,7 @@ public sealed class GameInterop
     [JSInvokable] public void OnNearChanged(bool near) => NearChanged?.Invoke(near);
     [JSInvokable] public void OnInteract() => Interact?.Invoke();
     [JSInvokable] public void OnClose() => Close?.Invoke();
-    [JSInvokable] public void OnMoveTick(double x, double z, double fps) => MoveTick?.Invoke(x, z, fps);
+    [JSInvokable] public void OnMoveTick(double x, double y, double z, double fps) => MoveTick?.Invoke(x, y, z, fps);
     [JSInvokable] public void OnNetStatus(string state, int peers) => NetStatus?.Invoke(state, peers);
     [JSInvokable] public void OnChat(string from, string text) => Chat?.Invoke(from, text);
     [JSInvokable] public void OnRemoteCount(int count) => RemoteCount?.Invoke(count);
