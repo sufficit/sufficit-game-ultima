@@ -34,14 +34,27 @@ Critérios de aceite:
 
 ## Checkpoints
 
-1. [pendente] Modelar `Snapshot` e `Decision` em C# com a Guardiã como primeiro
-   cérebro (falas fixas atuais migradas para decisões).
-2. [pendente] Tick com budget e fila de eventos limitada; testes determinísticos
-   de corte e retomada.
-3. [pendente] Integrar o WebLLM (`ai.js`) como produtor assíncrono de eventos de
-   decisão; validar status/watchdog existentes.
+1. [concluído] Modelar `Snapshot` e `Decision` em C# com a Guardiã como primeiro
+   cérebro (falas fixas atuais migradas para decisões). Namespace `Ultima.Npc`:
+   `WorldSnapshot`, eventos (`PlayerInteracted`, `PlayerSpoke`, `ReplyArrived`,
+   `IntroLinesChanged`, `DialogClosedByPlayer`), `NpcCommand`/`DialogView`/
+   `NpcDecision` e `GuardianBrain` com as falas de abertura embutidas. Commit
+   `86e07c6`.
+2. [concluído] Tick com budget e fila de eventos limitada; testes determinísticos
+   de corte e retomada. `NpcScheduler`: fila cap 32 (descarta o mais antigo),
+   4 eventos/16 comandos por tick, excedente retoma no tick seguinte; batida a
+   5 Hz pelo MoveTick. 13 testes novos no RulesSmoke (28 no total, todos OK).
+3. [concluído] Integrar o WebLLM (`ai.js`) como produtor assíncrono de eventos de
+   decisão: `AskGuardianAsync` (GPU → API → falas locais, inalterado) agora
+   devolve `(reply, source)` que entra como `ReplyArrived` pela fila; a UI
+   (Index.razor) virou casca que aplica decisões. Validado localmente
+   (Playwright + build publicado) e em produção (build `747b50b6`): E abre,
+   avanço encerra, resposta com origem "servidor · regras", Esc fecha. O caminho
+   GPU (WebLLM pronto) preserva `ai.js` e o watchdog; em headless sem WebGPU a
+   validação cobriu o produtor servidor/fallback.
 4. [pendente] Segundo NPC (ex.: fauna simples) provando que o desenho escala
-   sem mudar o loop.
+   sem mudar o loop. Hoje o agendador tem um cérebro fixo (Guardiã); escalar
+   pede registro de cérebros por NPC + modelo/fauna no mundo.
 5. [pendente] Converter este plano em atividade.
 
 ## Próxima ação
