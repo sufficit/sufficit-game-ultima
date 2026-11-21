@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Ultima.Models.Core: contrato público comum a todos os modelos 3D do jogo.
+    Cada pacote de modelos (Ultima.Models.*) referencia SOMENTE este projeto e é
+    compilado numa DLL própria, carregada pelo jogo em tempo de execução.
+    Mudança incompatível neste contrato => incrementar ModelCore.Version.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Ultima.Models.Core</RootNamespace>
+    <AssemblyName>Ultima.Models.Core</AssemblyName>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Pacote de modelos: árvores. Depende SOMENTE do Ultima.Models.Core (contrato comum).
+    Compilado numa DLL própria e carregado pelo jogo em tempo de execução
+    (scripts/build-models.sh copia para wwwroot/models e registra no models.json).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>Ultima.Models.Trees</RootNamespace>
+    <AssemblyName>Ultima.Models.Trees</AssemblyName>
+    <Version>1.0.0</Version>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Private=false: o Core já está no jogo; o pacote não leva uma cópia própria. -->
+    <ProjectReference Include="../Ultima.Models.Core/Ultima.Models.Core.csproj" Private="false" />
+  </ItemGroup>
+
+</Project>

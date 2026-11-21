@@ -14,4 +14,11 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.15" PrivateAssets="all" />
   </ItemGroup>
 
+  <!-- Contrato comum dos modelos 3D. Fica inteiro (sem trimming): os pacotes de modelos
+       carregados em runtime usam partes do Core que o jogo em si não chama. -->
+  <ItemGroup>
+    <ProjectReference Include="../models/Ultima.Models.Core/Ultima.Models.Core.csproj" />
+    <TrimmerRootAssembly Include="Ultima.Models.Core" />
+  </ItemGroup>
+
 </Project>

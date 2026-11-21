@@ -13,3 +13,11 @@ tests/**/obj/
 .DS_Store
 *.user
 __pycache__/
+
+# Dados de runtime do jogo (mapa persistido é gerado no servidor)
+app/data/
+
+# Pacotes de modelos: saída de build e catálogo gerado por scripts/build-models.sh
+models/**/bin/
+models/**/obj/
+src/wwwroot/models/

@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject IJSRuntime JS
 @inject HttpClient Http
+@inject Ultima.Models.ModelLoader Models
 
 <div class="game-shell">
     <header class="hud hud-top">
@@ -178,6 +179,7 @@
         if (!firstRender || _bridge is null) return;
 
         await JS.InvokeVoidAsync("game.init", "game-canvas", _bridge);
+        _ = Models.LoadAllAsync();   // modelos 3D (DLLs C#) chegam em paralelo e entram na cena
         await JS.InvokeVoidAsync("game.net.init", _bridge);
         await JS.InvokeVoidAsync("game.live.init", _bridge);
         await JS.InvokeVoidAsync("game.voice.init", _bridge);

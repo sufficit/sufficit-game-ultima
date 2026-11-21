@@ -18,6 +18,7 @@
 
     let engine = null;
     let scene = null;
+    let sceneShadows = null;
     let player = null;
     let camera = null;
     let dotnet = null;
@@ -453,8 +454,10 @@
         return merged;
     }
 
-    // Árvores realistas (4–7 m): tronco + copa em cones, mesma escala por árvore.
-    function scatterTrees(trunkProto, crownProto, count) {
+    // Árvores: espalha instâncias de um modelo carregado (descritor C#). Todas as partes do
+    // modelo têm origem no ponto de apoio (chão) e recebem a mesma escala, então o encaixe
+    // entre tronco e copa garantido pelo Ultima.Models.Core se mantém em qualquer tamanho.
+    function scatterTrees(protos, sink, count) {
         const placed = [];
         let tries = 0;
         while (placed.length < count && tries < 2400) {
@@ -469,23 +472,71 @@
             if (y > 17) { continue; }                                                      // acima da linha das árvores
             if (slopeAt(x, z) > 0.5) { continue; }                                         // encosta íngreme
             const s = 0.75 + Math.random() * 0.9;
-            // O cilindro do tronco tem origem no centro (altura 2,6): sobe meia altura para a
-            // base ficar no chão (levemente enterrada por causa da inclinação). A copa (base em
-            // 2,0 no protótipo) usa a mesma origem e escala, então encaixa no topo do tronco.
             const sy = s * (0.9 + Math.random() * 0.5);
-            const base = y - 0.25;
-            const trunk = trunkProto.createInstance('tree-trunk-' + placed.length);
-            trunk.position.set(x, base + 1.3 * sy, z);
-            trunk.scaling.set(s, sy, s);
-            trunk.rotation.y = Math.random() * Math.PI * 2;
-            const crown = crownProto.createInstance('tree-crown-' + placed.length);
-            crown.position.set(x, base, z);
-            crown.scaling.copyFrom(trunk.scaling);
-            crown.rotation.y = Math.random() * Math.PI * 2;
-            placed.push(trunk);
+            const n = placed.length;
+            for (const proto of protos) {
+                const inst = proto.createInstance(proto.name.replace('model-', 'tree-') + '-' + n);
+                inst.position.set(x, y - sink * sy, z);
+                inst.scaling.set(s, sy, s);
+                inst.rotation.y = Math.random() * Math.PI * 2;
+            }
+            placed.push(n);
         }
         return placed;
     }
+
+    // ---------- Renderizador genérico de modelos (descritores do Ultima.Models.Core) ----------
+    const modelTextures = {};
+    function modelMaterial(def) {
+        const mat = new BABYLON.StandardMaterial('mat-' + def.id + '-' + Math.random().toString(36).slice(2, 6), scene);
+        const makers = { bark: makeBarkTexture, foliage: makeFoliageTexture, rock: makeRockTexture };
+        if (makers[def.texture]) {
+            const tex = modelTextures[def.texture] || (modelTextures[def.texture] = makers[def.texture]());
+            mat.diffuseTexture = tex;
+            if (def.bumpStrength > 0 && tex._h) { mat.bumpTexture = makeBumpTexture(tex, 128, def.bumpStrength); mat.bumpTexture.level = 1.1; }
+            if (def.uScale && def.uScale !== 1) { mat.diffuseTexture.uScale = def.uScale; }
+        }
+        mat.diffuseColor = new BABYLON.Color3(def.color[0], def.color[1], def.color[2]);
+        mat.emissiveColor = new BABYLON.Color3(def.emissive[0], def.emissive[1], def.emissive[2]);
+        mat.specularColor = new BABYLON.Color3(def.specular, def.specular, def.specular);
+        return mat;
+    }
+
+    // Cria um protótipo invisível por grupo do descritor (origem = chão do modelo).
+    function buildModelProtos(desc) {
+        const mats = {};
+        for (const m of desc.materials) { mats[m.id] = modelMaterial(m); }
+        const protos = [];
+        for (const g of desc.groups) {
+            const meshes = g.parts.map((p) => {
+                let mesh;
+                if (p.shape === 'cylinder') { mesh = BABYLON.MeshBuilder.CreateCylinder(p.id, { diameterBottom: p.diameterBottom, diameterTop: p.diameterTop, height: p.height, tessellation: p.tessellation }, scene); }
+                else if (p.shape === 'icosphere') { mesh = BABYLON.MeshBuilder.CreateIcoSphere(p.id, { radius: p.diameter / 2, subdivisions: p.subdivisions }, scene); }
+                else if (p.shape === 'sphere') { mesh = BABYLON.MeshBuilder.CreateSphere(p.id, { diameter: p.diameter, segments: p.tessellation }, scene); }
+                else { mesh = BABYLON.MeshBuilder.CreateBox(p.id, { width: p.width || 1, height: p.height, depth: p.depth || 1 }, scene); }
+                mesh.position.set(p.x, p.baseY + p.height / 2, p.z);   // descritor posiciona pela base
+                return mesh;
+            });
+            const merged = meshes.length === 1 ? meshes[0] : BABYLON.Mesh.MergeMeshes(meshes, true, true, undefined, false, true);
+            if (meshes.length === 1) { merged.bakeCurrentTransformIntoVertices(); }
+            merged.name = 'model-' + desc.id + '-' + g.id;
+            for (const mod of g.modifiers) {
+                if (mod.kind === 'jitter') { jitterMesh(merged, mod.amount, mod.seed); }
+                else if (mod.kind === 'flute') { fluteMesh(merged, mod.amount, mod.seed); }
+                else if (mod.kind === 'ao') { bakeVertexAO(merged, mod.amount, mod.seed); }
+            }
+            merged.material = mats[g.material];
+            merged.isVisible = false;
+            if (g.castShadow && sceneShadows) { sceneShadows.addShadowCaster(merged); }
+            protos.push(merged);
+        }
+        return protos;
+    }
+
+    const modelRegistry = new Map();
+    const modelStatus = { loaded: [], placeholders: [], errors: [], log: [] };
+    // O que fazer no mundo quando cada modelo chega do carregador C#.
+    const modelPlacements = { 'tree.pine': (protos, desc) => scatterTrees(protos, desc.groundSink || 0, 64) };
 
     // Espalha instâncias de um protótipo com filtros de altitude/inclinação.
     function scatterInstances(proto, count, opts) {
@@ -551,23 +602,8 @@
         skyDome();
         const ground = buildTerrain();
 
-        // Árvores: tronco estriado com casca + copa irregular com textura de folhagem.
-        const trunkProto = BABYLON.MeshBuilder.CreateCylinder('trunkProto', { diameterBottom: 0.36, diameterTop: 0.22, height: 2.6, tessellation: 9 }, scene);
-        fluteMesh(trunkProto, 0.10, 311);
-        const trunkMat = new BABYLON.StandardMaterial('trunkMat', scene);
-        const barkTex = makeBarkTexture(); trunkMat.diffuseTexture = barkTex; trunkMat.bumpTexture = makeBumpTexture(barkTex, 128, 3.2); trunkMat.bumpTexture.level = 1.1; trunkMat.diffuseTexture.uScale = 2; trunkMat.specularColor = new BABYLON.Color3(0.01, 0.01, 0.01); trunkProto.material = trunkMat;
-        const crownLow = BABYLON.MeshBuilder.CreateCylinder('crownLow', { diameterBottom: 3.0, diameterTop: 0, height: 3.2, tessellation: 11 }, scene);
-        crownLow.position.y = 3.6;
-        const crownTop = BABYLON.MeshBuilder.CreateCylinder('crownTop', { diameterBottom: 2.1, diameterTop: 0, height: 2.2, tessellation: 11 }, scene);
-        crownTop.position.y = 5.2;
-        const crownProto = BABYLON.Mesh.MergeMeshes([crownLow, crownTop], true, true, undefined, false, true);
-        jitterMesh(crownProto, 0.09, 613); bakeVertexAO(crownProto, 0.45, 91);
-        const crownMat = new BABYLON.StandardMaterial('crownMat', scene);
-        crownMat.diffuseTexture = makeFoliageTexture(); crownMat.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
-        crownMat.emissiveColor = new BABYLON.Color3(0.015, 0.045, 0.02); crownProto.material = crownMat;
-        trunkProto.isVisible = false; crownProto.isVisible = false;
-        shadows.addShadowCaster(trunkProto); shadows.addShadowCaster(crownProto);
-        scatterTrees(trunkProto, crownProto, 64);
+        // Árvores: chegam como modelos C# carregados em runtime (game.models.register).
+        sceneShadows = shadows;
 
         // Pedras irregulares com manchas minerais procedurais.
         const rockProto = BABYLON.MeshBuilder.CreateIcoSphere('rockProto', { radius: 0.7, subdivisions: 2 }, scene);
@@ -990,6 +1026,29 @@
         updateRemote,
         removeRemote,
         setMapTiles,
-        setMapJobs
+        setMapJobs,
+        models: {
+            // Chamado pelo ModelLoader (C#) com o descritor JSON de cada modelo.
+            register(json, placeholder) {
+                try {
+                    const desc = JSON.parse(json);
+                    if (!scene) { throw new Error('cena ainda não criada'); }
+                    if (modelRegistry.has(desc.id)) { return false; }
+                    const protos = buildModelProtos(desc);
+                    modelRegistry.set(desc.id, { desc, protos, placeholder: !!placeholder });
+                    (placeholder ? modelStatus.placeholders : modelStatus.loaded).push(desc.id + ' v' + desc.version);
+                    const place = modelPlacements[desc.id];
+                    if (place) { place(protos, desc); }
+                    return true;
+                } catch (e) {
+                    modelStatus.errors.push(String(e && e.message || e));
+                    console.warn('[modelos] falha ao registrar', e);
+                    return false;
+                }
+            },
+            loaderDone(log) { modelStatus.log = Array.from(log || []); },
+            status() { return JSON.parse(JSON.stringify(modelStatus)); },
+            get(id) { const m = modelRegistry.get(id); return m ? m.desc : null; }
+        }
     };
 })();
