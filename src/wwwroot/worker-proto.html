@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<!-- Protótipo (branch worker-proto): mesma cena em dois caminhos — (A) engine na
+     main thread, (B) engine em Web Worker com OffscreenCanvas — para medir o custo
+     do bundle duplicado e comparar FPS. Não faz parte do jogo publicado. -->
+<head>
+    <meta charset="utf-8" />
+    <title>Ultima — protótipo worker/OffscreenCanvas</title>
+    <style>
+        body { margin: 0; background: #0b0e15; color: #dfe6f1; font: 14px/1.5 sans-serif; }
+        canvas { width: 640px; height: 420px; display: block; border: 1px solid #2a3346; }
+        .row { display: flex; gap: 16px; padding: 12px; }
+        .col { flex: 1; }
+        pre { background: #111726; padding: 8px; min-height: 120px; white-space: pre-wrap; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/babylonjs@9.36.0/babylon.js"
+            integrity="sha384-QWFG07sio34fL3sNY9wd1SSoDvD7YVMX3067rJICw3vO2LQQY5m53yB70YlKXnRX"
+            crossorigin="anonymous"></script>
+</head>
+<body>
+    <div class="row">
+        <div class="col"><strong>A) main thread</strong><canvas id="main-canvas" width="640" height="420"></canvas><pre id="main-log"></pre></div>
+        <div class="col"><strong>B) Web Worker + OffscreenCanvas</strong><canvas id="worker-canvas" width="640" height="420"></canvas><pre id="worker-log"></pre></div>
+    </div>
+    <script>
+        // --- A: main thread (referência) ---
+        (function () {
+            const log = (m) => { document.getElementById('main-log').textContent += m + '\n'; };
+            const t0 = performance.now();
+            const engine = new BABYLON.Engine(document.getElementById('main-canvas'), true, { adaptToDeviceRatio: true, stencil: false });
+            const scene = new BABYLON.Scene(engine);
+            scene.clearColor = new BABYLON.Color4(0.1, 0.12, 0.16, 1);
+            new BABYLON.HemisphericLight('hemi', new BABYLON.Vector3(0.2, 1, 0.1), scene).intensity = 0.9;
+            const sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-0.7, -0.8, -0.3).normalize(), scene);
+            sun.intensity = 1.4;
+            BABYLON.MeshBuilder.CreateGround('ground', { width: 40, height: 40, subdivisions: 96 }, scene);
+            const sphere = BABYLON.MeshBuilder.CreateSphere('sphere', { diameter: 1.8, segments: 24 }, scene);
+            sphere.position.y = 1.2;
+            const camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 1.1, 9, new BABYLON.Vector3(0, 1, 0), scene);
+            let frames = 0, acc = 0, last = performance.now();
+            engine.runRenderLoop(function () {
+                sphere.rotation.y += 0.02;
+                scene.render();
+                frames++;
+                const now = performance.now();
+                acc += now - last; last = now;
+                if (acc >= 500) {
+                    log('fps ' + Math.round(frames / (acc / 1000)));
+                    frames = 0; acc = 0;
+                }
+            });
+            log('init ' + Math.round(performance.now() - t0) + 'ms');
+            log('renderer ' + (engine.getGlInfo().renderer || engine.getGlInfo().vendor || 'WebGL'));
+        })();
+
+        // --- B: worker com OffscreenCanvas ---
+        (function () {
+            const logEl = document.getElementById('worker-log');
+            const log = (m) => { logEl.textContent += m + '\n'; };
+            const canvas = document.getElementById('worker-canvas');
+            const off = canvas.transferControlToOffscreen();
+            const t0 = performance.now();
+            let workerFps = [];
+            const worker = new Worker('js/game-worker.js');
+            worker.onmessage = function (e) {
+                const msg = e.data || {};
+                if (msg.type === 'ready') {
+                    log('init ' + msg.initMs + 'ms (worker) · criação total ' + Math.round(performance.now() - t0) + 'ms');
+                    log('renderer ' + msg.renderer + ' · DynamicTexture ' + (msg.dynamicTexture ? 'OK' : 'FALHOU'));
+                } else if (msg.type === 'fps') {
+                    workerFps.push(msg.fps);
+                    log('fps ' + msg.fps);
+                } else if (msg.type === 'error') {
+                    log('ERRO: ' + msg.message);
+                }
+            };
+            worker.onerror = function (e) { log('ERRO worker: ' + (e.message || e.filename)); };
+            worker.postMessage({ type: 'init', canvas: off, width: 640, height: 420 }, [off]);
+            window.addEventListener('resize', () => worker.postMessage({ type: 'resize', width: 640, height: 420 }));
+        })();
+    </script>
+</body>
+</html>
