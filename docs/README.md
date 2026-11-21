@@ -17,8 +17,10 @@ Prioritários:
    cache OPFS de assets preparados com chave SHA-256, estendendo o pipeline de DLLs.
 3. [PLAN-NPC-AI-DECISIONS.md](PLAN-NPC-AI-DECISIONS.md) —
    IA de NPCs por decisões sobre snapshot com budget por tick; WebLLM como produtor orquestrado.
-4. [PLAN-ASSET-UPLOAD-BUDGET.md](PLAN-ASSET-UPLOAD-BUDGET.md) —
-   upload amortizado de modelos (budget de ms por frame, limite de requisições em voo).
+4. ✅ [PLAN-ASSET-UPLOAD-BUDGET.md](PLAN-ASSET-UPLOAD-BUDGET.md) — **concluído em
+   21/11/2026**: fila com orçamento de 4 ms/frame, scatter em lotes e
+   `game.perf.report()`. Atividade:
+   [202611212030-upload-amortizado-modelos.md](activities/202611212030-upload-amortizado-modelos.md).
 
 Futuros (bom ter na manga):
 
