@@ -12,6 +12,8 @@
     const WALK_SPEED = 3.5;   // m/s (caminhada rápida)
     const RUN_SPEED = 6.5;    // m/s (corrida leve, Shift ou analógico no fim do curso)
     const PLAYER_HEIGHT = 1.75;
+    // Alvo da câmera fica na altura do peito (o root do personagem agora é os pés).
+    const CAM_UP = new BABYLON.Vector3(0, PLAYER_HEIGHT / 2, 0);
     const PLAYER_RADIUS = 0.25;
     const TICK_MS = 200;
     const DEADZONE = 0.18;
@@ -512,6 +514,7 @@
             const meshes = g.parts.map((p) => {
                 let mesh;
                 if (p.shape === 'cylinder') { mesh = BABYLON.MeshBuilder.CreateCylinder(p.id, { diameterBottom: p.diameterBottom, diameterTop: p.diameterTop, height: p.height, tessellation: p.tessellation }, scene); }
+                else if (p.shape === 'capsule') { mesh = BABYLON.MeshBuilder.CreateCapsule(p.id, { height: p.height, radius: (p.diameterBottom || p.diameter || 0) / 2, subdivisions: p.subdivisions || 4 }, scene); }
                 else if (p.shape === 'icosphere') { mesh = BABYLON.MeshBuilder.CreateIcoSphere(p.id, { radius: p.diameter / 2, subdivisions: p.subdivisions }, scene); }
                 else if (p.shape === 'sphere') { mesh = BABYLON.MeshBuilder.CreateSphere(p.id, { diameter: p.diameter, segments: p.tessellation }, scene); }
                 else if (p.shape === 'plane') {
@@ -520,7 +523,14 @@
                     if (p.depth > p.width) { mesh.rotation.y = Math.PI / 2; mesh.bakeCurrentTransformIntoVertices(); }
                 }
                 else { mesh = BABYLON.MeshBuilder.CreateBox(p.id, { width: p.width || 1, height: p.height, depth: p.depth || 1 }, scene); }
-                mesh.position.set(p.x, p.baseY + p.height / 2, p.z);   // descritor posiciona pela base
+                // Escala não uniforme (ex.: sapatos achatados): embutida nos vértices em
+                // torno do centro, então a base efetiva desce scaleY·altura/2 abaixo dele.
+                const sy = p.scaleY || 1;
+                mesh.position.set(p.x, p.baseY + p.height / 2 * sy, p.z);   // descritor posiciona pela base
+                if (p.scaleX || p.scaleY || p.scaleZ) {
+                    mesh.scaling.set(p.scaleX || 1, sy, p.scaleZ || 1);
+                    mesh.bakeCurrentTransformIntoVertices();
+                }
                 return mesh;
             });
             const merged = meshes.length === 1 ? meshes[0] : BABYLON.Mesh.MergeMeshes(meshes, true, true, undefined, false, true);
@@ -541,6 +551,52 @@
 
     const modelRegistry = new Map();
     const modelStatus = { loaded: [], placeholders: [], errors: [], log: [] };
+    // Entidades (jogador, Guardiã, remotos) que esperam um modelo chegar do carregador C#.
+    const modelAwaiters = new Map();   // id do modelo -> [{ make, apply, fallback }]
+    const characterSpawns = new Map(); // chave 'modelo#nome' -> { root, onModel, onFallback }
+
+    // Instancia um modelo registrado como root único (TransformNode) com origem nos pés:
+    // cada grupo vira clone visível filho do root. Se o modelo ainda não chegou, entra na
+    // fila e usa o fallback JS imediatamente; quando o modelo chega, o fallback é
+    // substituído. makeFallback deve devolver uma malha já posicionada (centro na origem).
+    function spawnFromModel(modelId, name, groundPos, rotationY, makeFallback) {
+        const root = new BABYLON.TransformNode(name, scene);
+        root.position.copyFrom(groundPos);
+        root.rotation.y = rotationY || 0;
+        const entry = { root: root, onModel: null, onFallback: null };
+        characterSpawns.set(modelId + '#' + name, entry);
+        if (modelRegistry.has(modelId)) {
+            attachCharacterModel(modelId, entry);
+        } else {
+            const fallback = makeFallback();   // malha centrada, y local já definido
+            fallback.parent = root;
+            entry.onFallback = fallback;
+            if (sceneShadows) { sceneShadows.addShadowCaster(fallback); }
+            const list = modelAwaiters.get(modelId) || [];
+            list.push({ name: name, entry: entry, make: makeFallback });
+            modelAwaiters.set(modelId, list);
+        }
+        return root;
+    }
+
+    // Troca o fallback JS pelas malhas do modelo C# (clones dos protótipos do descritor).
+    function attachCharacterModel(modelId, entry) {
+        const reg = modelRegistry.get(modelId);
+        if (!reg || !entry.root) { return; }
+        if (entry.onFallback) {
+            if (sceneShadows) { sceneShadows.removeShadowCaster(entry.onFallback); }
+            entry.onFallback.dispose(false, true);
+            entry.onFallback = null;
+        }
+        for (const proto of reg.protos) {
+            const clone = proto.clone(proto.name.replace('model-', 'char-') + '-' + entry.root.name);
+            clone.isVisible = true;
+            clone.parent = entry.root;
+            clone.position.set(0, 0, 0);
+            if (sceneShadows && reg.desc && !reg.placeholder) { sceneShadows.addShadowCaster(clone); }
+        }
+    }
+
     // O que fazer no mundo quando cada modelo chega do carregador C#.
     const modelPlacements = {
         'tree.pine': (protos, desc) => scatterTrees(protos, desc.groundSink || 0, 64),
@@ -630,15 +686,17 @@
 
         // Tufos de grama no vale: chegam como modelo C# (scenery.grass) carregado em runtime.
 
-        // Jogador: humanoide de 1,75 m (tronco azul, calça escura e pele).
-        player = buildHumanoid('player', { shirt:new BABYLON.Color3(0.20,0.50,0.92), pants:new BABYLON.Color3(0.20,0.22,0.28), skin:new BABYLON.Color3(0.90,0.72,0.58) });
-        player.position = new BABYLON.Vector3(0, terrainHeight(0, 0) + PLAYER_HEIGHT / 2 + 0.03, 0);
-        shadows.addShadowCaster(player);
+        // Jogador: humanoide de 1,75 m — modelo C# (character.villager) carregado em runtime;
+        // enquanto a DLL não chega, o protótipo JS serve de fallback. Origem do root = pés.
+        player = spawnFromModel('character.villager', 'player',
+            new BABYLON.Vector3(0, terrainHeight(0, 0) + 0.03, 0), 0,
+            () => { const m = buildHumanoid('player-js', { shirt:new BABYLON.Color3(0.20,0.50,0.92), pants:new BABYLON.Color3(0.20,0.22,0.28), skin:new BABYLON.Color3(0.90,0.72,0.58) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
 
-        // Guardiã: figura encapuzada dourada (1,7 m) com anel de destaque no chão.
-        const npc = buildGuardian('npc');
-        npc.position = new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.88, NPC_POSITION.z);
-        shadows.addShadowCaster(npc);
+        // Guardiã: figura encapuzada dourada (1,7 m) com anel de destaque no chão —
+        // modelo C# (character.guardian) carregado em runtime, fallback JS centrado.
+        const npc = spawnFromModel('character.guardian', 'npc',
+            new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.03, NPC_POSITION.z), 0,
+            () => { const m = buildGuardian('npc-js'); m.position.y = 0.85; return m; });
 
         const marker = BABYLON.MeshBuilder.CreateTorus('npcMarker', { diameter: 1.5, thickness: 0.08, tessellation: 32 }, scene);
         marker.position = new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.06, NPC_POSITION.z);
@@ -647,7 +705,7 @@
         marker.material = markerMat;
         scene.registerBeforeRender(() => { marker.rotation.y += 0.02; });
 
-        camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 1.12, 7.5, player.position.clone(), scene);
+        camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 1.12, 7.5, player.position.add(CAM_UP), scene);
         camera.lowerRadiusLimit = 2.4;
         camera.upperRadiusLimit = 40;
         camera.upperBetaLimit = Math.PI / 2.08;
@@ -822,11 +880,12 @@
     function addRemote(id, name) {
         if (remotes.has(id) || !scene) { return; }
         const serial = remoteSerial++;
-        const avatar = buildHumanoid('remote-' + id, { shirt:new BABYLON.Color3(0.66,0.30,0.82), pants:new BABYLON.Color3(0.24,0.18,0.30), skin:new BABYLON.Color3(0.88,0.70,0.56) });
-        avatar.position = new BABYLON.Vector3((serial % 5 - 2) * 1.5, terrainHeight(0, -2) + PLAYER_HEIGHT / 2 + 0.03, -2 - Math.floor(serial / 5) * 2);
+        const avatar = spawnFromModel('character.wanderer', 'remote-' + id,
+            new BABYLON.Vector3((serial % 5 - 2) * 1.5, terrainHeight(0, -2) + 0.03, -2 - Math.floor(serial / 5) * 2), 0,
+            () => { const m = buildHumanoid('remote-js-' + id, { shirt:new BABYLON.Color3(0.66,0.30,0.82), pants:new BABYLON.Color3(0.24,0.18,0.30), skin:new BABYLON.Color3(0.88,0.70,0.56) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
 
         const label = BABYLON.MeshBuilder.CreatePlane('remote-label-' + id, { width: 1.8, height: 0.36 }, scene);
-        label.position = avatar.position.add(new BABYLON.Vector3(0, 1.05, 0));
+        label.position = avatar.position.add(new BABYLON.Vector3(0, 1.925, 0));
         label.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
         const texture = new BABYLON.DynamicTexture('remote-name-' + id, { width: 512, height: 100 }, scene, false);
         texture.hasAlpha = true;
@@ -851,11 +910,11 @@
         if (!p) { return; }
         p.avatar.position.x = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, x));
         p.avatar.position.z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, z));
-        p.avatar.position.y = terrainHeight(p.avatar.position.x, p.avatar.position.z) + PLAYER_HEIGHT / 2 + 0.03;
+        p.avatar.position.y = terrainHeight(p.avatar.position.x, p.avatar.position.z) + 0.03;
         p.avatar.rotation.y = ry;
         p.label.position.x = p.avatar.position.x;
         p.label.position.z = p.avatar.position.z;
-        p.label.position.y = p.avatar.position.y + 1.05;
+        p.label.position.y = p.avatar.position.y + 1.925;
     }
 
     function removeRemote(id) {
@@ -997,9 +1056,9 @@
                     camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + (pad.lookY + lookStick.y) * delta * 1.7));
                 }
                 movePlayer(delta, pad);
-                if (player) { player.position.y = terrainHeight(player.position.x, player.position.z) + PLAYER_HEIGHT / 2 + 0.03; }
+                if (player) { player.position.y = terrainHeight(player.position.x, player.position.z) + 0.03; }
                 checkNear();
-                camera.setTarget(player.position);
+                camera.setTarget(player.position.add(CAM_UP));
                 scene.render();
                 tick(performance.now());
             });
@@ -1028,9 +1087,9 @@
             if (!player || !camera) return false;
             player.position.x = NPC_POSITION.x;
             player.position.z = NPC_POSITION.z + 2.0;
-            player.position.y = terrainHeight(player.position.x, player.position.z) + PLAYER_HEIGHT / 2 + 0.03;
+            player.position.y = terrainHeight(player.position.x, player.position.z) + 0.03;
             player.rotation.y = Math.PI;
-            camera.setTarget(player.position);
+            camera.setTarget(player.position.add(CAM_UP));
             checkNear();
             return true;
         },
@@ -1052,6 +1111,12 @@
                     (placeholder ? modelStatus.placeholders : modelStatus.loaded).push(desc.id + ' v' + desc.version);
                     const place = modelPlacements[desc.id];
                     if (place) { place(protos, desc); }
+                    // Personagens (jogador, Guardiã, remotos) trocam o fallback pelas malhas do modelo.
+                    const waiting = modelAwaiters.get(desc.id);
+                    if (waiting) {
+                        for (const w of waiting) { attachCharacterModel(desc.id, w.entry); }
+                        modelAwaiters.delete(desc.id);
+                    }
                     return true;
                 } catch (e) {
                     modelStatus.errors.push(String(e && e.message || e));

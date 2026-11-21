@@ -16,7 +16,7 @@ namespace Ultima.Models;
 public sealed class ModelLoader(HttpClient http, IJSRuntime js)
 {
     /// <summary>Modelos que o mundo atual espera encontrar no catálogo.</summary>
-    private static readonly string[] Expected = ["tree.pine", "rock.boulder", "scenery.grass"];
+    private static readonly string[] Expected = ["tree.pine", "rock.boulder", "scenery.grass", "character.villager", "character.wanderer", "character.guardian"];
 
     public List<string> Log { get; } = [];
 

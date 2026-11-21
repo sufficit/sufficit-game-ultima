@@ -62,6 +62,23 @@ public sealed class ModelBuilder
         => Add(new PartDef { Id = id, Shape = "icosphere", Diameter = diameter, Height = diameter, Subdivisions = subdivisions, BaseY = -sink });
 
     /// <summary>
+    /// Cápsula (cilindro com pontas arredondadas) apoiada sobre <paramref name="restsOn"/>
+    /// (ou no chão, com restsOn vazio), com afastamento lateral opcional — usada em
+    /// personagens (tronco, pernas, braços). <paramref name="overlap"/> desce a base para
+    /// dentro do suporte, como em <see cref="CylinderOn"/>.
+    /// </summary>
+    public ModelBuilder CapsuleOn(string id, string restsOn, double diameter, double height, double x = 0, double z = 0, double overlap = 0, int subdivisions = 4)
+        => Add(new PartDef { Id = id, Shape = "capsule", DiameterBottom = diameter, DiameterTop = diameter, Height = height, Subdivisions = subdivisions, BaseY = (restsOn.Length == 0 ? 0.0 : TopOf(restsOn)) - overlap, X = x, Z = z, RestsOn = restsOn });
+
+    /// <summary>
+    /// Esfera posicionada por X/Z com base em <paramref name="baseY"/> (altura absoluta da
+    /// base), apoiada em <paramref name="restsOn"/> (chão se vazio) — detalhes de rosto,
+    /// mãos e cabelo de personagens.
+    /// </summary>
+    public ModelBuilder SphereAt(string id, string restsOn, double diameter, double baseY, double x = 0, double z = 0, int segments = 8, double scaleX = 1, double scaleY = 1, double scaleZ = 1)
+        => Add(new PartDef { Id = id, Shape = "sphere", Diameter = diameter, Height = diameter, Tessellation = segments, BaseY = baseY, X = x, Z = z, ScaleX = scaleX, ScaleY = scaleY, ScaleZ = scaleZ, RestsOn = restsOn });
+
+    /// <summary>
     /// Par de planos finos cruzados a 90° (vira um quad no motor): base no chão,
     /// usado para vegetação com alfa (ex.: tufos de grama). A base do primeiro plano
     /// fica em <paramref name="baseY"/> (0 = chão); o segundo é espelhado em X.
