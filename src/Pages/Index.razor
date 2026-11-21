@@ -58,6 +58,44 @@
                 <span style="width: @((int)(_micLevel * 100))%"></span>
             </div>
             <small>@_micStatus</small>
+            <div class="ai-panel" data-ai-state="@_aiState">
+                <strong>IA da Guardiã</strong>
+                @switch (_aiState)
+                {
+                    case "checking":
+                        <small>@_aiDetail</small>
+                        break;
+                    case "unsupported":
+                        <small>@_aiDetail</small>
+                        break;
+                    case "ready":
+                        <span class="chip ok-chip">✓ @_aiDetail</span>
+                        <button type="button" class="secondary" @onclick="DisableAiAsync">Desligar IA local</button>
+                        break;
+                    case "thinking":
+                        <span class="chip">🧠 @_aiDetail</span>
+                        break;
+                    case "model":
+                    case "downloading":
+                    case "compiling":
+                    case "stalled":
+                        <progress max="1" value="@_aiProgress"></progress>
+                        <small>@((int)(_aiProgress * 100))% · @_aiDetail</small>
+                        @if (_aiState == "stalled")
+                        {
+                            <button type="button" class="secondary" @onclick="RetryAiAsync">Tentar de novo</button>
+                        }
+                        break;
+                    case "error":
+                        <small>@_aiDetail</small>
+                        <button type="button" class="secondary" @onclick="RetryAiAsync">Tentar de novo</button>
+                        break;
+                    default:
+                        <button type="button" class="secondary" @onclick="EnableAiAsync">Ativar IA na minha GPU</button>
+                        <small>Roda no seu navegador, sem enviar a conversa. @_aiDetail</small>
+                        break;
+                }
+            </div>
         </aside>
 
         @if (_chat.Count > 0)
@@ -89,6 +127,10 @@
             <section class="dialog" role="dialog" aria-modal="false" aria-label="Conversa com a Guardiã">
                 <p class="speaker">@_lines[_line].Speaker</p>
                 <p class="line" aria-live="polite">@_lines[_line].Text</p>
+                @if (!_thinking && !string.IsNullOrEmpty(_replySource) && _lines[_line].Speaker != "Você")
+                {
+                    <small class="reply-source">✦ origem da resposta: @_replySource</small>
+                }
                 <form class="dialog-compose" @onsubmit="SubmitDialogAsync" @onsubmit:preventDefault="true">
                     <label class="sr-only" for="dialog-input">Escreva para a Guardiã</label>
                     <input id="dialog-input" @bind="_dialogDraft" @bind:event="oninput" maxlength="300" placeholder="Escreva algo para a Guardiã…" autocomplete="off" />
@@ -141,6 +183,13 @@
     private sealed record NpcDto(string? DisplayName, string[]? Lines);
     private readonly string _chatSession = Guid.NewGuid().ToString("N");
     private bool _thinking;
+    private string _aiState = "off";
+    private double _aiProgress;
+    private string _aiDetail = string.Empty;
+    private string _replySource = string.Empty;
+    private Task EnableAiAsync() => JS.InvokeVoidAsync("game.ai.load").AsTask();
+    private Task DisableAiAsync() => JS.InvokeVoidAsync("game.ai.disable").AsTask();
+    private Task RetryAiAsync() => JS.InvokeVoidAsync("game.ai.retry").AsTask();
     private sealed record AnnouncementDto(string? Text);
     private sealed record AnnouncementsDto(AnnouncementDto[]? Items);
 
@@ -149,7 +198,7 @@
         ("Guardiã do Jardim", "Olá, caminhante. Você chegou ao jardim que existe para testar uma ideia."),
         ("Você", "Que ideia?"),
         ("Guardiã do Jardim", "Um jogo inteiro escrito em C#, rodando no seu navegador, com o mundo 3D desenhado pela sua placa de vídeo."),
-        ("Guardiã do Jardim", "Um dia vou conversar de verdade com você. Hoje, posso ouvir o que você escreve e responder com falas locais."),
+        ("Guardiã do Jardim", "Escreva algo para mim. Se você ativar a IA na sua GPU, eu penso aqui mesmo, no seu navegador."),
         ("Você", "Até lá, boa trilha!")
     ];
 
@@ -169,7 +218,8 @@
             MicLevel = level => _ = InvokeAsync(() => { _micLevel = Math.Clamp(level, 0, 1); StateHasChanged(); }),
             SpeechTranscript = text => _ = InvokeAsync(() => { _dialogDraft = text; StateHasChanged(); }),
             SpeechError = message => _ = InvokeAsync(() => { _speechError = message; StateHasChanged(); }),
-            Dictation = listening => _ = InvokeAsync(() => { _dictating = listening; StateHasChanged(); })
+            Dictation = listening => _ = InvokeAsync(() => { _dictating = listening; StateHasChanged(); }),
+            AiState = (state, progress, detail) => _ = InvokeAsync(() => { _aiState = state; _aiProgress = progress; _aiDetail = detail; StateHasChanged(); })
         };
         _bridge = DotNetObjectReference.Create(interop);
     }
@@ -183,6 +233,7 @@
         await JS.InvokeVoidAsync("game.net.init", _bridge);
         await JS.InvokeVoidAsync("game.live.init", _bridge);
         await JS.InvokeVoidAsync("game.voice.init", _bridge);
+        await JS.InvokeVoidAsync("game.ai.init", _bridge);
         _speakEnabled = await JS.InvokeAsync<bool>("game.voice.getSpeakPref");
         _playerName = await JS.InvokeAsync<string>("game.net.getName");
         StateHasChanged();
@@ -222,6 +273,7 @@
         {
             _line = 0;
             _dialogOpen = true;
+            _replySource = string.Empty;
             await SetFrozen(true);
             await SpeakCurrentAsync();
             StateHasChanged();
@@ -258,9 +310,24 @@
     }
 
     // A Guardiã responde pela API do jogo (IA quando configurada, regras caso contrário);
-    // sem rede, cai numa resposta local para o diálogo nunca travar.
+    // sem rede, cai numa resposta local para o diálogo nunca travar. Cada origem é marcada.
     private async Task<string> AskGuardianAsync(string text)
     {
+        // Modo principal: modelo local na GPU do jogador (WebGPU). Se não estiver pronto
+        // ou falhar, cai na API do jogo (regras; o modo servidor Sufficit AI fica lá, inativo).
+        if (_aiState == "ready")
+        {
+            try
+            {
+                var local = await JS.InvokeAsync<string?>("game.ai.ask", TimeSpan.FromSeconds(60), text, _playerName ?? string.Empty);
+                if (!string.IsNullOrWhiteSpace(local))
+                {
+                    _replySource = "GPU do jogador (modelo local)";
+                    return local!.Length > 500 ? local[..500] : local;
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"[ia] local falhou: {ex.GetType().Name}: {ex.Message}"); }
+        }
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -279,10 +346,21 @@
             if (doc.RootElement.TryGetProperty("reply", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.String)
             {
                 var reply = r.GetString();
-                if (!string.IsNullOrWhiteSpace(reply)) return reply!.Length > 500 ? reply[..500] : reply;
+                if (!string.IsNullOrWhiteSpace(reply))
+                {
+                    var origin = "servidor do jogo";
+                    if (doc.RootElement.TryGetProperty("source", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        var src = s.GetString();
+                        origin = src == "rules" ? "servidor · regras" : $"servidor · {src}";
+                    }
+                    _replySource = origin;
+                    return reply!.Length > 500 ? reply[..500] : reply;
+                }
             }
         }
         catch (Exception ex) { Console.WriteLine($"[npc] chat falhou: {ex.GetType().Name}: {ex.Message}"); }
+        _replySource = "falas locais do jogo (sem rede)";
         return "Os ventos do jardim estão agitados e mal ouço você. Tente de novo em instantes, caminhante.";
     }
 
