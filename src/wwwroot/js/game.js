@@ -247,35 +247,93 @@
         sky.material = mat;
     }
 
-    // Granulação de solo/grama (multiplica a cor por vértice); ladrilha sem emenda visível.
-    function makeDetailTexture() {
-        const N = 256;
-        const tex = new BABYLON.DynamicTexture('groundDetail', { width: N, height: N }, scene, true);
-        const ctx = tex.getContext();
-        const img = ctx.createImageData(N, N);
-        const rnd = makeNoise(777);
-        for (let y = 0; y < N; y++) {
-            for (let x = 0; x < N; x++) {
-                // Ruído periódico: soma de ruídos amostrados em círculo (sem costura).
-                const u = x / N * Math.PI * 2, v = y / N * Math.PI * 2;
-                const c1 = rnd(Math.cos(u) * 3 + 10, Math.sin(u) * 3 + Math.cos(v) * 3);
-                const c2 = rnd(Math.cos(u * 3) * 4 - 7, Math.sin(v * 3) * 4 + Math.sin(u * 3) * 4);
-                const grain = (Math.random() - 0.5) * 0.22;
-                const val = 0.84 + c1 * 0.10 + c2 * 0.07 + grain;
-                const k = Math.max(0, Math.min(255, val * 255)) | 0;
-                const i = (y * N + x) * 4;
-                img.data[i] = k; img.data[i + 1] = k; img.data[i + 2] = Math.min(255, k + 2); img.data[i + 3] = 255;
+    // ---------- Texturas procedurais com cache OPFS (game.assets) ----------
+    // A geração (loops de pixels) é o custo real de CPU; o artefato pronto (RGBA e,
+    // quando existe, o heightmap _h) é cacheado por SHA-256 de {build, nome, tamanho}:
+    // a primeira visita gera e grava, as seguintes carregam prontas (warm no init).
+    // Sem OPFS — ou com cache corrompido — gera como antes: o cache é pura otimização.
+    const texCache = new Map();   // nome -> { size, rgba, h }
+    const texWarm = { bark: 128, foliage: 128, rock: 128, grass: 128, detail: 256 };
+
+    function applyTextureData(name, size, data) {
+        const tex = new BABYLON.DynamicTexture(name, { width: size, height: size }, scene, true);
+        tex.getContext().putImageData(new ImageData(data.rgba, size, size), 0, 0);
+        tex.update(true);
+        if (data.h) { tex._h = data.h; }
+        return tex;
+    }
+
+    function proceduralTexture(name, size, generate) {
+        let data = texCache.get(name);
+        if (!data) {
+            data = generate(size);
+            texCache.set(name, data);
+            if (window.game && game.assets) { game.assets.saveTex(name, size, data.rgba, data.h); }
+        }
+        return applyTextureData(name, size, data);
+    }
+
+    async function warmTextures() {
+        if (!(window.game && game.assets && game.assets.report().opfs)) { return; }
+        for (const name of Object.keys(texWarm)) {
+            if (texCache.has(name)) { continue; }
+            const hit = await game.assets.loadTex(name, texWarm[name]);
+            if (hit && hit.rgba.length === texWarm[name] * texWarm[name] * 4) {
+                texCache.set(name, { size: hit.size, rgba: hit.rgba, h: hit.h });
             }
         }
-        ctx.putImageData(img, 0, 0);
-        tex.update(true);
+    }
+
+    // Granulação de solo/grama (multiplica a cor por vértice); ladrilha sem emenda visível.
+    function makeDetailTexture() {
+        const tex = proceduralTexture('detail', 256, function (N) {
+            const img = new ImageData(N, N);
+            const rnd = makeNoise(777);
+            for (let y = 0; y < N; y++) {
+                for (let x = 0; x < N; x++) {
+                    // Ruído periódico: soma de ruídos amostrados em círculo (sem costura).
+                    const u = x / N * Math.PI * 2, v = y / N * Math.PI * 2;
+                    const c1 = rnd(Math.cos(u) * 3 + 10, Math.sin(u) * 3 + Math.cos(v) * 3);
+                    const c2 = rnd(Math.cos(u * 3) * 4 - 7, Math.sin(v * 3) * 4 + Math.sin(u * 3) * 4);
+                    const grain = (Math.random() - 0.5) * 0.22;
+                    const val = 0.84 + c1 * 0.10 + c2 * 0.07 + grain;
+                    const k = Math.max(0, Math.min(255, val * 255)) | 0;
+                    const i = (y * N + x) * 4;
+                    img.data[i] = k; img.data[i + 1] = k; img.data[i + 2] = Math.min(255, k + 2); img.data[i + 3] = 255;
+                }
+            }
+            return { rgba: img.data, h: null };
+        });
         tex.anisotropicFilteringLevel = 8;
         return tex;
     }
 
+    const GROUND_SUBDIVISIONS = 192;
+    // Malha do terreno (posições/cores/normais) em cache OPFS: chave por {build, nº de
+    // vértices}. Sem cache, computa o ruído por vértice como antes e grava o artefato
+    // pronto para a próxima visita (async, sem travar a carga).
+    let terrainCache = null;
+    async function warmTerrain() {
+        if (!(window.game && game.assets && game.assets.report().opfs)) { return; }
+        const vc = (GROUND_SUBDIVISIONS + 1) * (GROUND_SUBDIVISIONS + 1);
+        const hit = await game.assets.loadTerrain(vc);
+        if (hit && hit.positions.length === vc * 3 && hit.colors.length === vc * 4 && hit.normals.length === vc * 3) {
+            terrainCache = hit;
+        }
+    }
+
     function buildTerrain() {
         const size = WORLD_HALF * 2 + 8;
-        const ground = BABYLON.MeshBuilder.CreateGround('ground', { width: size, height: size, subdivisions: 192 }, scene);
+        const ground = BABYLON.MeshBuilder.CreateGround('ground', { width: size, height: size, subdivisions: GROUND_SUBDIVISIONS }, scene);
+        if (terrainCache) {
+            ground.setVerticesData(BABYLON.VertexBuffer.PositionKind, terrainCache.positions);
+            ground.setVerticesData(BABYLON.VertexBuffer.ColorKind, terrainCache.colors);
+            ground.setVerticesData(BABYLON.VertexBuffer.NormalKind, terrainCache.normals);
+            const groundMatReady = groundMaterial();
+            ground.material = groundMatReady;
+            ground.receiveShadows = true;
+            return ground;
+        }
         const positions = ground.getVerticesData(BABYLON.VertexBuffer.PositionKind);
         const colors = new Float32Array((positions.length / 3) * 4);
 
@@ -327,19 +385,27 @@
         }
         ground.setVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
         ground.setVerticesData(BABYLON.VertexBuffer.ColorKind, colors);
-        const normals = [];
+        const normals = new Float32Array(positions.length);
         BABYLON.VertexData.ComputeNormals(positions, ground.getIndices(), normals);
         ground.setVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
+        if (window.game && game.assets) { game.assets.saveTerrain(positions.length / 3, positions, colors, normals); }
 
+        ground.material = groundMaterial();
+        ground.receiveShadows = true;
+        return ground;
+    }
+
+    // Material do chão (granulação em ladrilhos de ~3 m), compartilhado pelos dois
+    // caminhos do buildTerrain (cacheado ou computado).
+    function groundMaterial() {
+        const size = WORLD_HALF * 2 + 8;
         const groundMat = new BABYLON.StandardMaterial('groundMat', scene);
         groundMat.diffuseColor = new BABYLON.Color3(1, 1, 1);
         groundMat.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
         const detail = makeDetailTexture();
         detail.uScale = size / 3; detail.vScale = size / 3;   // um ladrilho a cada ~3 m
         groundMat.diffuseTexture = detail;
-        ground.material = groundMat;
-        ground.receiveShadows = true;
-        return ground;
+        return groundMat;
     }
 
     // ---------- v3: relevo (normal map) e oclusão ambiente nos vértices ----------
@@ -372,72 +438,78 @@
         mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind, col);
     }
 
-    // ---------- Texturas procedurais de vegetação ----------
+    // ---------- Texturas procedurais de vegetação (cache OPFS via proceduralTexture) ----------
     // Casca: veios verticais irregulares, sem costura na horizontal.
     function makeBarkTexture() {
-        const W = 128, H = 128;
-        const tex = new BABYLON.DynamicTexture('barkTex', { width: W, height: H }, scene, true);
-        const ctx = tex.getContext(); const img = ctx.createImageData(W, H); const rnd = makeNoise(421); const hgt = (tex._h = new Float32Array(W * H));
-        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-            const u = x / W * Math.PI * 2;
-            const ridge = rnd(Math.cos(u) * 6 + 3, Math.sin(u) * 6 + 3);
-            const fibre = rnd(Math.cos(u) * 14 - 9, y * 0.35 + Math.sin(u) * 14);
-            const val = 0.52 + ridge * 0.30 + (fibre - 0.5) * 0.22, i = (y * W + x) * 4;
-            hgt[y * W + x] = val; img.data[i] = Math.max(0, Math.min(255, val * 190)) | 0;
-            img.data[i+1] = Math.max(0, Math.min(255, val * 135)) | 0;
-            img.data[i+2] = Math.max(0, Math.min(255, val * 88)) | 0; img.data[i+3] = 255;
-        }
-        ctx.putImageData(img, 0, 0); tex.update(true); return tex;
+        return proceduralTexture('bark', 128, function (W) {
+            const H = W;
+            const img = new ImageData(W, H), rnd = makeNoise(421), hgt = new Float32Array(W * H);
+            for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+                const u = x / W * Math.PI * 2;
+                const ridge = rnd(Math.cos(u) * 6 + 3, Math.sin(u) * 6 + 3);
+                const fibre = rnd(Math.cos(u) * 14 - 9, y * 0.35 + Math.sin(u) * 14);
+                const val = 0.52 + ridge * 0.30 + (fibre - 0.5) * 0.22, i = (y * W + x) * 4;
+                hgt[y * W + x] = val; img.data[i] = Math.max(0, Math.min(255, val * 190)) | 0;
+                img.data[i+1] = Math.max(0, Math.min(255, val * 135)) | 0;
+                img.data[i+2] = Math.max(0, Math.min(255, val * 88)) | 0; img.data[i+3] = 255;
+            }
+            return { rgba: img.data, h: hgt };
+        });
     }
 
     // Folhagem: manchas procedurais de verde, em vez de uma cor plana.
     function makeFoliageTexture() {
-        const N = 128, tex = new BABYLON.DynamicTexture('foliageTex', { width: N, height: N }, scene, true);
-        const ctx = tex.getContext(), img = ctx.createImageData(N, N), rnd = makeNoise(907);
-        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-            const u = x / N * Math.PI * 2, v = y / N * Math.PI * 2;
-            const blob = rnd(Math.cos(u)*5+1, Math.sin(u)*5+Math.cos(v)*5);
-            const leaf = rnd(Math.cos(u)*16+8, Math.sin(v)*16-4), t = blob*0.7+leaf*0.3, i=(y*N+x)*4;
-            img.data[i] = Math.max(0,Math.min(255,(0.10+t*0.22)*255))|0;
-            img.data[i+1] = Math.max(0,Math.min(255,(0.26+t*0.42)*255))|0;
-            img.data[i+2] = Math.max(0,Math.min(255,(0.10+t*0.16)*255))|0; img.data[i+3]=255;
-        }
-        ctx.putImageData(img,0,0); tex.update(true); return tex;
+        return proceduralTexture('foliage', 128, function (N) {
+            const img = new ImageData(N, N), rnd = makeNoise(907);
+            for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+                const u = x / N * Math.PI * 2, v = y / N * Math.PI * 2;
+                const blob = rnd(Math.cos(u)*5+1, Math.sin(u)*5+Math.cos(v)*5);
+                const leaf = rnd(Math.cos(u)*16+8, Math.sin(v)*16-4), t = blob*0.7+leaf*0.3, i=(y*N+x)*4;
+                img.data[i] = Math.max(0,Math.min(255,(0.10+t*0.22)*255))|0;
+                img.data[i+1] = Math.max(0,Math.min(255,(0.26+t*0.42)*255))|0;
+                img.data[i+2] = Math.max(0,Math.min(255,(0.10+t*0.16)*255))|0; img.data[i+3]=255;
+            }
+            return { rgba: img.data, h: null };
+        });
     }
 
     // Rocha com variação de cor e salpicos minerais procedurais.
     function makeRockTexture() {
-        const N=128, tex=new BABYLON.DynamicTexture('rockTex',{width:N,height:N},scene,true);
-        const ctx=tex.getContext(), img=ctx.createImageData(N,N), rnd=makeNoise(577), hgt=(tex._h=new Float32Array(N*N));
-        for(let y=0;y<N;y++) for(let x=0;x<N;x++) {
-            const u=x/N*Math.PI*2,v=y/N*Math.PI*2;
-            const blotch=rnd(Math.cos(u)*5-3,Math.sin(v)*5+4), speck=rnd(Math.cos(u)*18+6,Math.sin(v)*18-7);
-            const val=0.58+blotch*0.24+(speck-0.5)*0.10,i=(y*N+x)*4;
-            hgt[y*N+x]=val; img.data[i]=Math.max(0,Math.min(255,val*118))|0;
-            img.data[i+1]=Math.max(0,Math.min(255,val*114))|0;
-            img.data[i+2]=Math.max(0,Math.min(255,val*108))|0; img.data[i+3]=255;
-        }
-        ctx.putImageData(img,0,0); tex.update(true); return tex;
+        return proceduralTexture('rock', 128, function (N) {
+            const img = new ImageData(N, N), rnd = makeNoise(577), hgt = new Float32Array(N * N);
+            for(let y=0;y<N;y++) for(let x=0;x<N;x++) {
+                const u=x/N*Math.PI*2,v=y/N*Math.PI*2;
+                const blotch=rnd(Math.cos(u)*5-3,Math.sin(v)*5+4), speck=rnd(Math.cos(u)*18+6,Math.sin(v)*18-7);
+                const val=0.58+blotch*0.24+(speck-0.5)*0.10,i=(y*N+x)*4;
+                hgt[y*N+x]=val; img.data[i]=Math.max(0,Math.min(255,val*118))|0;
+                img.data[i+1]=Math.max(0,Math.min(255,val*114))|0;
+                img.data[i+2]=Math.max(0,Math.min(255,val*108))|0; img.data[i+3]=255;
+            }
+            return { rgba: img.data, h: hgt };
+        });
     }
 
     function makeGrassTexture() {
-        const tex = new BABYLON.DynamicTexture('grassTex', { width: 128, height: 128 }, scene, true);
-        const ctx = tex.getContext();
-        ctx.clearRect(0, 0, 128, 128);
-        const tones = ['#3d6b21', '#4d7d2a', '#5d8f33', '#35591c'];
-        for (let i = 0; i < 16; i++) {
-            const x0 = 6 + Math.random() * 116;
-            const h = 40 + Math.random() * 70;
-            const bend = (Math.random() - 0.5) * 34;
-            ctx.strokeStyle = tones[(Math.random() * tones.length) | 0];
-            ctx.lineWidth = 2 + Math.random() * 2;
-            ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.moveTo(x0, 128);
-            ctx.quadraticCurveTo(x0 + bend * 0.4, 128 - h * 0.6, x0 + bend, 128 - h);
-            ctx.stroke();
-        }
-        tex.update(true);
+        const tex = proceduralTexture('grass', 128, function (N) {
+            const canvas = document.createElement('canvas');
+            canvas.width = N; canvas.height = N;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, N, N);
+            const tones = ['#3d6b21', '#4d7d2a', '#5d8f33', '#35591c'];
+            for (let i = 0; i < 16; i++) {
+                const x0 = 6 + Math.random() * (N - 12);
+                const h = 40 + Math.random() * 70;
+                const bend = (Math.random() - 0.5) * 34;
+                ctx.strokeStyle = tones[(Math.random() * tones.length) | 0];
+                ctx.lineWidth = 2 + Math.random() * 2;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(x0, N);
+                ctx.quadraticCurveTo(x0 + bend * 0.4, N - h * 0.6, x0 + bend, N - h);
+                ctx.stroke();
+            }
+            return { rgba: ctx.getImageData(0, 0, N, N).data, h: null };
+        });
         tex.hasAlpha = true;
         return tex;
     }
@@ -1138,13 +1210,23 @@
         }
     }
 
-    window.game = {
-        init(canvasId, dotnetRef) {
+    // Mescla em window.game (assets.js/net.js/... podem ter registrado antes).
+    window.game = window.game || {};
+    Object.assign(window.game, {
+        async init(canvasId, dotnetRef) {
+            const initStart = performance.now();
             const canvas = document.getElementById(canvasId);
             if (!canvas) { throw new Error('canvas ' + canvasId + ' não encontrado'); }
             dotnet = dotnetRef;
+            // Aquece o cache local (OPFS) antes da cena: texturas procedurais e malha do
+            // terreno chegam prontas quando a visita anterior já as preparou.
+            if (window.game && game.assets) {
+                await game.assets.init();
+                await Promise.all([warmTextures(), warmTerrain()]);
+            }
             engine = new BABYLON.Engine(canvas, true, { adaptToDeviceRatio: true, stencil: false });
             buildScene(canvas);
+            window.__initMs = Math.round(performance.now() - initStart);
             setupTouchControls();
             window.addEventListener('gamepaddisconnected', () => { actionWasDown = false; cancelWasDown = false; setActiveInput('keyboard'); });
             window.addEventListener('keydown', onKeyDown);
@@ -1246,5 +1328,5 @@
                 };
             }
         }
-    };
+    });
 })();
