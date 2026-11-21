@@ -536,7 +536,20 @@
     const modelRegistry = new Map();
     const modelStatus = { loaded: [], placeholders: [], errors: [], log: [] };
     // O que fazer no mundo quando cada modelo chega do carregador C#.
-    const modelPlacements = { 'tree.pine': (protos, desc) => scatterTrees(protos, desc.groundSink || 0, 64) };
+    const modelPlacements = {
+        'tree.pine': (protos, desc) => scatterTrees(protos, desc.groundSink || 0, 64),
+        'rock.boulder': (protos, desc) => scatterRocks(protos, desc)
+    };
+
+    // Pedras: chegam como modelos C# (rock.boulder); espalha igual ao protótipo antigo
+    // (26 instâncias, escala 0,6–2,2, centro afundado 0,25 m no terreno).
+    function scatterRocks(protos, desc) {
+        const placed = [];
+        for (const proto of protos) {
+            placed.push(...scatterInstances(proto, 26, { minScale: 0.6, maxScale: 2.2, maxAlt: 26, maxSlope: 0.9, sink: -0.25, minR: 6 }));
+        }
+        return placed;
+    }
 
     // Espalha instâncias de um protótipo com filtros de altitude/inclinação.
     function scatterInstances(proto, count, opts) {
@@ -605,13 +618,7 @@
         // Árvores: chegam como modelos C# carregados em runtime (game.models.register).
         sceneShadows = shadows;
 
-        // Pedras irregulares com manchas minerais procedurais.
-        const rockProto = BABYLON.MeshBuilder.CreateIcoSphere('rockProto', { radius: 0.7, subdivisions: 2 }, scene);
-        jitterMesh(rockProto, 0.22, 733); bakeVertexAO(rockProto, 0.55, 17);
-        const rockMat = new BABYLON.StandardMaterial('rockMat', scene);
-        const rockTex = makeRockTexture(); rockMat.diffuseTexture = rockTex; rockMat.bumpTexture = makeBumpTexture(rockTex, 128, 4.0); rockMat.specularColor = new BABYLON.Color3(0.04, 0.04, 0.04); rockProto.material = rockMat;
-        rockProto.isVisible = false; shadows.addShadowCaster(rockProto);
-        scatterInstances(rockProto, 26, { minScale: 0.6, maxScale: 2.2, maxAlt: 26, maxSlope: 0.9, sink: -0.25, minR: 6 });
+        // Pedras: chegam como modelos C# carregados em runtime (game.models.register).
 
         // Tufos de grama no vale (só onde há solo de grama).
         const grassProto = buildGrassPatch();
