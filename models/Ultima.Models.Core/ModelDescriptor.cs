@@ -49,7 +49,7 @@ public sealed class PartGroup
 public sealed class PartDef
 {
     public string Id { get; set; } = "";
-    /// <summary>"cylinder" (cone se DiameterTop = 0), "sphere", "icosphere" ou "box".</summary>
+    /// <summary>"cylinder" (cone se DiameterTop = 0), "sphere", "icosphere", "box" ou "plane".</summary>
     public string Shape { get; set; } = "cylinder";
     public double DiameterBottom { get; set; }
     public double DiameterTop { get; set; }
@@ -63,6 +63,10 @@ public sealed class PartDef
     public double BaseY { get; set; }
     public double X { get; set; }
     public double Z { get; set; }
+    /// <summary>Escala não uniforme da parte (1 = sem escala), aplicada antes da fusão do grupo.</summary>
+    public double ScaleX { get; set; } = 1;
+    public double ScaleY { get; set; } = 1;
+    public double ScaleZ { get; set; } = 1;
     /// <summary>Parte em que esta se apoia ("" = chão).</summary>
     public string RestsOn { get; set; } = "";
 }

@@ -61,6 +61,18 @@ public sealed class ModelBuilder
     public ModelBuilder IcoSphere(string id, double diameter, int subdivisions = 2, double sink = 0)
         => Add(new PartDef { Id = id, Shape = "icosphere", Diameter = diameter, Height = diameter, Subdivisions = subdivisions, BaseY = -sink });
 
+    /// <summary>
+    /// Par de planos finos cruzados a 90° (vira um quad no motor): base no chão,
+    /// usado para vegetação com alfa (ex.: tufos de grama). A base do primeiro plano
+    /// fica em <paramref name="baseY"/> (0 = chão); o segundo é espelhado em X.
+    /// </summary>
+    public ModelBuilder CrossPlane(string id, double width, double height, double baseY = 0, double depth = 0.02, int tessellation = 2)
+    {
+        Add(new PartDef { Id = id + "-a", Shape = "plane", Width = width, Height = height, Depth = depth, Tessellation = tessellation, BaseY = baseY });
+        Add(new PartDef { Id = id + "-b", Shape = "plane", Width = depth, Height = height, Depth = width, Tessellation = tessellation, BaseY = baseY });
+        return this;
+    }
+
     public ModelBuilder Box(string id, double width, double height, double depth, double sink = 0)
         => Add(new PartDef { Id = id, Shape = "box", Width = width, Height = height, Depth = depth, BaseY = -sink });
 

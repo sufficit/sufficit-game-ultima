@@ -489,12 +489,13 @@
     const modelTextures = {};
     function modelMaterial(def) {
         const mat = new BABYLON.StandardMaterial('mat-' + def.id + '-' + Math.random().toString(36).slice(2, 6), scene);
-        const makers = { bark: makeBarkTexture, foliage: makeFoliageTexture, rock: makeRockTexture };
+        const makers = { bark: makeBarkTexture, foliage: makeFoliageTexture, rock: makeRockTexture, grass: makeGrassTexture };
         if (makers[def.texture]) {
             const tex = modelTextures[def.texture] || (modelTextures[def.texture] = makers[def.texture]());
             mat.diffuseTexture = tex;
             if (def.bumpStrength > 0 && tex._h) { mat.bumpTexture = makeBumpTexture(tex, 128, def.bumpStrength); mat.bumpTexture.level = 1.1; }
             if (def.uScale && def.uScale !== 1) { mat.diffuseTexture.uScale = def.uScale; }
+            if (def.texture === 'grass') { mat.useAlphaFromDiffuseTexture = true; mat.backFaceCulling = false; }  // lâminas com alfa nos dois lados
         }
         mat.diffuseColor = new BABYLON.Color3(def.color[0], def.color[1], def.color[2]);
         mat.emissiveColor = new BABYLON.Color3(def.emissive[0], def.emissive[1], def.emissive[2]);
@@ -513,6 +514,11 @@
                 if (p.shape === 'cylinder') { mesh = BABYLON.MeshBuilder.CreateCylinder(p.id, { diameterBottom: p.diameterBottom, diameterTop: p.diameterTop, height: p.height, tessellation: p.tessellation }, scene); }
                 else if (p.shape === 'icosphere') { mesh = BABYLON.MeshBuilder.CreateIcoSphere(p.id, { radius: p.diameter / 2, subdivisions: p.subdivisions }, scene); }
                 else if (p.shape === 'sphere') { mesh = BABYLON.MeshBuilder.CreateSphere(p.id, { diameter: p.diameter, segments: p.tessellation }, scene); }
+                else if (p.shape === 'plane') {
+                    // Plano vertical (vegetação com alfa); depth > width marca o plano cruzado a 90°.
+                    mesh = BABYLON.MeshBuilder.CreatePlane(p.id, { width: Math.max(p.width || 1, p.depth || 0), height: p.height }, scene);
+                    if (p.depth > p.width) { mesh.rotation.y = Math.PI / 2; mesh.bakeCurrentTransformIntoVertices(); }
+                }
                 else { mesh = BABYLON.MeshBuilder.CreateBox(p.id, { width: p.width || 1, height: p.height, depth: p.depth || 1 }, scene); }
                 mesh.position.set(p.x, p.baseY + p.height / 2, p.z);   // descritor posiciona pela base
                 return mesh;
@@ -538,7 +544,9 @@
     // O que fazer no mundo quando cada modelo chega do carregador C#.
     const modelPlacements = {
         'tree.pine': (protos, desc) => scatterTrees(protos, desc.groundSink || 0, 64),
-        'rock.boulder': (protos, desc) => scatterRocks(protos, desc)
+        'rock.boulder': (protos, desc) => scatterRocks(protos, desc),
+        // Tufos de grama: mesmas 420 posições/regras do protótipo antigo (vale, solo de grama).
+        'scenery.grass': (protos) => scatterInstances(protos[0], 420, { minScale: 0.7, maxScale: 1.5, maxAlt: 14, maxSlope: 0.55, sink: 0, minR: 4.5 })
     };
 
     // Pedras: chegam como modelos C# (rock.boulder); espalha igual ao protótipo antigo
@@ -620,9 +628,7 @@
 
         // Pedras: chegam como modelos C# carregados em runtime (game.models.register).
 
-        // Tufos de grama no vale (só onde há solo de grama).
-        const grassProto = buildGrassPatch();
-        scatterInstances(grassProto, 420, { minScale: 0.7, maxScale: 1.5, maxAlt: 14, maxSlope: 0.55, sink: 0, minR: 4.5 });
+        // Tufos de grama no vale: chegam como modelo C# (scenery.grass) carregado em runtime.
 
         // Jogador: humanoide de 1,75 m (tronco azul, calça escura e pele).
         player = buildHumanoid('player', { shirt:new BABYLON.Color3(0.20,0.50,0.92), pants:new BABYLON.Color3(0.20,0.22,0.28), skin:new BABYLON.Color3(0.90,0.72,0.58) });
