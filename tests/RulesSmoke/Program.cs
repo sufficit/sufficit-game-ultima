@@ -1,3 +1,4 @@
+using Ultima.Npc;
 using Ultima.Rules;
 
 int failures = 0;
@@ -110,6 +111,58 @@ Check("dano >= PV máximo com 0 PV mata na hora", instant.Dead);
 stable.RecoverFromStable();
 Check("Estável não curado recupera 1 PV", stable.HitPoints == 1 && !stable.Stable);
 Check("1d4 horas de espera", Enumerable.Range(0, 50).Select(i => new Rng((ulong)i)).All(r2 => stable.RollStableRecoveryHours(r2) is >= 1 and <= 4));
+
+// IA de NPCs: decisões sobre snapshot com budget por tick (docs/PLAN-NPC-AI-DECISIONS.md)
+WorldSnapshot Snap(bool near = true, bool open = false, bool ai = false) => new(0, -12, near, open, ai, 1000);
+var npc = new NpcScheduler();
+npc.Submit(new PlayerInteracted(1000));
+var open = npc.Tick(Snap()).Single();
+Check("interação perto abre diálogo na linha 0", open.Commands.Any(c => c is OpenDialog) && open.View is { CurrentLine: 0, Thinking: false });
+Check("falas de abertura padrão têm 5 linhas", open.View!.Lines.Count == 5);
+
+npc.Submit(new PlayerInteracted(1100));
+var adv = npc.Tick(Snap(open: true)).Single();
+Check("avanço vai para a linha 1", adv.Commands.Any(c => c is ShowLine { LineIndex: 1 }) && adv.View is { CurrentLine: 1 });
+
+for (var i = 0; i < 3; i++) { npc.Submit(new PlayerInteracted(1200 + i)); npc.Tick(Snap(open: true)); }
+npc.Submit(new PlayerInteracted(1300));
+var close = npc.Tick(Snap(open: true)).Single();
+Check("avanço na última linha encerra o diálogo", close.Commands.Any(c => c is CloseDialog) && close.View is { CurrentLine: -1 });
+
+npc.Submit(new PlayerInteracted(1400));
+npc.Tick(Snap(open: false, near: false));
+Check("interação longe da Guardiã não abre diálogo", npc.PendingEvents == 0);
+
+npc.Submit(new PlayerInteracted(1500));
+npc.Tick(Snap(open: false));
+npc.Submit(new PlayerSpoke(1600, "Olá!"));
+var think = npc.Tick(Snap(open: true)).Single();
+Check("fala do jogador vira reticências pendentes", think.Commands.Any(c => c is BeginThinking) && think.View is { Thinking: true } && think.View.Lines[^1].Text == "…" && think.View.Lines[^2] is { Speaker: "Você", Text: "Olá!" });
+
+npc.Submit(new PlayerSpoke(1700, "outra mensagem antes da resposta"));
+var flood = npc.Tick(Snap(open: true));
+Check("fala durante o pensamento é ignorada (anti-inundação no cérebro)", flood.Count == 0);
+
+npc.Submit(new ReplyArrived(1800, "Resposta da GPU.", "GPU do jogador"));
+var reply = npc.Tick(Snap(open: true, ai: true)).Single();
+Check("resposta do produtor caro substitui as reticências", reply.Commands.Any(c => c is SetReply { Text: "Resposta da GPU." }) && reply.View is { Thinking: false, ReplySource: "GPU do jogador" });
+
+npc.Submit(new IntroLinesChanged(1900, "Guardiã Remota", ["Fala remota 1", "Fala remota 2"]));
+var intro = npc.Tick(Snap(open: true)).Single();
+Check("conteúdo remoto troca as falas de abertura", intro.View!.Lines.Count == 2 && intro.View.Lines[0] is { Speaker: "Guardiã Remota", Text: "Fala remota 1" });
+
+// Budget por tick: rajada de eventos não passa do orçamento; o resto retoma no tick seguinte
+var busy = new NpcScheduler();
+for (var i = 0; i < 10; i++) { busy.Submit(new PlayerInteracted(2000 + i)); }
+var first = busy.Tick(Snap(open: false));
+Check("tick processa no máximo MaxEventsPerTick eventos", NpcScheduler.MaxEventsPerTick == 4 && busy.PendingEvents == 6);
+Check("cada evento processado produziu decisão", first.Count == 4);
+var rest = 0;
+while (busy.PendingEvents > 0) { rest += busy.Tick(Snap(open: true)).Count; }
+Check("fila restante drena nos ticks seguintes", rest == 6);
+
+for (var i = 0; i < NpcScheduler.MaxQueuedEvents + 10; i++) { busy.Submit(new PlayerInteracted(3000 + i)); }
+Check("transbordo da fila descarta o mais antigo sem estourar", busy.PendingEvents == NpcScheduler.MaxQueuedEvents && busy.DroppedEvents == 10);
 
 Console.WriteLine(failures == 0 ? "\nTODOS OS TESTES PASSARAM" : $"\n{failures} FALHA(S)");
 return failures == 0 ? 0 : 1;

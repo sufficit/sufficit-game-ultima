@@ -1,5 +1,6 @@
 @page "/"
 @implements IDisposable
+@using Ultima.Npc
 @inject IJSRuntime JS
 @inject HttpClient Http
 @inject Ultima.Models.ModelLoader Models
@@ -35,7 +36,7 @@
             pos (@_posX.ToString("F1"), @_posZ.ToString("F1")) · alt @_posY.ToString("F1")
         </div>
 
-        @if (_near && !_dialogOpen)
+        @if (_near && _view is null)
         {
             <div class="overlay overlay-hint" role="status">Perto da Guardiã — <span class="hint-kb">pressione <kbd>E</kbd></span><span class="hint-pad">pressione <kbd>A</kbd> no controle</span><span class="hint-touch">toque no botão <kbd>A</kbd></span> para conversar</div>
         }
@@ -122,14 +123,14 @@
             </div>
         </div>
 
-        @if (_dialogOpen)
+        @if (_view is not null)
         {
             <section class="dialog" role="dialog" aria-modal="false" aria-label="Conversa com a Guardiã">
-                <p class="speaker">@_lines[_line].Speaker</p>
-                <p class="line" aria-live="polite">@_lines[_line].Text</p>
-                @if (!_thinking && !string.IsNullOrEmpty(_replySource) && _lines[_line].Speaker != "Você")
+                <p class="speaker">@_view.Lines[_view.CurrentLine].Speaker</p>
+                <p class="line" aria-live="polite">@_view.Lines[_view.CurrentLine].Text</p>
+                @if (!_view.Thinking && !string.IsNullOrEmpty(_view.ReplySource) && _view.Lines[_view.CurrentLine].Speaker != "Você")
                 {
-                    <small class="reply-source">✦ origem da resposta: @_replySource</small>
+                    <small class="reply-source">✦ origem da resposta: @_view.ReplySource</small>
                 }
                 <form class="dialog-compose" @onsubmit="SubmitDialogAsync" @onsubmit:preventDefault="true">
                     <label class="sr-only" for="dialog-input">Escreva para a Guardiã</label>
@@ -144,7 +145,7 @@
                     <small class="speech-error">@_speechError</small>
                 }
                 <div class="dialog-actions">
-                    <button type="button" @onclick="AdvanceAsync">@(_line + 1 < _lines.Length ? "Continuar · E/A" : "Encerrar · E/A")</button>
+                    <button type="button" @onclick="AdvanceAsync">@(_view.CurrentLine + 1 < _view.Lines.Count ? "Continuar · E/A" : "Encerrar · E/A")</button>
                     <button type="button" class="secondary" @onclick="CloseDialog">Fechar · Esc</button>
                 </div>
             </section>
@@ -161,8 +162,8 @@
     private DotNetObjectReference<GameInterop>? _bridge;
     private string _renderer = string.Empty;
     private bool _near;
-    private bool _dialogOpen;
-    private int _line;
+    private DialogView? _view;
+    private readonly NpcScheduler _npc = new();
     private double _posX, _posY, _posZ, _fps, _micLevel;
     private int _remoteCount;
     private string? _announcement;
@@ -182,25 +183,14 @@
     private const string ContentApi = "https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br";
     private sealed record NpcDto(string? DisplayName, string[]? Lines);
     private readonly string _chatSession = Guid.NewGuid().ToString("N");
-    private bool _thinking;
     private string _aiState = "off";
     private double _aiProgress;
     private string _aiDetail = string.Empty;
-    private string _replySource = string.Empty;
     private Task EnableAiAsync() => JS.InvokeVoidAsync("game.ai.load").AsTask();
     private Task DisableAiAsync() => JS.InvokeVoidAsync("game.ai.disable").AsTask();
     private Task RetryAiAsync() => JS.InvokeVoidAsync("game.ai.retry").AsTask();
     private sealed record AnnouncementDto(string? Text);
     private sealed record AnnouncementsDto(AnnouncementDto[]? Items);
-
-    private (string Speaker, string Text)[] _lines =
-    [
-        ("Guardiã do Jardim", "Olá, caminhante. Você chegou ao jardim que existe para testar uma ideia."),
-        ("Você", "Que ideia?"),
-        ("Guardiã do Jardim", "Um jogo inteiro escrito em C#, rodando no seu navegador, com o mundo 3D desenhado pela sua placa de vídeo."),
-        ("Guardiã do Jardim", "Escreva algo para mim. Se você ativar a IA na sua GPU, eu penso aqui mesmo, no seu navegador."),
-        ("Você", "Até lá, boa trilha!")
-    ];
 
     protected override void OnInitialized()
     {
@@ -210,7 +200,7 @@
             NearChanged = near => _ = InvokeAsync(() => { _near = near; StateHasChanged(); }),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
             Close = () => _ = InvokeAsync(CloseDialog),
-            MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; StateHasChanged(); }),
+            MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; RunNpcTick(); StateHasChanged(); }),
             NetStatus = (state, peers) => _ = InvokeAsync(() => { _netStatus = state; StateHasChanged(); }),
             Chat = (from, text) => _ = InvokeAsync(() => { AddChat(from, text); StateHasChanged(); }),
             RemoteCount = count => _ = InvokeAsync(() => { _remoteCount = count; StateHasChanged(); }),
@@ -250,68 +240,100 @@
             await Task.WhenAll(npcRequest, announcementsRequest);
             var npc = await npcRequest;
             var announcements = await announcementsRequest;
-            await InvokeAsync(() =>
-            {
-                if (npc?.Lines is { Length: > 0 and <= 50 } remoteLines &&
-                    remoteLines.All(line => !string.IsNullOrWhiteSpace(line) && line.Length <= 1000))
+                await InvokeAsync(() =>
                 {
-                    var name = string.IsNullOrWhiteSpace(npc.DisplayName) ? "Guardiã do Jardim" : npc.DisplayName;
-                    _lines = remoteLines.Select(line => (name!, line)).ToArray();
-                }
-                _announcement = announcements?.Items?.FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Text) && item.Text.Length <= 300)?.Text;
-                _contentSource = "Conteúdo remoto";
-                StateHasChanged();
-            });
+                    if (npc?.Lines is { Length: > 0 and <= 50 } remoteLines &&
+                        remoteLines.All(line => !string.IsNullOrWhiteSpace(line) && line.Length <= 1000))
+                    {
+                        var name = string.IsNullOrWhiteSpace(npc.DisplayName) ? "Guardiã do Jardim" : npc.DisplayName;
+                        // As falas passam a morar no cérebro da Guardiã: chegam como evento.
+                        _npc.Submit(new IntroLinesChanged(NowMs(), name!, remoteLines));
+                        RunNpcTick();
+                    }
+                    _announcement = announcements?.Items?.FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Text) && item.Text.Length <= 300)?.Text;
+                    _contentSource = "Conteúdo remoto";
+                    StateHasChanged();
+                });
         }
         catch (Exception) { /* API offline: falas locais e jogo continuam funcionando. */ }
     }
 
-    private async Task OnInteractAsync()
+    // --- Diálogo via IA de NPCs: eventos -> agendador com budget -> decisões ---
+    // O cérebro da Guardiã (GuardianBrain) decide sobre um snapshot do mundo; a UI é
+    // casca que aplica os comandos. A WebLLM e a API são produtores externos de
+    // respostas: chegam como ReplyArrived pela fila, nunca bloqueiam o tick.
+
+    private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+    private WorldSnapshot Snapshot() => new(_posX, _posZ, _near, _view is not null, _aiState == "ready", NowMs());
+
+    private void Dispatch(GameEvent e)
     {
-        if (_dialogOpen) { await AdvanceAsync(); }
-        else if (_near)
+        _npc.Submit(e);
+        RunNpcTick();
+    }
+
+    // Batida do agendador: o que não coube no orçamento do tick anterior retoma aqui
+    // (chamado também pelo MoveTick do loop de jogo, a 5 Hz).
+    private void RunNpcTick()
+    {
+        if (_npc.PendingEvents == 0) { return; }
+        foreach (var decision in _npc.Tick(Snapshot()))
         {
-            _line = 0;
-            _dialogOpen = true;
-            _replySource = string.Empty;
-            await SetFrozen(true);
-            await SpeakCurrentAsync();
-            StateHasChanged();
+            ApplyDecision(decision);
         }
     }
 
-    private async Task AdvanceAsync()
+    private void ApplyDecision(NpcDecision decision)
     {
-        if (!_dialogOpen) return;
-        if (_line + 1 < _lines.Length) _line++;
-        else { CloseDialog(); return; }
-        await SpeakCurrentAsync();
+        if (decision.View is not null)
+        {
+            _view = decision.View.CurrentLine >= 0 ? decision.View : null;
+        }
+        foreach (var command in decision.Commands)
+        {
+            switch (command)
+            {
+                case OpenDialog:
+                    _ = SetFrozen(true);
+                    break;
+                case Ultima.Npc.CloseDialog:
+                    _view = null;
+                    _ = JS.InvokeVoidAsync("game.voice.stopDictation");
+                    _ = SetFrozen(false);
+                    break;
+                case ShowLine(int index):
+                    _ = SpeakLineAsync(decision.View!.Lines[index]);
+                    break;
+                case SetReply(int index, var text, _):
+                    _ = SpeakLineAsync(new DialogLine(decision.View!.Lines[index].Speaker, text));
+                    break;
+            }
+        }
         StateHasChanged();
     }
+
+    private Task OnInteractAsync() { Dispatch(new PlayerInteracted(NowMs())); return Task.CompletedTask; }
+
+    private Task AdvanceAsync() { Dispatch(new PlayerInteracted(NowMs())); return Task.CompletedTask; }
 
     private async Task SubmitDialogAsync()
     {
         var text = _dialogDraft.Trim();
-        if (!_dialogOpen || text.Length == 0) return;
+        if (_view is null || _view.Thinking || text.Length == 0) return;
         if (text.Length > 300) text = text[..300];
         _dialogDraft = string.Empty;
-        var name = _lines.FirstOrDefault(line => line.Speaker != "Você").Speaker ?? "Guardiã do Jardim";
-        if (_thinking) return;
-        _lines = [.. _lines, ("Você", text), (name, "…")];
-        _line = _lines.Length - 1;
         _speechError = string.Empty;
-        _thinking = true;
-        StateHasChanged();
-        var reply = await AskGuardianAsync(text);
-        _thinking = false;
-        if (_lines.Length > 0) _lines[^1] = (name, reply);
-        await SpeakCurrentAsync();
-        StateHasChanged();
+        Dispatch(new PlayerSpoke(NowMs(), text));
+        // Produtores caros (WebLLM na GPU, API do jogo, fallback local) correm fora do
+        // tick; a resposta vira evento e o cérebro a aplica em um tick futuro.
+        var (reply, source) = await AskGuardianAsync(text);
+        Dispatch(new ReplyArrived(NowMs(), reply, source));
     }
 
     // A Guardiã responde pela API do jogo (IA quando configurada, regras caso contrário);
     // sem rede, cai numa resposta local para o diálogo nunca travar. Cada origem é marcada.
-    private async Task<string> AskGuardianAsync(string text)
+    private async Task<(string Reply, string Source)> AskGuardianAsync(string text)
     {
         // Modo principal: modelo local na GPU do jogador (WebGPU). Se não estiver pronto
         // ou falhar, cai na API do jogo (regras; o modo servidor Sufficit AI fica lá, inativo).
@@ -322,8 +344,7 @@
                 var local = await JS.InvokeAsync<string?>("game.ai.ask", TimeSpan.FromSeconds(60), text, _playerName ?? string.Empty);
                 if (!string.IsNullOrWhiteSpace(local))
                 {
-                    _replySource = "GPU do jogador (modelo local)";
-                    return local!.Length > 500 ? local[..500] : local;
+                    return (local!.Length > 500 ? local[..500] : local, "GPU do jogador (modelo local)");
                 }
             }
             catch (Exception ex) { Console.WriteLine($"[ia] local falhou: {ex.GetType().Name}: {ex.Message}"); }
@@ -354,36 +375,32 @@
                         var src = s.GetString();
                         origin = src == "rules" ? "servidor · regras" : $"servidor · {src}";
                     }
-                    _replySource = origin;
-                    return reply!.Length > 500 ? reply[..500] : reply;
+                    return (reply!.Length > 500 ? reply[..500] : reply, origin);
                 }
             }
         }
         catch (Exception ex) { Console.WriteLine($"[npc] chat falhou: {ex.GetType().Name}: {ex.Message}"); }
-        _replySource = "falas locais do jogo (sem rede)";
-        return "Os ventos do jardim estão agitados e mal ouço você. Tente de novo em instantes, caminhante.";
+        return ("Os ventos do jardim estão agitados e mal ouço você. Tente de novo em instantes, caminhante.", "falas locais do jogo (sem rede)");
     }
 
     private void CloseDialog()
     {
-        if (!_dialogOpen) return;
-        _dialogOpen = false;
+        if (_view is null) return;
+        _npc.Submit(new DialogClosedByPlayer(NowMs()));   // sincroniza o cérebro sem tick extra
+        _view = null;
         _ = JS.InvokeVoidAsync("game.voice.stopDictation");
         _ = SetFrozen(false);
         StateHasChanged();
     }
 
-    private async Task SpeakCurrentAsync()
-    {
-        if (_speakEnabled && _line >= 0 && _line < _lines.Length)
-            await JS.InvokeVoidAsync("game.voice.speak", _lines[_line].Text, _lines[_line].Speaker);
-    }
+    private Task SpeakLineAsync(DialogLine line) =>
+        _speakEnabled ? JS.InvokeVoidAsync("game.voice.speak", line.Text, line.Speaker).AsTask() : Task.CompletedTask;
 
     private async Task ToggleSpeakAsync()
     {
         _speakEnabled = !_speakEnabled;
         await JS.InvokeVoidAsync("game.voice.setSpeakPref", _speakEnabled);
-        if (_speakEnabled && _dialogOpen) await SpeakCurrentAsync();
+        if (_speakEnabled && _view is not null) await SpeakLineAsync(_view.Lines[_view.CurrentLine]);
     }
 
     private async Task ToggleDictationAsync()
@@ -428,7 +445,12 @@
 
     private async Task Restart()
     {
-        if (_dialogOpen) { _dialogOpen = false; await SetFrozen(false); }
+        if (_view is not null)
+        {
+            _npc.Submit(new DialogClosedByPlayer(NowMs()));
+            _view = null;
+            await SetFrozen(false);
+        }
         await JS.InvokeVoidAsync("game.resetPlayer");
     }
 
