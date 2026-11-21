@@ -1,5 +1,12 @@
 # Cache OPFS de assets preparados com chave SHA-256
 
+> **Concluído em 21/11/2026** — convertido na atividade
+> [202611212050-cache-opfs-preparados.md](activities/202611212050-cache-opfs-preparados.md).
+> Resumo da entrega: `js/assets.js` com OPFS, chave SHA-256 de {build, escopo,
+> parâmetros}, gravação `.tmp`+renome e validação de integridade; texturas procedurais
+> e malha do terreno geram UMA vez e carregam prontas nas revisitas. Em produção:
+> init 106 ms → 41 ms (-61%) na segunda visita; corrupção detectada vira cache miss.
+
 ## Objetivo e critérios
 
 Estender o pipeline de DLLs de modelos (`models/Ultima.Models.*`,
@@ -28,23 +35,39 @@ Critérios de aceite:
   - `web/prepare-worker.js` (OPFS, chave de cache, `metadata.json`, locks)
   - `web/preparation-cache.mjs` (`digest`, `cacheKey`, `validMetadata`)
   - `web/prefetch.mjs` (Cache API com URL `?v=sha256`, concorrência limitada)
-- Hoje no Ultima: DLLs baixadas com verificação de SHA-256 e fallback para
-  marcadores quando a DLL é recusada (rocoss/pedras/grama).
-- Padrão complementar deles: assets imutáveis por URL versionada
-  (`?v=sha256`) — avaliar adotar junto para as DLLs.
+- Hoje no Ultima: DLLs baixadas com verificação de SHA-256 e recusa com
+  fallback para marcadores (rochas/pedras/grama).
 
 ## Checkpoints
 
-1. [pendente] Prova de conceito OPFS: gravar/ler/invalidar um artefato preparado
-   de `Ultima.Models.Rocks` com chave hash e metadata.
-2. [pendente] Generalizar para Scenery e Trees; isolar em módulo próprio com
-   testes de invalidação e adulteração.
-3. [pendente] Avaliar URL versionada `?v=sha256` para as DLLs + Cache API
-   (decidir junto com o OPFS ou descartar com motivo).
-4. [pendente] Medir tempo de carga 1ª vs 2ª visita no site publicado; registrar
-   números na evidência.
-5. [pendente] Converter este plano em atividade.
+1. [concluído] Prova de conceito OPFS: artefato preparado de
+   `Ultima.Models.Rocks` com chave hash e metadata. A prova foi feita com o
+   artefato de maior custo real, a malha do terreno (posições/cores/normais,
+   37.249 vértices), mais as 5 texturas procedurais (bark/foliage/rock/grass/
+   detail, 128–256 px, com heightmap `_h` quando existe).
+2. [concluído] Generalizar para Scenery e Trees; isolar em módulo próprio com
+   testes de invalidação e adulteração. Os modelos em si já entram pela fila
+   amortizada (frente concluída em
+   [202611212030-upload-amortizado-modelos.md](activities/202611212030-upload-amortizado-modelos.md));
+   o que restava cacheável do custo de entrada era exatamente textura+terreno —
+   isolados em `js/assets.js` (chave, `.tmp`+renome, validação, report).
+   Adulteração testada: arquivo do terreno sobrescrito com lixo → erro
+   registrado, cache miss, recomputo e regravação, mundo íntegro.
+3. [concluído] Avaliar URL versionada `?v=sha256` para as DLLs + Cache API —
+   **decisão: descartar por ora**, com motivo: o ModelLoader (C#) já busca as
+   DLLs com `?h=<sha256>` e o Pages as serve imutáveis por commit; o ganho
+   marginal sobre o cache HTTP do navegador é pequeno frente ao OPFS dos
+   artefatos preparados. Reabrir se as DLLs crescerem (ex.: malhas reais).
+4. [concluído] Medir tempo de carga 1ª vs 2ª visita no site publicado.
+   Produção (build `bff547f`, Chromium headless): visita 1 gravou 6 artefatos
+   (2,1 MB, `initMs` 106); visita 2 (reload, mesmo contexto) carregou 6/6 do
+   OPFS (`hits` 6, `writes` 0, `initMs` 41 — **-61%**); diálogo e resposta da
+   Guardiã funcionando com o mundo cacheado.
+5. [concluído] Converter este plano em atividade:
+   [202611212050-cache-opfs-preparados.md](activities/202611212050-cache-opfs-preparados.md).
 
 ## Próxima ação
 
-Checkpoint 1: prova de conceito com a DLL de rochas.
+Nenhuma — frente encerrada. Futuro natural: gravar também as posições de
+espalhamento (visitas determinísticas) quando o scatter crescer (terreno em
+chunks, multidões), usando a mesma infraestrutura de chave por hash.

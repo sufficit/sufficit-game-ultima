@@ -13,10 +13,13 @@ Prioritários:
 
 1. [PLAN-WORKER-OFFSCREEN-CANVAS.md](PLAN-WORKER-OFFSCREEN-CANVAS.md) —
    mover o loop Babylon.js para um Web Worker com OffscreenCanvas.
-2. [PLAN-DLL-OPFS-CACHE.md](PLAN-DLL-OPFS-CACHE.md) —
-   cache OPFS de assets preparados com chave SHA-256, estendendo o pipeline de DLLs.
-3. [PLAN-NPC-AI-DECISIONS.md](PLAN-NPC-AI-DECISIONS.md) —
-   IA de NPCs por decisões sobre snapshot com budget por tick; WebLLM como produtor orquestrado.
+2. ✅ [PLAN-DLL-OPFS-CACHE.md](PLAN-DLL-OPFS-CACHE.md) — **concluído em 21/11/2026**:
+   OPFS com chave SHA-256 de build+escopo; texturas e terreno prontos nas revisitas
+   (init 106→41 ms em produção). Atividade:
+   [202611212050-cache-opfs-preparados.md](activities/202611212050-cache-opfs-preparados.md).
+3. [PLAN-NPC-AI-DECISIONS.md](PLAN-NPC-AI-DECISIONS.md) — **em andamento** (3/4
+   checkpoints): snapshot/decisões/agendador com budget entregues e validados em
+   produção; falta o segundo NPC para escalar o desenho.
 4. ✅ [PLAN-ASSET-UPLOAD-BUDGET.md](PLAN-ASSET-UPLOAD-BUDGET.md) — **concluído em
    21/11/2026**: fila com orçamento de 4 ms/frame, scatter em lotes e
    `game.perf.report()`. Atividade:
