@@ -17,6 +17,10 @@
     const PLAYER_RADIUS = 0.25;
     const TICK_MS = 200;
     const DEADZONE = 0.18;
+    // Orçamento de CPU por frame para subir modelos (texturas, malhas, scatter). Referência:
+    // lineage-rust amortiza a entrada de personagens com 4 ms/frame (CHARACTER_BUDGET_MS).
+    const MODEL_BUDGET_MS = 4.0;
+    const MODEL_SCATTER_BATCH = 24; // instâncias por passo de espalhamento
 
     let engine = null;
     let scene = null;
@@ -459,32 +463,35 @@
     // Árvores: espalha instâncias de um modelo carregado (descritor C#). Todas as partes do
     // modelo têm origem no ponto de apoio (chão) e recebem a mesma escala, então o encaixe
     // entre tronco e copa garantido pelo Ultima.Models.Core se mantém em qualquer tamanho.
-    function scatterTrees(protos, sink, count) {
-        const placed = [];
-        let tries = 0;
-        while (placed.length < count && tries < 2400) {
-            tries += 1;
-            const x = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
-            const z = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
-            const r = Math.hypot(x, z);
-            if (r < 6.5) { continue; }                                                     // clareira inicial
-            if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 5.5) { continue; }    // clareira da Guardiã
-            if (pathBlend(x, z) < 0.75) { continue; }                                      // longe da trilha
-            const y = terrainHeight(x, z);
-            if (y > 17) { continue; }                                                      // acima da linha das árvores
-            if (slopeAt(x, z) > 0.5) { continue; }                                         // encosta íngreme
-            const s = 0.75 + Math.random() * 0.9;
-            const sy = s * (0.9 + Math.random() * 0.5);
-            const n = placed.length;
-            for (const proto of protos) {
-                const inst = proto.createInstance(proto.name.replace('model-', 'tree-') + '-' + n);
-                inst.position.set(x, y - sink * sy, z);
-                inst.scaling.set(s, sy, s);
-                inst.rotation.y = Math.random() * Math.PI * 2;
+    // Resumível: cada chamada coloca até "n" árvores e devolve true ao terminar, para a fila
+    // de modelos espalhar em lotes sem estourar o orçamento do frame.
+    function makeTreePlacer(protos, sink, count) {
+        let placed = 0, tries = 0;
+        return function (n) {
+            while (placed < count && tries < 2400 && n > 0) {
+                tries += 1;
+                const x = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
+                const z = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
+                const r = Math.hypot(x, z);
+                if (r < 6.5) { continue; }                                                     // clareira inicial
+                if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 5.5) { continue; }    // clareira da Guardiã
+                if (pathBlend(x, z) < 0.75) { continue; }                                      // longe da trilha
+                const y = terrainHeight(x, z);
+                if (y > 17) { continue; }                                                      // acima da linha das árvores
+                if (slopeAt(x, z) > 0.5) { continue; }                                         // encosta íngreme
+                const s = 0.75 + Math.random() * 0.9;
+                const sy = s * (0.9 + Math.random() * 0.5);
+                for (const proto of protos) {
+                    const inst = proto.createInstance(proto.name.replace('model-', 'tree-') + '-' + placed);
+                    inst.position.set(x, y - sink * sy, z);
+                    inst.scaling.set(s, sy, s);
+                    inst.rotation.y = Math.random() * Math.PI * 2;
+                }
+                placed += 1;
+                n -= 1;
             }
-            placed.push(n);
-        }
-        return placed;
+            return placed >= count || tries >= 2400;
+        };
     }
 
     // ---------- Renderizador genérico de modelos (descritores do Ultima.Models.Core) ----------
@@ -505,52 +512,47 @@
         return mat;
     }
 
-    // Cria um protótipo invisível por grupo do descritor (origem = chão do modelo).
-    function buildModelProtos(desc) {
-        const mats = {};
-        for (const m of desc.materials) { mats[m.id] = modelMaterial(m); }
-        const protos = [];
-        for (const g of desc.groups) {
-            const meshes = g.parts.map((p) => {
-                let mesh;
-                if (p.shape === 'cylinder') { mesh = BABYLON.MeshBuilder.CreateCylinder(p.id, { diameterBottom: p.diameterBottom, diameterTop: p.diameterTop, height: p.height, tessellation: p.tessellation }, scene); }
-                else if (p.shape === 'capsule') { mesh = BABYLON.MeshBuilder.CreateCapsule(p.id, { height: p.height, radius: (p.diameterBottom || p.diameter || 0) / 2, subdivisions: p.subdivisions || 4 }, scene); }
-                else if (p.shape === 'icosphere') { mesh = BABYLON.MeshBuilder.CreateIcoSphere(p.id, { radius: p.diameter / 2, subdivisions: p.subdivisions }, scene); }
-                else if (p.shape === 'sphere') { mesh = BABYLON.MeshBuilder.CreateSphere(p.id, { diameter: p.diameter, segments: p.tessellation }, scene); }
-                else if (p.shape === 'plane') {
-                    // Plano vertical (vegetação com alfa); depth > width marca o plano cruzado a 90°.
-                    mesh = BABYLON.MeshBuilder.CreatePlane(p.id, { width: Math.max(p.width || 1, p.depth || 0), height: p.height }, scene);
-                    if (p.depth > p.width) { mesh.rotation.y = Math.PI / 2; mesh.bakeCurrentTransformIntoVertices(); }
-                }
-                else { mesh = BABYLON.MeshBuilder.CreateBox(p.id, { width: p.width || 1, height: p.height, depth: p.depth || 1 }, scene); }
-                // Escala não uniforme (ex.: sapatos achatados): embutida nos vértices em
-                // torno do centro, então a base efetiva desce scaleY·altura/2 abaixo dele.
-                const sy = p.scaleY || 1;
-                mesh.position.set(p.x, p.baseY + p.height / 2 * sy, p.z);   // descritor posiciona pela base
-                if (p.scaleX || p.scaleY || p.scaleZ) {
-                    mesh.scaling.set(p.scaleX || 1, sy, p.scaleZ || 1);
-                    mesh.bakeCurrentTransformIntoVertices();
-                }
-                return mesh;
-            });
-            const merged = meshes.length === 1 ? meshes[0] : BABYLON.Mesh.MergeMeshes(meshes, true, true, undefined, false, true);
-            if (meshes.length === 1) { merged.bakeCurrentTransformIntoVertices(); }
-            merged.name = 'model-' + desc.id + '-' + g.id;
-            for (const mod of g.modifiers) {
-                if (mod.kind === 'jitter') { jitterMesh(merged, mod.amount, mod.seed); }
-                else if (mod.kind === 'flute') { fluteMesh(merged, mod.amount, mod.seed); }
-                else if (mod.kind === 'ao') { bakeVertexAO(merged, mod.amount, mod.seed); }
+    // Cria um protótipo invisível de UM grupo do descritor (origem = chão do modelo).
+    // Um grupo por passo: a fila de modelos corta o trabalho pelo orçamento do frame.
+    function buildModelGroup(desc, g, mats) {
+        const meshes = g.parts.map((p) => {
+            let mesh;
+            if (p.shape === 'cylinder') { mesh = BABYLON.MeshBuilder.CreateCylinder(p.id, { diameterBottom: p.diameterBottom, diameterTop: p.diameterTop, height: p.height, tessellation: p.tessellation }, scene); }
+            else if (p.shape === 'capsule') { mesh = BABYLON.MeshBuilder.CreateCapsule(p.id, { height: p.height, radius: (p.diameterBottom || p.diameter || 0) / 2, subdivisions: p.subdivisions || 4 }, scene); }
+            else if (p.shape === 'icosphere') { mesh = BABYLON.MeshBuilder.CreateIcoSphere(p.id, { radius: p.diameter / 2, subdivisions: p.subdivisions }, scene); }
+            else if (p.shape === 'sphere') { mesh = BABYLON.MeshBuilder.CreateSphere(p.id, { diameter: p.diameter, segments: p.tessellation }, scene); }
+            else if (p.shape === 'plane') {
+                // Plano vertical (vegetação com alfa); depth > width marca o plano cruzado a 90°.
+                mesh = BABYLON.MeshBuilder.CreatePlane(p.id, { width: Math.max(p.width || 1, p.depth || 0), height: p.height }, scene);
+                if (p.depth > p.width) { mesh.rotation.y = Math.PI / 2; mesh.bakeCurrentTransformIntoVertices(); }
             }
-            merged.material = mats[g.material];
-            merged.isVisible = false;
-            if (g.castShadow && sceneShadows) { sceneShadows.addShadowCaster(merged); }
-            protos.push(merged);
+            else { mesh = BABYLON.MeshBuilder.CreateBox(p.id, { width: p.width || 1, height: p.height, depth: p.depth || 1 }, scene); }
+            // Escala não uniforme (ex.: sapatos achatados): embutida nos vértices em
+            // torno do centro, então a base efetiva desce scaleY·altura/2 abaixo dele.
+            const sy = p.scaleY || 1;
+            mesh.position.set(p.x, p.baseY + p.height / 2 * sy, p.z);   // descritor posiciona pela base
+            if (p.scaleX || p.scaleY || p.scaleZ) {
+                mesh.scaling.set(p.scaleX || 1, sy, p.scaleZ || 1);
+                mesh.bakeCurrentTransformIntoVertices();
+            }
+            return mesh;
+        });
+        const merged = meshes.length === 1 ? meshes[0] : BABYLON.Mesh.MergeMeshes(meshes, true, true, undefined, false, true);
+        if (meshes.length === 1) { merged.bakeCurrentTransformIntoVertices(); }
+        merged.name = 'model-' + desc.id + '-' + g.id;
+        for (const mod of g.modifiers) {
+            if (mod.kind === 'jitter') { jitterMesh(merged, mod.amount, mod.seed); }
+            else if (mod.kind === 'flute') { fluteMesh(merged, mod.amount, mod.seed); }
+            else if (mod.kind === 'ao') { bakeVertexAO(merged, mod.amount, mod.seed); }
         }
-        return protos;
+        merged.material = mats[g.material];
+        merged.isVisible = false;
+        if (g.castShadow && sceneShadows) { sceneShadows.addShadowCaster(merged); }
+        return merged;
     }
 
     const modelRegistry = new Map();
-    const modelStatus = { loaded: [], placeholders: [], errors: [], log: [] };
+    const modelStatus = { loaded: [], placeholders: [], errors: [], log: [], queue: 0, timings: [] };
     // Entidades (jogador, Guardiã, remotos) que esperam um modelo chegar do carregador C#.
     const modelAwaiters = new Map();   // id do modelo -> [{ make, apply, fallback }]
     const characterSpawns = new Map(); // chave 'modelo#nome' -> { root, onModel, onFallback }
@@ -597,47 +599,151 @@
         }
     }
 
-    // O que fazer no mundo quando cada modelo chega do carregador C#.
+    // ---------- Fila de entrada de modelos com orçamento por frame ----------
+    // O registro de uma DLL (texturas procedurais, malhas, modificadores e espalhamento)
+    // entra numa fila drenada pelo loop de render: no máximo MODEL_BUDGET_MS de CPU por
+    // frame, sempre executando ao menos um passo (padrão do lineage-rust: entrada
+    // amortizada, sem travar o frame). Um passo que falha derruba só o modelo dele.
+
+    const modelQueue = [];
+
+    // O que fazer no mundo quando cada modelo chega do carregador C#: geradores de passos
+    // de espalhamento em lotes.
     const modelPlacements = {
-        'tree.pine': (protos, desc) => scatterTrees(protos, desc.groundSink || 0, 64),
-        'rock.boulder': (protos, desc) => scatterRocks(protos, desc),
+        'tree.pine': function* (protos, desc) {
+            yield* batchedSteps('árvores', makeTreePlacer(protos, desc.groundSink || 0, 64));
+        },
+        // Pedras: mesmas regras do protótipo antigo (26 por grupo, escala 0,6–2,2,
+        // centro afundado 0,25 m no terreno).
+        'rock.boulder': function* (protos) {
+            for (const proto of protos) {
+                yield* batchedSteps('pedras', makeInstancePlacer(proto, 26, { minScale: 0.6, maxScale: 2.2, maxAlt: 26, maxSlope: 0.9, sink: -0.25, minR: 6 }));
+            }
+        },
         // Tufos de grama: mesmas 420 posições/regras do protótipo antigo (vale, solo de grama).
-        'scenery.grass': (protos) => scatterInstances(protos[0], 420, { minScale: 0.7, maxScale: 1.5, maxAlt: 14, maxSlope: 0.55, sink: 0, minR: 4.5 })
+        'scenery.grass': function* (protos) {
+            yield* batchedSteps('grama', makeInstancePlacer(protos[0], 420, { minScale: 0.7, maxScale: 1.5, maxAlt: 14, maxSlope: 0.55, sink: 0, minR: 4.5 }));
+        }
     };
 
-    // Pedras: chegam como modelos C# (rock.boulder); espalha igual ao protótipo antigo
-    // (26 instâncias, escala 0,6–2,2, centro afundado 0,25 m no terreno).
-    function scatterRocks(protos, desc) {
-        const placed = [];
-        for (const proto of protos) {
-            placed.push(...scatterInstances(proto, 26, { minScale: 0.6, maxScale: 2.2, maxAlt: 26, maxSlope: 0.9, sink: -0.25, minR: 6 }));
+    // Embrulha um colocador resumível em passos de lote para a fila de modelos.
+    function* batchedSteps(label, placer) {
+        let done = false;
+        while (!done) {
+            yield { label: label, run: function () { done = placer(MODEL_SCATTER_BATCH); } };
         }
-        return placed;
     }
 
-    // Espalha instâncias de um protótipo com filtros de altitude/inclinação.
-    function scatterInstances(proto, count, opts) {
-        const placed = [];
-        let tries = 0;
-        while (placed.length < count && tries < count * 40) {
-            tries += 1;
-            const x = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
-            const z = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
-            const r = Math.hypot(x, z);
-            if (r < (opts.minR || 5)) { continue; }
-            if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 4.5) { continue; }
-            if (pathBlend(x, z) < 0.72) { continue; }
-            const y = terrainHeight(x, z);
-            if (opts.maxAlt !== undefined && y > opts.maxAlt) { continue; }
-            if (slopeAt(x, z) > (opts.maxSlope || 0.6)) { continue; }
-            const s = opts.minScale + Math.random() * ((opts.maxScale || opts.minScale) - opts.minScale);
-            const inst = proto.createInstance(proto.name + '-i' + placed.length);
-            inst.position.set(x, y + (opts.sink || 0) * s, z);
-            inst.rotation.y = Math.random() * Math.PI * 2;
-            inst.scaling.set(s, s * (0.85 + Math.random() * 0.5), s);
-            placed.push(inst);
+    // Trabalho de um modelo em passos: um material por passo, um grupo por passo,
+    // registro no mundo, e o espalhamento em lotes.
+    function* modelWork(desc, placeholder) {
+        const mats = {};
+        const protos = [];
+        let registered = false;
+        for (const m of desc.materials) {
+            yield { label: desc.id + ':material ' + m.id, run: function () { mats[m.id] = modelMaterial(m); } };
         }
-        return placed;
+        for (const g of desc.groups) {
+            yield { label: desc.id + ':grupo ' + g.id, run: function () { protos.push(buildModelGroup(desc, g, mats)); } };
+        }
+        yield {
+            label: desc.id + ':registrar',
+            run: function () {
+                if (modelRegistry.has(desc.id)) { return; }   // placeholder perdeu a corrida para o modelo real
+                modelRegistry.set(desc.id, { desc: desc, protos: protos, placeholder: !!placeholder });
+                (placeholder ? modelStatus.placeholders : modelStatus.loaded).push(desc.id + ' v' + desc.version);
+                // Personagens (jogador, Guardiã, remotos) trocam o fallback pelas malhas do modelo.
+                const waiting = modelAwaiters.get(desc.id);
+                if (waiting) {
+                    for (const w of waiting) { attachCharacterModel(desc.id, w.entry); }
+                    modelAwaiters.delete(desc.id);
+                }
+                registered = true;
+            }
+        };
+        if (registered) {
+            const place = modelPlacements[desc.id];
+            if (place) { yield* place(protos, desc); }
+        }
+    }
+
+    function enqueueModel(desc, placeholder) {
+        modelQueue.push({
+            timing: { id: desc.id, queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
+            work: modelWork(desc, placeholder)
+        });
+        modelStatus.queue = modelQueue.length;
+    }
+
+    // Drena a fila até o orçamento do frame; o primeiro passo do item da frente sempre roda.
+    function drainModelQueue(frameStart) {
+        while (modelQueue.length) {
+            if (modelQueue[0].timing.steps > 0 && performance.now() - frameStart >= MODEL_BUDGET_MS) { break; }
+            const item = modelQueue[0];
+            let step;
+            try { step = item.work.next(); }
+            catch (e) { modelQueue.shift(); modelFailed(item, e); continue; }
+            if (step.done) {
+                modelQueue.shift();
+                item.timing.doneAt = Math.round(performance.now());
+                modelStatus.timings.push(item.timing);
+                continue;
+            }
+            const s0 = performance.now();
+            try { step.value.run(); }
+            catch (e) { modelQueue.shift(); modelFailed(item, e); continue; }
+            const stepMs = performance.now() - s0;
+            item.timing.cpuMs = Math.round((item.timing.cpuMs + stepMs) * 100) / 100;
+            item.timing.steps += 1;
+            item.timing.maxStepMs = Math.round(Math.max(item.timing.maxStepMs, stepMs) * 100) / 100;
+        }
+        modelStatus.queue = modelQueue.length;
+    }
+
+    function modelFailed(item, e) {
+        item.timing.error = String(e && e.message || e);
+        item.timing.doneAt = Math.round(performance.now());
+        modelStatus.errors.push(item.timing.id + ': ' + item.timing.error);
+        modelStatus.timings.push(item.timing);
+        modelStatus.queue = modelQueue.length;
+        console.warn('[modelos] falha ao processar', item.timing.id, e);
+    }
+
+    // Monitor de custo de CPU do loop de render (evidência da carga sem travadas).
+    const perfCpu = [];
+    let perfCpuMax = 0;
+    function framePerf(cpuMs) {
+        perfCpu.push(Math.round(cpuMs * 100) / 100);
+        if (perfCpu.length > 600) { perfCpu.shift(); }
+        if (cpuMs > perfCpuMax) { perfCpuMax = cpuMs; }
+    }
+
+    // Espalha instâncias de um protótipo com filtros de altitude/inclinação (resumível,
+    // em lotes, para o orçamento por frame da fila de modelos).
+    function makeInstancePlacer(proto, count, opts) {
+        let placed = 0, tries = 0;
+        return function (n) {
+            while (placed < count && tries < count * 40 && n > 0) {
+                tries += 1;
+                const x = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
+                const z = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
+                const r = Math.hypot(x, z);
+                if (r < (opts.minR || 5)) { continue; }
+                if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 4.5) { continue; }
+                if (pathBlend(x, z) < 0.72) { continue; }
+                const y = terrainHeight(x, z);
+                if (opts.maxAlt !== undefined && y > opts.maxAlt) { continue; }
+                if (slopeAt(x, z) > (opts.maxSlope || 0.6)) { continue; }
+                const s = opts.minScale + Math.random() * ((opts.maxScale || opts.minScale) - opts.minScale);
+                const inst = proto.createInstance(proto.name + '-i' + placed);
+                inst.position.set(x, y + (opts.sink || 0) * s, z);
+                inst.rotation.y = Math.random() * Math.PI * 2;
+                inst.scaling.set(s, s * (0.85 + Math.random() * 0.5), s);
+                placed += 1;
+                n -= 1;
+            }
+            return placed >= count || tries >= count * 40;
+        };
     }
 
     function buildScene(canvas) {
@@ -1049,6 +1155,8 @@
             });
 
             engine.runRenderLoop(() => {
+                const frameStart = performance.now();
+                drainModelQueue(frameStart);
                 const delta = Math.min(0.05, engine.getDeltaTime() / 1000);
                 const pad = pollGamepad();
                 if (!frozen) {
@@ -1060,6 +1168,7 @@
                 checkNear();
                 camera.setTarget(player.position.add(CAM_UP));
                 scene.render();
+                framePerf(performance.now() - frameStart);
                 tick(performance.now());
             });
             window.addEventListener('resize', () => engine.resize());
@@ -1100,23 +1209,14 @@
         setMapTiles,
         setMapJobs,
         models: {
-            // Chamado pelo ModelLoader (C#) com o descritor JSON de cada modelo.
+            // Chamado pelo ModelLoader (C#) com o descritor JSON de cada modelo. O trabalho
+            // pesado entra na fila com orçamento por frame (game.perf.report() mostra o efeito).
             register(json, placeholder) {
                 try {
                     const desc = JSON.parse(json);
                     if (!scene) { throw new Error('cena ainda não criada'); }
                     if (modelRegistry.has(desc.id)) { return false; }
-                    const protos = buildModelProtos(desc);
-                    modelRegistry.set(desc.id, { desc, protos, placeholder: !!placeholder });
-                    (placeholder ? modelStatus.placeholders : modelStatus.loaded).push(desc.id + ' v' + desc.version);
-                    const place = modelPlacements[desc.id];
-                    if (place) { place(protos, desc); }
-                    // Personagens (jogador, Guardiã, remotos) trocam o fallback pelas malhas do modelo.
-                    const waiting = modelAwaiters.get(desc.id);
-                    if (waiting) {
-                        for (const w of waiting) { attachCharacterModel(desc.id, w.entry); }
-                        modelAwaiters.delete(desc.id);
-                    }
+                    enqueueModel(desc, placeholder);
                     return true;
                 } catch (e) {
                     modelStatus.errors.push(String(e && e.message || e));
@@ -1127,6 +1227,24 @@
             loaderDone(log) { modelStatus.log = Array.from(log || []); },
             status() { return JSON.parse(JSON.stringify(modelStatus)); },
             get(id) { const m = modelRegistry.get(id); return m ? m.desc : null; }
+        },
+        perf: {
+            // Custo de CPU do loop de render (sem incluir a espera de GPU): amostras dos
+            // últimos 600 frames, medianas e máximos para validar o orçamento dos modelos.
+            report() {
+                const c = perfCpu.slice().sort((a, b) => a - b);
+                const p = (q) => c.length ? c[Math.min(c.length - 1, Math.floor(c.length * q))] : 0;
+                return {
+                    budgetMs: MODEL_BUDGET_MS,
+                    batch: MODEL_SCATTER_BATCH,
+                    frames: perfCpu.length,
+                    medianaMs: p(0.5),
+                    p95Ms: p(0.95),
+                    p99Ms: p(0.99),
+                    maxMs: Math.round(perfCpuMax * 100) / 100,
+                    over33: perfCpu.filter((v) => v > 33).length
+                };
+            }
         }
     };
 })();
