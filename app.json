@@ -1,9 +1,9 @@
 {
   "$schema": "https://schemas.sufficit.com.br/genius/workspace-app-v1.json",
   "schemaVersion": 1,
-  "runtime": "python",
+  "runtime": "aspNet",
   "source": "app",
-  "port": 8000,
+  "port": 8080,
   "healthPath": "/health",
   "spaFallback": false,
   "notFound": null

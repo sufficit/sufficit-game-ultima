@@ -220,11 +220,14 @@ class Cliente:
                 line = line[len("candidate:"):]
             try:
                 c = candidate_from_sdp(line)
-                c.sdpMid = str(d.get("sdpMid") or "0")
-                c.sdpMLineIndex = int(d.get("sdpMLineIndex") or 0)
+                mid = d.get("sdpMid")
+                mline = d.get("sdpMLineIndex")
+                c.sdpMid = str(mid) if mid is not None else "0"
+                c.sdpMLineIndex = int(mline) if mline is not None else 0
+                print(f"[voz] ICE recebido: mid={c.sdpMid!r} mline={c.sdpMLineIndex} ip={c.ip}:{c.port}")
                 await pc.addIceCandidate(c)
             except Exception as e:
-                print(f"[voz] ice ignorado: {e}")
+                print(f"[voz] ICE ignorado (payload={str(d)[:220]!r}): {type(e).__name__}: {e}")
 
     async def sinal(self, pid, kind, data) -> None:
         if not pid or pid == self.my_id or pid not in self.peers or not data:
@@ -242,6 +245,11 @@ class Cliente:
                     await self._add_ice(pc, d)
                 peer["pendentes"] = []
                 self._normalizar_transceivers(pc)
+                # offer sem m-line de áudio (navegador sem microfone): o transceiver local
+                # não casou com nenhuma m-line e _offerDirection fica None -> aiortc quebra.
+                for t in pc.getTransceivers():
+                    if getattr(t, "_offerDirection", "x") is None:
+                        t._offerDirection = "inactive"
                 await pc.setLocalDescription()
                 self.signal(pid, "answer", {"type": pc.localDescription.type,
                                             "sdp": pc.localDescription.sdp})
@@ -267,20 +275,27 @@ class Cliente:
     # ---------- percepção de áudio do navegador ----------
     async def _ouvir(self, track) -> None:
         ultima = time.time()
+        primeiro = True
         while True:
             try:
                 frame = await asyncio.wait_for(track.recv(), timeout=20)
             except Exception:
                 return
             self.stats["quadros_recebidos"] += 1
+            if primeiro:
+                primeiro = False
+                try:
+                    print(f"[voz] primeiro quadro: format={getattr(frame, 'format', '?')} layout={getattr(frame, 'layout', '?')} samples={frame.samples} planes={len(frame.planes)}")
+                except Exception as e:
+                    print(f"[voz] falha ao descrever quadro: {e!r}")
             if time.time() - ultima >= 2.0:
                 try:
-                    pcm = frame.planes[0].to_bytes()
+                    pcm = bytes(frame.planes[0])
                     nivel = audioop.rms(pcm, 2)
                     self.stats["nivel_max"] = max(self.stats["nivel_max"], nivel)
-                    print(f"[voz] nível de áudio recebido: RMS {nivel}")
-                except Exception:
-                    pass
+                    print(f"[voz] nível de áudio recebido: RMS {nivel} ({len(pcm)} bytes)")
+                except Exception as e:
+                    print(f"[voz] erro RMS: {e!r}")
                 ultima = time.time()
 
     # ---------- ciclo principal ----------

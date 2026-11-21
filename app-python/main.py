@@ -158,7 +158,16 @@ def _rules_reply(npc: dict, text: str) -> str:
     return random.choice(npc.get("fallback") or ["Siga a trilha, caminhante."])
 
 
+# Modo servidor de IA dos NPCs (Sufficit AI, API no formato OpenAI /chat/completions).
+# INATIVO por padrão: só liga com NPC_SERVER_AI=sufficit e NPC_LLM_URL/KEY/MODEL definidos.
+# O modo principal é a IA local na GPU do jogador (WebGPU, src/wwwroot/js/ai.js).
+def _server_ai_enabled() -> bool:
+    return os.environ.get("NPC_SERVER_AI", "off").strip().lower() in ("sufficit", "on")
+
+
 def _llm_reply(npc: dict, history: list, player: str, text: str) -> str | None:
+    if not _server_ai_enabled():
+        return None
     url = os.environ.get("NPC_LLM_URL", "").strip()
     key = os.environ.get("NPC_LLM_KEY", "").strip()
     model = os.environ.get("NPC_LLM_MODEL", "").strip()

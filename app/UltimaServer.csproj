@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    UltimaServer: backend autoritativo do jogo Ultima (ASP.NET Core .NET 10).
+    Mantém a API pública do antigo backend Python: conteúdo /v1/*, sinalização /v1/net/*,
+    Guardiã /v1/npcs/guardia/chat e núcleo do jogo /v1/game/*.
+    Core.*.cs é cópia do contrato models/Ultima.Models.Core.
+    Build controlado da Run: sem PackageReference, sem apphost nativo (UseAppHost=false)
+    e com packages.lock.json versionado para restauração offline/locked-mode.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseAppHost>false</UseAppHost>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Update="content.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
