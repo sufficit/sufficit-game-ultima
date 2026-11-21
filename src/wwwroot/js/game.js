@@ -469,12 +469,17 @@
             if (y > 17) { continue; }                                                      // acima da linha das árvores
             if (slopeAt(x, z) > 0.5) { continue; }                                         // encosta íngreme
             const s = 0.75 + Math.random() * 0.9;
+            // O cilindro do tronco tem origem no centro (altura 2,6): sobe meia altura para a
+            // base ficar no chão (levemente enterrada por causa da inclinação). A copa (base em
+            // 2,0 no protótipo) usa a mesma origem e escala, então encaixa no topo do tronco.
+            const sy = s * (0.9 + Math.random() * 0.5);
+            const base = y - 0.25;
             const trunk = trunkProto.createInstance('tree-trunk-' + placed.length);
-            trunk.position.set(x, y - 0.1, z);
-            trunk.scaling.set(s, s * (0.9 + Math.random() * 0.5), s);
+            trunk.position.set(x, base + 1.3 * sy, z);
+            trunk.scaling.set(s, sy, s);
             trunk.rotation.y = Math.random() * Math.PI * 2;
             const crown = crownProto.createInstance('tree-crown-' + placed.length);
-            crown.position.set(x, y - 0.1, z);
+            crown.position.set(x, base, z);
             crown.scaling.copyFrom(trunk.scaling);
             crown.rotation.y = Math.random() * Math.PI * 2;
             placed.push(trunk);

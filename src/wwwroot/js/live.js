@@ -15,6 +15,7 @@
 
     let dotnet = null;
     let token = null;
+    let resuming = false; // valida o token salvo antes de enviar comandos
     let myId = null;
     let since = 0;
     let stopped = false;
@@ -181,7 +182,7 @@
 
     // ---------- comandos do jogador local ----------
     function pose(x, z, ry) {
-        if (!token || stopped || !Number.isFinite(x) || !Number.isFinite(z)) { return; }
+        if (!token || resuming || stopped || !Number.isFinite(x) || !Number.isFinite(z)) { return; }
         const now = Date.now();
         const bigMove = !lastSent || Math.abs(x - lastSent.x) + Math.abs(z - lastSent.z) > POSE_JUMPM;
         if (now - lastPoseAt < POSE_MS && lastSent && !bigMove) { return; }
@@ -194,7 +195,7 @@
 
     function sendChat(text) {
         const clean = String(text || '').slice(0, 300);
-        if (!clean || !token || stopped) { return; }
+        if (!clean || !token || resuming || stopped) { return; }
         call('POST', '/v1/game/command', { action: 'say', text: clean }, 10000).catch((e) => {
             if (e && e.status === 401) { rejoin(); }
         });
@@ -210,7 +211,8 @@
             if (!enabled) { return; }
             stopped = false;
             try { token = sessionStorage.getItem('ultima-live-token'); } catch (e) { token = null; }
-            resume().then((ok) => { if (!ok && !stopped) { join(); } });
+            resuming = !!token;
+            resume().then((ok) => { resuming = false; if (!ok && !stopped) { join(); } });
             window.addEventListener('pagehide', () => {
                 if (!token) { return; }
                 stopped = true;
