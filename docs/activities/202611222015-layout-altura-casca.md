@@ -72,3 +72,37 @@ borda inferior. É anterior, só acontece nessa altura e não envolve o render.
 o canvas não dá erro, só passa a medir largura ÷ 2. Ao envolver a casca, conferir a
 altura de todos os elos; e validar layout lendo o retângulo do canvas contra a
 janela em proporções maiores e menores que 2:1.
+
+## Acrescentado na mesma investigação
+
+**Worker e motor na versão do build** (commit `39f48a5`). A página carregava os
+scripts com `?v=<build>`, mas o worker era criado sem versão e importava
+`assets.js` e `game-core.js` também sem — e o Pages guarda esses arquivos por 10
+minutos (`cache-control: max-age=600`). Logo após uma publicação, quem voltasse ao
+jogo podia receber worker e motor antigos com a página nova; um motor antigo em
+cache ignora o tamanho de tela enviado e renderiza em 300×150 de novo. Agora o
+shell cria `game-worker.js?v=<build>` e os imports herdam a query (as mesmas URLs
+da página). Conferido na produção: página, worker e imports em `?v=39f48a5…`. O
+prazo do sinal de vida do worker foi de 20 s para 120 s — o sinal só chega depois
+de baixar o Babylon (≈9 MB) e construir a cena, e em rede lenta o prazo curto
+recarregava o jogo no modo sem worker.
+
+**Instrumento de teste.** Os testes de navegador usavam `waitForFunction` com
+predicado async, que nesta versão do playwright-core resolve sem esperar (mesmo
+devolvendo `false`) — liam a página ainda carregando. As esperas foram reescritas
+com polling explícito (`esperar()`/`esperarJogo()`), que só devolve com 6 modelos,
+cenário GLB espalhado e buffer igual à janela × densidade. Toda a validação desta
+atividade foi refeita com elas, no build e na produção (`39f48a5`). Os testes
+passaram a usar sala própria (`?sala=teste-automacao`): antes entravam na sala
+pública e apareciam para quem estava jogando como dezenas de "Jogador xxxx".
+
+**Pendências entregues às frentes donas do código:**
+
+- **Andarilho** (interface, commit `7a9e45d`): o gatilho de conversa dele passou a
+  ser `PlayerNearWanderer() => _remoteCount > 0` — "há jogadores remotos na sala" —
+  em vez da proximidade física no mundo. O motor continua enviando
+  `OnWandererNear`, mas a página não o assina; a dica "Perto do Andarilho" não
+  existe mais. Efeito: o Andarilho só conversa quando há outros jogadores, e aí em
+  qualquer lugar. Pode ter sido escolha da frente; decisão do mantenedor.
+- **Oficina** (painel): em celular deitado com 360 a 412 px de altura, o bloco
+  "Estilo do mundo" fica abaixo da borda inferior.
