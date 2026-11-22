@@ -59,6 +59,45 @@ Critérios de aceite:
 
 ## Próxima ação
 
-Checkpoint 2: extrair do game.js o protocolo de mensagens (init/input/comandos)
-reaproveitando o worker do protótipo; a página do protótipo (branch
-`worker-proto`) serve de teste A/B durante a migração.
+> **Decisão de 22/11/2026:** a migração (checkpoints 2–5) ficou **programada, não
+> executada** — por coordenação, não por técnica. A frente de
+> [PLAN-PLAYER-ASSETS.md](PLAN-PLAYER-ASSETS.md) está ativa no mesmo `game.js`
+> (módulo `game.glb`, fases 2–4 ainda por vir); refatorar o arquivo inteiro agora
+> forçaria rebase massivo no trabalho concorrente. O protótipo (checkpoint 1)
+> comprovou a viabilidade; o design abaixo deixa a execução pronta para a
+> primeira janela em que a frente de assets estabilizar (ou em coordenação
+> explícita com ela).
+
+Design de migração validado pelo protótipo (branch `worker-proto`, commit
+`d3eed90`), pronto para executar:
+
+1. **`js/game-core.js`** — todo o motor (cena, terreno, fila de modelos, GLB,
+   Andarilho) como `UltimaCore.create(ctx)`, sem DOM. `ctx = { canvas, mode,
+   build, postEvent(nome, args), sendPose(x, z, ry), onInputMode(kind) }`.
+   Ajustes conhecidos: `makeGrassTexture` troca `document.createElement('canvas')`
+   por `new OffscreenCanvas` (fallback `typeof OffscreenCanvas`); input chega por
+   métodos `api.keys/stick/pad/cameraInput/resize/clearInput`; `attachControl`
+   só no modo main (no worker, a câmera recebe deltas manuais: alpha −= dx·0.008,
+   beta += dy·0.008 com clamp, raio por roda ≈ `wheelDeltaPercentage`).
+2. **`js/game.js` (shell)** — decide o modo: worker quando
+   `canvas.transferControlToOffscreen` existir (a menos de `?render=main`);
+   cria o worker, transfere o canvas, faz a ponte de mensagens
+   (`event` → `dotnet.invokeMethodAsync`; `pose` → `game.net`/`game.live`;
+   input do DOM → worker; comandos `game.*` → worker; diagnósticos
+   `status/report` por request id assíncrono). Fallback: `UltimaCore.create`
+   direto com os handlers de DOM atuais. `OnEngineReady` ganha sufixo
+   ` · render em worker` no HUD (zero mudança em C#).
+3. **`js/game-worker.js`** — `importScripts` do Babylon, `assets.js` e
+   `game-core.js` (mesma pasta do worker); init recebe `{canvas, build}`;
+   eventos saem por `postMessage`.
+4. **`js/assets.js`** — `init(build)` aceita o build por parâmetro (no worker
+   não há `<meta>`); OPFS funciona em worker (validado no protótipo via
+   DynamicTexture/OffscreenCanvas 2D).
+5. **Risco novo (do módulo GLB)**: o loader glTF é injetado por `<script>` com
+   SRI — inexistente em worker. Solução proposta: no worker, `fetch` do loader
+   vendorizado + verificação sha384 via `crypto.subtle` + `importScripts` de um
+   blob URL (importScripts aceita blob), preservando a garantia de integridade.
+   Prototipar isso é o primeiro passo do checkpoint 2.
+6. **Validação** — script A/B com `?render=worker|main`: diálogo dos dois NPCs,
+   6 modelos + assets GLB (450 instâncias), OPFS na 2ª visita, perf/report
+   assíncrono; produção nos dois modos.
