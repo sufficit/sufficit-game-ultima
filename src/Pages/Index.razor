@@ -612,6 +612,7 @@
         if (text.Length > 300) text = text[..300];
         _dialogDraft = string.Empty;
         _speechError = string.Empty;
+        _turnStartedMs = NowMs();   // t50: base do tempo de resposta do turno registrado
         Dispatch(new PlayerSpoke(NowMs(), text));
         // Produtores caros (WebLLM na GPU, API do jogo, fallback local) correm fora do
         // tick; a resposta vira evento e o cérebro a aplica em um tick futuro.
