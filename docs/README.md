@@ -11,8 +11,11 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 
 Prioritários:
 
-1. [PLAN-WORKER-OFFSCREEN-CANVAS.md](PLAN-WORKER-OFFSCREEN-CANVAS.md) —
-   mover o loop Babylon.js para um Web Worker com OffscreenCanvas.
+1. ✅ [PLAN-WORKER-OFFSCREEN-CANVAS.md](PLAN-WORKER-OFFSCREEN-CANVAS.md) —
+   **concluído em 22/11/2026**: motor em `game-core.js` sem DOM, shell com worker
+   OffscreenCanvas + fallback `?render=main`, loader glTF verificado por SHA-384 no
+   worker. Atividade:
+   [202611220130-motor-worker-offscreen.md](activities/202611220130-motor-worker-offscreen.md).
 2. [PLAN-PLAYER-ASSETS.md](PLAN-PLAYER-ASSETS.md) — assets GLB CC0 com catálogo
    assinado por SHA-256 (fase 1 ✅) e a evolução dos modelos do mundo pelos
    jogadores: variação paramétrica por IA local, geração via API e upload.

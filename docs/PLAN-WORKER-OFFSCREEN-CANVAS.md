@@ -1,5 +1,12 @@
 # Engine em Web Worker com OffscreenCanvas
 
+> **Concluído em 22/11/2026** — convertido na atividade
+> [202611220130-motor-worker-offscreen.md](activities/202611220130-motor-worker-offscreen.md).
+> Resumo da entrega: motor extraído para `game-core.js` (`UltimaCore.create(host)`, sem
+> DOM), shell decide worker×fallback com recuperação automática, loader glTF no worker
+> verificado pelo mesmo SHA-384 do SRI via blob, HUD marca o modo. Produção: worker com
+> 6/6 modelos DLL + 6/6 GLB (450 instâncias) e fallback `?render=main` integral.
+
 ## Objetivo e critérios
 
 Mover o loop de renderização Babylon.js (`src/wwwroot/js/game.js`, hoje na main
@@ -45,17 +52,24 @@ Critérios de aceite:
    do worker, custo único por visita com RAM extra (~5–7 MB). Veredito:
    aceitável em troca da main thread livre; `attachControl` não serve no
    worker (input chega por mensagem, como planejado).
-2. [pendente] Migrar câmera, WASD e limites de mundo para o protocolo de mensagens
-   (input no DOM → worker). Ponto de atenção encontrado: `makeGrassTexture` usa
-   `document.createElement('canvas')` — no worker trocar por `new OffscreenCanvas`;
-   o restante das texturas já usa `ImageData`/contexto da própria DynamicTexture.
-3. [pendente] Integrar `ai.js`/WebGPU ao device do worker; validar status da
-   Guardiã e watchdog de travamento. (Nota do protótipo: `ai.js` usa WebGPU na
-   main thread de forma independente — a integração é de COORDENAÇÃO das
-   mensagens, não de compartilhar o device.)
-4. [pendente] Fallback para navegadores sem suporte; aviso no HUD e teste no site
-   publicado.
-5. [pendente] Publicar, validar o site ao vivo e converter este plano em atividade.
+2. [concluído] Migrar câmera, WASD e limites de mundo para o protocolo de mensagens
+   (input no DOM → worker). Commit `07ff4f2`: `game.js` virou shell (teclado, gamepad
+   via rAF na main, analógicos virtuais e ponteiro capturados no DOM, entregues por
+   `api.input`); câmera no worker por deltas manuais (≈0,008 rad/px, raio pela roda);
+   `makeGrassTexture` com `OffscreenCanvas`; `game.init` só resolve quando o core
+   avisa cena pronta (`onCoreReady`) — o C# registra modelos com a cena garantida.
+3. [concluído] `ai.js`/`ai-cpu.js` seguem na main thread de forma independente
+   (WebGPU/WASM próprios), coordenados pelos eventos da ponte — sem compartilhar
+   device; diálogo da Guardiã validado no worker em produção com resposta e origem.
+4. [concluído] Fallback: `?render=main` força; sem OffscreenCanvas/Worker cai direto;
+   worker que falha no boot recarrega em modo main uma vez por sessão
+   (`sessionStorage`); HUD mostra `· render em worker` no chip da GPU.
+   Loader glTF no worker baixa, confere o MESMO SHA-384 do SRI (crypto.subtle) e
+   importa por blob URL — a garantia de integridade foi preservada.
+5. [concluído] Publicado no push `07ff4f2`; produção validada nos dois modos (série
+   temporal do worker: 6/6 modelos, 6/6 GLB, 450/450 instâncias em ~4 s; fallback
+   completo; OPFS com 12 acertos na 2ª visita). Atividade:
+   [202611220130-motor-worker-offscreen.md](activities/202611220130-motor-worker-offscreen.md).
 
 ## Próxima ação
 
