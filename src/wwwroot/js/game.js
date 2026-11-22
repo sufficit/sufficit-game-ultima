@@ -821,6 +821,181 @@
         };
     }
 
+    // ---------- Assets GLB CC0 (catálogo assets/assets.json assinado por SHA-256) ----------
+    // Pipeline paralelo ao das DLLs de modelos: os GLBs curados (assets/glb, CC0 do
+    // Quaternius — proveniência em assets/LICENSE.md) são dados, não código. O download
+    // confere o SHA-256 do catálogo antes de usar (bytes divergentes são recusados), os
+    // bytes validados vão ao cache OPFS do game.assets (chave endereçada por conteúdo)
+    // e o espalhamento roda na fila de modelos, respeitando o orçamento por frame.
+    // game.glb.register(id, bytes) é a costura para produtores futuros (IA interna/API).
+    const GLB_LOADERS = {
+        src: 'js/vendor/babylonjs.loaders-9.36.0.min.js',   // vendorizado e pinado (assets/LICENSE.md)
+        integrity: 'sha384-OXd9U4rMASknPaxNfNxZEGFw9NDqAW2RISOw9OBdTcMureZGhfxRzaKspEgn8D+L'
+    };
+    const glbStatus = { loaded: [], errors: [], queued: 0, loaders: 'pending' };
+    const glbRegistry = new Map();   // id -> { proto, entry }
+    let glbLoadersPromise = null;
+
+    // Loader glTF oficial injetado sob demanda: o primeiro asset GLB paga o custo, o
+    // primeiro paint do jogo não muda. SRI fecha o arquivo vendorizado no hash do git.
+    function ensureGlbLoaders() {
+        if (BABYLON.GLTF2 || BABYLON.GLTFFileLoader) { glbStatus.loaders = 'ready'; return Promise.resolve(); }
+        if (!glbLoadersPromise) {
+            glbLoadersPromise = new Promise(function (resolve, reject) {
+                const s = document.createElement('script');
+                s.src = GLB_LOADERS.src;
+                s.integrity = GLB_LOADERS.integrity;
+                s.crossOrigin = 'anonymous';
+                s.onload = function () { glbStatus.loaders = 'ready'; resolve(); };
+                s.onerror = function () {
+                    glbStatus.loaders = 'failed';
+                    glbLoadersPromise = null;
+                    reject(new Error('loader glTF não carregou: ' + GLB_LOADERS.src));
+                };
+                document.head.appendChild(s);
+            });
+        }
+        return glbLoadersPromise;
+    }
+
+    async function sha256Hex(buf) {
+        const digest = await crypto.subtle.digest('SHA-256', buf);
+        return Array.from(new Uint8Array(digest), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    }
+
+    // Chave de cache endereçada por conteúdo (id+sha do arquivo): um asset igual
+    // continua válido entre builds, diferente das texturas (chave inclui o build).
+    async function glbCacheKey(entry) {
+        const data = new TextEncoder().encode(JSON.stringify(['glb-v1', entry.id, entry.sha256]));
+        return sha256Hex(data);
+    }
+
+    // Download verificado (com cache OPFS dos bytes já validados). Falha de rede ou de
+    // hash derruba só este asset — o mundo segue com os modelos DLL e os demais GLBs.
+    async function fetchVerifiedGlb(entry) {
+        const hasCache = !!(window.game && game.assets && game.assets.report().opfs);
+        const key = hasCache ? await glbCacheKey(entry) : null;
+        if (key) {
+            const hit = await game.assets.load(key);
+            if (hit && hit.parts[0] && hit.parts[0].byteLength > 0) { return hit.parts[0]; }
+        }
+        const res = await fetch(entry.file + '?h=' + entry.sha256);
+        if (!res.ok) { throw new Error('HTTP ' + res.status + ' em ' + entry.file); }
+        const buf = await res.arrayBuffer();
+        const sha = await sha256Hex(buf);
+        if (sha !== entry.sha256) { throw new Error('SHA-256 divergente (' + sha.slice(0, 12) + '… ≠ catálogo)'); }
+        if (key) {
+            game.assets.save(key, { v: 1, kind: 'glb', id: entry.id, sha256: entry.sha256, parts: [buf.byteLength] }, [buf])
+                .catch(function () { /* cache é só otimização */ });
+        }
+        return buf;
+    }
+
+    // glTF traz materiais PBR; o resto do jogo usa StandardMaterial com a iluminação
+    // hemisférica+sol calibrada para ele. Converte cor/textura albedo — a aparência fica
+    // coerente com árvores/pedras/grama e mais leve de renderizar que PBR por instância.
+    function glbMaterialToStandard(mat) {
+        if (!mat || !BABYLON.PBRMaterial || !(mat instanceof BABYLON.PBRMaterial)) { return mat; }
+        const std = new BABYLON.StandardMaterial(mat.name + '-std', scene);
+        std.diffuseColor = mat.albedoColor ? mat.albedoColor.clone() : new BABYLON.Color3(0.8, 0.8, 0.8);
+        if (mat.albedoTexture) {
+            std.diffuseTexture = mat.albedoTexture;
+            if (mat.albedoTexture.hasAlpha) { std.useAlphaFromDiffuseTexture = true; }
+        }
+        std.emissiveColor = mat.emissiveColor ? mat.emissiveColor.clone() : new BABYLON.Color3(0, 0, 0);
+        std.specularColor = new BABYLON.Color3(0.06, 0.06, 0.06);
+        if (typeof mat.alpha === 'number' && mat.alpha < 1) { std.alpha = mat.alpha; }
+        return std;
+    }
+
+    // Importa os bytes pelo SceneLoader com URL de Blob + extensão explícita do plugin
+    // glTF ('.glb'): o core decodifica o binário e alimenta o plugin — sem arquivo
+    // temporário e sem segunda ida à rede. Devolve o protótipo invisível com origem no
+    // chão (mesma convenção dos descritores DLL) e a maior dimensão = scaleM metros.
+    async function importGlbProto(id, bytes, scaleM) {
+        await ensureGlbLoaders();
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'model/gltf-binary' }));
+        let result;
+        try {
+            result = await BABYLON.SceneLoader.ImportMeshAsync('', url, '', scene, undefined, '.glb');
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+        for (const g of result.animationGroups || []) { g.stop(); }   // cenário é estático
+        const meshes = (result.meshes || []).filter(function (m) {
+            return m && m instanceof BABYLON.Mesh && !m.isAnInstance && m.getTotalVertices() > 0;
+        });
+        if (!meshes.length) { throw new Error('nenhuma malha utilizável no GLB'); }
+        for (const m of meshes) {
+            m.setParent(null);   // preserva a transformada mundial nos valores locais
+            m.material = glbMaterialToStandard(m.material);
+        }
+        const merged = meshes.length === 1 ? meshes[0] : BABYLON.Mesh.MergeMeshes(meshes, true, true, undefined, false, true);
+        if (!merged) { throw new Error('falha ao mesclar malhas'); }
+        // Normaliza: escala uniforme até a maior dimensão = scaleM metros e origem no
+        // centro da base (min.y = 0) — o colocador só posiciona/rotaciona/escala.
+        merged.refreshBoundingInfo();
+        const min = merged.getBoundingInfo().boundingBox.minimumWorld;
+        const max = merged.getBoundingInfo().boundingBox.maximumWorld;
+        const maxDim = Math.max(max.x - min.x, max.y - min.y, max.z - min.z) || 1;
+        const k = scaleM / maxDim;
+        merged.scaling.setAll(k);
+        merged.position.set(-(min.x + max.x) / 2 * k, -min.y * k, -(min.z + max.z) / 2 * k);
+        merged.bakeCurrentTransformIntoVertices();
+        merged.refreshBoundingInfo();
+        merged.name = 'glb-' + id;
+        merged.isVisible = false;
+        merged.isPickable = false;
+        return merged;
+    }
+
+    // Como cada asset entra no mundo: escala canônica (scaleM), sombra e espalhamento
+    // reusando os colocadores resumíveis (mesmos filtros de trilha/altitude/inclinação).
+    const glbPlacements = {
+        'scenery.bush': { scaleM: 0.95, shadows: true, place: (p) => batchedSteps('arbustos', makeInstancePlacer(p, 120, { minScale: 0.7, maxScale: 1.5, maxAlt: 15, maxSlope: 0.55, sink: 0.02, minR: 5 })) },
+        'flora.flowers': { scaleM: 0.55, shadows: false, place: (p) => batchedSteps('flores', makeInstancePlacer(p, 160, { minScale: 0.7, maxScale: 1.3, maxAlt: 12, maxSlope: 0.5, sink: 0.01, minR: 4.5 })) },
+        'flora.mushroom': { scaleM: 0.32, shadows: false, place: (p) => batchedSteps('cogumelos', makeInstancePlacer(p, 60, { minScale: 0.7, maxScale: 1.6, maxAlt: 12, maxSlope: 0.5, sink: 0.01, minR: 5 })) },
+        'flora.fern': { scaleM: 1.15, shadows: false, place: (p) => batchedSteps('samambaias', makeInstancePlacer(p, 80, { minScale: 0.7, maxScale: 1.4, maxAlt: 14, maxSlope: 0.55, sink: 0.02, minR: 5 })) },
+        'prop.log': { scaleM: 2.3, shadows: true, place: (p) => batchedSteps('troncos', makeInstancePlacer(p, 14, { minScale: 0.8, maxScale: 1.3, maxAlt: 15, maxSlope: 0.4, sink: 0.06, minR: 6 })) },
+        'prop.stump': { scaleM: 0.75, shadows: true, place: (p) => batchedSteps('tocos', makeInstancePlacer(p, 16, { minScale: 0.8, maxScale: 1.4, maxAlt: 16, maxSlope: 0.45, sink: 0.04, minR: 6 })) }
+    };
+
+    // Um asset do catálogo: rede/hash fora da fila (I/O), o espalhamento (CPU real:
+    // terreno/ruído por instância) entra na fila de modelos com o orçamento por frame.
+    async function loadGlbAsset(entry) {
+        const cfg = glbPlacements[entry.id];
+        const bytes = await fetchVerifiedGlb(entry);
+        const proto = await importGlbProto(entry.id, bytes, cfg ? cfg.scaleM : 1);
+        glbRegistry.set(entry.id, { proto: proto, entry: entry });
+        glbStatus.loaded.push(entry.id);
+        if (cfg) {
+            if (cfg.shadows && sceneShadows) { sceneShadows.addShadowCaster(proto); }
+            modelQueue.push({
+                timing: { id: entry.id, queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
+                work: cfg.place(proto)
+            });
+            modelStatus.queue = modelQueue.length;
+        }
+    }
+
+    async function glbLoadAll() {
+        try {
+            const res = await fetch('assets/assets.json?v=' + Date.now());
+            if (!res.ok) { throw new Error('catálogo assets.json: HTTP ' + res.status); }
+            const cat = await res.json();
+            glbStatus.queued = (cat.assets || []).length;
+            for (const entry of cat.assets || []) {
+                loadGlbAsset(entry).catch(function (e) {
+                    glbStatus.errors.push(entry.id + ': ' + (e && e.message || e));
+                    console.warn('[glb] asset recusado, sigo sem ele:', entry.id, e);
+                });
+            }
+        } catch (e) {
+            glbStatus.errors.push('catálogo: ' + (e && e.message || e));
+            console.warn('[glb] catálogo indisponível — sigo só com os modelos DLL:', e);
+        }
+    }
+
     function buildScene(canvas) {
         scene = new BABYLON.Scene(engine);
         const horizon = new BABYLON.Color3(0.72, 0.80, 0.88);
@@ -1252,6 +1427,7 @@
             }
             engine = new BABYLON.Engine(canvas, true, { adaptToDeviceRatio: true, stencil: false });
             buildScene(canvas);
+            void glbLoadAll();   // assets GLB CC0 do catálogo assinado (fire-and-forget)
             window.__initMs = Math.round(performance.now() - initStart);
             setupTouchControls();
             window.addEventListener('gamepaddisconnected', () => { actionWasDown = false; cancelWasDown = false; setActiveInput('keyboard'); });
@@ -1335,6 +1511,27 @@
             loaderDone(log) { modelStatus.log = Array.from(log || []); },
             status() { return JSON.parse(JSON.stringify(modelStatus)); },
             get(id) { const m = modelRegistry.get(id); return m ? m.desc : null; }
+        },
+        glb: {
+            status() {
+                const out = JSON.parse(JSON.stringify(glbStatus));
+                out.instances = {};
+                for (const [id, g] of glbRegistry) { out.instances[id] = g.proto.instances.length; }
+                return out;
+            },
+            get(id) { const g = glbRegistry.get(id); return g ? g.entry : null; },
+            // Costura para produtores futuros (IA interna, API, upload do jogador):
+            // registra bytes GLB já confiáveis, normaliza (scaleM) e devolve o protótipo.
+            async register(id, bytes, opts) {
+                if (!scene) { throw new Error('cena ainda não criada'); }
+                const existing = glbRegistry.get(id);
+                if (existing) { return existing.proto; }
+                const proto = await importGlbProto(id, bytes, (opts && opts.scaleM) || 1);
+                if (opts && opts.shadows && sceneShadows) { sceneShadows.addShadowCaster(proto); }
+                glbRegistry.set(id, { proto: proto, entry: { id: id, file: 'runtime:' + id, sha256: null } });
+                glbStatus.loaded.push(id + ' (runtime)');
+                return proto;
+            }
         },
         perf: {
             // Custo de CPU do loop de render (sem incluir a espera de GPU): amostras dos

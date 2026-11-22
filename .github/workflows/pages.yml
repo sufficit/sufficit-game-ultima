@@ -27,6 +27,9 @@ jobs:
       - name: Compilar pacotes de modelos 3D (DLLs carregadas em runtime)
         run: bash scripts/build-models.sh
 
+      - name: Preparar catálogo de assets GLB CC0 (SHA-256)
+        run: bash scripts/build-assets.sh
+
       - name: Publicar Blazor WebAssembly
         run: dotnet publish src/Ultima.csproj -c Release -o publish
 
