@@ -43,6 +43,20 @@ e enviá-las periodicamente para nossa API, para análise e melhoria dos diálog
 | Rate limit | 60 lotes/min/IP (429) |
 | Dedupe | id do turno, janela 1 h |
 
+## Validação local (2026-11-22)
+
+- Build Release do cliente EXIT=0 (sem CS0649 após a correção de `_turnStartedMs`).
+- E2E real (Playwright, build publicado em servidor estático + backend `dotnet run`):
+  - teleporte `game.teleportToGuardian()` → dica `.ultima-hint` visível → `E` abre o diálogo;
+  - pergunta enviada → turno na fila `ultima-dialog-queue` com `player`, `reply`,
+    `source: "servidor · regras"`, `ms: 337` (nomes corretos confirmados após correção
+    do parâmetro `player` no `turn()`);
+  - `flush()` → POST 200 `{ ok: true, ids: [...] }` → fila vazia, `sentTotal: 1`;
+  - `pagehide` → envio keepalive → fila vazia, `sentTotal: 2`;
+  - GET traz os dois turnos com todos os campos;
+  - anti-abuso: 54×200 depois 429 (limite 60 lotes/min/IP respeitado); lote vazio → 400
+    `turns_limit_200`.
+
 ## Pendências / observações
 
 - Buffer do servidor é volátil (memória): reinício do pod perde o histórico acumulado;
