@@ -20,10 +20,18 @@ Prioritários:
    OPFS com chave SHA-256 de build+escopo; texturas e terreno prontos nas revisitas
    (init 106→41 ms em produção). Atividade:
    [202611212050-cache-opfs-preparados.md](activities/202611212050-cache-opfs-preparados.md).
+<<<<<<< HEAD
 4. [PLAN-NPC-AI-DECISIONS.md](PLAN-NPC-AI-DECISIONS.md) — **em andamento** (3/4
    checkpoints): snapshot/decisões/agendador com budget entregues e validados em
    produção; falta o segundo NPC para escalar o desenho.
 5. ✅ [PLAN-ASSET-UPLOAD-BUDGET.md](PLAN-ASSET-UPLOAD-BUDGET.md) — **concluído em
+=======
+3. ✅ [PLAN-NPC-AI-DECISIONS.md](PLAN-NPC-AI-DECISIONS.md) — **concluído em
+   22/11/2026**: cérebros por NPC (Guardiã e Andarilho), agendador com budget por
+   tick, WebLLM/API como produtores externos; 34 testes. Atividade:
+   [202611220040-ia-npcs-decisoes.md](activities/202611220040-ia-npcs-decisoes.md).
+4. ✅ [PLAN-ASSET-UPLOAD-BUDGET.md](PLAN-ASSET-UPLOAD-BUDGET.md) — **concluído em
+>>>>>>> 5c3926c (docs: frente de IA de NPCs concluída (Guardiã + Andarilho); plano convertido em atividade)
    21/11/2026**: fila com orçamento de 4 ms/frame, scatter em lotes e
    `game.perf.report()`. Atividade:
    [202611212030-upload-amortizado-modelos.md](activities/202611212030-upload-amortizado-modelos.md).

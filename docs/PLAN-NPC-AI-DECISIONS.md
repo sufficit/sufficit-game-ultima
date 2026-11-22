@@ -1,5 +1,12 @@
 # IA de NPCs por decisões sobre snapshot com budget por tick
 
+> **Concluído em 22/11/2026** — convertido na atividade
+> [202611220040-ia-npcs-decisoes.md](activities/202611220040-ia-npcs-decisoes.md).
+> Resumo: namespace `Ultima.Npc` com snapshot/eventos/decisões, cérebros por NPC
+> (`DialogBrain` → Guardiã e Andarilho), agendador com fila anti-inundação e budget
+> por tick, WebLLM/API como produtores externos de respostas; 34 testes no RulesSmoke
+> e dois NPCs conversáveis validados na produção.
+
 ## Objetivo e critérios
 
 Estruturar a IA dos NPCs (hoje: Guardiã com falas fixas + `ai.js` WebLLM) como
@@ -52,10 +59,19 @@ Critérios de aceite:
    avanço encerra, resposta com origem "servidor · regras", Esc fecha. O caminho
    GPU (WebLLM pronto) preserva `ai.js` e o watchdog; em headless sem WebGPU a
    validação cobriu o produtor servidor/fallback.
-4. [pendente] Segundo NPC (ex.: fauna simples) provando que o desenho escala
-   sem mudar o loop. Hoje o agendador tem um cérebro fixo (Guardiã); escalar
-   pede registro de cérebros por NPC + modelo/fauna no mundo.
-5. [pendente] Converter este plano em atividade.
+4. [concluído] Segundo NPC provando que o desenho escala sem mudar o loop.
+   Andarilho (commit `762dfd4`): `DialogBrain` base genérica com
+   `GuardianBrain`/`WandererBrain` finas; `NpcScheduler` registra cérebros por
+   id e roteia (diálogo aberto tem prioridade; Guardiã ganha quando os dois
+   estão perto; conteúdo remoto é da Guardiã); `WorldSnapshot` ganha
+   `PlayerNearWanderer`; game.js spawna o Andarilho (character.wanderer,
+   fallback JS verde) circulando a clareira e reporta proximidade
+   (`OnWandererNear`). 6 testes novos (34 no total). Validado localmente e na
+   produção (build `762dfd4`): dica menciona o NPC certo, diálogo do Andarilho
+   abre com as falas dele, resposta local marcada, diálogo da Guardiã
+   preservado.
+5. [concluído] Converter este plano em atividade:
+   [202611220040-ia-npcs-decisoes.md](activities/202611220040-ia-npcs-decisoes.md).
 
 ## Próxima ação
 
