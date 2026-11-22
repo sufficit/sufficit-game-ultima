@@ -12,7 +12,7 @@
    Painéis flutuam sobre o canvas 3D; nada de barras fixas de texto.
    Os elementos com id (game-canvas, sticks, botões A/B) são lidos pelo JS
    do jogo e nunca podem ser renderizados condicionalmente. *@
-<div class="game-shell ultima-theme">
+<div class="game-shell ultima-theme@(_menuOpen ? " ultima-menu-open" : "")@(_view is not null ? " ultima-dialog-open" : "")">
     <main class="viewport">
         <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D. WASD, setas, joystick ou controles de toque movem; E/A conversa."></canvas>
 
@@ -94,6 +94,15 @@
                        aria-label="Enviar mensagem">Enviar</SUIButton>
         </form>
 
+        @if (_menuOpen)
+        {
+            <button type="button" id="ultima-menu-backdrop" class="ultima-menu-backdrop" aria-label="Fechar menu"
+                    @onclick="ToggleMenu"></button>
+        }
+        <button type="button" id="ultima-menu-fab" class="ultima-menu-fab" aria-label="@(_menuOpen ? "Fechar menu" : "Abrir menu")"
+                aria-expanded="@_menuOpen.ToString().ToLower()" @onclick="ToggleMenu">☰</button>
+
+        <div class="ultima-menu">
         <aside class="ultima-status" aria-label="Status do jogo">
             <SUICard Elevation="2" Class="ultima-card--glass">
                 <SUICardHeader Title="@StatusTitle()" Description="@StatusSummary()">

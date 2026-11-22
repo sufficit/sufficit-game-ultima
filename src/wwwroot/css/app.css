@@ -5,16 +5,23 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html, body { margin: 0; height: 100%; }
+html {
+    height: 100%;
+    -webkit-text-size-adjust: 100%; /* iOS não infla o texto ao virar o aparelho */
+}
 
 body {
+    margin: 0; height: 100%;
     background: #0b100d;
     color: var(--sui-text-primary, #e9f1e7);
     font-family: var(--sui-font, "Segoe UI", "Helvetica Neue", Arial, sans-serif);
     overflow: hidden; /* o jogo ocupa a tela; painéis rolam por conta própria */
+    overscroll-behavior: none; /* sem "puxar para atualizar" nem bounce fora dos painéis */
+    -webkit-tap-highlight-color: transparent;
 }
 
-#app, .game-shell { height: 100%; }
+/* Altura útil real do aparelho: 100dvh acompanha barra de endereço/teclado no celular; 100vh é o fallback. */
+#app, .game-shell { height: 100vh; height: 100dvh; }
 
 .game-shell.ultima-theme {
     /* Identidade extra do jogo (a paleta base é a da SUI, via tokens --sui-*) */

@@ -34,29 +34,10 @@ body > .sui-snackbar-host { z-index: 40; }
 .dialog-compose { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
 .speech-error { display: block; margin-bottom: 0.5rem; color: #ff9fb2; }
 
-.touch-controls { display: none; }
+/* Controles de toque: fonte única das regras em app.css (t56). Aqui só o painel de rede em toque. */
 @media (pointer: coarse), (max-width: 760px) {
-    .touch-controls {
-        display: flex; justify-content: space-between; align-items: flex-end;
-        position: absolute; left: 0; right: 0; bottom: 3.6rem; padding: 0 1rem;
-        pointer-events: none; z-index: 3;
-    }
-    .touch-stick, #touch-action, #touch-cancel { pointer-events: auto; }
     .network-panel { top: 3rem; }
 }
-.touch-right-controls { display: flex; align-items: flex-end; gap: 0.8rem; }
-.touch-stick {
-    position: relative; width: 112px; height: 112px; border-radius: 50%;
-    background: rgba(20, 30, 50, 0.55); border: 2px solid #3a466a; touch-action: none;
-    display: flex; align-items: center; justify-content: center;
-}
-.touch-stick small { position: absolute; bottom: -1.1rem; font-size: 0.6rem; color: #9fb0c9; }
-.touch-stick span {
-    width: 46px; height: 46px; border-radius: 50%; background: rgba(120, 170, 255, 0.7);
-    border: 2px solid #cfe3ff;
-}
-#touch-action, #touch-cancel { width: 64px; height: 64px; border-radius: 50%; font-size: 1.2rem; font-weight: 700; touch-action: none; }
-#touch-cancel { width: 52px; height: 52px; }
 
 /* Dica de controles conforme o último dispositivo usado */
 .hint-pad, .hint-touch { display: none; }

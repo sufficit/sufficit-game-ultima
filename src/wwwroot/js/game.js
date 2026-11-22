@@ -257,9 +257,19 @@
         if (cancelBtn) {
             cancelBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); deliver('inputMode', ['touch']); postEventToDotnet('OnClose', []); });
         }
-        window.addEventListener('resize', function () {
-            deliver('resize', [canvas.clientWidth, canvas.clientHeight]);
-        });
+        const resize = function () { deliver('resize', [canvas.clientWidth, canvas.clientHeight]); };
+        window.addEventListener('resize', resize);
+        // Celular: girar o aparelho ou abrir o teclado muda o visualViewport antes (ou sem) window.resize.
+        // A área coberta pelo teclado vira --ultima-vv-bottom para a folha do diálogo subir acima dele.
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', function () {
+                const vv = window.visualViewport;
+                const covered = window.innerHeight - vv.height - vv.offsetTop;
+                document.documentElement.style.setProperty('--ultima-vv-bottom', (covered > 60 ? Math.round(covered) : 0) + 'px');
+                resize();
+            });
+        }
+        window.addEventListener('orientationchange', function () { setTimeout(resize, 250); });
     }
 
     function setupVirtualStick(hostId, thumbId, set) {
