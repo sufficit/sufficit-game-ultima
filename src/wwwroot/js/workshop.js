@@ -88,7 +88,7 @@
             await bring(res.asset);
             return '✓ "' + clean + '" criado e plantado no mundo!';
         } catch (e) {
-            if (e && (e.status === 404 || e.status === 501 || e.status === 503)) { return 'Este servidor ainda não tem oficina de modelos.'; }
+            if (e && (e.status === 404 || e.status === 405 || e.status === 501 || e.status === 503)) { return 'Este servidor ainda não tem oficina de modelos.'; }
             if (e && e.status === 401) { return 'Conecte-se ao servidor do jogo primeiro.'; }
             return 'Falhou: ' + ((e && e.message) || e);
         }
