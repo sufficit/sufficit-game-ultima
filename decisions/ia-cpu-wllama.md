@@ -27,3 +27,10 @@ Data: 2026-11-22 · Escopo: segundo motor de conversa local, sem WebGPU, ao lado
 - **Qwen 0.5B (`qwen05b`): não validado neste ambiente.** 3 execuções mortas pelo guardião de memória do contêiner (exit 137, working set ≥ 92% do teto de 2 GB) — o GGUF de 469 MB + heap WASM não cabe no headroom deste executor. O modelo continua ofertado no painel para máquinas clientes com mais RAM; pendente validação em desktop.
 - Build Release pós-merge: sucesso, 0 erros. Merge `3f78cde` trouxe o cache OPFS de outra frente sem conflito.
 - Critério de publicação ("sem resposta comprovada, não publicar") cumprido pelo motor `cpu-wllama` com o modelo padrão `gemma270`.
+
+## Publicação e validação ao vivo (2026-11-22)
+- Commit único `84d2e9e` no `main` via API do GitHub (árvore `2f968d1`, pai `fa92baf`), após merges de 3 frentes concorrentes (cache OPFS, assets GLB, docs IA NPCs) — nenhum trabalho do remoto revertido; build Release da árvore final: 0 erros/0 avisos.
+- Workflow **Pages 44967647189: success** (build + deploy) no commit `84d2e9e`.
+- Artefatos ao vivo em `https://sufficit.github.io/sufficit-game-ultima/`: index/ai-cpu.js/extras.css = 200; HTML referencia `ai-cpu.js?v=84d2e9e…` (cache-busting); SHA-256 do `ai-cpu.js` ao vivo idêntico ao do repo; smoke test: engine `cpu-wllama` presente, zero erros de console.
+- **Fase A — prova ao vivo com o artefato publicado (página mínima carregando o `ai-cpu.js` real do github.io): APROVADA.** `gemma270` carregou em 22,5 s e respondeu "Quem é você?" em 27,4 s (~50 s total): *"Olá! Sou a Guardiã do Jardim do jogo Ultima, um especialista em ajudar a gente a se divertir e a encontrar a paz."*
+- Nota de ambiente: as quedas dos testes anteriores (Qwen 3× exit 137; primeiro teste ao vivo sem resultado) foram do executor de validação — guardião de memória do contêiner, timeout meu de 300 s e servidor de teste morto junto com a árvore do comando — nenhuma do código publicado.
