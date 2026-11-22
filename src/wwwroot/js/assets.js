@@ -20,9 +20,12 @@
         return JSON.parse(JSON.stringify(r));
     }
 
-    async function init() {
-        const meta = document.querySelector('meta[name="ultima-build"]');
-        build = (meta && meta.content) || 'dev';
+    // buildOverride: no Web Worker não existe <meta> — o shell repassa o build por
+    // mensagem (mesma origem de verdade que o workflow grava no index.html).
+    async function init(buildOverride) {
+        let meta = null;
+        if (typeof document !== 'undefined') { meta = document.querySelector('meta[name="ultima-build"]'); }
+        build = buildOverride || (meta && meta.content) || 'dev';
         try {
             if (!navigator.storage || !navigator.storage.getDirectory) { throw new Error('OPFS indisponível'); }
             const root = await navigator.storage.getDirectory();
@@ -169,8 +172,9 @@
         });
     }
 
-    window.game = window.game || {};
-    window.game.assets = {
+    const G = (typeof window !== 'undefined') ? window : self;
+    G.game = G.game || {};
+    G.game.assets = {
         init: init, digest: digest, load: load, save: save,
         loadTex: loadTex, saveTex: saveTex,
         loadTerrain: loadTerrain, saveTerrain: saveTerrain,

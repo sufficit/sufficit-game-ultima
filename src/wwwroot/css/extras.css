@@ -29,3 +29,78 @@
 /* Host de snackbars da SUI: sobe um pouco para não cobrir o campo de chat */
 .ultima-theme ~ .sui-snackbar-host,
 body > .sui-snackbar-host { z-index: 40; }
+
+.dialog { z-index: 4; }
+.dialog-compose { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
+.speech-error { display: block; margin-bottom: 0.5rem; color: #ff9fb2; }
+
+.touch-controls { display: none; }
+@media (pointer: coarse), (max-width: 760px) {
+    .touch-controls {
+        display: flex; justify-content: space-between; align-items: flex-end;
+        position: absolute; left: 0; right: 0; bottom: 3.6rem; padding: 0 1rem;
+        pointer-events: none; z-index: 3;
+    }
+    .touch-stick, #touch-action, #touch-cancel { pointer-events: auto; }
+    .network-panel { top: 3rem; }
+}
+.touch-right-controls { display: flex; align-items: flex-end; gap: 0.8rem; }
+.touch-stick {
+    position: relative; width: 112px; height: 112px; border-radius: 50%;
+    background: rgba(20, 30, 50, 0.55); border: 2px solid #3a466a; touch-action: none;
+    display: flex; align-items: center; justify-content: center;
+}
+.touch-stick small { position: absolute; bottom: -1.1rem; font-size: 0.6rem; color: #9fb0c9; }
+.touch-stick span {
+    width: 46px; height: 46px; border-radius: 50%; background: rgba(120, 170, 255, 0.7);
+    border: 2px solid #cfe3ff;
+}
+#touch-action, #touch-cancel { width: 64px; height: 64px; border-radius: 50%; font-size: 1.2rem; font-weight: 700; touch-action: none; }
+#touch-cancel { width: 52px; height: 52px; }
+
+/* Dica de controles conforme o último dispositivo usado */
+.hint-pad, .hint-touch { display: none; }
+body[data-input="gamepad"] .hint-kb, body[data-input="touch"] .hint-kb { display: none; }
+body[data-input="gamepad"] .hint-pad { display: inline; }
+body[data-input="touch"] .hint-touch { display: inline; }
+
+/* IA local da Guardiã (WebGPU) */
+.ai-panel { display: flex; flex-direction: column; gap: .3rem; margin-top: .6rem; padding-top: .5rem; border-top: 1px solid rgba(255,255,255,.12); }
+.ai-panel progress { width: 100%; height: .5rem; accent-color: #38d9a9; }
+.ai-panel small { opacity: .8; line-height: 1.25; }
+.ai-panel[data-ai-state="stalled"] small, .ai-panel[data-ai-state="error"] small { color: #ff9fb2; opacity: 1; }
+.ai-panel[data-ai-state="thinking"] .chip { color: #cfe3ff; }
+.reply-source { display: block; margin: .15rem 0 .4rem; color: #8fa8cf; font-size: .72rem; }
+
+/* IA na CPU da Guardiã (wllama/llama.cpp WASM) */
+.ai-panel.ai-cpu { border-top: 1px dashed rgba(255, 255, 255, .18); }
+.ai-panel.ai-cpu .ai-engine { color: #8fa8cf; }
+.ai-panel .ai-models { display: flex; flex-direction: column; gap: .25rem; }
+.ai-panel .ai-models button { text-align: left; font-size: .72rem; padding: .3rem .5rem; }
+.ai-panel .ai-models button[aria-pressed="true"] { outline: 1px solid #38d9a9; }
+.ai-panel[data-ai-state="loading"] progress { accent-color: #74c0fc; }
+
+/* Oficina do mundo (PLAN-PLAYER-ASSETS): variações, geração, upload e estilo */
+.workshop-panel {
+    position: absolute; top: 3.4rem; left: 0.7rem; width: min(300px, calc(100% - 1.4rem));
+    padding: 0.45rem 0.7rem; border-radius: 0.7rem; background: rgba(9, 13, 20, 0.86);
+    border: 1px solid #26304a; font-size: 0.75rem; z-index: 2;
+}
+.workshop-panel summary {
+    display: flex; justify-content: space-between; align-items: baseline; gap: .5rem;
+    cursor: pointer; color: #cfe3ff; list-style: revert;
+}
+.workshop-panel summary span { color: #9fe0b5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workshop-panel details[open] summary { margin-bottom: .3rem; }
+.ws-block { display: flex; flex-direction: column; gap: .25rem; padding: .4rem 0; border-top: 1px solid rgba(255,255,255,.09); }
+.ws-block strong { color: #cfe3ff; }
+.ws-block small { color: #9fb4d8; line-height: 1.25; }
+.ws-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+.ws-actions button { padding: 0.3rem 0.55rem; font-size: 0.72rem; }
+.ws-row { display: flex; gap: .4rem; align-items: center; }
+.ws-row input[type="file"] { font-size: .68rem; padding: .25rem .4rem; }
+.ws-row input[type="number"] { width: 4.2rem; flex: none; text-align: center; }
+@media (pointer: coarse), (max-width: 760px) {
+    .workshop-panel { top: 3rem; }
+    .workshop-panel summary span { max-width: 9rem; }
+}

@@ -2,6 +2,8 @@
 src/bin/
 src/obj/
 src/publish/
+app/bin/
+app/obj/
 tests/**/bin/
 tests/**/obj/
 

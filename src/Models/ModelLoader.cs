@@ -18,6 +18,9 @@ public sealed class ModelLoader(HttpClient http, IJSRuntime js)
     /// <summary>Modelos que o mundo atual espera encontrar no catálogo.</summary>
     private static readonly string[] Expected = ["tree.pine", "rock.boulder", "scenery.grass", "character.villager", "character.wanderer", "character.guardian"];
 
+    /// <summary>Instâncias carregadas por id — permitem reconstruir com outros parâmetros (variação paramétrica).</summary>
+    private readonly Dictionary<string, IModel> _models = new(StringComparer.Ordinal);
+
     public List<string> Log { get; } = [];
 
     public async Task LoadAllAsync()
@@ -66,6 +69,7 @@ public sealed class ModelLoader(HttpClient http, IJSRuntime js)
                     if (registered.Contains(model.Id)) { Note($"{model.Id}: duplicado, ignorado"); continue; }
                     var descriptor = model.Build(ModelParams.Default);
                     await RegisterAsync(descriptor, placeholder: false);
+                    _models[model.Id] = model;
                     registered.Add(model.Id);
                     Note($"{model.Id} v{model.Version} carregado de {pkg.File}");
                 }
@@ -83,6 +87,20 @@ public sealed class ModelLoader(HttpClient http, IJSRuntime js)
 
     private Task RegisterAsync(ModelDescriptor d, bool placeholder) =>
         js.InvokeVoidAsync("game.models.register", ModelJsonContext.Serialize(d), placeholder).AsTask();
+
+    /// <summary>
+    /// Variação paramétrica (PLAN-PLAYER-ASSETS, fase 2): reconstrói um modelo já carregado
+    /// com outro <see cref="ModelParams"/> (seed/detalhe) e devolve o descritor JSON para o
+    /// cliente trocar as malhas e re-espalhar — o modelo continua sendo os mesmos dados +
+    /// parâmetros, sem gerar malha nova.
+    /// </summary>
+    public string? Rebuild(string id, int seed, double detail)
+    {
+        if (!_models.TryGetValue(id, out var model)) return null;
+        detail = Math.Clamp(detail, 0.25, 2.0);
+        var descriptor = model.Build(new ModelParams { Seed = seed, Detail = detail });
+        return ModelJsonContext.Serialize(descriptor);
+    }
 
     private static IEnumerable<Type> SafeTypes(Assembly asm)
     {
