@@ -1572,7 +1572,11 @@
                 await G.game.assets.init(host.build);
                 await Promise.all([warmTextures(), warmTerrain()]);
             }
-            engine = new BABYLON.Engine(host.canvas, true, { adaptToDeviceRatio: true, stencil: false });
+            // No worker o OffscreenCanvas não tem layout nem devicePixelRatio: o shell
+            // mede (CSS × densidade) e o tamanho é aplicado daqui; sem isso o canvas
+            // ficaria no 300×150 padrão esticado pela tela (regressão da migração).
+            engine = new BABYLON.Engine(host.canvas, true, { adaptToDeviceRatio: dom, stencil: false });
+            if (!dom && host.size) { applySize(host.size.width, host.size.height, host.size.dpr); }
             buildScene(host.canvas);
             // Cena pronta: o shell só resolve o game.init DAQUI para frente — o C# passa
             // a registrar modelos com a cena garantida (antes: "cena ainda não criada").
@@ -1646,9 +1650,23 @@
         action() { interact(); },
         cancel() { dotnet.invokeMethodAsync('OnClose'); },
         clear() { for (const k of Object.keys(keys)) { keys[k] = false; } moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 }; },
-        resize(w, h) { if (engine) { engine.resize(); } },
+        resize(w, h, dpr) {
+            if (!engine) { return; }
+            if (dom) { engine.resize(); } else { applySize(w, h, dpr || (host.size && host.size.dpr) || 1); }
+        },
         inputMode(kind) { setActiveInput(kind); }
     };
+
+    // Tamanho de render no worker. Semântica do Babylon (AbstractEngine.resize/setSize):
+    // setSize grava o canvas em PIXELS direto; o fator de escala só converte CSS↔pixels
+    // no resize(). Logo: canvas = CSS × densidade, escala = 1/densidade — o mesmo buffer
+    // que o adaptToDeviceRatio produz na main thread (getRenderWidth volta em CSS).
+    function applySize(width, height, dpr) {
+        if (!engine) { return; }
+        const ratio = Math.max(0.25, dpr || 1);
+        engine.setHardwareScalingLevel(1 / ratio);
+        engine.setSize(Math.max(1, Math.floor((width || 1280) * ratio)), Math.max(1, Math.floor((height || 720) * ratio)));
+    }
 
     // No worker há dois assets.js (main e worker): o do MOTOR é o deste contexto.
     const assetsReal = G.game && G.game.assets ? G.game.assets : null;
@@ -1753,6 +1771,8 @@
         },
         input,
         assetsReport() { return assetsReal ? assetsReal.report() : null; },
+        renderSize() { return engine ? { width: engine.getRenderWidth(), height: engine.getRenderHeight(), canvasW: host.canvas.width, canvasH: host.canvas.height, scaling: engine.getHardwareScalingLevel() } : null; },
+        cameraState() { return camera ? { alpha: camera.alpha, beta: camera.beta, radius: camera.radius } : null; },
         coreId() { return CORE_ID; }
     };
     G.game = G.game || {};
