@@ -90,6 +90,7 @@
         } catch (e) {
             if (e && (e.status === 404 || e.status === 405 || e.status === 501 || e.status === 503)) { return 'Este servidor ainda não tem oficina de modelos.'; }
             if (e && e.status === 401) { return 'Conecte-se ao servidor do jogo primeiro.'; }
+            if (e && e.data && e.data.error === 'storage_unavailable') { return 'O servidor não consegue gravar os assets (armazenamento indisponível).'; }
             return 'Falhou: ' + ((e && e.message) || e);
         }
     }
@@ -115,7 +116,8 @@
             const data = await res.json().catch(() => null);
             if (!res.ok) {
                 const why = data && data.error === 'too_many_triangles' ? ' (muitos triângulos: máx. 30 mil)' :
-                    data && data.error === 'not_a_glb' ? ' (arquivo não é um GLB válido)' : '';
+                    data && data.error === 'not_a_glb' ? ' (arquivo não é um GLB válido)' :
+                    data && data.error === 'storage_unavailable' ? ' (servidor sem armazenamento gravável)' : '';
                 status('Enviado recusado' + why + '.');
             } else if (data && data.asset) {
                 await bring(data.asset);

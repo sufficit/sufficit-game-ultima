@@ -14,6 +14,25 @@ var dataDir = Environment.GetEnvironmentVariable("ULTIMA_DATA_DIR");
 if (string.IsNullOrWhiteSpace(dataDir))
     dataDir = Path.Combine(baseDir, "data");
 
+// O dataDir precisa ser gravável (mapa persistido + assets do mundo). Na plataforma
+// run o diretório do app é montado read-only: em vez de falhar com
+// UnauthorizedAccessException em runtime, cai para o temporário gravável (emptyDir
+// no contêiner) avisando no log — dados não sobrevivem à recriação do pod, e um
+// volume dedicado via ULTIMA_DATA_DIR continua sendo a configuração ideal.
+try
+{
+    Directory.CreateDirectory(dataDir);
+    var probe = Path.Combine(dataDir, ".write-probe");
+    File.WriteAllText(probe, "ok");
+    File.Delete(probe);
+}
+catch (Exception ex)
+{
+    var fallback = Path.Combine(Path.GetTempPath(), "ultima-data");
+    log.LogWarning(ex, "dataDir {Dir} não é gravável — usando {Fallback}", dataDir, fallback);
+    dataDir = fallback;
+}
+
 var content = new ContentStore(Path.Combine(baseDir, "content.json"));
 var chat = new NpcChat(log);
 var game = new GameWorld(dataDir, content, chat, log);

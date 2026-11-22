@@ -171,7 +171,13 @@ sealed class WorldAssets(string dataDir, GameWorld game, ILogger log)
             var id = "player." + Slug(rawName, "modelo");
             var by = game.SessionName(token) ?? "jogador";
             var scale = Math.Clamp(scaleM <= 0 ? 1 : scaleM, 0.05, 12);
-            var entry = Store(bytes, sha, Entry(id, "", sha, scale, tris, bytes.Length, null, by));
+            JsonObject entry;
+            try { entry = Store(bytes, sha, Entry(id, "", sha, scale, tris, bytes.Length, null, by)); }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                log.LogError("armazenamento de assets indisponível (upload): {Msg}", ex.Message);
+                return (507, J.Err("storage_unavailable"));
+            }
             log.LogInformation("asset {Id} enviado por {By} ({Tris} tris)", id, by, tris);
             return (200, new JsonObject { ["asset"] = entry.DeepClone() });
         }
@@ -219,7 +225,13 @@ sealed class WorldAssets(string dataDir, GameWorld game, ILogger log)
             if (AssetsOf(LoadCatalog()).Count >= MaxAssets) return (507, J.Err("catalog_full"));
             var sha = Convert.ToHexStringLower(SHA256.HashData(bytes));
             var id = "gen." + Slug(clean, "cristal") + "-" + sha[..6];
-            var entry = Store(bytes, sha, Entry(id, "", sha, GlbProcedural.ScaleM, tris, bytes.Length, clean, by));
+            JsonObject entry;
+            try { entry = Store(bytes, sha, Entry(id, "", sha, GlbProcedural.ScaleM, tris, bytes.Length, clean, by)); }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                log.LogError("armazenamento de assets indisponível (generate): {Msg}", ex.Message);
+                return (507, J.Err("storage_unavailable"));
+            }
             return (200, new JsonObject { ["engine"] = "local", ["asset"] = entry.DeepClone() });
         }
     }
