@@ -26,7 +26,9 @@ const ok = (label, cond, extra) => console.log((cond ? 'ok  ' : 'FALHOU ') + lab
     page.on('pageerror', e => errors.push(String(e)));
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 
-    await page.goto(SITE + '/?api=' + encodeURIComponent(API) + '&render=main', { waitUntil: 'domcontentloaded', timeout: 45000 });
+    // Mesma receita do fluxo validado localmente via MCP: worker (sem render=main),
+    // teleporte pela URL + chamada ao atalho do core, dev=1.
+    await page.goto(SITE + '/?api=' + encodeURIComponent(API) + '&teleportToGuardian=1&dev=1', { waitUntil: 'domcontentloaded', timeout: 45000 });
     // Motor + Blazor prontos: canvas existe e game.dialogLog disponível.
     await page.waitForFunction(() => window.game && window.game.dialogLog && document.getElementById('game-canvas'), null, { timeout: 45000 });
     ok('módulo dialogLog carregado', true);
@@ -48,7 +50,7 @@ const ok = (label, cond, extra) => console.log((cond ? 'ok  ' : 'FALHOU ') + lab
     await page.keyboard.press('KeyE');
     const dialog = await page.waitForSelector('.ultima-dialog', { timeout: 15000 }).catch(() => null);
     ok('diálogo aberto com a Guardiã (E)', !!dialog);
-    if (!dialog) { await page.screenshot({ path: '/tmp/ultima-t50/e2e-no-dialog.png', fullPage: true }); }
+    if (!dialog) { await page.screenshot({ path: '/tmp/ultima-t50/e2e-no-dialog.png', timeout: 5000 }).catch(() => {}); }
 
     if (dialog) {
         await page.waitForSelector('#dialog-input', { timeout: 10000 });
