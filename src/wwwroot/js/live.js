@@ -223,6 +223,11 @@
         pose: pose,
         sendChat: sendChat,
         info: info,
-        debug: info
+        debug: info,
+        // Expostos para a oficina do mundo (workshop.js): chamadas autenticadas à API,
+        // endereço base e token da sessão atual (uploads precisam dos dois).
+        call: call,
+        api: function () { return API; },
+        token: function () { return token; }
     };
 })();

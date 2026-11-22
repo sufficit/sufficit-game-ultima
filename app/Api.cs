@@ -7,12 +7,13 @@ using Ultima.Models.Core;
 namespace Ultima.Server;
 
 /// <summary>Roteador HTTP: mesmas rotas, códigos e cabeçalhos do backend anterior (main.py).</summary>
-sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat chat, ILogger log)
+sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat chat, WorldAssets assets, ILogger log)
 {
     const int MaxBody = 64 * 1024;
     const string ApiVersion = "v1";
     const string DefaultCache = "public, max-age=60, stale-while-revalidate=300";
     const string NoStore = "no-store";
+    const int MaxUpload = 2 * 1024 * 1024;
 
     static readonly string[] Endpoints =
     [
@@ -22,6 +23,8 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
         "POST /v1/game/sessions", "/v1/game/sessions", "/v1/game/state",
         "POST /v1/game/command", "/v1/game/events", "/v1/game/map", "POST /v1/game/map/edits",
         "POST /v1/game/leave",
+        "/v1/assets", "/v1/assets/jobs/{id}", "/v1/assets/file/{name}",
+        "POST /v1/assets/generate", "POST /v1/assets/upload",
     ];
 
     public async Task HandleAsync(HttpContext ctx)
@@ -79,6 +82,23 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
     }
 
     static Task Json(HttpContext ctx, (int Status, JsonObject Body) r) => Json(ctx, r.Body, r.Status, NoStore);
+
+    // Bytes brutos (GLB do catálogo): imutáveis — o nome do arquivo carrega o SHA-256.
+    static async Task SendBytes(HttpContext ctx, int status, byte[] body, string contentType)
+    {
+        var res = ctx.Response;
+        res.StatusCode = status;
+        var h = res.Headers;
+        h.ContentType = contentType;
+        h.AccessControlAllowOrigin = "*";
+        h.AccessControlAllowMethods = "GET, POST, DELETE, OPTIONS";
+        h.AccessControlAllowHeaders = "Content-Type, If-None-Match, X-Game-Token";
+        h.CacheControl = "public, max-age=31536000, immutable";
+        h.XContentTypeOptions = "nosniff";
+        res.ContentLength = body.Length;
+        if (ctx.Request.Method != "HEAD")
+            await res.Body.WriteAsync(body);
+    }
 
     static async Task<JsonObject?> Body(HttpContext ctx)
     {
@@ -138,6 +158,24 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
                 return;
             }
         }
+        var segs = path.Split('/');
+        // Assets do mundo (fase 3/4): catálogo, jobs de geração e bytes dos GLBs.
+        if (segs.Length >= 3 && segs[1] == "v1" && segs[2] == "assets")
+        {
+            if (path == "/v1/assets") { await Json(ctx, assets.Catalog(), 200, NoStore); return; }
+            if (segs.Length == 5 && segs[3] == "jobs")
+            {
+                await Json(ctx, assets.Job(Token(ctx), J.Cut(segs[4], 40)));
+                return;
+            }
+            if (segs.Length == 5 && segs[3] == "file")
+            {
+                var bytes = assets.ReadFile(J.Cut(segs[4], 120));
+                if (bytes is null) { await Json(ctx, J.Err("not_found"), 404); return; }
+                await SendBytes(ctx, 200, bytes, "model/gltf-binary");
+                return;
+            }
+        }
         var parts = path.Split('/');
         if (parts.Length == 6 && parts[1] == "v1" && parts[2] == "net" && parts[4] == "poll")
         {
@@ -176,6 +214,31 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
     // ---------- POST ----------
     async Task PostAsync(HttpContext ctx, string path)
     {
+        // Geração por prompt (fase 3): corpo JSON {prompt}.
+        if (path == "/v1/assets/generate")
+        {
+            var data = await Body(ctx);
+            if (data is null) { await Json(ctx, J.Err("bad_request"), 400, NoStore); return; }
+            await Json(ctx, assets.Generate(Token(ctx, data), J.Str(data["prompt"]), J.Str(data["seed"])));
+            return;
+        }
+        // Upload de GLB (fase 4): corpo binário (model/gltf-binary), nome e escala na query.
+        if (path == "/v1/assets/upload")
+        {
+            var len = ctx.Request.ContentLength ?? 0;
+            if (len is < 200 or > MaxUpload) { await Json(ctx, J.Err("size_limit_2mb"), 413, NoStore); return; }
+            var buf = new byte[len];
+            var read = 0;
+            while (read < len)
+            {
+                var n = await ctx.Request.Body.ReadAsync(buf.AsMemory(read));
+                if (n == 0) break;
+                read += n;
+            }
+            var scale = QueryFloat(ctx, "scale", 1.0);
+            await Json(ctx, assets.Upload(Token(ctx), buf, ctx.Request.Query["name"].ToString(), scale));
+            return;
+        }
         if (path is "/v1/game/map/edits" or "/v1/game/sessions" or "/v1/game/command" or "/v1/game/leave" or "/v1/npcs/guardia/chat")
         {
             var data = await Body(ctx);

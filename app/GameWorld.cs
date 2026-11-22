@@ -197,6 +197,11 @@ sealed partial class GameWorld
     Character? Session(string? token) =>
         string.IsNullOrEmpty(token) ? null : _chars.Values.FirstOrDefault(c => c.Token == token);
 
+    // Expostos para o catálogo de assets do mundo (WorldAssets): sessão válida e nome
+    // do dono, para creditar uploads/gerações sem duplicar a busca de sessão.
+    public bool HasSession(string? token) => Session(token) is not null;
+    public string? SessionName(string? token) => Session(token)?.Name;
+
     static (long, long) CellOf(double x, double z) =>
         ((long)Math.Round(x / CellSize, MidpointRounding.ToEven), (long)Math.Round(z / CellSize, MidpointRounding.ToEven));
 

@@ -18,8 +18,9 @@ var content = new ContentStore(Path.Combine(baseDir, "content.json"));
 var chat = new NpcChat(log);
 var game = new GameWorld(dataDir, content, chat, log);
 var net = new Signaling();
+var assetsSvc = new WorldAssets(dataDir, game, log);
 game.Start(app.Lifetime.ApplicationStopping);
 
-var api = new Api(content, game, net, chat, log);
+var api = new Api(content, game, net, chat, assetsSvc, log);
 app.Run((RequestDelegate)api.HandleAsync);
 app.Run();

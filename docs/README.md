@@ -16,9 +16,11 @@ Prioritários:
    OffscreenCanvas + fallback `?render=main`, loader glTF verificado por SHA-384 no
    worker. Atividade:
    [202611220130-motor-worker-offscreen.md](activities/202611220130-motor-worker-offscreen.md).
-2. [PLAN-PLAYER-ASSETS.md](PLAN-PLAYER-ASSETS.md) — assets GLB CC0 com catálogo
-   assinado por SHA-256 (fase 1 ✅) e a evolução dos modelos do mundo pelos
-   jogadores: variação paramétrica por IA local, geração via API e upload.
+2. ✅ [PLAN-PLAYER-ASSETS.md](PLAN-PLAYER-ASSETS.md) — **concluído em 22/11/2026**:
+   assets GLB CC0 com catálogo assinado por SHA-256, variação paramétrica do cenário,
+   geração por prompt (gerador procedural local + adapter Meshy), upload dos jogadores
+   com validação server-side e estilo do mundo procedural↔low-poly. Atividade:
+   [202611220130-player-assets.md](activities/202611220130-player-assets.md).
 3. ✅ [PLAN-DLL-OPFS-CACHE.md](PLAN-DLL-OPFS-CACHE.md) — **concluído em 21/11/2026**:
    OPFS com chave SHA-256 de build+escopo; texturas e terreno prontos nas revisitas
    (init 106→41 ms em produção). Atividade:

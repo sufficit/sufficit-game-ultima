@@ -1,18 +1,20 @@
 # PLAN-PLAYER-ASSETS — Assets GLB CC0 e a evolução dos modelos do mundo
 
-**Status**: fase 1 concluída em 22/11/2026 · fases 2–5 pendentes
+**Status**: ✅ concluído em 22/11/2026 (fases 1–5) ·
+[atividade](activities/202611220130-player-assets.md) ·
+[fase 1 (GLB CC0)](activities/) registrada no commit `94a2231`
 
 O jogo nasceu 100% paramétrico: modelos são descritores de primitivas em DLLs C#
 verificadas por SHA-256 (`Ultima.Models.*`), com texturas procedurais. Este plano
-abre uma segunda via — **assets de malha (GLB) com catálogo assinado** — para hoje
-enriquecer o cenário com modelos low-poly CC0 e, no futuro, permitir que **os
-próprios jogadores melhorem e montem o mundo**, inclusive gerando/substituindo
-modelos por IA (interna ou via API).
+abriu uma segunda via — **assets de malha (GLB) com catálogo assinado** — para
+enriquecer o cenário com modelos low-poly CC0 e permitir que **os próprios
+jogadores melhorem e montem o mundo**, inclusive gerando/substituindo modelos por
+IA (interna ou via API).
 
 Decisão de estilo: **low-poly por enquanto** (Quaternius/KayKit/Kenney, CC0),
 permitindo trocas e acréscimos baratos conforme o jogo cresce.
 
-## Fase 1 ✅ — Pipeline GLB CC0 com catálogo assinado (concluída)
+## Fase 1 ✅ — Pipeline GLB CC0 com catálogo assinado (concluída em 22/11/2026)
 
 - [x] Curadoria CC0 (Quaternius, via Poly Pizza) em `assets/glb/` com proveniência
       em `assets/LICENSE.md`: arbusto, flores, cogumelo, samambaia, tronco e toco.
@@ -33,57 +35,69 @@ permitindo trocas e acréscimos baratos conforme o jogo cresce.
     `createInstance` no espalhamento;
   - espalhamento na fila de modelos (orçamento 4 ms/frame, lotes de 24) reusando
     `makeInstancePlacer`/`batchedSteps`;
-  - `game.glb.status()` para validação e `game.glb.register(id, bytes, opts)` —
+  - `game.glb.status()` para validação e `game.glb.register(id, bytes)` —
     a costura das fases seguintes.
 - [x] Import via `SceneLoader.ImportMeshAsync` com URL de Blob + extensão de plugin
       explícita (`'.glb'`): o core decodifica o binário GLB e alimenta o plugin — sem
       arquivo temporário, sem segunda ida à rede depois do fetch verificado.
 
-## Fase 2 — Evolução paramétrica in-game (IA interna) `[pendente]`
+## Fase 2 ✅ — Evolução paramétrica in-game (concluída em 22/11/2026)
 
-`ModelParams` já carrega `Seed` e `Detail` no contrato das DLLs; a IA local
-(WebLLM, `game.ai.*`) pode escolher parâmetros e **variar os modelos existentes
-sem gerar malha**: árvores mais retas/tortas, pedras mais angulosas, grama mais
-densa. Barato, offline, sem novo formato. Checkpoint: Guardiã oferece opções de
-variação e o jogador vê o cenário responder.
+- [x] `ModelLoader.Rebuild(id, seed, detail)` reconstrói o descritor com novos
+      `ModelParams` (o modelo continua sendo dados+parâmetros, sem malha nova);
+      ponte `ModelsInterop.VaryModel` exposta ao JS via `game.init(canvas, bridge, modelsRef)`.
+- [x] `game.models.vary(id, {seed, detail})`: descarta malhas/instâncias antigas
+      (`disposeModel`), re-registra e re-espalha dentro do orçamento normal.
+- [x] Painel **Oficina do mundo** no HUD (Index.razor): "Árvores novas/densas/jovens",
+      "Pedras novas", "Grama exuberante" — o jogador vê o cenário responder na hora.
+- [ ] (futuro) Guardiã/Andarilho oferecerem variações conversando (WebLLM escolhe
+      seed/detalhe): a costura é a mesma `game.models.vary`.
 
-## Fase 3 — Geração de modelos via API `[pendente]`
+## Fase 3 ✅ — Geração de modelos via API (concluída em 22/11/2026)
 
-Servidor gera GLB (Meshy/Tripo/…) e publica no **mesmo catálogo** (`assets.json`
-gerado também no servidor, ou rota dedicada) com SHA-256; clientes baixam e
-verificam como hoje. Notas de licença:
+- [x] Backend `app/WorldAssets.cs`: `POST /v1/assets/generate {prompt}` com dois motores —
+      **gerador procedural local** (C# escreve o binário GLB na mão: cristal/totem/flor
+      low-poly determinísticos por prompt+seed) e **adapter Meshy** (`MESHY_API_KEY`,
+      text-to-3D com job + poll `GET /v1/assets/jobs/{id}`).
+- [x] Tudo entra no mesmo catálogo assinado (`GET /v1/assets`, bytes em
+      `GET /v1/assets/file/{nome}` com cache imutável) — o cliente baixa, confere
+      SHA-256 e planta com `game.glb.register` + espalhamento determinístico.
+- [x] UI: campo de prompt na oficina ("ex.: cristal encantado azul").
+- Nota de licença: Meshy free = **CC-BY 4.0** (exige atribuição; ver `assets/LICENSE.md`
+  se usado); planos pagos dão ownership sem crédito. O gerador local não tem restrição.
 
-- Meshy free = **CC-BY 4.0** (exige atribuição; ver `assets/LICENSE.md` se usado);
-  planos pagos dão ownership sem crédito.
-- Alternativa open: treinar/hospedar gerador próprio (ex.: TripoSR self-hosted) —
-  sem restrição de licença de saída.
+## Fase 4 ✅ — Upload/edição pelos jogadores (concluída em 22/11/2026)
 
-Checkpoint: enviar prompt no jogo → GLB aparece no mundo do jogador.
+- [x] `POST /v1/assets/upload` (token de sessão, corpo binário): validação server-side —
+      magic do GLB, ≤ 2 MB, ≤ 30 mil triângulos (parse do chunk JSON), id em slug,
+      crédito ao autor, limite de 200 assets.
+- [x] Espalhamento determinístico por id do asset (`game.glb.scatter` com RNG semeado
+      pelo hash): **todos os clientes veem o mundo igual** sem posições no servidor;
+      sync do catálogo a cada 30 s (`js/workshop.js`).
+- [x] UI: input de arquivo + escala em metros na oficina; recusas do servidor viram
+      mensagens claras.
+- [ ] (futuro) Catálogo por mundo (hoje global), moderação por whitelist e GC de órfãos.
 
-## Fase 4 — Upload/edição pelos jogadores `[pendente]`
+## Fase 5 ✅ — Substituição opcional dos modelos procedurais (concluída em 22/11/2026)
 
-Jogadores montam o mundo (o backend já persiste edições de mapa em `map.json` com
-revision/jobs). Extensão natural: catálogo de assets por mundo com whitelist de
-hashes (moderação leve), uploads GLB ≤ N MB validados server-side (limite de
-triângulos, sem scripts — GLB é dado), e o OPFS da fase 1 vira cache dos assets
-baixados. Sinergia direta com o cache OPFS já entregue
-([atividade](activities/202611212050-cache-opfs-preparados.md)).
-
-Checkpoint: dois jogadores veem o mesmo asset publicado num mundo compartilhado.
-
-## Fase 5 — Substituição dos modelos procedurais (opcional) `[pendente]`
-
-Trocar `tree.pine`/`rock.boulder`/`scenery.grass` por versões Quaternius é uma
-linha no `glbPlacements` + remoção do placement DLL — os dois pipelines convivem.
-Fazer só se o estilo visual pedir; os modelos paramétricos seguem como fallback
-garantido (placeholders C#) e base da fase 2.
+- [x] Mecanismo de estilo do cenário: `game.scenery` (`procedural` padrão ↔ `lowpoly`),
+      persistido em `localStorage`, toggle na oficina com "recarregar para aplicar".
+- [x] Alternativas CC0 pinheiro/pedra/grama (`flora.pine`, `rock.boulder2`,
+      `scenery.grass2`) substituem os procedurais com as **mesmas contagens e regras**
+      (64 árvores/26 pedras/420 tufos); no estilo padrão carregam sem espalhar (reserva).
+- [x] Default mantido em `procedural` (identidade visual atual + base da fase 2); a
+      troca é uma escolha do jogador, não uma imposição do build.
 
 ---
 
-### Validação da fase 1
+### Validação
 
-- Local (:8099, publish real): 6/6 assets carregados, 450 novas instâncias,
-  0 erros de console; GLB adulterado (byte flipado) recusado por SHA-256 com o
-  mundo intacto; `game.perf.report()` sem regressão (orçamento 4 ms respeitado).
-- Produção (Pages): commit na `main` → deploy → validação ao vivo no
-  `https://sufficit.github.io/sufficit-game-ultima/` (regra do AGENTS.md).
+- **Fase 1** (commit `94a2231`): local (publish servido, Chrome headless via CDP)
+  6/6 assets, 450/450 instâncias, 0 erros, 0 frames >33 ms; GLB com byte corrompido
+  recusado por SHA-256 com mundo intacto; produção validada ao vivo no Pages.
+- **Fases 2–5** (commits seguintes): backend local (curl) — geração local devolve GLB
+  válido (70 tris, base no chão), upload aceito/recusado (tris/magic/sem token);
+  navegador (CDP) — `vary` re-espalha árvore (2× timings sem erro), `generate` cria e
+  planta "totem de pedra verde", sync traz assets do servidor para o cliente, upload
+  pela UI publica "prop.stump" no catálogo e planta, estilo lowpoly ativa 64/26/420
+  alternativos com o mesmo visual coeso (sem placeholders/flutuação).

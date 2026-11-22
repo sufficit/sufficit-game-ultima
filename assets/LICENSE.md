@@ -15,6 +15,9 @@ creditamos mesmo assim por cortesia.
 | `glb/flora.fern.glb` | Fern | https://poly.pizza/m/jqcanvH7D6 |
 | `glb/prop.log.glb` | Wood Log with Moss | https://poly.pizza/m/nwsYvcI0bC |
 | `glb/prop.stump.glb` | Tree Stump with Moss | https://poly.pizza/m/nFvEbUX6LE |
+| `glb/flora.pine.glb` | Pine (alternativa low-poly) | https://poly.pizza/m/79gmlLnweB |
+| `glb/scenery.grass2.glb` | Grass (alternativa low-poly) | https://poly.pizza/m/Db4UVcNWnF |
+| `glb/rock.boulder2.glb` | Rock Large (alternativa low-poly) | https://poly.pizza/m/d2VWOdthtR |
 
 Pacote de origem: *Stylized Nature MegaKit* / *Ultimate Stylized Nature Pack*
 (quaternius.com, licença CC0 anunciada na página do pack).
