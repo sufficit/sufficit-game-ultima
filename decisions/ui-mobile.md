@@ -30,7 +30,7 @@ Data: 2026-11-22 · Escopo: jogável no celular (retrato e paisagem), menus ocul
 - [ ] Remeção pós-edição verde nos 4 viewports (rotação, sticks, A/B diálogo, menu, teclado virtual).
 - [ ] Regressão desktop (rects == linha de base, WASD, mouse, E/Esc, toggle painel).
 - [ ] dotnet build Release limpo + dialog-log.e2e.js passando.
-- [ ] Commit final + publicação main via github_cli api (t50 já na main ✓) + Pages success + validação ao vivo.
+- [ ] Commit final + publicação main via github_cli api — **BLOQUEADO: t50 (5807ebc) AINDA não está na origin/main** (verificado 23:35 UTC; HEAD da main = 9e60ff5). Enquanto isso: validar localmente e esperar, sem push.
 
 ## Concorrência
 - Sub-sessão t50: arquivos dela (dialog-log.js, tests/dialog-log.e2e.js, app/) não alterados; regra read-before-write respeitada; nenhum checkout/restore/reset/stash/clean.
