@@ -38,6 +38,7 @@ self.onmessage = function (e) {
                 build: msg.build,
                 pageBase: msg.pageBase,
                 scenery: msg.scenery,
+                size: msg.size || null,
                 global: self,
                 dom: false,
                 postEvent: function (name, args) { self.postMessage({ type: 'event', name: name, args: args }); },
@@ -53,6 +54,12 @@ self.onmessage = function (e) {
         return;
     }
     if (!core) { return; }
+    if (msg.type === 'size') {
+        // Tamanho de exibição medido pelo shell (CSS × dpr): mantém a resolução de
+        // render casada com a tela em redimensionamento, zoom e troca de monitor.
+        core.input.resize(msg.width, msg.height, msg.dpr);
+        return;
+    }
     if (msg.type === 'input' && msg.method && core.input[msg.method]) {
         core.input[msg.method].apply(null, msg.args || []);
     } else if (msg.type === 'call' && msg.method) {

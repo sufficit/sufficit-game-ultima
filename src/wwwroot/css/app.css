@@ -20,8 +20,10 @@ body {
     -webkit-tap-highlight-color: transparent;
 }
 
-/* Altura útil real do aparelho: 100dvh acompanha barra de endereço/teclado no celular; 100vh é o fallback. */
-#app, .game-shell { height: 100vh; height: 100dvh; }
+/* A casca precisa de altura definida em TODOS os elos até o canvas (host da SUI
+   incluso via :has(), senão o canvas cai na proporção intrínseca 300×150 = 2:1).
+   No celular, 100dvh acompanha barra de endereço/teclado; 100vh é o fallback. */
+#app, #app > .sui-root, #app > :has(> .game-shell), .game-shell { height: 100vh; height: 100dvh; }
 
 .game-shell.ultima-theme {
     /* Identidade extra do jogo (a paleta base é a da SUI, via tokens --sui-*) */

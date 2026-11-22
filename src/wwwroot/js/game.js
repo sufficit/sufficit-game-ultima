@@ -97,6 +97,12 @@
     }
 
     // ---------- Modo worker: canvas transferido + ponte de mensagens ----------
+    // Tamanho de exibição do canvas (CSS) × densidade de pixels. No worker o
+    // OffscreenCanvas não tem layout: o shell mede e envia (init + mudanças).
+    function canvasMetrics(canvas) {
+        return { width: Math.max(1, canvas.clientWidth || 1280), height: Math.max(1, canvas.clientHeight || 720), dpr: window.devicePixelRatio || 1 };
+    }
+
     function startWorker(canvas) {
         const off = canvas.transferControlToOffscreen();
         worker = new Worker('js/game-worker.js');
@@ -108,7 +114,7 @@
                 reject(new Error('worker: ' + (e && e.message || 'erro')));
             };
             worker.postMessage(
-                { type: 'init', canvas: off, width: canvas.width || canvas.clientWidth || 1280, height: canvas.height || canvas.clientHeight || 720, build: buildStamp(), pageBase: location.href, scenery: sceneryPref() },
+                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref() },
                 [off]);
         });
     }
@@ -272,6 +278,44 @@
         window.addEventListener('orientationchange', function () { setTimeout(resize, 250); });
     }
 
+    // No modo main o Babylon só redimensiona no 'resize' da janela; mudanças de layout
+    // (painéis, barra de endereço do celular) também alteram o canvas — observa e
+    // redimensiona, como no worker.
+    function watchSizeMain(canvas) {
+        if (typeof ResizeObserver === 'undefined') { return; }
+        let last = '';
+        new ResizeObserver(function () {
+            const key = canvas.clientWidth + 'x' + canvas.clientHeight;
+            if (key === last) { return; }
+            last = key;
+            if (core && core.input) { core.input.resize(canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio || 1); }
+        }).observe(canvas);
+    }
+
+    // Acompanha o tamanho de exibição: ResizeObserver pega mudanças de layout que não
+    // são resize de janela (painéis, HUD); matchMedia pega zoom e troca de monitor.
+    function watchSize(canvas) {
+        let last = '';
+        let mq = null;
+        function push() {
+            if (!worker) { return; }
+            const m = canvasMetrics(canvas);
+            const key = m.width + 'x' + m.height + '@' + m.dpr;
+            if (key === last) { return; }
+            last = key;
+            worker.postMessage({ type: 'size', width: m.width, height: m.height, dpr: m.dpr });
+        }
+        function watchDpr() {
+            if (mq && mq.removeEventListener) { mq.removeEventListener('change', watchDpr); }
+            try { mq = window.matchMedia('(resolution: ' + (window.devicePixelRatio || 1) + 'dppx)'); } catch (e) { mq = null; return; }
+            if (mq.addEventListener) { mq.addEventListener('change', watchDpr); } else if (mq.addListener) { mq.addListener(watchDpr); }
+        }
+        if (typeof ResizeObserver !== 'undefined') { new ResizeObserver(push).observe(canvas); }
+        window.addEventListener('resize', push);
+        watchDpr();
+        push();
+    }
+
     function setupVirtualStick(hostId, thumbId, set) {
         const host = document.getElementById(hostId);
         const thumb = document.getElementById(thumbId);
@@ -319,6 +363,7 @@
                 ? startWorker(canvas).then(function (ok) {
                         // No worker o core não tem DOM: o input é capturado aqui.
                         setupInput(canvas);
+                        watchSize(canvas);   // resolução de render casada com a tela (CSS × dpr)
                         return ok;
                     }).catch(function (err) {
                         console.warn('[motor] worker não subiu, caindo no render local:', err && err.message);
@@ -330,7 +375,10 @@
                         }
                         throw err;
                     })
-                : startMain(canvas);   // no modo main os handlers de DOM são do próprio core
+                : startMain(canvas).then(function (ok) {
+                        watchSizeMain(canvas);
+                        return ok;
+                    });   // no modo main os handlers de DOM são do próprio core
             return start.then(function () { return true; });
         },
         setFrozen(v) { post('setFrozen', [!!v]); },
@@ -370,7 +418,9 @@
             report() { return query('perf.report'); }
         },
         assetsReport() { return query('assetsReport'); },
-        coreId() { return query('coreId'); }
+        coreId() { return query('coreId'); },
+        renderSize() { return query('renderSize'); },
+        cameraState() { return query('cameraState'); }
     });
     Object.defineProperty(window.game, 'mode', { get: function () { return mode; } });
 })();
