@@ -59,7 +59,7 @@ sealed class DialogAnalytics(ILogger log)
         var reply = Sanitize(J.Str(o["reply"]), MaxText);
         if (npc.Length == 0 || (player.Length == 0 && reply.Length == 0)) return null;
         J.TryFloat(o["t"], out var t);
-        if (!double.IsFinite(t) || t is < 0 or > 4102444800000) t = now;   // ~ano 2100
+        if (!double.IsFinite(t) || t is <= 0 or > 4102444800000) t = now;   // ~ano 2100
         J.TryFloat(o["ms"], out var ms);
         if (!double.IsFinite(ms) || ms < 0) ms = 0;
         return new Turn
