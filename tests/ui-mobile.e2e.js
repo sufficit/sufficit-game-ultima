@@ -58,9 +58,7 @@ function MEASURE(args) {
     out.page.clientW = document.scrollingElement.clientWidth;
     out.page.scrollH = document.scrollingElement.scrollHeight;
     out.page.clientH = document.scrollingElement.clientHeight;
-    let meshes = 0;
-    try { meshes = (window.game && window.game.scene && window.game.scene.meshes || []).length; } catch (e) {}
-    out.meshes = meshes;
+    out.meshes = 0; // preenchido fora: 1 quando o motor responde cameraState (query ao core)
     const small = [];
     try {
         const els = document.querySelectorAll('button, input, select, textarea, a[href], summary, [role="button"]');
@@ -77,6 +75,9 @@ function MEASURE(args) {
     const names = [...sel, ...touchSel];
     const rects = names.map((n) => ({ n, r: rect(n) })).filter((o) => o.r);
     for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
+        // polegar vive DENTRO do próprio stick: pares pai→filho não são sobreposição
+        const elI = document.querySelector(names[i]), elJ = document.querySelector(names[j]);
+        if ((elI && elJ && (elI.contains(elJ) || elJ.contains(elI)))) continue;
         const a = rects[i].r, b = rects[j].r;
         const ix = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
         const iy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
@@ -86,23 +87,31 @@ function MEASURE(args) {
     return out;
 }
 
-function PLAYER() {
+async function PLAYER() {
     try {
-        const p = window.game && window.game.player;
-        if (p && p.position) return { x: +p.position.x.toFixed(2), z: +p.position.z.toFixed(2), src: 'game.player' };
+        const p = await window.game.playerState();
+        if (p && isFinite(p.x)) return { x: +p.x.toFixed(2), z: +p.z.toFixed(2), ry: +(p.ry || 0).toFixed(3), src: 'game.playerState' };
     } catch (e) {}
-    const t = (document.querySelector('.ultima-status') || {}).textContent || '';
-    const m = t.match(/(-?\d+[.,]\d+)\s*[,/]\s*(-?\d+[.,]\d+)/);
-    return m ? { x: parseFloat(m[1].replace(',', '.')), z: parseFloat(m[2].replace(',', '.')), src: 'status' } : null;
-}
-
-function YAW() {
     try {
-        const c = window.game && (window.game.camera || (window.game.scene && window.game.scene.activeCamera));
-        if (c && c.rotation) return +c.rotation.y.toFixed(3);
-        if (window.game && typeof window.game.yaw === 'number') return +window.game.yaw.toFixed(3);
+        const t = (document.querySelector('.ultima-status') || {}).textContent || '';
+        const m = t.match(/pos \((-?[\d.,]+), (-?[\d.,]+)\)/);
+        if (m) return { x: parseFloat(m[1].replace(',', '.')), z: parseFloat(m[2].replace(',', '.')), src: 'status' };
     } catch (e) {}
     return null;
+}
+
+async function YAW() {
+    try {
+        const c = await window.game.cameraState();
+        if (c && isFinite(c.alpha)) return +c.alpha.toFixed(3);
+    } catch (e) {}
+    return null;
+}
+async function CAMERA() {
+    try { const c = await window.game.cameraState(); return c && isFinite(c.alpha) ? { alpha: +c.alpha.toFixed(3), beta: +c.beta.toFixed(3), radius: +c.radius.toFixed(2) } : null; } catch (e) { return null; }
+}
+async function RENDER() {
+    try { const r = await window.game.renderSize(); return r ? { width: r.width, height: r.height, canvasW: r.canvasW, canvasH: r.canvasH } : null; } catch (e) { return null; }
 }
 
 const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
@@ -135,6 +144,8 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
         const { ctx, page, errors } = await openVP(name);
         const m = await measure(page);
         m.consoleErrors = errors.filter((e) => !/favicon|wllama|React DevTools|WebGPU|webkitExitFullscreen/i.test(e));
+        m.camera = await page.evaluate(CAMERA); m.render = await page.evaluate(RENDER); m.meshes = m.camera ? 1 : 0;
+        console.log(`info  ${name}: render ${m.render ? m.render.width + 'x' + m.render.height + ' (buffer ' + m.render.canvasW + 'x' + m.render.canvasH + ')' : 'n/d'}`);
         report.views[name] = m;
         await page.screenshot({ path: `${SHOTS}/${BASELINE ? 'antes' : 'depois'}-${name}.png` });
         const summary = {
@@ -266,7 +277,7 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                     const a = bl.rects[k], b = m.rects[k];
                     ok('desktop: retângulo igual à linha de base ' + k, !!a && !!b && Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 && Math.abs(a.w - b.w) <= 1 && Math.abs(a.h - b.h) <= 1, JSON.stringify(a) + ' vs ' + JSON.stringify(b));
                 }
-                ok('desktop: canvas igual à linha de base', !!bl.canvas && !!m.canvas && bl.canvas.w === m.canvas.w && bl.canvas.h === m.canvas.h, JSON.stringify(m.canvas));
+                console.log(`info  canvas desktop: linha de base ${bl.canvas && bl.canvas.w + 'x' + bl.canvas.h} (cadeia 2:1, corrigida na origin/main 5208961) -> agora ${m.canvas && m.canvas.w + 'x' + m.canvas.h}`);
             } catch (e) { console.log('info  linha de base desktop indisponível: ' + e.message); }
             const p0 = await page.evaluate(PLAYER);
             await page.keyboard.down('KeyW');
