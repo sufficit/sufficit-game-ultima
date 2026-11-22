@@ -69,3 +69,62 @@ Commit `07ff4f2` (5 arquivos, +1976/−1508):
     sem marca de worker.
 - IA da Guardiã (WebGPU/`ai.js` e CPU/`ai-cpu.js`, main thread) inalterada e
   coordenada pelos mesmos eventos; validada via diálogo no worker.
+
+## Correção de regressão (22/11/2026): render em 300×150 esticado pela tela
+
+**Relato do mantenedor:** a qualidade do jogo "piorou muito" — cena borrada, bordas
+serrilhadas e rótulos de nome ilegíveis.
+
+**Causa** (regressão desta frente, commit `07ff4f2`): o OffscreenCanvas transferido
+nasce com o tamanho padrão do elemento (300×150) e, dentro do worker, não tem layout
+— nem o Babylon nem `engine.resize()` têm como descobrir o tamanho de exibição. O
+shell mandava largura/altura na mensagem de init, mas com o valor errado
+(`canvas.width`, o intrínseco) e ninguém os aplicava. Medido na produção: buffer de
+**300×150** exibido em 1280×640 CSS (na tela wide/retina do mantenedor, 8–17× de
+esticamento); o fallback renderizava em 1280×640.
+
+**Por que a validação original não pegou:** os testes conferiram DOM e dados
+(modelos, diálogo, OPFS), não os pixels — e o `perf` até parecia bom, porque
+renderiza-se em 300×150.
+
+**Correção** (commit `208ff8a`): o shell mede o canvas (CSS × `devicePixelRatio`) e
+envia no init e a cada mudança (`ResizeObserver`, `resize`, `matchMedia` para zoom e
+troca de monitor); o worker trata a mensagem `size`; o core cria o engine com
+`adaptToDeviceRatio` só na main e, no worker, aplica
+`setHardwareScalingLevel(1/dpr)` + `setSize` em pixels. Semântica conferida no
+código-fonte do Babylon 9.36: `setSize` grava o buffer direto; o fator de escala só
+converte CSS↔pixels dentro de `resize()` (a primeira tentativa passava o tamanho
+CSS ao `setSize` e deixava a tela 2× com metade da resolução). Diagnósticos novos:
+`game.renderSize()` e `game.cameraState()`.
+
+**Validação por pixels** (Chromium headless, cena completa antes da foto):
+
+| | antes (produção) | depois (produção) | fallback |
+|---|---|---|---|
+| buffer, tela 1× | 300×150 | 1280×640 | 1280×640 |
+| buffer, tela 2× | 300×150 | 2560×1280 | 2560×1280 |
+| detalhe no miolo do canvas, 1× | 35 · 29 · 10 | 834 · 224 · 76 | 1139 · 457 · 86 |
+| detalhe no miolo do canvas, 2× | 8 · 7 · 2 | 478 · 238 · 65 | 533 · 342 · 109 |
+| razão de autorredução, 1× | 2,30 | 31,53 | 29,80 |
+| razão de autorredução, 2× | 2,21 | 23,12 | 22,78 |
+
+- "Detalhe" = variância do Laplaciano em três faixas centrais (sem HUD). A cena é
+  aleatória a cada carga, então esses valores variam com o conteúdo.
+- **Razão de autorredução** = detalhe da captura ÷ detalhe da mesma captura
+  reduzida à metade e reampliada. É a medida que não depende de conteúdo: imagem
+  nativa perde muito nessa operação (razão alta); imagem já esticada quase não
+  muda (razão perto de 1). Calibração: fallback reduzido 4× e esticado → 1,29.
+  Todas as capturas de fallback ficaram em 21,7–29,8; todas as do worker
+  corrigido em 23,1–33,0; o defeito em 2,2–2,3.
+- Composição do canvas transferido conferida isoladamente (teste sem Babylon):
+  linhas de 1 px chegam com 1,00 px em dpr 1 e 2.
+- Redimensionamento: 1280×640 → 900×450 (1×) e 1800×900 (2×). Câmera no worker
+  por arrasto e roda responde (Δα −0,8; Δβ −0,32; Δraio −0,075).
+- Inventário visual às cegas da página inteira: mesmos itens presentes/ausentes
+  nos dois modos; luminância e saturação na mesma faixa.
+- Ressalva: um avaliador visual classificou um recorte ampliado da produção
+  corrigida como "ampliado" — era ruído de julgamento sobre um personagem de
+  superfícies lisas em close; a razão de autorredução e o buffer são a evidência.
+
+**Lição:** mudança em render/canvas se valida nos pixels (tamanho do buffer e
+razão de autorredução), não só em DOM e dados.
