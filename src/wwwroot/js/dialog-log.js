@@ -252,7 +252,7 @@
             if (overrides.enabled === false) cfg.enabled = false;
             if (overrides.endpoint) endpoint = String(overrides.endpoint);
             api = (overrides.api || qs.get('api') || window.ULTIMA_API ||
-                (window.game && game.net && game.net.info ? game.net.info().api : '') ||
+                (window.game && window.game.net && window.game.net.info ? window.game.net.info().api : '') ||
                 FALLBACK_API).replace(/\/+$/, '');
             if (timer) clearInterval(timer);
             if (cfg.enabled) timer = setInterval(function () { flush(); }, cfg.intervalMs);
