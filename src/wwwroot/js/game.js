@@ -265,6 +265,20 @@
         }
     }
 
+    // No modo main o Babylon só redimensiona no 'resize' da janela; mudanças de layout
+    // (painéis, barra de endereço do celular) também alteram o canvas — observa e
+    // redimensiona, como no worker.
+    function watchSizeMain(canvas) {
+        if (typeof ResizeObserver === 'undefined') { return; }
+        let last = '';
+        new ResizeObserver(function () {
+            const key = canvas.clientWidth + 'x' + canvas.clientHeight;
+            if (key === last) { return; }
+            last = key;
+            if (core && core.input) { core.input.resize(canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio || 1); }
+        }).observe(canvas);
+    }
+
     // Acompanha o tamanho de exibição: ResizeObserver pega mudanças de layout que não
     // são resize de janela (painéis, HUD); matchMedia pega zoom e troca de monitor.
     function watchSize(canvas) {
@@ -348,7 +362,10 @@
                         }
                         throw err;
                     })
-                : startMain(canvas);   // no modo main os handlers de DOM são do próprio core
+                : startMain(canvas).then(function (ok) {
+                        watchSizeMain(canvas);
+                        return ok;
+                    });   // no modo main os handlers de DOM são do próprio core
             return start.then(function () { return true; });
         },
         setFrozen(v) { post('setFrozen', [!!v]); },

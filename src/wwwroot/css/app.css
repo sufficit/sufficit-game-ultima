@@ -14,7 +14,13 @@ body {
     overflow: hidden; /* o jogo ocupa a tela; painéis rolam por conta própria */
 }
 
-#app, .game-shell { height: 100%; }
+/* A casca precisa de altura definida em TODOS os elos até o canvas. O jogo é envolvido
+   pelo host da UI (Sufficit.Blazor.UI → div.sui-root, filho direto de #app): sem altura
+   nele, o height:100% do jogo vira "auto" e o canvas cai na proporção intrínseca de um
+   canvas sem tamanho (300×150 = 2:1) — a tela fica cortada na base em janelas mais
+   largas que 2:1 e com faixa morta embaixo nas mais estreitas. O :has() cobre o host
+   mesmo se a classe da biblioteca mudar. */
+#app, #app > .sui-root, #app > :has(> .game-shell), .game-shell { height: 100%; }
 
 .game-shell.ultima-theme {
     /* Identidade extra do jogo (a paleta base é a da SUI, via tokens --sui-*) */
