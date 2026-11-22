@@ -155,6 +155,14 @@ form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
         pointer-events: none; z-index: 4;
     }
     .touch-stick, #touch-action, #touch-cancel { pointer-events: auto; }
+    /* nada de encolher controles: em telas estreitas o flex shrinkava o stick (87px) */
+    .touch-stick, #touch-action, #touch-cancel, .touch-right-controls { flex: none; }
+    .touch-controls { gap: .5rem; padding: 0 .5rem; }
+}
+/* Retrato estreito: A/B empilham à direita do look-stick em vez de espremer a linha */
+@media (pointer: coarse) and (max-width: 480px) {
+    .touch-right-controls { flex-direction: column-reverse; align-items: flex-end; gap: .5rem; }
+    .touch-right-controls .touch-stick { align-self: flex-end; }
 }
 .touch-right-controls { display: flex; align-items: flex-end; gap: .8rem; }
 .touch-stick {
