@@ -35,7 +35,8 @@ catch (Exception ex)
 
 var content = new ContentStore(Path.Combine(baseDir, "content.json"));
 var chat = new NpcChat(log);
-var game = new GameWorld(dataDir, content, chat, log);
+var worldStore = new JournalWorldStore(dataDir, log);
+var game = new GameWorld(worldStore, content, chat, log);
 var net = new Signaling();
 var assetsSvc = new WorldAssets(dataDir, game, log);
 game.Start(app.Lifetime.ApplicationStopping);

@@ -135,7 +135,7 @@ sealed partial class GameWorld
                         return (409, new JsonObject { ["error"] = "job_exists", ["job"] = JobPublic(existing) });
                     var job = NewJob(ch, cx, cz, key, now);
                     _jobs.Add(job);
-                    MapSave();
+                    RecordJob(job);
                     var pub = JobPublic(job);
                     Emit(new JsonObject { ["type"] = "job_started", ["job"] = pub });
                     var res = Ok(ch);
@@ -198,7 +198,7 @@ sealed partial class GameWorld
                     if (job is not null)
                     {
                         _jobs.Remove(job);
-                        MapSave();
+                        RecordJobCancel(job);
                         Emit(new JsonObject
                         {
                             ["type"] = "job_cancelled", ["job"] = new JsonObject { ["id"] = job.Id, ["cell"] = job.Cell },

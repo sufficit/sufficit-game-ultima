@@ -30,12 +30,13 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
 
 ## Fases
 
-### F1 — Persistência durável `[pendente]`
+### F1 — Persistência durável `[pendente]` → detalhamento em [PLAN-WORLD-STORE.md](PLAN-WORLD-STORE.md)
 - [ ] PVC dedicado no deployment do backend (volume `data` + `ULTIMA_DATA_DIR=/data`)
-      via patch do deployment — `map.json` e `assets/` saem do `/tmp`.
-- [ ] Mapa migra de snapshot `map.json` para **journal JSONL** (`edits.jsonl`:
-      `{rev, op, cell|área, params, by, ts}`) + snapshot compactado (`map.json` vira
-      materialização do journal).
+      via patch do deployment — mapa e `assets/` saem do `/tmp`.
+- [ ] Mapa migra de snapshot `map.json` para **journal JSONL** (ops append-only) +
+      snapshot compactado, atrás da interface `IWorldStore`
+      ([decisão world-store-v1](../decisions/world-store-v1.md): arquivo-first,
+      SQLite ~100k ops, MySQL só para dados relacionais).
 - [ ] Validação: recriar o pod → mundo e assets intactos; replay do journal ==
       snapshot.
 

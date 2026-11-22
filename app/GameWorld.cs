@@ -53,15 +53,14 @@ sealed partial class GameWorld
     List<Job> _jobs = [];
     TaskCompletionSource _changed = NewSignal();
     readonly double _start = J.Now;
-    readonly string _dataDir, _mapFile;
+    readonly IWorldStore _store;
     readonly ContentStore _content;
     readonly NpcChat _chat;
     readonly ILogger _log;
 
-    public GameWorld(string dataDir, ContentStore content, NpcChat chat, ILogger log)
+    public GameWorld(IWorldStore store, ContentStore content, NpcChat chat, ILogger log)
     {
-        _dataDir = dataDir;
-        _mapFile = Path.Combine(dataDir, "map.json");
+        _store = store;
         _content = content;
         _chat = chat;
         _log = log;
@@ -72,59 +71,35 @@ sealed partial class GameWorld
 
     static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    // ---------- persistência ----------
+    // ---------- persistência (journal append-only atrás da IWorldStore; decisão world-store-v1) ----------
     void MapLoad()
     {
-        JsonObject? data = null;
-        try { data = JsonNode.Parse(File.ReadAllBytes(_mapFile)) as JsonObject; }
-        catch (Exception) { }
-        if (data is null) return;
-        _revision = J.TryInt(data["revision"], out var rev) ? (int)rev : 1;
-        _tiles = data["tiles"] is JsonObject t ? (JsonObject)t.DeepClone() : new JsonObject();
-        _jobs = [];
-        var now = J.Now;
-        if (data["jobs"] is JsonArray jobs)
-            foreach (var j in jobs.OfType<JsonObject>())
-            {
-                var type = J.Str(j["type"]);
-                if (!JobTypes.TryGetValue(type, out var jt)) continue;
-                var job = new Job
-                {
-                    Id = J.Str(j["id"]), Type = type, Cell = J.Str(j["cell"]),
-                    Owner = J.Str(j["owner"]), OwnerName = J.Str(j["ownerName"]),
-                    Cx = J.TryInt(j["cx"], out var cx) ? cx : 0, Cz = J.TryInt(j["cz"], out var cz) ? cz : 0,
-                    StartedAt = J.TryFloat(j["startedAt"], out var s) ? s : now,
-                };
-                // Jobs progridem por tempo de parede: os que venceram na parada concluem no 1º tick.
-                job.DoneAt = job.StartedAt + jt.Duration;
-                _jobs.Add(job);
-            }
+        var st = _store.Load();
+        _revision = st.Revision;
+        _tiles = st.Tiles;
+        _jobs = st.Jobs;
     }
 
-    void MapSave()
+    // Ops do journal — quem muta o mundo registra a op correspondente (dentro do _lock).
+    static JsonObject JobOp(Job j) => new()
     {
-        try
+        ["id"] = j.Id, ["type"] = j.Type, ["cell"] = j.Cell, ["cx"] = j.Cx, ["cz"] = j.Cz,
+        ["owner"] = j.Owner, ["ownerName"] = j.OwnerName, ["startedAt"] = j.StartedAt, ["doneAt"] = j.DoneAt,
+    };
+
+    void RecordTile(string cell, string type, string by, double at) =>
+        _store.Append("tile", new JsonObject { ["cell"] = cell, ["type"] = type, ["by"] = by, ["at"] = J.R(at, 3), ["rev"] = _revision });
+
+    void RecordJob(Job job) => _store.Append("job", JobOp(job));
+
+    void RecordJobDone(Job job, string tile, double at) =>
+        _store.Append("jobDone", new JsonObject
         {
-            Directory.CreateDirectory(_dataDir);
-            var obj = new JsonObject
-            {
-                ["revision"] = _revision,
-                ["tiles"] = _tiles.DeepClone(),
-                ["jobs"] = J.Arr(_jobs.Select(j => (JsonNode?)new JsonObject
-                {
-                    ["id"] = j.Id, ["type"] = j.Type, ["cell"] = j.Cell, ["cx"] = j.Cx, ["cz"] = j.Cz,
-                    ["owner"] = j.Owner, ["ownerName"] = j.OwnerName, ["startedAt"] = j.StartedAt, ["doneAt"] = j.DoneAt,
-                })),
-            };
-            var tmp = _mapFile + ".tmp";
-            File.WriteAllText(tmp, obj.ToJsonString(J.Opts));
-            File.Move(tmp, _mapFile, overwrite: true);
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning("map save error: {Type}", ex.GetType().Name);
-        }
-    }
+            ["id"] = job.Id, ["cell"] = job.Cell, ["tile"] = tile, ["by"] = job.OwnerName,
+            ["at"] = J.R(at, 3), ["rev"] = _revision,
+        });
+
+    void RecordJobCancel(Job job) => _store.Append("jobCancel", new JsonObject { ["id"] = job.Id });
 
     // ---------- eventos ----------
     void Emit(JsonObject ev, IEnumerable<string>? targets = null)
