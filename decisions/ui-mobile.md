@@ -26,7 +26,7 @@ Data: 2026-11-22 · Escopo: jogável no celular (retrato e paisagem), menus ocul
 - [x] Linha de base medida nos 4 viewports + JSON + screenshots "antes" (/tmp/mobile-shots/antes-*.png).
 - [x] Implementação: viewport-fit=cover (index.html); cadeia de altura + dvh; menu mobile completo no Razor (fab/backdrop/folha/`ToggleMenu`/`_menuOpen`, desktop `display:contents`); app.css com bloco mobile único (typo corrigido, sem escapes, status/oficina/painel/chat ocultos no mobile); extras.css dedup; game.js com visualViewport+orientationchange; diálogo em folha inferior ≥16px.
 - [x] Merge da origin/main (5208961, correção do canvas 2:1) → conflitos app.css/game.js resolvidos por união, commit 44dc913 sobre WIP b3ce871. WIP commitado antes do merge para não perder edições.
-- [~] Build Release pós-merge → /tmp/ultima-mobile2 (game.js/game-core.js atualizados pós-publish), servido em 127.0.0.1:8093; **validação completa (ui-mobile.e2e.js modo full) em execução** — log /tmp/ultima-t56/after-run.log, relatório decisions/ui-mobile-after.json.
+- [~] Build Release pós-merge: 1ª tentativa FALHOU (publish-after.log: CS1073 na linha 15 do Index.razor — dois ternários `@(...)@(...)` encadeados no atributo class; corrigido para `@((...) + (...))`). 2ª tentativa em andamento (publish-after2.log, `-m:1`, saída /tmp/ultima-mobile2). Validação completa (ui-mobile.e2e.js modo full) ainda NÃO rodou — relatório decisions/ui-mobile-after.json a produzir.
 - [ ] Remeção pós-edição verde nos 4 viewports (rotação, sticks, A/B diálogo, menu, teclado virtual).
 - [ ] Regressão desktop (rects == linha de base, WASD, mouse, E/Esc, toggle painel).
 - [ ] dotnet build Release limpo + dialog-log.e2e.js passando.
