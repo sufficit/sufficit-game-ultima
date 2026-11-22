@@ -35,9 +35,11 @@ const ok = (label, cond, extra) => console.log((cond ? 'ok  ' : 'FALHOU ') + lab
     const aiCpu = await page.evaluate(async () => (await fetch('js/ai-cpu.js')).status);
     ok('js/ai-cpu.js servido (200)', aiCpu === 200, 'HTTP ' + aiCpu);
 
-    // Anda até a Guardiã (NPC em z=-14) e abre o diálogo com E.
+    // Chega perto da Guardiã (NPC em z=-14) e abre o diálogo com E.
+    // Atalho de dev primeiro (determinístico); caminhar com W é o fallback.
     await page.waitForSelector('#game-canvas', { timeout: 10000 });
-    await page.keyboard.down('KeyW');
+    const teleported = await page.evaluate(() => { try { window.game.teleportToGuardian(); return true; } catch (e) { return false; } });
+    if (!teleported) await page.keyboard.down('KeyW');
     await page.waitForFunction(() => {
         const t = document.querySelector('.ultima-status') || document.body;
         return document.querySelector('.ultima-hint, .ultima-dialog') !== null;
