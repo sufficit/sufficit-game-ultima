@@ -32,49 +32,7 @@
             </div>
         }
 
-        <aside class="workshop-panel" aria-label="Oficina do mundo">
-            <details>
-                <summary><strong>Oficina do mundo</strong><span>@_workshopStatus</span></summary>
-                <section class="ws-block">
-                    <strong>Variações do cenário</strong>
-                    <small>O mundo se remodela na hora — mesmo motor paramétrico das árvores, pedras e grama.</small>
-                    <div class="ws-actions">
-                        <button type="button" class="secondary" @onclick='() => VaryAsync("tree.pine", null)'>🌲 Árvores novas</button>
-                        <button type="button" class="secondary" @onclick='() => VaryAsync("tree.pine", 1.6)'>Densas</button>
-                        <button type="button" class="secondary" @onclick='() => VaryAsync("tree.pine", 0.6)'>Jovens</button>
-                        <button type="button" class="secondary" @onclick='() => VaryAsync("rock.boulder", null)'>🪨 Pedras novas</button>
-                        <button type="button" class="secondary" @onclick='() => VaryAsync("scenery.grass", 1.4)'>🌱 Grama exuberante</button>
-                    </div>
-                </section>
-                <section class="ws-block">
-                    <strong>Criar modelo</strong>
-                    <small>Descreva e o servidor gera um GLB (SHA-256 verificado) plantado no mundo compartilhado.</small>
-                    <div class="ws-row">
-                        <input id="workshop-prompt" @bind="_promptDraft" @bind:event="oninput" maxlength="120" placeholder="ex.: cristal encantado azul" autocomplete="off" />
-                        <button type="button" @onclick="GenerateAsync">Gerar</button>
-                    </div>
-                </section>
-                <section class="ws-block">
-                    <strong>Enviar modelo (.glb)</strong>
-                    <small>Até 2 MB e 30 mil triângulos; validado no servidor e publicado para todos os jogadores.</small>
-                    <div class="ws-row">
-                        <input type="file" accept=".glb,model/gltf-binary" onchange="game.workshop.upload(this)" />
-                        <input id="workshop-scale" type="number" min="0.05" max="12" step="0.05" value="1" title="Tamanho em metros (maior dimensão)" aria-label="Tamanho em metros" />
-                    </div>
-                </section>
-                <section class="ws-block">
-                    <strong>Estilo do mundo</strong>
-                    <div class="ws-actions">
-                        <button type="button" class='chip @(_sceneryStyle == "procedural" ? "ok-chip" : null)' aria-pressed='@(_sceneryStyle == "procedural")' @onclick='() => SetSceneryAsync("procedural")'>Procedural (padrão)</button>
-                        <button type="button" class='chip @(_sceneryStyle == "lowpoly" ? "ok-chip" : null)' aria-pressed='@(_sceneryStyle == "lowpoly")' @onclick='() => SetSceneryAsync("lowpoly")'>Low-poly CC0</button>
-                        @if (_sceneryDirty)
-                        {
-                            <button type="button" class="secondary" @onclick="ReloadPage">Recarregar para aplicar</button>
-                        }
-                    </div>
-                </section>
-            </details>
-        </aside>
+
 
         @if (_chat.Count > 0)
         {
@@ -103,6 +61,10 @@
                 aria-expanded="@_menuOpen.ToString().ToLower()" @onclick="ToggleMenu">☰</button>
 
         <div class="ultima-menu">
+            <div class="ultima-menu__head">
+                <strong>Menu</strong>
+                <button type="button" class="ultima-menu__close" aria-label="Fechar menu" @onclick="ToggleMenu">✕</button>
+            </div>
         <aside class="ultima-status" aria-label="Status do jogo">
             <SUICard Elevation="2" Class="ultima-card--glass">
                 <SUICardHeader Title="@StatusTitle()" Description="@StatusSummary()">
@@ -276,6 +238,51 @@
             </aside>
         }
 
+        <aside class="workshop-panel" aria-label="Oficina do mundo">
+            <details>
+                <summary><strong>Oficina do mundo</strong><span>@_workshopStatus</span></summary>
+                <section class="ws-block">
+                    <strong>Variações do cenário</strong>
+                    <small>O mundo se remodela na hora — mesmo motor paramétrico das árvores, pedras e grama.</small>
+                    <div class="ws-actions">
+                        <button type="button" class="secondary" @onclick='() => VaryAsync("tree.pine", null)'>🌲 Árvores novas</button>
+                        <button type="button" class="secondary" @onclick='() => VaryAsync("tree.pine", 1.6)'>Densas</button>
+                        <button type="button" class="secondary" @onclick='() => VaryAsync("tree.pine", 0.6)'>Jovens</button>
+                        <button type="button" class="secondary" @onclick='() => VaryAsync("rock.boulder", null)'>🪨 Pedras novas</button>
+                        <button type="button" class="secondary" @onclick='() => VaryAsync("scenery.grass", 1.4)'>🌱 Grama exuberante</button>
+                    </div>
+                </section>
+                <section class="ws-block">
+                    <strong>Criar modelo</strong>
+                    <small>Descreva e o servidor gera um GLB (SHA-256 verificado) plantado no mundo compartilhado.</small>
+                    <div class="ws-row">
+                        <input id="workshop-prompt" @bind="_promptDraft" @bind:event="oninput" maxlength="120" placeholder="ex.: cristal encantado azul" autocomplete="off" />
+                        <button type="button" @onclick="GenerateAsync">Gerar</button>
+                    </div>
+                </section>
+                <section class="ws-block">
+                    <strong>Enviar modelo (.glb)</strong>
+                    <small>Até 2 MB e 30 mil triângulos; validado no servidor e publicado para todos os jogadores.</small>
+                    <div class="ws-row">
+                        <input type="file" accept=".glb,model/gltf-binary" onchange="game.workshop.upload(this)" />
+                        <input id="workshop-scale" type="number" min="0.05" max="12" step="0.05" value="1" title="Tamanho em metros (maior dimensão)" aria-label="Tamanho em metros" />
+                    </div>
+                </section>
+                <section class="ws-block">
+                    <strong>Estilo do mundo</strong>
+                    <div class="ws-actions">
+                        <button type="button" class='chip @(_sceneryStyle == "procedural" ? "ok-chip" : null)' aria-pressed='@(_sceneryStyle == "procedural")' @onclick='() => SetSceneryAsync("procedural")'>Procedural (padrão)</button>
+                        <button type="button" class='chip @(_sceneryStyle == "lowpoly" ? "ok-chip" : null)' aria-pressed='@(_sceneryStyle == "lowpoly")' @onclick='() => SetSceneryAsync("lowpoly")'>Low-poly CC0</button>
+                        @if (_sceneryDirty)
+                        {
+                            <button type="button" class="secondary" @onclick="ReloadPage">Recarregar para aplicar</button>
+                        }
+                    </div>
+                </section>
+            </details>
+        </aside>
+        </div><!-- /.ultima-menu -->
+
         <div class="touch-controls" aria-label="Controles táteis">
             <div id="move-stick" class="touch-stick" aria-label="Analógico para andar"><span id="move-thumb"></span><small>ANDAR</small></div>
             <div class="touch-right-controls">
@@ -344,6 +351,7 @@
     private bool _dictating;
     private bool _statusExpanded;
     private bool _panelOpen;
+    private bool _menuOpen;
     private bool _devHud;
     private long _turnStartedMs;   // t50: base do tempo de resposta registrado por turno
     private readonly List<ChatMessage> _chat = [];
@@ -448,6 +456,7 @@
     };
     private void ToggleStatus() => _statusExpanded = !_statusExpanded;
     private void TogglePanel() => _panelOpen = !_panelOpen;
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
     private void OnDevToggled(bool value) => _devHud = value;
 
     private sealed record AnnouncementDto(string? Text);

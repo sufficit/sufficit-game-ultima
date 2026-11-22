@@ -1,0 +1,385 @@
+{
+  "mode": "baseline",
+  "site": "http://127.0.0.1:8092",
+  "at": "2026-11-22T22:56:00.010Z",
+  "views": {
+    "portrait": {
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "rects": {
+        ".ultima-status": {
+          "x": 12,
+          "y": 12,
+          "w": 240,
+          "h": 239.4
+        },
+        ".workshop-panel": {
+          "x": 11.2,
+          "y": 48,
+          "w": 300,
+          "h": 30.4
+        },
+        ".ultima-panel-toggle": {
+          "x": 299.6,
+          "y": 12,
+          "w": 78.4,
+          "h": 44
+        }
+      },
+      "touch": {
+        "#move-stick": {
+          "x": 16,
+          "y": 25.4,
+          "w": 104.4,
+          "h": 112
+        },
+        "#move-thumb": {
+          "x": 45.2,
+          "y": 58.4,
+          "w": 46,
+          "h": 46
+        },
+        "#look-stick": {
+          "x": 120.4,
+          "y": 25.4,
+          "w": 112,
+          "h": 112
+        },
+        "#look-thumb": {
+          "x": 153.4,
+          "y": 58.4,
+          "w": 46,
+          "h": 46
+        },
+        "#touch-action": {
+          "x": 310,
+          "y": 73.4,
+          "w": 64,
+          "h": 64
+        },
+        "#touch-cancel": {
+          "x": 245.2,
+          "y": 85.4,
+          "w": 52,
+          "h": 52
+        }
+      },
+      "page": {
+        "scrollW": 390,
+        "clientW": 390,
+        "scrollH": 844,
+        "clientH": 844
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 195
+      },
+      "meshes": 0,
+      "smallTouchTargets": [
+        "summary 276x14",
+        "button.secondary 112x28",
+        "button.secondary 61x28",
+        "button.secondary 58x28",
+        "button.secondary 109x28",
+        "button.secondary 135x28",
+        "#workshop-prompt 185x21",
+        "button 50x21",
+        "input 219x26",
+        "#workshop-scale 75x21",
+        "button.chip 124x26",
+        "button.chip 94x26"
+      ],
+      "overlaps": [
+        ".ultima-status ∩ .workshop-panel 240x30",
+        ".ultima-status ∩ #move-stick 104x112",
+        ".ultima-status ∩ #move-thumb 46x46",
+        ".ultima-status ∩ #look-stick 112x112",
+        ".ultima-status ∩ #look-thumb 46x46",
+        ".ultima-status ∩ #touch-cancel 7x52",
+        ".workshop-panel ∩ .ultima-panel-toggle 12x8",
+        ".workshop-panel ∩ #move-stick 104x30",
+        ".workshop-panel ∩ #move-thumb 46x20",
+        ".workshop-panel ∩ #look-stick 112x30",
+        ".workshop-panel ∩ #look-thumb 46x20",
+        "#move-stick ∩ #move-thumb 46x46",
+        "#look-stick ∩ #look-thumb 46x46"
+      ],
+      "consoleErrors": []
+    },
+    "landscape": {
+      "viewport": {
+        "w": 844,
+        "h": 390
+      },
+      "rects": {
+        ".ultima-status": {
+          "x": 12,
+          "y": 12,
+          "w": 300,
+          "h": 221.4
+        },
+        ".workshop-panel": {
+          "x": 11.2,
+          "y": 48,
+          "w": 300,
+          "h": 30.4
+        },
+        ".ultima-panel-toggle": {
+          "x": 753.6,
+          "y": 12,
+          "w": 78.4,
+          "h": 44
+        },
+        "form.ultima-chat-compose": {
+          "x": 12,
+          "y": 365.2,
+          "w": 360,
+          "h": 44
+        }
+      },
+      "touch": {
+        "#move-stick": {
+          "x": 16,
+          "y": 252.4,
+          "w": 112,
+          "h": 112
+        },
+        "#move-thumb": {
+          "x": 49,
+          "y": 285.4,
+          "w": 46,
+          "h": 46
+        },
+        "#look-stick": {
+          "x": 574.4,
+          "y": 252.4,
+          "w": 112,
+          "h": 112
+        },
+        "#look-thumb": {
+          "x": 607.4,
+          "y": 285.4,
+          "w": 46,
+          "h": 46
+        },
+        "#touch-action": {
+          "x": 764,
+          "y": 300.4,
+          "w": 64,
+          "h": 64
+        },
+        "#touch-cancel": {
+          "x": 699.2,
+          "y": 312.4,
+          "w": 52,
+          "h": 52
+        }
+      },
+      "page": {
+        "scrollW": 844,
+        "clientW": 844,
+        "scrollH": 422,
+        "clientH": 390
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "w": 844,
+        "h": 422
+      },
+      "meshes": 0,
+      "smallTouchTargets": [
+        "summary 276x14",
+        "button.secondary 112x28",
+        "button.secondary 61x28",
+        "button.secondary 58x28",
+        "button.secondary 109x28",
+        "button.secondary 135x28",
+        "#workshop-prompt 185x21",
+        "button 50x21",
+        "input 219x26",
+        "#workshop-scale 75x21",
+        "button.chip 124x26",
+        "button.chip 94x26"
+      ],
+      "overlaps": [
+        ".ultima-status ∩ .workshop-panel 299x30",
+        "#move-stick ∩ #move-thumb 46x46",
+        "#look-stick ∩ #look-thumb 46x46"
+      ],
+      "consoleErrors": []
+    },
+    "desktop": {
+      "viewport": {
+        "w": 1280,
+        "h": 720
+      },
+      "rects": {
+        ".ultima-status": {
+          "x": 12,
+          "y": 12,
+          "w": 300,
+          "h": 205.4
+        },
+        ".workshop-panel": {
+          "x": 11.2,
+          "y": 54.4,
+          "w": 300,
+          "h": 30.4
+        },
+        ".ultima-panel-toggle": {
+          "x": 1189.6,
+          "y": 12,
+          "w": 78.4,
+          "h": 28
+        },
+        "form.ultima-chat-compose": {
+          "x": 12,
+          "y": 586,
+          "w": 360,
+          "h": 41.2
+        }
+      },
+      "touch": {},
+      "page": {
+        "scrollW": 1280,
+        "clientW": 1280,
+        "scrollH": 720,
+        "clientH": 720
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "w": 1280,
+        "h": 640
+      },
+      "meshes": 0,
+      "smallTouchTargets": [
+        "summary 276x14",
+        "button.secondary 112x28",
+        "button.secondary 61x28",
+        "button.secondary 58x28",
+        "button.secondary 109x28",
+        "button.secondary 135x28",
+        "#workshop-prompt 185x21",
+        "button 50x21",
+        "input 219x26",
+        "#workshop-scale 75x21",
+        "button.chip 124x26",
+        "button.chip 94x26"
+      ],
+      "overlaps": [
+        ".ultima-status ∩ .workshop-panel 299x30"
+      ],
+      "consoleErrors": []
+    },
+    "tablet": {
+      "viewport": {
+        "w": 768,
+        "h": 1024
+      },
+      "rects": {
+        ".ultima-status": {
+          "x": 12,
+          "y": 12,
+          "w": 300,
+          "h": 221.4
+        },
+        ".workshop-panel": {
+          "x": 11.2,
+          "y": 48,
+          "w": 300,
+          "h": 30.4
+        },
+        ".ultima-panel-toggle": {
+          "x": 677.6,
+          "y": 12,
+          "w": 78.4,
+          "h": 44
+        },
+        "form.ultima-chat-compose": {
+          "x": 12,
+          "y": 327.2,
+          "w": 360,
+          "h": 44
+        }
+      },
+      "touch": {
+        "#move-stick": {
+          "x": 16,
+          "y": 214.4,
+          "w": 112,
+          "h": 112
+        },
+        "#move-thumb": {
+          "x": 49,
+          "y": 247.4,
+          "w": 46,
+          "h": 46
+        },
+        "#look-stick": {
+          "x": 498.4,
+          "y": 214.4,
+          "w": 112,
+          "h": 112
+        },
+        "#look-thumb": {
+          "x": 531.4,
+          "y": 247.4,
+          "w": 46,
+          "h": 46
+        },
+        "#touch-action": {
+          "x": 688,
+          "y": 262.4,
+          "w": 64,
+          "h": 64
+        },
+        "#touch-cancel": {
+          "x": 623.2,
+          "y": 274.4,
+          "w": 52,
+          "h": 52
+        }
+      },
+      "page": {
+        "scrollW": 768,
+        "clientW": 768,
+        "scrollH": 1024,
+        "clientH": 1024
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "w": 768,
+        "h": 384
+      },
+      "meshes": 0,
+      "smallTouchTargets": [
+        "summary 276x14",
+        "button.secondary 112x28",
+        "button.secondary 61x28",
+        "button.secondary 58x28",
+        "button.secondary 109x28",
+        "button.secondary 135x28",
+        "#workshop-prompt 185x21",
+        "button 50x21",
+        "input 219x26",
+        "#workshop-scale 75x21",
+        "button.chip 124x26",
+        "button.chip 94x26"
+      ],
+      "overlaps": [
+        ".ultima-status ∩ .workshop-panel 299x30",
+        ".ultima-status ∩ #move-stick 112x19",
+        "#move-stick ∩ #move-thumb 46x46",
+        "#look-stick ∩ #look-thumb 46x46"
+      ],
+      "consoleErrors": []
+    }
+  }
+}
