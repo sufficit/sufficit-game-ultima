@@ -11,7 +11,12 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 
 Prioritários:
 
-1. ✅ [PLAN-WORKER-OFFSCREEN-CANVAS.md](PLAN-WORKER-OFFSCREEN-CANVAS.md) —
+1. [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — mundo expansível: persistência
+   durável (journal + volume), chunks no cliente, cristalização assistida por IA na
+   primeira visita, edição de superfície (sculpt/paint/rios), volumes para túneis e
+   masmorras (marching cubes), construção com assets e qualidade gráfica (PBR/CSM/água).
+   Decisões: [decisions/world-builder-v5.md](../decisions/world-builder-v5.md).
+2. ✅ [PLAN-WORKER-OFFSCREEN-CANVAS.md](PLAN-WORKER-OFFSCREEN-CANVAS.md) —
    **concluído em 22/11/2026**: motor em `game-core.js` sem DOM, shell com worker
    OffscreenCanvas + fallback `?render=main`, loader glTF verificado por SHA-384 no
    worker. Atividade:
