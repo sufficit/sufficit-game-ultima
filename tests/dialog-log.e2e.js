@@ -23,8 +23,10 @@ const ok = (label, cond, extra) => console.log((cond ? 'ok  ' : 'FALHOU ') + lab
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await ctx.newPage();
     const errors = [];
+    const badResponses = [];
     page.on('pageerror', e => errors.push(String(e)));
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+    page.on('response', r => { if (r.status() >= 400) badResponses.push(r.status() + ' ' + r.request().method() + ' ' + r.url()); });
 
     // Mesma receita do fluxo validado localmente via MCP: worker (sem render=main),
     // teleporte pela URL + chamada ao atalho do core, dev=1.
