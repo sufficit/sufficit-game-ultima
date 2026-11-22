@@ -105,9 +105,15 @@
 
     function startWorker(canvas) {
         const off = canvas.transferControlToOffscreen();
-        worker = new Worker('js/game-worker.js');
+        // Mesma versão dos scripts da página (?v=<build>): sem isso o cache HTTP
+        // (10 min) pode entregar um worker/motor antigos junto com o shell novo logo
+        // após uma publicação. O worker repassa a query aos próprios imports.
+        worker = new Worker('js/game-worker.js?v=' + encodeURIComponent(buildStamp()));
         return new Promise(function (resolve, reject) {
-            const fatal = setTimeout(function () { reject(new Error('worker não deu sinal de vida')); }, 20000);
+            // O "sinal de vida" só chega depois de baixar o Babylon (≈9 MB do CDN),
+            // aquecer o cache local e construir a cena: em rede lenta isso passa de
+            // 20 s. O prazo folgado evita recarregar o jogo no modo sem worker à toa.
+            const fatal = setTimeout(function () { reject(new Error('worker não deu sinal de vida')); }, 120000);
             worker.onmessage = function (e) { handleWorkerMessage(e.data, resolve, reject, fatal); };
             worker.onerror = function (e) {
                 clearTimeout(fatal);
