@@ -11,11 +11,11 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230b0e15'/%3E%3Ccircle cx='8' cy='8' r='4' fill='%2338d9a9'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="css/app.css?v=__BUILD__" />
     <link rel="stylesheet" href="css/extras.css?v=__BUILD__" />
-    <script src="https://cdn.jsdelivr.net/npm/babylonjs@9.36.0/babylon.js"
-            integrity="sha384-QWFG07sio34fL3sNY9wd1SSoDvD7YVMX3067rJICw3vO2LQQY5m53yB70YlKXnRX"
-            crossorigin="anonymous"></script>
+    <!-- Babylon.js não vem mais como tag: no modo worker ele roda só no worker
+         (importScripts); no fallback o shell injeta o CDN com o mesmo SRI. -->
     <script src="js/update.js"></script>
     <script src="js/assets.js?v=__BUILD__"></script>
+    <script src="js/game-core.js?v=__BUILD__"></script>
     <script src="js/game.js?v=__BUILD__"></script>
     <script src="js/net.js?v=__BUILD__"></script>
     <script src="js/live.js?v=__BUILD__"></script>
