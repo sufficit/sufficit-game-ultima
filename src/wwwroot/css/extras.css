@@ -76,3 +76,11 @@ body[data-input="touch"] .hint-touch { display: inline; }
 .ai-panel[data-ai-state="stalled"] small, .ai-panel[data-ai-state="error"] small { color: #ff9fb2; opacity: 1; }
 .ai-panel[data-ai-state="thinking"] .chip { color: #cfe3ff; }
 .reply-source { display: block; margin: .15rem 0 .4rem; color: #8fa8cf; font-size: .72rem; }
+
+/* IA na CPU da Guardiã (wllama/llama.cpp WASM) */
+.ai-panel.ai-cpu { border-top: 1px dashed rgba(255, 255, 255, .18); }
+.ai-panel.ai-cpu .ai-engine { color: #8fa8cf; }
+.ai-panel .ai-models { display: flex; flex-direction: column; gap: .25rem; }
+.ai-panel .ai-models button { text-align: left; font-size: .72rem; padding: .3rem .5rem; }
+.ai-panel .ai-models button[aria-pressed="true"] { outline: 1px solid #38d9a9; }
+.ai-panel[data-ai-state="loading"] progress { accent-color: #74c0fc; }

@@ -23,6 +23,7 @@ public sealed class GameInterop
     public Action<string>? SpeechError { get; init; }
     public Action<bool>? Dictation { get; init; }
     public Action<string, double, string>? AiState { get; init; }
+    public Action<string, double, string>? AiCpuState { get; init; }
 
     [JSInvokable] public void OnEngineReady(string renderer) => EngineReady?.Invoke(renderer);
     [JSInvokable] public void OnNearChanged(bool near) => NearChanged?.Invoke(near);
@@ -39,4 +40,5 @@ public sealed class GameInterop
     [JSInvokable] public void OnSpeechError(string message) => SpeechError?.Invoke(message);
     [JSInvokable] public void OnDictation(bool listening) => Dictation?.Invoke(listening);
     [JSInvokable] public void OnAiState(string state, double progress, string detail) => AiState?.Invoke(state, progress, detail);
+    [JSInvokable] public void OnAiCpuState(string state, double progress, string detail) => AiCpuState?.Invoke(state, progress, detail);
 }

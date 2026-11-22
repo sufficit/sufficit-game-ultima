@@ -97,6 +97,52 @@
                         break;
                 }
             </div>
+            <div class="ai-panel ai-cpu" data-ai-state="@_aiCpuState">
+                <strong>IA na CPU (sem placa de vídeo)</strong>
+                <small class="ai-engine">Motor ativo: @ActiveEngine()</small>
+                @if (_aiCpuState != "ready")
+                {
+                    <div class="ai-models" role="group" aria-label="Escolher modelo da IA na CPU">
+                        @foreach (var kv in AiCpuModels)
+                        {
+                            <button type="button" class="chip @(kv.Key == _aiCpuModel ? "ok-chip" : null)"
+                                    aria-pressed="@(kv.Key == _aiCpuModel ? "true" : "false")"
+                                    @onclick="() => SelectAiCpuModelAsync(kv.Key)">
+                                @kv.Value.Label · @kv.Value.Why
+                            </button>
+                        }
+                    </div>
+                }
+                @switch (_aiCpuState)
+                {
+                    case "ready":
+                        <span class="chip ok-chip">✓ @_aiCpuDetail</span>
+                        <button type="button" class="secondary" @onclick="DisableAiCpuAsync">Desligar IA na CPU</button>
+                        break;
+                    case "thinking":
+                        <span class="chip">🧠 @_aiCpuDetail</span>
+                        break;
+                    case "model":
+                    case "downloading":
+                    case "loading":
+                    case "stalled":
+                        <progress max="1" value="@_aiCpuProgress"></progress>
+                        <small>@((int)(_aiCpuProgress * 100))% · @_aiCpuDetail</small>
+                        @if (_aiCpuState == "stalled")
+                        {
+                            <button type="button" class="secondary" @onclick="RetryAiCpuAsync">Tentar de novo</button>
+                        }
+                        break;
+                    case "error":
+                        <small>@_aiCpuDetail</small>
+                        <button type="button" class="secondary" @onclick="RetryAiCpuAsync">Tentar de novo</button>
+                        break;
+                    default:
+                        <button type="button" class="secondary" @onclick="EnableAiCpuAsync">Ativar IA na minha CPU</button>
+                        <small>@_aiCpuDetail</small>
+                        break;
+                }
+            </div>
         </aside>
 
         @if (_chat.Count > 0)
@@ -187,9 +233,28 @@
     private string _aiState = "off";
     private double _aiProgress;
     private string _aiDetail = string.Empty;
+    private string _aiCpuState = "off";
+    private double _aiCpuProgress;
+    private string _aiCpuDetail = string.Empty;
     private Task EnableAiAsync() => JS.InvokeVoidAsync("game.ai.load").AsTask();
     private Task DisableAiAsync() => JS.InvokeVoidAsync("game.ai.disable").AsTask();
     private Task RetryAiAsync() => JS.InvokeVoidAsync("game.ai.retry").AsTask();
+    private Task EnableAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.load").AsTask();
+    private Task DisableAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.disable").AsTask();
+    private Task RetryAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.retry").AsTask();
+    private string _aiCpuModel = "gemma270";
+    // Dois modelos, propostas diferentes (t48): leveza máxima vs. melhor conversa em português.
+    private static readonly Dictionary<string, (string Label, string Why)> AiCpuModels = new()
+    {
+        ["gemma270"] = ("Gemma 3 270M", "leve, ~241 MB, rápido"),
+        ["qwen05b"] = ("Qwen2.5 0.5B", "melhor português, ~469 MB"),
+    };
+    private Task SelectAiCpuModelAsync(string key)
+    {
+        _aiCpuModel = key;
+        return JS.InvokeVoidAsync("game.aiCpu.setModel", key).AsTask();
+    }
+    private string ActiveEngine() => _aiState == "ready" ? "webgpu" : _aiCpuState == "ready" ? "cpu-wllama" : "servidor (regras)";
     private sealed record AnnouncementDto(string? Text);
     private sealed record AnnouncementsDto(AnnouncementDto[]? Items);
 
@@ -211,7 +276,8 @@
             SpeechTranscript = text => _ = InvokeAsync(() => { _dialogDraft = text; StateHasChanged(); }),
             SpeechError = message => _ = InvokeAsync(() => { _speechError = message; StateHasChanged(); }),
             Dictation = listening => _ = InvokeAsync(() => { _dictating = listening; StateHasChanged(); }),
-            AiState = (state, progress, detail) => _ = InvokeAsync(() => { _aiState = state; _aiProgress = progress; _aiDetail = detail; StateHasChanged(); })
+            AiState = (state, progress, detail) => _ = InvokeAsync(() => { _aiState = state; _aiProgress = progress; _aiDetail = detail; StateHasChanged(); }),
+            AiCpuState = (state, progress, detail) => _ = InvokeAsync(() => { _aiCpuState = state; _aiCpuProgress = progress; _aiCpuDetail = detail; StateHasChanged(); })
         };
         _bridge = DotNetObjectReference.Create(interop);
     }
@@ -226,6 +292,7 @@
         await JS.InvokeVoidAsync("game.live.init", _bridge);
         await JS.InvokeVoidAsync("game.voice.init", _bridge);
         await JS.InvokeVoidAsync("game.ai.init", _bridge);
+        await JS.InvokeVoidAsync("game.aiCpu.init", _bridge);
         _speakEnabled = await JS.InvokeAsync<bool>("game.voice.getSpeakPref");
         _playerName = await JS.InvokeAsync<string>("game.net.getName");
         StateHasChanged();
@@ -341,8 +408,8 @@
     // sem rede, cai numa resposta local para o diálogo nunca travar. Cada origem é marcada.
     private async Task<(string Reply, string Source)> AskGuardianAsync(string text)
     {
-        // Modo principal: modelo local na GPU do jogador (WebGPU). Se não estiver pronto
-        // ou falhar, cai na API do jogo (regras; o modo servidor Sufficit AI fica lá, inativo).
+        // Cadeia de resposta local: GPU (WebGPU/WebLLM) → CPU (wllama WASM) → servidor (regras).
+        // O motor efetivamente usado aparece na origem marcada de cada resposta.
         if (_aiState == "ready")
         {
             try
@@ -354,6 +421,18 @@
                 }
             }
             catch (Exception ex) { Console.WriteLine($"[ia] local falhou: {ex.GetType().Name}: {ex.Message}"); }
+        }
+        if (_aiCpuState == "ready")
+        {
+            try
+            {
+                var localCpu = await JS.InvokeAsync<string?>("game.aiCpu.ask", TimeSpan.FromSeconds(120), text, _playerName ?? string.Empty);
+                if (!string.IsNullOrWhiteSpace(localCpu))
+                {
+                    return (localCpu!.Length > 500 ? localCpu[..500] : localCpu, "CPU do jogador (modelo local WASM)");
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"[ia-cpu] local falhou: {ex.GetType().Name}: {ex.Message}"); }
         }
         try
         {
