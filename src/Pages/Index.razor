@@ -112,6 +112,7 @@
                             @if (_devHud)
                             {
                                 <SUIText Typo="SUITypo.mono" Color="SUIColor.Secondary">FPS: @_fps.ToString("0") · @_contentSource · build @BuildId</SUIText>
+                                <SUIText Typo="SUITypo.mono" Color="SUIColor.Secondary">diálogos na fila: <span id="ultima-dialog-queue-count">0</span></SUIText>
                             }
                             <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Text" OnClick="ToggleStatus">Ocultar detalhes</SUIButton>
                         </SUIStack>
@@ -335,6 +336,7 @@
     private bool _statusExpanded;
     private bool _panelOpen;
     private bool _devHud;
+    private long _turnStartedMs;   // t50: base do tempo de resposta registrado por turno
     private readonly List<ChatMessage> _chat = [];
     private sealed record ChatMessage(string From, string Text);
 
@@ -480,6 +482,8 @@
         await JS.InvokeVoidAsync("game.aiCpu.init", _bridge);
         try { await JS.InvokeVoidAsync("game.workshop.init", _bridge); }
         catch (JSException) { /* oficina é opcional: motor antigo não a expõe */ }
+        try { await JS.InvokeVoidAsync("game.dialogLog.init"); }
+        catch (JSException) { /* registro de conversas é opcional */ }
         // Cada módulo JS é opcional: um ausente não pode derrubar a interface
         // (a dica de controles e o conteúdo remoto precisam rodar mesmo assim).
         try { _speakEnabled = await JS.InvokeAsync<bool>("game.voice.getSpeakPref"); }
@@ -578,6 +582,19 @@
                     break;
                 case SetReply(int index, var text, _):
                     _ = SpeakLineAsync(new DialogLine(decision.View!.Lines[index].Speaker, text));
+                    // t50: funil único do registro de conversas — chega aqui todo turno com
+                    // resposta (roteiro, chat da Guardiã ou IA local); a pergunta do jogador
+                    // é a linha anterior do mesmo diálogo. O módulo JS sanitiza e enfileira.
+                    try
+                    {
+                        var dlg = decision.View;
+                        var playerLine = index > 0 && dlg.Lines[index - 1].Speaker == "Você"
+                            ? dlg.Lines[index - 1].Text : string.Empty;
+                        var ms = _turnStartedMs > 0 ? (long)(NowMs() - _turnStartedMs) : 0;
+                        _ = JS.InvokeVoidAsync("game.dialogLog.turn",
+                            dlg.Speaker, playerLine, text, dlg.ReplySource, ms);
+                    }
+                    catch (JSException) { /* registro é opcional: nunca atrapalha o diálogo */ }
                     break;
             }
         }

@@ -255,7 +255,7 @@
                 (window.game && window.game.net && window.game.net.info ? window.game.net.info().api : '') ||
                 FALLBACK_API).replace(/\/+$/, '');
             if (timer) clearInterval(timer);
-            if (cfg.enabled) timer = setInterval(function () { flush(); }, cfg.intervalMs);
+            if (cfg.enabled) timer = setInterval(function () { flush(); paint(); }, cfg.intervalMs);
             paint();
         },
         // Funil único de captura: vira CustomEvent 'ultima-dialog'.
