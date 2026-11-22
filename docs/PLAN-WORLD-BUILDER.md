@@ -30,14 +30,14 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
 
 ## Fases
 
-### F1 — Persistência durável `[pendente]` → detalhamento em [PLAN-WORLD-STORE.md](PLAN-WORLD-STORE.md)
-- [ ] PVC dedicado no deployment do backend (volume `data` + `ULTIMA_DATA_DIR=/data`)
+### F1 ✅ — Persistência durável **concluída em 22/11/2026** → [PLAN-WORLD-STORE.md](PLAN-WORLD-STORE.md)
+- [x] PVC dedicado no deployment do backend (volume `data` + `ULTIMA_DATA_DIR=/data`)
       via patch do deployment — mapa e `assets/` saem do `/tmp`.
-- [ ] Mapa migra de snapshot `map.json` para **journal JSONL** (ops append-only) +
+- [x] Mapa migra de snapshot `map.json` para **journal JSONL** (ops append-only) +
       snapshot compactado, atrás da interface `IWorldStore`
       ([decisão world-store-v1](../decisions/world-store-v1.md): arquivo-first,
       SQLite ~100k ops, MySQL só para dados relacionais).
-- [ ] Validação: recriar o pod → mundo e assets intactos; replay do journal ==
+- [x] Validação: recriar o pod → mundo e assets intactos; replay do journal ==
       snapshot.
 
 ### F2 — Terreno em chunks no cliente `[pendente]` (absorve TERRAIN-CHUNKS)
