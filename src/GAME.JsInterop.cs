@@ -10,6 +10,7 @@ public sealed class GameInterop
 {
     public Action<string>? EngineReady { get; init; }
     public Action<bool>? NearChanged { get; init; }
+    public Action<bool>? WandererNearChanged { get; init; }
     public Action? Interact { get; init; }
     public Action? Close { get; init; }
     public Action<double, double, double, double>? MoveTick { get; init; }
@@ -25,6 +26,7 @@ public sealed class GameInterop
 
     [JSInvokable] public void OnEngineReady(string renderer) => EngineReady?.Invoke(renderer);
     [JSInvokable] public void OnNearChanged(bool near) => NearChanged?.Invoke(near);
+    [JSInvokable] public void OnWandererNear(bool near) => WandererNearChanged?.Invoke(near);
     [JSInvokable] public void OnInteract() => Interact?.Invoke();
     [JSInvokable] public void OnClose() => Close?.Invoke();
     [JSInvokable] public void OnMoveTick(double x, double y, double z, double fps) => MoveTick?.Invoke(x, y, z, fps);

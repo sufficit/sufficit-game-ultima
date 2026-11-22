@@ -6,7 +6,8 @@
     'use strict';
 
     const WORLD_HALF = 48;
-    const NPC_POSITION = { x: 0, z: -14 };
+    const NPC_POSITION = { x: 0, z: -14 };      // Guardiã
+    const WANDERER_HOME = { x: 5.0, z: 0.0 };    // Andarilho: circula pela clareira inicial
     // Escala realista: personagem com ~1,75 m; os olhos ficam a ~1,62 m do chão.
     const NEAR_RADIUS = 3.2;
     const WALK_SPEED = 3.5;   // m/s (caminhada rápida)
@@ -29,6 +30,8 @@
     let camera = null;
     let dotnet = null;
     let near = false;
+    let nearWanderer = false;
+    let wandererRoot = null;
     let frozen = false;
     let lastTick = 0;
     let actionWasDown = false;
@@ -876,6 +879,21 @@
             new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.03, NPC_POSITION.z), 0,
             () => { const m = buildGuardian('npc-js'); m.position.y = 0.85; return m; });
 
+        // Andarilho: segundo NPC (character.wanderer) na clareira inicial, circulando
+        // devagar — o cérebro dele (WandererBrain) vive em C#; aqui é só o corpo.
+        wandererRoot = spawnFromModel('character.wanderer', 'wanderer',
+            new BABYLON.Vector3(WANDERER_HOME.x, terrainHeight(WANDERER_HOME.x, WANDERER_HOME.z) + 0.03, WANDERER_HOME.z), 0,
+            () => { const m = buildHumanoid('wanderer-js', { shirt:new BABYLON.Color3(0.26,0.58,0.44), pants:new BABYLON.Color3(0.34,0.30,0.24), skin:new BABYLON.Color3(0.86,0.67,0.50) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
+        let wanderT = Math.random() * Math.PI * 2;
+        scene.registerBeforeRender(() => {
+            if (!wandererRoot || !engine) { return; }
+            wanderT += Math.min(0.05, engine.getDeltaTime() / 1000) * 0.22;
+            wandererRoot.position.x = WANDERER_HOME.x + Math.sin(wanderT) * 1.4;
+            wandererRoot.position.z = WANDERER_HOME.z + Math.cos(wanderT) * 1.4;
+            wandererRoot.position.y = terrainHeight(wandererRoot.position.x, wandererRoot.position.z) + 0.03;
+            wandererRoot.rotation.y = wanderT + Math.PI / 2;   // de frente para o caminhar
+        });
+
         const marker = BABYLON.MeshBuilder.CreateTorus('npcMarker', { diameter: 1.5, thickness: 0.08, tessellation: 32 }, scene);
         marker.position = new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.06, NPC_POSITION.z);
         const markerMat = new BABYLON.StandardMaterial('markerMat', scene);
@@ -995,6 +1013,14 @@
         if (nowNear !== near) {
             near = nowNear;
             if (dotnet) { dotnet.invokeMethodAsync('OnNearChanged', nowNear); }
+        }
+        // Andarilho acompanha a posição viva do root (ele circula pela clareira).
+        const wx = wandererRoot ? wandererRoot.position.x : WANDERER_HOME.x;
+        const wz = wandererRoot ? wandererRoot.position.z : WANDERER_HOME.z;
+        const nowWanderer = Math.hypot(player.position.x - wx, player.position.z - wz) < NEAR_RADIUS;
+        if (nowWanderer !== nearWanderer) {
+            nearWanderer = nowWanderer;
+            if (dotnet) { dotnet.invokeMethodAsync('OnWandererNear', nowWanderer); }
         }
     }
 

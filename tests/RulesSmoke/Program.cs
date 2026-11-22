@@ -113,7 +113,7 @@ Check("Estável não curado recupera 1 PV", stable.HitPoints == 1 && !stable.Sta
 Check("1d4 horas de espera", Enumerable.Range(0, 50).Select(i => new Rng((ulong)i)).All(r2 => stable.RollStableRecoveryHours(r2) is >= 1 and <= 4));
 
 // IA de NPCs: decisões sobre snapshot com budget por tick (docs/PLAN-NPC-AI-DECISIONS.md)
-WorldSnapshot Snap(bool near = true, bool open = false, bool ai = false) => new(0, -12, near, open, ai, 1000);
+WorldSnapshot Snap(bool near = true, bool open = false, bool ai = false, bool nearWanderer = false) => new(0, -12, near, nearWanderer, open, ai, 1000);
 var npc = new NpcScheduler();
 npc.Submit(new PlayerInteracted(1000));
 var open = npc.Tick(Snap()).Single();
@@ -150,6 +150,33 @@ Check("resposta do produtor caro substitui as reticências", reply.Commands.Any(
 npc.Submit(new IntroLinesChanged(1900, "Guardiã Remota", ["Fala remota 1", "Fala remota 2"]));
 var intro = npc.Tick(Snap(open: true)).Single();
 Check("conteúdo remoto troca as falas de abertura", intro.View!.Lines.Count == 2 && intro.View.Lines[0] is { Speaker: "Guardiã Remota", Text: "Fala remota 1" });
+
+// Segundo NPC: o Andarilho prova que o desenho escala sem mudar o loop
+var two = new NpcScheduler();
+Check("dois cérebros registrados no agendador", two.Npcs.Count == 2 && two.Npcs.Contains("guardia") && two.Npcs.Contains("andarilho"));
+
+two.Submit(new PlayerInteracted(1000));
+var wandererOpen = two.Tick(Snap(near: false, nearWanderer: true)).Single();
+Check("perto do Andarilho (longe da Guardiã) abre o diálogo dele", wandererOpen.Commands.Any(c => c is OpenDialog) && wandererOpen.View is { Speaker: "Andarilho", CurrentLine: 0 });
+Check("falas do Andarilho têm 3 linhas", wandererOpen.View!.Lines.Count == 3 && wandererOpen.View.Lines[0].Text.Contains("montanhas", StringComparison.Ordinal));
+
+two.Submit(new PlayerSpoke(1100, "Para onde leva essa trilha?"));
+var wThink = two.Tick(Snap(near: false, nearWanderer: true, open: true)).Single();
+two.Submit(new ReplyArrived(1200, "Até a neve.", "servidor · regras"));
+var wReply = two.Tick(Snap(near: false, nearWanderer: true, open: true)).Single();
+Check("fala e resposta do Andarilho vão para o diálogo aberto dele", wThink.View is { Thinking: true } && wReply.View is { Speaker: "Andarilho", Thinking: false } && wReply.Commands.Any(c => c is SetReply { Text: "Até a neve." }));
+
+var both = new NpcScheduler();
+both.Submit(new PlayerInteracted(1000));
+var bothOpen = both.Tick(Snap(near: true, nearWanderer: true)).Single();
+Check("perto dos dois, a Guardiã tem prioridade", bothOpen.View is { Speaker: "Guardiã do Jardim" });
+
+var remote = new NpcScheduler();
+remote.Submit(new PlayerInteracted(1000));
+remote.Tick(Snap(near: false, nearWanderer: true));   // abre o Andarilho
+remote.Submit(new IntroLinesChanged(1100, "Guardiã Remota", ["nova fala"]));
+var introRouted = remote.Tick(Snap(near: false, nearWanderer: true, open: true));
+Check("conteúdo remoto segue para a Guardiã mesmo com o Andarilho aberto", introRouted.Count == 0);   // não troca as falas do diálogo do Andarilho
 
 // Budget por tick: rajada de eventos não passa do orçamento; o resto retoma no tick seguinte
 var busy = new NpcScheduler();

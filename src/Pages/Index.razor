@@ -36,9 +36,9 @@
             pos (@_posX.ToString("F1"), @_posZ.ToString("F1")) · alt @_posY.ToString("F1")
         </div>
 
-        @if (_near && _view is null)
+        @if ((_near || _nearWanderer) && _view is null)
         {
-            <div class="overlay overlay-hint" role="status">Perto da Guardiã — <span class="hint-kb">pressione <kbd>E</kbd></span><span class="hint-pad">pressione <kbd>A</kbd> no controle</span><span class="hint-touch">toque no botão <kbd>A</kbd></span> para conversar</div>
+            <div class="overlay overlay-hint" role="status">Perto @(_near ? "da Guardiã" : "do Andarilho") — <span class="hint-kb">pressione <kbd>E</kbd></span><span class="hint-pad">pressione <kbd>A</kbd> no controle</span><span class="hint-touch">toque no botão <kbd>A</kbd></span> para conversar</div>
         }
 
         <aside class="network-panel" aria-label="Multiplayer e áudio">
@@ -125,7 +125,7 @@
 
         @if (_view is not null)
         {
-            <section class="dialog" role="dialog" aria-modal="false" aria-label="Conversa com a Guardiã">
+            <section class="dialog" role="dialog" aria-modal="false" aria-label="@($"Conversa com {_view.Speaker}")">
                 <p class="speaker">@_view.Lines[_view.CurrentLine].Speaker</p>
                 <p class="line" aria-live="polite">@_view.Lines[_view.CurrentLine].Text</p>
                 @if (!_view.Thinking && !string.IsNullOrEmpty(_view.ReplySource) && _view.Lines[_view.CurrentLine].Speaker != "Você")
@@ -133,8 +133,8 @@
                     <small class="reply-source">✦ origem da resposta: @_view.ReplySource</small>
                 }
                 <form class="dialog-compose" @onsubmit="SubmitDialogAsync" @onsubmit:preventDefault="true">
-                    <label class="sr-only" for="dialog-input">Escreva para a Guardiã</label>
-                    <input id="dialog-input" @bind="_dialogDraft" @bind:event="oninput" maxlength="300" placeholder="Escreva algo para a Guardiã…" autocomplete="off" />
+                    <label class="sr-only" for="dialog-input">Escreva para o NPC</label>
+                    <input id="dialog-input" @bind="_dialogDraft" @bind:event="oninput" maxlength="300" placeholder="@($"Escreva algo para {_view.Speaker}…")" autocomplete="off" />
                     <button type="submit">Enviar</button>
                     <button type="button" class="secondary" @onclick="ToggleDictationAsync" aria-pressed="@_dictating">
                         @(_dictating ? "Parar ditado" : "🎙 Ditar")
@@ -162,6 +162,7 @@
     private DotNetObjectReference<GameInterop>? _bridge;
     private string _renderer = string.Empty;
     private bool _near;
+    private bool _nearWanderer;
     private DialogView? _view;
     private readonly NpcScheduler _npc = new();
     private double _posX, _posY, _posZ, _fps, _micLevel;
@@ -198,6 +199,7 @@
         {
             EngineReady = renderer => _ = InvokeAsync(() => { _renderer = renderer; StateHasChanged(); }),
             NearChanged = near => _ = InvokeAsync(() => { _near = near; StateHasChanged(); }),
+            WandererNearChanged = near => _ = InvokeAsync(() => { _nearWanderer = near; }),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
             Close = () => _ = InvokeAsync(CloseDialog),
             MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; RunNpcTick(); StateHasChanged(); }),
@@ -265,7 +267,7 @@
 
     private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-    private WorldSnapshot Snapshot() => new(_posX, _posZ, _near, _view is not null, _aiState == "ready", NowMs());
+    private WorldSnapshot Snapshot() => new(_posX, _posZ, _near, _nearWanderer, _view is not null, _aiState == "ready", NowMs());
 
     private void Dispatch(GameEvent e)
     {
@@ -326,8 +328,12 @@
         _speechError = string.Empty;
         Dispatch(new PlayerSpoke(NowMs(), text));
         // Produtores caros (WebLLM na GPU, API do jogo, fallback local) correm fora do
-        // tick; a resposta vira evento e o cérebro a aplica em um tick futuro.
-        var (reply, source) = await AskGuardianAsync(text);
+        // tick; a resposta vira evento e o cérebro a aplica em um tick futuro. Os
+        // produtores atuais têm a persona da Guardiã; o Andarilho responde com falas
+        // locais até existir produtor próprio para ele.
+        var (reply, source) = _view.Speaker == "Andarilho"
+            ? ("Hm… sigo pensando nisso enquanto caminho. Sobre o jardim, pergunte à Guardiã; das trilhas, eu conto.", "falas locais do andarilho")
+            : await AskGuardianAsync(text);
         Dispatch(new ReplyArrived(NowMs(), reply, source));
     }
 
