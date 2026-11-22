@@ -47,7 +47,7 @@
             <SUITextField TValue="string" Id="network-chat-input" Placeholder="Mensagem para outros jogadores…"
                           MaxLength="300" Immediate="true" @bind-Value="_chatDraft" />
             <SUIButton ButtonTypeValue="SUIButtonType.Submit" SizeValue="SUISize.Small" StartIcon="send"
-                       AriaLabel="Enviar mensagem">Enviar</SUIButton>
+                       aria-label="Enviar mensagem">Enviar</SUIButton>
         </form>
 
         <aside class="ultima-status" aria-label="Status do jogo">
@@ -82,7 +82,7 @@
 
         <div class="ultima-panel-toggle">
             <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Soft" StartIcon="menu" OnClick="TogglePanel"
-                       AriaLabel="Abrir painel do jogo">@(_panelOpen ? "Fechar" : "Painel")</SUIButton>
+                       aria-label="Abrir painel do jogo">@(_panelOpen ? "Fechar" : "Painel")</SUIButton>
         </div>
 
         @if (_panelOpen)
@@ -161,7 +161,7 @@
                                                            VariantValue="@(selected ? SUIVariant.Soft : SUIVariant.Outlined)"
                                                            Class="@(selected ? "ultima-model-btn ultima-model-btn--on" : "ultima-model-btn")"
                                                            OnClick="@(() => SelectAiCpuModelAsync(kv.Key))"
-                                                           UserAttributes="@(new Dictionary<string, object?> { ["aria-pressed"] = selected ? "true" : "false" })">
+                                                           aria-pressed="@(selected ? "true" : "false")">
                                                     @kv.Value.Label · @kv.Value.Why
                                                 </SUIButton>
                                             }
@@ -248,7 +248,7 @@
                                 <SUITextField TValue="string" Id="dialog-input" Placeholder="Escreva algo para a Guardiã…"
                                               MaxLength="300" Immediate="true" @bind-Value="_dialogDraft" />
                                 <SUIButton ButtonTypeValue="SUIButtonType.Submit" SizeValue="SUISize.Small" StartIcon="send"
-                                           AriaLabel="Enviar para a Guardiã">Enviar</SUIButton>
+                                           aria-label="Enviar para a Guardiã">Enviar</SUIButton>
                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="audio"
                                            OnClick="ToggleDictationAsync">@(_dictating ? "Parar ditado" : "Ditar")</SUIButton>
                             </form>
@@ -434,7 +434,9 @@
 
     private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-    private WorldSnapshot Snapshot() => new(_posX, _posZ, _near, _view is not null, _aiState == "ready", NowMs());
+    private bool PlayerNearWanderer() => _remoteCount > 0;
+
+    private WorldSnapshot Snapshot() => new(_posX, _posZ, _near, PlayerNearWanderer(), _view is not null, _aiState == "ready", NowMs());
 
     private void Dispatch(GameEvent e)
     {

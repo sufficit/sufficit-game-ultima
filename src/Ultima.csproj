@@ -12,6 +12,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.15" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.15" PrivateAssets="all" />
+    <PackageReference Include="Sufficit.Blazor.UI" Version="2.26.1102.2231" />
   </ItemGroup>
 
   <!-- Contrato comum dos modelos 3D. Fica inteiro (sem trimming): os pacotes de modelos
