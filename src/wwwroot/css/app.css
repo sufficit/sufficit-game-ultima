@@ -1,226 +1,183 @@
-/* Ultima — UI do protótipo (HUD em Blazor, canvas 3D em Babylon.js). */
+/* Ultima — casca da interface do jogo sobre a base Sufficit.Blazor.UI (SUI).
+   A paleta vem dos tokens --sui-* publicados pelo SUIThemeProvider (UltimaTheme).
+   Aqui ficam só a casca do jogo: canvas, painéis flutuantes, tochas de dica,
+   diálogos e controles de toque. Nada de barras fixas de texto. */
 
-* {
-    box-sizing: border-box;
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { margin: 0; height: 100%; }
+
+body {
+    background: #0b100d;
+    color: var(--sui-text-primary, #e9f1e7);
+    font-family: var(--sui-font, "Segoe UI", "Helvetica Neue", Arial, sans-serif);
+    overflow: hidden; /* o jogo ocupa a tela; painéis rolam por conta própria */
 }
 
-html, body {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    background: #0b0e15;
-    color: #e8ecf3;
-    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+#app, .game-shell { height: 100%; }
+
+.game-shell.ultima-theme {
+    /* Identidade extra do jogo (a paleta base é a da SUI, via tokens --sui-*) */
+    --ultima-gold: #d9c37a;
+    --ultima-leaf: #8fd19c;
+    --ultima-glass: color-mix(in srgb, var(--sui-surface, #111a14) 82%, transparent);
+    --ultima-glass-border: color-mix(in srgb, var(--sui-border-strong, #3d5142) 70%, transparent);
+    --ultima-panel-w: min(340px, calc(100vw - 1.5rem));
 }
 
-#app, .game-shell {
-    height: 100%;
-}
+.viewport { position: relative; height: 100%; min-height: 0; }
 
-.game-shell {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-}
+#game-canvas { width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
 
-.hud {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 0.6rem 1rem;
-    background: rgba(10, 14, 22, 0.92);
-    border-bottom: 1px solid #1e2637;
-    flex-wrap: wrap;
-}
-
-.hud-bottom {
-    border-bottom: none;
-    border-top: 1px solid #1e2637;
-}
-
-h1 {
-    margin: 0;
-    font-size: 1.15rem;
-    letter-spacing: 0.02em;
-}
-
-.subtitle {
-    margin: 0.15rem 0 0;
-    font-size: 0.75rem;
-    color: #9fb0c9;
-}
-
-.engine-status {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
-
-.chip {
-    display: inline-block;
-    padding: 0.2rem 0.6rem;
-    border: 1px solid #2a3550;
-    border-radius: 999px;
-    font-size: 0.72rem;
-    color: #b8c4d9;
-    background: #131a28;
-    max-width: 40vw;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.ok-chip {
-    border-color: #2f6b46;
-    color: #9fe0b5;
-}
-
-.viewport {
-    position: relative;
-    flex: 1;
-    min-height: 0;
-}
-
-#game-canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-    outline: none;
-    touch-action: none;
-}
-
-.overlay {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 0.45rem 0.9rem;
-    border-radius: 0.6rem;
-    font-size: 0.85rem;
-    background: rgba(9, 13, 20, 0.82);
-    border: 1px solid #26304a;
-    pointer-events: none;
-}
-
-.overlay-status {
-    bottom: 0.9rem;
-    color: #9fb0c9;
-    font-variant-numeric: tabular-nums;
-    font-size: 0.75rem;
-}
-
-.overlay-announce {
-    top: 0.6rem;
-    max-width: calc(100% - 2rem);
-    text-align: center;
-    color: #cfe3ff;
-    z-index: 1;
-}
-
-.overlay-hint {
-    top: 3.4rem;
-    color: #ffd97a;
+.sr-only {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
 kbd {
-    display: inline-block;
-    min-width: 1.5rem;
-    text-align: center;
-    padding: 0.1rem 0.35rem;
-    margin: 0 0.1rem;
-    border: 1px solid #3a466a;
-    border-bottom-width: 2px;
-    border-radius: 0.35rem;
-    background: #1a2234;
-    font-family: inherit;
-    font-size: 0.75rem;
+    display: inline-block; min-width: 1.4rem; text-align: center;
+    padding: .05rem .35rem; margin: 0 .1rem;
+    border: 1px solid var(--ultima-glass-border, #3d5142); border-bottom-width: 2px;
+    border-radius: .35rem;
+    background: color-mix(in srgb, var(--sui-surface-3, #203026) 70%, transparent);
+    font: 600 .72rem/1.3 inherit; color: var(--ultima-leaf, #8fd19c);
 }
 
-.dialog {
-    position: absolute;
-    left: 50%;
-    bottom: 1.2rem;
-    transform: translateX(-50%);
-    width: min(640px, calc(100% - 2rem));
-    padding: 0.9rem 1.1rem 0.8rem;
-    border-radius: 0.8rem;
-    background: rgba(11, 16, 26, 0.96);
-    border: 1px solid #33507a;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+/* Cartões "vidro" do jogo: SUICard + leve transparência sobre o mundo 3D */
+.ultima-card--glass {
+    background: var(--ultima-glass, rgba(17, 26, 20, .82));
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--ultima-glass-border, rgba(61, 81, 66, .7));
 }
 
-.dialog .speaker {
-    margin: 0 0 0.2rem;
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #ffd97a;
+/* Mensagens transitórias (anúncio e dica de proximidade): somem sozinhas */
+.ultima-toast {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    max-width: min(560px, calc(100% - 1.5rem));
+    padding: .45rem .95rem;
+    border-radius: var(--sui-radius, 12px);
+    background: var(--ultima-glass, rgba(17, 26, 20, .82));
+    border: 1px solid var(--ultima-glass-border, rgba(61, 81, 66, .7));
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    font-size: .82rem; line-height: 1.35; text-align: center;
+    pointer-events: none; z-index: 5;
+}
+.ultima-announce { top: .7rem; color: var(--ultima-gold, #d9c37a); }
+.ultima-hint { top: .7rem; color: var(--ultima-gold, #d9c37a); }
+.ultima-announce + .ultima-hint { top: 3.2rem; }
+
+/* Dica de controles conforme o último dispositivo usado */
+.hint-pad, .hint-touch { display: none; }
+body[data-input="gamepad"] .hint-kb, body[data-input="touch"] .hint-kb { display: none; }
+body[data-input="gamepad"] .hint-pad { display: inline; }
+body[data-input="touch"] .hint-touch { display: inline; }
+
+/* Cartão de status compacto: canto superior esquerdo, recolhível por padrão */
+.ultima-status {
+    position: absolute; top: .75rem; left: .75rem;
+    width: min(300px, calc(100vw - 6rem));
+    z-index: 4;
+}
+.ultima-status__more { margin-top: .35rem; }
+
+/* Alternador do painel do jogo: canto superior direito */
+.ultima-panel-toggle { position: absolute; top: .75rem; right: .75rem; z-index: 4; }
+
+/* Painel do jogo (multiplayer, IA, ajuda): gaveta à direita, só quando aberto */
+.ultima-panel {
+    position: absolute; top: 3.7rem; right: .75rem;
+    width: var(--ultima-panel-w, min(340px, calc(100vw - 1.5rem)));
+    max-height: calc(100% - 5rem);
+    overflow-y: auto; overscroll-behavior: contain;
+    z-index: 4;
 }
 
-.dialog .line {
-    margin: 0 0 0.7rem;
-    font-size: 0.95rem;
-    line-height: 1.45;
+/* Chat P2P: canto inferior esquerdo */
+.ultima-chat-log {
+    position: absolute; left: .75rem; bottom: 4.7rem;
+    max-width: min(360px, calc(100vw - 1.5rem));
+    padding: .4rem .7rem;
+    border-radius: var(--sui-radius, 12px);
+    background: var(--ultima-glass, rgba(17, 26, 20, .82));
+    border: 1px solid var(--ultima-glass-border, rgba(61, 81, 66, .7));
+    font-size: .78rem; z-index: 3;
+}
+.ultima-chat-log p { margin: .15rem 0; overflow-wrap: anywhere; }
+
+form.ultima-chat-compose {
+    position: absolute; left: .75rem; bottom: .8rem;
+    display: flex; gap: .4rem; align-items: flex-start;
+    width: min(360px, calc(100vw - 1.5rem));
+    z-index: 3;
+}
+form.ultima-chat-compose > :first-child { flex: 1 1 180px; min-width: 0; }
+
+/* Diálogo da Guardiã: base da tela, só quando ativo */
+.ultima-dialog {
+    position: absolute; left: 50%; bottom: 1rem; transform: translateX(-50%);
+    width: min(640px, calc(100% - 1.5rem));
+    z-index: 6;
+}
+.ultima-dialog__speaker {
+    margin: 0 0 .2rem; font-size: .72rem; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ultima-gold, #d9c37a);
+}
+.ultima-dialog__line { margin: 0 0 .7rem; font-size: .95rem; line-height: 1.5; overflow-wrap: anywhere; }
+form.ultima-dialog__compose {
+    display: flex; gap: .4rem; flex-wrap: wrap; align-items: flex-start;
+    margin-bottom: .6rem;
+}
+form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
+
+/* Controles de toque: analógicos + botões A/B (ids lidos pelo game.js) */
+.touch-controls { display: none; }
+@media (pointer: coarse), (max-width: 760px) {
+    .touch-controls {
+        display: flex; justify-content: space-between; align-items: flex-end;
+        position: absolute; left: 0; right: 0; bottom: 3.2rem; padding: 0 1rem;
+        pointer-events: none; z-index: 4;
+    }
+    .touch-stick, #touch-action, #touch-cancel { pointer-events: auto; }
+}
+.touch-right-controls { display: flex; align-items: flex-end; gap: .8rem; }
+.touch-stick {
+    position: relative; width: 112px; height: 112px; border-radius: 50%;
+    background: color-mix(in srgb, var(--sui-surface-2, #18241c) 55%, transparent);
+    border: 2px solid var(--ultima-glass-border, rgba(61, 81, 66, .7));
+    touch-action: none;
+    display: flex; align-items: center; justify-content: center;
+}
+.touch-stick small {
+    position: absolute; bottom: -1.15rem; font-size: .6rem; letter-spacing: .08em;
+    color: var(--sui-text-secondary, #aec2af);
+}
+.touch-stick span {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: color-mix(in srgb, var(--ultima-leaf, #8fd19c) 75%, transparent);
+    border: 2px solid color-mix(in srgb, var(--ultima-leaf, #8fd19c) 90%, #fff);
+}
+#touch-action, #touch-cancel {
+    width: 64px; height: 64px; border-radius: 50%;
+    font-size: 1.2rem; font-weight: 700; touch-action: none; cursor: pointer;
+    border: 2px solid var(--ultima-glass-border, rgba(61, 81, 66, .7));
+    background: color-mix(in srgb, var(--sui-surface-2, #18241c) 70%, transparent);
+    color: var(--sui-text-primary, #e9f1e7);
+}
+#touch-cancel { width: 52px; height: 52px; }
+
+/* Mobile: só o essencial (sticks + botão A + status mínimo) */
+@media (max-width: 760px) {
+    .ultima-chat-log, form.ultima-chat-compose { display: none; }
+    .ultima-status { width: min(240px, calc(100vw - 7.5rem)); }
+    .ultima-panel { top: 3.3rem; max-height: calc(100% - 4.5rem); }
+    .ultima-dialog { bottom: .6rem; }
+    .ultima-dialog__line { font-size: .9rem; }
 }
 
-.dialog-actions {
-    display: flex;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-}
-
-button {
-    padding: 0.45rem 1rem;
-    border-radius: 0.55rem;
-    border: 1px solid #2f6b46;
-    background: #1d5c39;
-    color: #eafff2;
-    font-size: 0.85rem;
-    cursor: pointer;
-}
-
-button:hover {
-    background: #267449;
-}
-
-button.secondary {
-    border-color: #3a466a;
-    background: #1a2234;
-    color: #c6d2e8;
-}
-
-button.secondary:hover {
-    background: #232d44;
-}
-
-.controls {
-    margin: 0;
-    font-size: 0.75rem;
-    color: #9fb0c9;
-}
-
+/* Erro fatal do Blazor */
 #blazor-error-ui {
-    display: none;
-    background: #3a1220;
-    color: #ffd7de;
-    padding: 0.75rem 1rem;
-    font-size: 0.85rem;
+    display: none; position: fixed; left: 0; right: 0; bottom: 0;
+    background: #3a1220; color: #ffd7de; padding: .75rem 1rem; font-size: .85rem; z-index: 50;
 }
-
-#blazor-error-ui.visible {
-    display: block;
-}
-
-@media (max-width: 640px) {
-    .hud {
-        padding: 0.5rem 0.7rem;
-    }
-
-    .subtitle {
-        display: none;
-    }
-
-    .dialog .line {
-        font-size: 0.9rem;
-    }
-}
+#blazor-error-ui.visible { display: block; }

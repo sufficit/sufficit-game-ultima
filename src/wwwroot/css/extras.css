@@ -1,86 +1,31 @@
-/* Ultima — painel P2P, chat, diálogo digitável e controles de toque. */
-.sr-only {
-    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
-    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+/* Ultima — extra de identidade "jardim/fantasia" SOBRE a base Sufficit.Blazor.UI.
+   A paleta principal vem do UltimaTheme (tokens --sui-* publicados pelo SUIThemeProvider,
+   sem tocar no pacote). Aqui ficam apenas ajustes pontuais no escopo do jogo (.ultima-theme),
+   sempre usando classes/parâmetros públicos da SUI. */
+
+.ultima-theme {
+    color-scheme: dark;
+
+    /* Ajustes de token dentro do jogo: cantos mais arredondados e vidro um pouco
+       mais fechado, porque os painéis flutuam sobre um mundo 3D. */
+    --sui-radius-sm: 8px;
+    --sui-radius: 14px;
+    --sui-radius-lg: 20px;
+    --sui-overlay: rgba(6, 10, 8, .6);
 }
 
-input {
-    padding: 0.45rem 0.7rem; border-radius: 0.5rem; border: 1px solid #33507a;
-    background: #0d1422; color: #e8ecf3; font-size: 0.85rem; min-width: 0; flex: 1;
-}
-input:focus, button:focus-visible { outline: 2px solid #ffd97a; outline-offset: 1px; }
+/* Cartões do jogo em vidro: mantêm a estrutura da SUI, ganham canto generoso */
+.ultima-theme .sui-card.ultima-card--glass { border-radius: var(--sui-radius-lg); }
 
-.network-panel {
-    position: absolute; top: 3.4rem; right: 0.7rem; width: min(280px, calc(100% - 1.4rem));
-    padding: 0.6rem 0.7rem; border-radius: 0.7rem; background: rgba(9, 13, 20, 0.86);
-    border: 1px solid #26304a; font-size: 0.75rem; z-index: 2;
-}
-.net-heading { display: flex; justify-content: space-between; gap: 0.5rem; color: #cfe3ff; }
-.player-name-label { display: block; margin-top: 0.35rem; color: #9fb4d8; }
-.player-name-input { width: 100%; box-sizing: border-box; margin-top: 0.15rem; padding: 0.3rem 0.45rem; font-size: 0.8rem; }
-.net-status { margin: 0.25rem 0 0.4rem; color: #9fe0b5; }
-.net-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.net-actions button { padding: 0.3rem 0.55rem; font-size: 0.72rem; }
-.mic-meter { height: 6px; margin: 0.5rem 0 0.3rem; border-radius: 99px; background: #1a2234; overflow: hidden; }
-.mic-meter span { display: block; height: 100%; background: #38d9a9; transition: width 0.12s; }
+/* Campos de texto dentro dos painéis do jogo ocupam a largura disponível */
+.ultima-theme .ultima-panel .sui-field,
+.ultima-theme .ultima-dialog .sui-field { width: 100%; }
 
-.chat-log {
-    position: absolute; left: 0.7rem; bottom: 4.1rem; max-width: min(360px, calc(100% - 1.4rem));
-    padding: 0.4rem 0.7rem; border-radius: 0.6rem; background: rgba(9, 13, 20, 0.8);
-    border: 1px solid #26304a; font-size: 0.78rem; z-index: 2;
-}
-.chat-log p { margin: 0.15rem 0; overflow-wrap: anywhere; }
-.network-chat {
-    position: absolute; left: 0.7rem; bottom: 0.7rem; display: flex; gap: 0.4rem;
-    width: min(360px, calc(100% - 1.4rem)); z-index: 2;
-}
+/* Lista de modelos da IA na CPU: botões SUI como itens de seleção à esquerda */
+.ultima-models { display: flex; flex-direction: column; gap: .3rem; }
+.ultima-model-btn { justify-content: flex-start; text-align: left; }
+.ultima-model-btn--on { outline: 1px solid var(--sui-color-primary); outline-offset: -1px; }
 
-.dialog { z-index: 4; }
-.dialog-compose { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
-.speech-error { display: block; margin-bottom: 0.5rem; color: #ff9fb2; }
-
-.touch-controls { display: none; }
-@media (pointer: coarse), (max-width: 760px) {
-    .touch-controls {
-        display: flex; justify-content: space-between; align-items: flex-end;
-        position: absolute; left: 0; right: 0; bottom: 3.6rem; padding: 0 1rem;
-        pointer-events: none; z-index: 3;
-    }
-    .touch-stick, #touch-action, #touch-cancel { pointer-events: auto; }
-    .network-panel { top: 3rem; }
-}
-.touch-right-controls { display: flex; align-items: flex-end; gap: 0.8rem; }
-.touch-stick {
-    position: relative; width: 112px; height: 112px; border-radius: 50%;
-    background: rgba(20, 30, 50, 0.55); border: 2px solid #3a466a; touch-action: none;
-    display: flex; align-items: center; justify-content: center;
-}
-.touch-stick small { position: absolute; bottom: -1.1rem; font-size: 0.6rem; color: #9fb0c9; }
-.touch-stick span {
-    width: 46px; height: 46px; border-radius: 50%; background: rgba(120, 170, 255, 0.7);
-    border: 2px solid #cfe3ff;
-}
-#touch-action, #touch-cancel { width: 64px; height: 64px; border-radius: 50%; font-size: 1.2rem; font-weight: 700; touch-action: none; }
-#touch-cancel { width: 52px; height: 52px; }
-
-/* Dica de controles conforme o último dispositivo usado */
-.hint-pad, .hint-touch { display: none; }
-body[data-input="gamepad"] .hint-kb, body[data-input="touch"] .hint-kb { display: none; }
-body[data-input="gamepad"] .hint-pad { display: inline; }
-body[data-input="touch"] .hint-touch { display: inline; }
-
-/* IA local da Guardiã (WebGPU) */
-.ai-panel { display: flex; flex-direction: column; gap: .3rem; margin-top: .6rem; padding-top: .5rem; border-top: 1px solid rgba(255,255,255,.12); }
-.ai-panel progress { width: 100%; height: .5rem; accent-color: #38d9a9; }
-.ai-panel small { opacity: .8; line-height: 1.25; }
-.ai-panel[data-ai-state="stalled"] small, .ai-panel[data-ai-state="error"] small { color: #ff9fb2; opacity: 1; }
-.ai-panel[data-ai-state="thinking"] .chip { color: #cfe3ff; }
-.reply-source { display: block; margin: .15rem 0 .4rem; color: #8fa8cf; font-size: .72rem; }
-
-/* IA na CPU da Guardiã (wllama/llama.cpp WASM) */
-.ai-panel.ai-cpu { border-top: 1px dashed rgba(255, 255, 255, .18); }
-.ai-panel.ai-cpu .ai-engine { color: #8fa8cf; }
-.ai-panel .ai-models { display: flex; flex-direction: column; gap: .25rem; }
-.ai-panel .ai-models button { text-align: left; font-size: .72rem; padding: .3rem .5rem; }
-.ai-panel .ai-models button[aria-pressed="true"] { outline: 1px solid #38d9a9; }
-.ai-panel[data-ai-state="loading"] progress { accent-color: #74c0fc; }
+/* Host de snackbars da SUI: sobe um pouco para não cobrir o campo de chat */
+.ultima-theme ~ .sui-snackbar-host,
+body > .sui-snackbar-host { z-index: 40; }
