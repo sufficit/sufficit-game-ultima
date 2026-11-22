@@ -390,9 +390,17 @@
         await JS.InvokeVoidAsync("game.voice.init", _bridge);
         await JS.InvokeVoidAsync("game.ai.init", _bridge);
         await JS.InvokeVoidAsync("game.aiCpu.init", _bridge);
-        _speakEnabled = await JS.InvokeAsync<bool>("game.voice.getSpeakPref");
-        _playerName = await JS.InvokeAsync<string>("game.net.getName");
-        BuildId = await JS.InvokeAsync<string>("game.build") is { Length: > 0 } b ? b[..Math.Min(10, b.Length)] : "dev";
+        // Cada módulo JS é opcional: um ausente não pode derrubar a interface
+        // (a dica de controles e o conteúdo remoto precisam rodar mesmo assim).
+        try { _speakEnabled = await JS.InvokeAsync<bool>("game.voice.getSpeakPref"); }
+        catch (JSException) { _speakEnabled = false; }
+        try { _playerName = await JS.InvokeAsync<string?>("game.net.getName"); }
+        catch (JSException) { _playerName = null; }
+        try
+        {
+            BuildId = await JS.InvokeAsync<string>("game.build") is { Length: > 0 } b ? b[..Math.Min(10, b.Length)] : "dev";
+        }
+        catch (JSException) { BuildId = "dev"; } // game.build não existe em todos os builds; o id é só do HUD de dev
         // Dica de controles como mensagem transitória (snackbar SUI), não bloco fixo na tela.
         Snackbar.Info("WASD/setas andam · E conversa · Esc fecha · Painel abre multiplayer, IA e ajuda");
         StateHasChanged();
