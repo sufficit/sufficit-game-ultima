@@ -5,7 +5,7 @@
 // pagehide envia e limpa a fila.
 'use strict';
 const path = require('path');
-const { chromium } = require('/tmp/pwtest/node_modules/playwright-core');
+const { chromium } = require('playwright-core'); // npm i playwright-core; navegadores em ~/.cache/ms-playwright
 
 const SITE = process.argv[2] || 'http://127.0.0.1:8091';
 const API = process.argv[3] || 'http://127.0.0.1:8090';
@@ -40,7 +40,7 @@ const ok = (label, cond, extra) => console.log((cond ? 'ok  ' : 'FALHOU ') + lab
     await page.keyboard.down('KeyW');
     await page.waitForFunction(() => {
         const t = document.querySelector('.ultima-status') || document.body;
-        return window.__near === true || document.querySelector('.ultima-dialog') !== null;
+        return document.querySelector('.ultima-hint, .ultima-dialog') !== null;
     }, null, { timeout: 20000 }).catch(() => {});
     await page.keyboard.up('KeyW');
     await page.keyboard.press('KeyE');
