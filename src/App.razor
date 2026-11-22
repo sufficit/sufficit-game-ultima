@@ -1,8 +1,17 @@
-<Router AppAssembly="typeof(App).Assembly">
-    <Found Context="routeData">
-        <RouteView RouteData="routeData" />
-    </Found>
-    <NotFound>
-        <p role="alert">Nada aqui. Volte para a trilha em <a href="/">/</a>.</p>
-    </NotFound>
-</Router>
+@using Sufficit.Blazor.UI.Themes
+@using Sufficit.Blazor.UI.Components
+@using Sufficit.Blazor.UI.Services
+
+@* Base visual Sufficit (SUI): o provider publica os tokens --sui-* (tema jardim
+   do Ultima via DI) e o host de snackbars recebe as dicas transitórias do jogo. *@
+<SUIThemeProvider Theme="UltimaTheme.Instance">
+    <Router AppAssembly="typeof(App).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="routeData" />
+        </Found>
+        <NotFound>
+            <p role="alert">Nada aqui. Volte para a trilha em <a href="/">/</a>.</p>
+        </NotFound>
+    </Router>
+    <SUISnackbarHost />
+</SUIThemeProvider>

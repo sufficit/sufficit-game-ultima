@@ -7,7 +7,8 @@ using Ultima.Models.Core;
 namespace Ultima.Server;
 
 /// <summary>Roteador HTTP: mesmas rotas, códigos e cabeçalhos do backend anterior (main.py).</summary>
-sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat chat, WorldAssets assets, ILogger log)
+sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat chat, WorldAssets assets,
+    DialogAnalytics dialogs, ILogger log)
 {
     const int MaxBody = 64 * 1024;
     const string ApiVersion = "v1";
@@ -25,6 +26,7 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
         "POST /v1/game/leave",
         "/v1/assets", "/v1/assets/jobs/{id}", "/v1/assets/file/{name}",
         "POST /v1/assets/generate", "POST /v1/assets/upload",
+        "/v1/analytics/dialogs", "POST /v1/analytics/dialogs",
     ];
 
     public async Task HandleAsync(HttpContext ctx)
@@ -148,6 +150,13 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
                 });
                 return;
             case "/v1/net/rooms": await Json(ctx, new JsonObject { ["rooms"] = net.Rooms() }, 200, NoStore); return;
+            case "/v1/analytics/dialogs":
+            {
+                var npc = J.Cut(ctx.Request.Query["npc"].ToString(), 40);
+                var limit = int.TryParse(ctx.Request.Query["limit"].ToString(), out var n) ? n : 50;
+                await Json(ctx, dialogs.List(npc, limit), 200, NoStore);
+                return;
+            }
             case "/v1/game/sessions": await Json(ctx, game.Sessions(), 200, NoStore); return;
             case "/v1/game/state": await Json(ctx, game.State(Token(ctx))); return;
             case "/v1/game/map": await Json(ctx, game.Map(), 200, NoStore); return;
@@ -237,6 +246,13 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
             }
             var scale = QueryFloat(ctx, "scale", 1.0);
             await Json(ctx, assets.Upload(Token(ctx), buf, ctx.Request.Query["name"].ToString(), scale));
+            return;
+        }
+        if (path == "/v1/analytics/dialogs")
+        {
+            var data = await Body(ctx);
+            if (data is null) { await Json(ctx, J.Err("bad_request"), 400, NoStore); return; }
+            await Json(ctx, dialogs.Post(Ip(ctx), data));
             return;
         }
         if (path is "/v1/game/map/edits" or "/v1/game/sessions" or "/v1/game/command" or "/v1/game/leave" or "/v1/npcs/guardia/chat")

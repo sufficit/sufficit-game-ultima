@@ -1,149 +1,36 @@
 @page "/"
 @implements IDisposable
 @using Ultima.Npc
+@using Sufficit.Blazor.UI.Components
+@using Sufficit.Blazor.UI.Services
 @inject IJSRuntime JS
 @inject HttpClient Http
 @inject Ultima.Models.ModelLoader Models
+@inject ISUISnackbar Snackbar
 
-<div class="game-shell">
-    <header class="hud hud-top">
-        <div>
-            <h1>Ultima</h1>
-            <p class="subtitle">C# · Blazor WebAssembly · Babylon.js · controles de gamepad, toque, voz e P2P</p>
-        </div>
-        <div class="engine-status" role="status">
-            @if (string.IsNullOrEmpty(_renderer))
-            {
-                <span class="chip">Iniciando motor 3D…</span>
-            }
-            else
-            {
-                <span class="chip ok-chip" title="Adaptador de vídeo detectado pelo Babylon.js">GPU: @_renderer</span>
-                <span class="chip">FPS: @_fps.ToString("0")</span>
-            }
-            <span class="chip" title="A API de conteúdo é opcional">@_contentSource</span>
-        </div>
-    </header>
-
+@* Interface do jogo sobre a base Sufficit.Blazor.UI (SUI).
+   Painéis flutuam sobre o canvas 3D; nada de barras fixas de texto.
+   Os elementos com id (game-canvas, sticks, botões A/B) são lidos pelo JS
+   do jogo e nunca podem ser renderizados condicionalmente. *@
+<div class="game-shell ultima-theme">
     <main class="viewport">
-        @if (!string.IsNullOrEmpty(_announcement))
-        {
-            <div class="overlay overlay-announce" role="note">@_announcement</div>
-        }
         <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D. WASD, setas, joystick ou controles de toque movem; E/A conversa."></canvas>
 
-        <div class="overlay overlay-status" aria-hidden="true">
-            pos (@_posX.ToString("F1"), @_posZ.ToString("F1")) · alt @_posY.ToString("F1")
-        </div>
-
-        @if ((_near || _nearWanderer) && _view is null)
+        @if (!string.IsNullOrEmpty(_announcement))
         {
-            <div class="overlay overlay-hint" role="status">Perto @(_near ? "da Guardiã" : "do Andarilho") — <span class="hint-kb">pressione <kbd>E</kbd></span><span class="hint-pad">pressione <kbd>A</kbd> no controle</span><span class="hint-touch">toque no botão <kbd>A</kbd></span> para conversar</div>
+            <div class="ultima-toast ultima-announce" role="note">@_announcement</div>
         }
 
-        <aside class="network-panel" aria-label="Multiplayer e áudio">
-            <div class="net-heading"><strong>Multiplayer P2P</strong><span>@_remoteCount jogador(es) remoto(s)</span></div>
-            <label class="player-name-label" for="player-name">Seu nome</label>
-            <input id="player-name" class="player-name-input" value="@_playerName" oninput="game.net.setName(this.value)" maxlength="40" autocomplete="nickname" />
-            <div class="net-status" role="status">@_netStatus</div>
-            <div class="net-actions">
-                <button type="button" class="secondary" @onclick="CopyInviteAsync">Copiar convite</button>
-                <button type="button" class="secondary" @onclick="ToggleMicAsync" aria-pressed="@_micEnabled">
-                    @(_micEnabled ? "Desligar voz" : "Ativar voz")
-                </button>
-                <button type="button" class="secondary" @onclick="ToggleSpeakAsync" aria-pressed="@_speakEnabled">
-                    @(_speakEnabled ? "🔊 Fala ligada" : "🔈 Ler falas")
-                </button>
+        @if (_near && _view is null)
+        {
+            <div class="ultima-toast ultima-hint" role="status">
+                Perto da Guardiã —
+                <span class="hint-kb">pressione <kbd>E</kbd></span>
+                <span class="hint-pad">pressione <kbd>A</kbd> no controle</span>
+                <span class="hint-touch">toque no botão <kbd>A</kbd></span>
+                para conversar
             </div>
-            <div class="mic-meter" role="meter" aria-label="Nível do microfone" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@((int)(_micLevel * 100))">
-                <span style="width: @((int)(_micLevel * 100))%"></span>
-            </div>
-            <small>@_micStatus</small>
-            <div class="ai-panel" data-ai-state="@_aiState">
-                <strong>IA da Guardiã</strong>
-                @switch (_aiState)
-                {
-                    case "checking":
-                        <small>@_aiDetail</small>
-                        break;
-                    case "unsupported":
-                        <small>@_aiDetail</small>
-                        break;
-                    case "ready":
-                        <span class="chip ok-chip">✓ @_aiDetail</span>
-                        <button type="button" class="secondary" @onclick="DisableAiAsync">Desligar IA local</button>
-                        break;
-                    case "thinking":
-                        <span class="chip">🧠 @_aiDetail</span>
-                        break;
-                    case "model":
-                    case "downloading":
-                    case "compiling":
-                    case "stalled":
-                        <progress max="1" value="@_aiProgress"></progress>
-                        <small>@((int)(_aiProgress * 100))% · @_aiDetail</small>
-                        @if (_aiState == "stalled")
-                        {
-                            <button type="button" class="secondary" @onclick="RetryAiAsync">Tentar de novo</button>
-                        }
-                        break;
-                    case "error":
-                        <small>@_aiDetail</small>
-                        <button type="button" class="secondary" @onclick="RetryAiAsync">Tentar de novo</button>
-                        break;
-                    default:
-                        <button type="button" class="secondary" @onclick="EnableAiAsync">Ativar IA na minha GPU</button>
-                        <small>Roda no seu navegador, sem enviar a conversa. @_aiDetail</small>
-                        break;
-                }
-            </div>
-            <div class="ai-panel ai-cpu" data-ai-state="@_aiCpuState">
-                <strong>IA na CPU (sem placa de vídeo)</strong>
-                <small class="ai-engine">Motor ativo: @ActiveEngine()</small>
-                @if (_aiCpuState != "ready")
-                {
-                    <div class="ai-models" role="group" aria-label="Escolher modelo da IA na CPU">
-                        @foreach (var kv in AiCpuModels)
-                        {
-                            <button type="button" class="chip @(kv.Key == _aiCpuModel ? "ok-chip" : null)"
-                                    aria-pressed="@(kv.Key == _aiCpuModel ? "true" : "false")"
-                                    @onclick="() => SelectAiCpuModelAsync(kv.Key)">
-                                @kv.Value.Label · @kv.Value.Why
-                            </button>
-                        }
-                    </div>
-                }
-                @switch (_aiCpuState)
-                {
-                    case "ready":
-                        <span class="chip ok-chip">✓ @_aiCpuDetail</span>
-                        <button type="button" class="secondary" @onclick="DisableAiCpuAsync">Desligar IA na CPU</button>
-                        break;
-                    case "thinking":
-                        <span class="chip">🧠 @_aiCpuDetail</span>
-                        break;
-                    case "model":
-                    case "downloading":
-                    case "loading":
-                    case "stalled":
-                        <progress max="1" value="@_aiCpuProgress"></progress>
-                        <small>@((int)(_aiCpuProgress * 100))% · @_aiCpuDetail</small>
-                        @if (_aiCpuState == "stalled")
-                        {
-                            <button type="button" class="secondary" @onclick="RetryAiCpuAsync">Tentar de novo</button>
-                        }
-                        break;
-                    case "error":
-                        <small>@_aiCpuDetail</small>
-                        <button type="button" class="secondary" @onclick="RetryAiCpuAsync">Tentar de novo</button>
-                        break;
-                    default:
-                        <button type="button" class="secondary" @onclick="EnableAiCpuAsync">Ativar IA na minha CPU</button>
-                        <small>@_aiCpuDetail</small>
-                        break;
-                }
-            </div>
-        </aside>
+        }
 
         <aside class="workshop-panel" aria-label="Oficina do mundo">
             <details>
@@ -191,18 +78,194 @@
 
         @if (_chat.Count > 0)
         {
-            <section class="chat-log" aria-label="Mensagens dos jogadores" aria-live="polite">
+            <section class="ultima-chat-log" aria-label="Mensagens dos jogadores" aria-live="polite">
                 @foreach (var message in _chat.TakeLast(4))
                 {
                     <p><strong>@message.From:</strong> @message.Text</p>
                 }
             </section>
         }
-        <form class="network-chat" @onsubmit="SendChatAsync" @onsubmit:preventDefault="true">
+
+        <form class="ultima-chat-compose" @onsubmit="SendChatAsync" @onsubmit:preventDefault="true">
             <label class="sr-only" for="network-chat-input">Mensagem para outros jogadores</label>
-            <input id="network-chat-input" @bind="_chatDraft" @bind:event="oninput" maxlength="300" placeholder="Mensagem para outros jogadores…" autocomplete="off" />
-            <button type="submit">Enviar</button>
+            <SUITextField TValue="string" Id="network-chat-input" Placeholder="Mensagem para outros jogadores…"
+                          MaxLength="300" Immediate="true" @bind-Value="_chatDraft" />
+            <SUIButton ButtonTypeValue="SUIButtonType.Submit" SizeValue="SUISize.Small" StartIcon="send"
+                       aria-label="Enviar mensagem">Enviar</SUIButton>
         </form>
+
+        <aside class="ultima-status" aria-label="Status do jogo">
+            <SUICard Elevation="2" Class="ultima-card--glass">
+                <SUICardHeader Title="@StatusTitle()" Description="@StatusSummary()">
+                    <MetaContent>
+                        <SUIStatusBadge ToneValue="@NetTone()">@NetLabel()</SUIStatusBadge>
+                    </MetaContent>
+                </SUICardHeader>
+                @if (_statusExpanded)
+                {
+                    <SUICardContent>
+                        <SUIStack Spacing="1">
+                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
+                                pos (@_posX.ToString("F1"), @_posZ.ToString("F1")) · alt @_posY.ToString("F1") · @_renderer
+                            </SUIText>
+                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">IA: @ActiveEngine()</SUIText>
+                            @if (_devHud)
+                            {
+                                <SUIText Typo="SUITypo.mono" Color="SUIColor.Secondary">FPS: @_fps.ToString("0") · @_contentSource · build @BuildId</SUIText>
+                                <SUIText Typo="SUITypo.mono" Color="SUIColor.Secondary">diálogos na fila: <span id="ultima-dialog-queue-count">0</span></SUIText>
+                            }
+                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Text" OnClick="ToggleStatus">Ocultar detalhes</SUIButton>
+                        </SUIStack>
+                    </SUICardContent>
+                }
+            </SUICard>
+            @if (!_statusExpanded)
+            {
+                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Soft" OnClick="ToggleStatus" Class="ultima-status__more">detalhes</SUIButton>
+            }
+        </aside>
+
+        <div class="ultima-panel-toggle">
+            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Soft" StartIcon="menu" OnClick="TogglePanel"
+                       aria-label="Abrir painel do jogo">@(_panelOpen ? "Fechar" : "Painel")</SUIButton>
+        </div>
+
+        @if (_panelOpen)
+        {
+            <aside class="ultima-panel" aria-label="Painel do jogo">
+                <SUICard Elevation="3" Class="ultima-card--glass">
+                    <SUICardContent>
+                        <SUIStack Spacing="2">
+
+                            <SUIExpansionPanel Title="Multiplayer e voz" Subtitle="@NetLabel()">
+                                <SUIStack Spacing="2">
+                                    <SUITextField TValue="string" Id="player-name" Label="Seu nome" MaxLength="40" Immediate="true"
+                                                  Value="_playerName" ValueChanged="OnPlayerNameChanged" />
+                                    <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="copy"
+                                               OnClick="CopyInviteAsync">Copiar convite</SUIButton>
+                                    <SUISwitch Label="Transmitir minha voz" Value="_micEnabled" ValueChanged="OnMicToggled" />
+                                    <SUIProgressLinear Value="@Math.Round(_micLevel * 100)" Rounded="true" ColorValue="SUIColor.Success"
+                                                       AriaLabel="Nível do microfone" />
+                                    <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@_micStatus</SUIText>
+                                    <SUISwitch Label="Ler falas em voz alta" Value="_speakEnabled" ValueChanged="OnSpeakToggled" />
+                                </SUIStack>
+                            </SUIExpansionPanel>
+
+                            <SUIExpansionPanel Title="IA da Guardiã (GPU)" Subtitle="@AiShortLabel(_aiState)">
+                                <SUIStack Spacing="2">
+                                    @switch (_aiState)
+                                    {
+                                        case "checking":
+                                        case "unsupported":
+                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@_aiDetail</SUIText>
+                                            break;
+                                        case "ready":
+                                            <SUIStack Row="true" Spacing="2" AlignItems="center" Wrap="true">
+                                                <SUIStatusBadge ToneValue="SUITone.Success" Icon="check">IA local pronta</SUIStatusBadge>
+                                                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="DisableAiAsync">Desligar</SUIButton>
+                                            </SUIStack>
+                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@_aiDetail</SUIText>
+                                            break;
+                                        case "thinking":
+                                            <SUIStatusBadge ToneValue="SUITone.Info">Pensando…</SUIStatusBadge>
+                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@_aiDetail</SUIText>
+                                            break;
+                                        case "model":
+                                        case "downloading":
+                                        case "compiling":
+                                        case "stalled":
+                                            <SUIProgressLinear Value="@Math.Round(_aiProgress * 100)" Rounded="true" AriaLabel="Progresso do modelo de IA" />
+                                            <SUIText Typo="SUITypo.caption">@((int)(_aiProgress * 100))% · @_aiDetail</SUIText>
+                                            @if (_aiState == "stalled")
+                                            {
+                                                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="RetryAiAsync">Tentar de novo</SUIButton>
+                                            }
+                                            break;
+                                        case "error":
+                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Error">@_aiDetail</SUIText>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="RetryAiAsync">Tentar de novo</SUIButton>
+                                            break;
+                                        default:
+                                            <SUIButton SizeValue="SUISize.Small" OnClick="EnableAiAsync">Ativar IA na minha GPU</SUIButton>
+                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">Roda no seu navegador, sem enviar a conversa. @_aiDetail</SUIText>
+                                            break;
+                                    }
+                                </SUIStack>
+                            </SUIExpansionPanel>
+
+                            <SUIExpansionPanel Title="IA na CPU (sem placa de vídeo)" Subtitle="@AiShortLabel(_aiCpuState)">
+                                <SUIStack Spacing="2">
+                                    <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">Motor ativo: @ActiveEngine()</SUIText>
+                                    @if (_aiCpuState != "ready")
+                                    {
+                                        <div class="ultima-models" role="group" aria-label="Escolher modelo da IA na CPU">
+                                            @foreach (var kv in AiCpuModels)
+                                            {
+                                                var selected = kv.Key == _aiCpuModel;
+                                                <SUIButton SizeValue="SUISize.Small" FullWidth="true"
+                                                           VariantValue="@(selected ? SUIVariant.Soft : SUIVariant.Outlined)"
+                                                           Class="@(selected ? "ultima-model-btn ultima-model-btn--on" : "ultima-model-btn")"
+                                                           OnClick="@(() => SelectAiCpuModelAsync(kv.Key))"
+                                                           aria-pressed="@(selected ? "true" : "false")">
+                                                    @kv.Value.Label · @kv.Value.Why
+                                                </SUIButton>
+                                            }
+                                        </div>
+                                    }
+                                    @switch (_aiCpuState)
+                                    {
+                                        case "ready":
+                                            <SUIStack Row="true" Spacing="2" AlignItems="center" Wrap="true">
+                                                <SUIStatusBadge ToneValue="SUITone.Success" Icon="check">IA na CPU pronta</SUIStatusBadge>
+                                                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="DisableAiCpuAsync">Desligar</SUIButton>
+                                            </SUIStack>
+                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@_aiCpuDetail</SUIText>
+                                            break;
+                                        case "thinking":
+                                            <SUIStatusBadge ToneValue="SUITone.Info">Pensando…</SUIStatusBadge>
+                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@_aiCpuDetail</SUIText>
+                                            break;
+                                        case "model":
+                                        case "downloading":
+                                        case "loading":
+                                        case "stalled":
+                                            <SUIProgressLinear Value="@Math.Round(_aiCpuProgress * 100)" Rounded="true" AriaLabel="Progresso do modelo de IA na CPU" />
+                                            <SUIText Typo="SUITypo.caption">@((int)(_aiCpuProgress * 100))% · @_aiCpuDetail</SUIText>
+                                            @if (_aiCpuState == "stalled")
+                                            {
+                                                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="RetryAiCpuAsync">Tentar de novo</SUIButton>
+                                            }
+                                            break;
+                                        case "error":
+                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Error">@_aiCpuDetail</SUIText>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="RetryAiCpuAsync">Tentar de novo</SUIButton>
+                                            break;
+                                        default:
+                                            <SUIButton SizeValue="SUISize.Small" OnClick="EnableAiCpuAsync">Ativar IA na minha CPU</SUIButton>
+                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@_aiCpuDetail</SUIText>
+                                            break;
+                                    }
+                                </SUIStack>
+                            </SUIExpansionPanel>
+
+                            <SUIExpansionPanel Title="Controles e ajuda">
+                                <SUIStack Spacing="2">
+                                    <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
+                                        teclado: <kbd>WASD</kbd>/<kbd>↑↓←→</kbd> andar · <kbd>E</kbd> conversa · <kbd>Esc</kbd> fecha · mouse gira a câmera
+                                    </SUIText>
+                                    <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
+                                        controle: <kbd>LS</kbd> mover · <kbd>RS</kbd> câmera · botão <kbd>Ⓐ</kbd>/<kbd>✕</kbd> conversar · celular: analógicos na tela
+                                    </SUIText>
+                                    <SUISwitch Label="Informações de desenvolvimento (FPS, fonte do conteúdo)" Value="_devHud" ValueChanged="OnDevToggled" />
+                                    <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="restart" OnClick="Restart">Voltar ao início da trilha</SUIButton>
+                                </SUIStack>
+                            </SUIExpansionPanel>
+
+                        </SUIStack>
+                    </SUICardContent>
+                </SUICard>
+            </aside>
+        }
 
         <div class="touch-controls" aria-label="Controles táteis">
             <div id="move-stick" class="touch-stick" aria-label="Analógico para andar"><span id="move-thumb"></span><small>ANDAR</small></div>
@@ -215,37 +278,39 @@
 
         @if (_view is not null)
         {
-            <section class="dialog" role="dialog" aria-modal="false" aria-label="@($"Conversa com {_view.Speaker}")">
-                <p class="speaker">@_view.Lines[_view.CurrentLine].Speaker</p>
-                <p class="line" aria-live="polite">@_view.Lines[_view.CurrentLine].Text</p>
-                @if (!_view.Thinking && !string.IsNullOrEmpty(_view.ReplySource) && _view.Lines[_view.CurrentLine].Speaker != "Você")
-                {
-                    <small class="reply-source">✦ origem da resposta: @_view.ReplySource</small>
-                }
-                <form class="dialog-compose" @onsubmit="SubmitDialogAsync" @onsubmit:preventDefault="true">
-                    <label class="sr-only" for="dialog-input">Escreva para o NPC</label>
-                    <input id="dialog-input" @bind="_dialogDraft" @bind:event="oninput" maxlength="300" placeholder="@($"Escreva algo para {_view.Speaker}…")" autocomplete="off" />
-                    <button type="submit">Enviar</button>
-                    <button type="button" class="secondary" @onclick="ToggleDictationAsync" aria-pressed="@_dictating">
-                        @(_dictating ? "Parar ditado" : "🎙 Ditar")
-                    </button>
-                </form>
-                @if (!string.IsNullOrEmpty(_speechError))
-                {
-                    <small class="speech-error">@_speechError</small>
-                }
-                <div class="dialog-actions">
-                    <button type="button" @onclick="AdvanceAsync">@(_view.CurrentLine + 1 < _view.Lines.Count ? "Continuar · E/A" : "Encerrar · E/A")</button>
-                    <button type="button" class="secondary" @onclick="CloseDialog">Fechar · Esc</button>
-                </div>
+            <section class="ultima-dialog" role="dialog" aria-modal="false" aria-label="Conversa com a Guardiã">
+                <SUICard Elevation="3" Class="ultima-card--glass">
+                    <SUICardContent>
+                        <SUIStack Spacing="2">
+                            <p class="ultima-dialog__speaker">@_view.Lines[_view.CurrentLine].Speaker</p>
+                            <p class="ultima-dialog__line" aria-live="polite">@_view.Lines[_view.CurrentLine].Text</p>
+                            @if (!_view.Thinking && !string.IsNullOrEmpty(_view.ReplySource) && _view.Lines[_view.CurrentLine].Speaker != "Você")
+                            {
+                                <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">✦ origem da resposta: @_view.ReplySource</SUIText>
+                            }
+                            <form class="ultima-dialog__compose" @onsubmit="SubmitDialogAsync" @onsubmit:preventDefault="true">
+                                <label class="sr-only" for="dialog-input">Escreva para a Guardiã</label>
+                                <SUITextField TValue="string" Id="dialog-input" Placeholder="Escreva algo para a Guardiã…"
+                                              MaxLength="300" Immediate="true" @bind-Value="_dialogDraft" />
+                                <SUIButton ButtonTypeValue="SUIButtonType.Submit" SizeValue="SUISize.Small" StartIcon="send"
+                                           aria-label="Enviar para a Guardiã">Enviar</SUIButton>
+                                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="audio"
+                                           OnClick="ToggleDictationAsync">@(_dictating ? "Parar ditado" : "Ditar")</SUIButton>
+                            </form>
+                            @if (!string.IsNullOrEmpty(_speechError))
+                            {
+                                <SUIText Typo="SUITypo.caption" Color="SUIColor.Error">@_speechError</SUIText>
+                            }
+                            <SUIStack Row="true" Spacing="2" Wrap="true">
+                                <SUIButton OnClick="AdvanceAsync">@(_view.CurrentLine + 1 < _view.Lines.Count ? "Continuar · E/A" : "Encerrar · E/A")</SUIButton>
+                                <SUIButton VariantValue="SUIVariant.Outlined" OnClick="CloseDialog">Fechar · Esc</SUIButton>
+                            </SUIStack>
+                        </SUIStack>
+                    </SUICardContent>
+                </SUICard>
             </section>
         }
     </main>
-
-    <footer class="hud hud-bottom">
-        <p class="controls">teclado: <kbd>WASD</kbd>/<kbd>↑↓←→</kbd> andar, <kbd>E</kbd> conversa, <kbd>Esc</kbd> fecha, mouse gira câmera · controle: <kbd>LS</kbd> mover, <kbd>RS</kbd> câmera, botão <kbd>Ⓐ</kbd>/<kbd>✕</kbd> conversar · celular: analógicos na tela</p>
-        <button type="button" @onclick="Restart">Voltar ao início da trilha</button>
-    </footer>
 </div>
 
 @code {
@@ -253,7 +318,6 @@
     private DotNetObjectReference<Ultima.Models.ModelsInterop>? _modelsRef;
     private string _renderer = string.Empty;
     private bool _near;
-    private bool _nearWanderer;
     private DialogView? _view;
     private readonly NpcScheduler _npc = new();
     private double _posX, _posY, _posZ, _fps, _micLevel;
@@ -269,6 +333,10 @@
     private bool _micEnabled;
     private bool _speakEnabled;
     private bool _dictating;
+    private bool _statusExpanded;
+    private bool _panelOpen;
+    private bool _devHud;
+    private long _turnStartedMs;   // t50: base do tempo de resposta registrado por turno
     private readonly List<ChatMessage> _chat = [];
     private sealed record ChatMessage(string From, string Text);
 
@@ -341,6 +409,38 @@
         return JS.InvokeVoidAsync("game.aiCpu.setModel", key).AsTask();
     }
     private string ActiveEngine() => _aiState == "ready" ? "webgpu" : _aiCpuState == "ready" ? "cpu-wllama" : "servidor (regras)";
+
+    // --- Rótulos compactos da interface SUI ---
+    private string BuildId = "dev";
+    private string StatusTitle() => string.IsNullOrWhiteSpace(_playerName) ? "Ultima" : (_playerName.Length > 24 ? _playerName[..24] : _playerName);
+    private string StatusSummary() => $"{ActiveEngine()} · {_remoteCount} jogador(es) remoto(s)";
+    private string NetLabel()
+    {
+        var label = string.IsNullOrEmpty(_renderer) ? _netStatus : _netStatus;
+        return label.Length > 30 ? label[..30] + "…" : label;
+    }
+    private Sufficit.Blazor.UI.Components.SUITone NetTone() => _netStatus.Contains("Conectad", StringComparison.OrdinalIgnoreCase) ? Sufficit.Blazor.UI.Components.SUITone.Success
+        : _netStatus.Contains("Conectando", StringComparison.OrdinalIgnoreCase) ? Sufficit.Blazor.UI.Components.SUITone.Info
+        : _netStatus.Contains("falha", StringComparison.OrdinalIgnoreCase) || _netStatus.Contains("erro", StringComparison.OrdinalIgnoreCase) ? Sufficit.Blazor.UI.Components.SUITone.Danger
+        : Sufficit.Blazor.UI.Components.SUITone.Neutral;
+    private static string AiShortLabel(string state) => state switch
+    {
+        "ready" => "pronta",
+        "thinking" => "pensando…",
+        "model" => "escolhendo modelo…",
+        "downloading" => "baixando…",
+        "loading" => "carregando…",
+        "compiling" => "compilando…",
+        "stalled" => "travou",
+        "error" => "erro",
+        "checking" => "verificando…",
+        "unsupported" => "sem WebGPU",
+        _ => "desligada",
+    };
+    private void ToggleStatus() => _statusExpanded = !_statusExpanded;
+    private void TogglePanel() => _panelOpen = !_panelOpen;
+    private void OnDevToggled(bool value) => _devHud = value;
+
     private sealed record AnnouncementDto(string? Text);
     private sealed record AnnouncementsDto(AnnouncementDto[]? Items);
 
@@ -350,7 +450,6 @@
         {
             EngineReady = renderer => _ = InvokeAsync(() => { _renderer = renderer; StateHasChanged(); }),
             NearChanged = near => _ = InvokeAsync(() => { _near = near; StateHasChanged(); }),
-            WandererNearChanged = near => _ = InvokeAsync(() => { _nearWanderer = near; }),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
             Close = () => _ = InvokeAsync(CloseDialog),
             MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; RunNpcTick(); StateHasChanged(); }),
@@ -381,10 +480,25 @@
         await JS.InvokeVoidAsync("game.voice.init", _bridge);
         await JS.InvokeVoidAsync("game.ai.init", _bridge);
         await JS.InvokeVoidAsync("game.aiCpu.init", _bridge);
-        _speakEnabled = await JS.InvokeAsync<bool>("game.voice.getSpeakPref");
-        _playerName = await JS.InvokeAsync<string>("game.net.getName");
-        _sceneryStyle = await JS.InvokeAsync<string>("game.scenery.get");
-        await JS.InvokeVoidAsync("game.workshop.init", _bridge);
+        try { await JS.InvokeVoidAsync("game.workshop.init", _bridge); }
+        catch (JSException) { /* oficina é opcional: motor antigo não a expõe */ }
+        try { await JS.InvokeVoidAsync("game.dialogLog.init"); }
+        catch (JSException) { /* registro de conversas é opcional */ }
+        // Cada módulo JS é opcional: um ausente não pode derrubar a interface
+        // (a dica de controles e o conteúdo remoto precisam rodar mesmo assim).
+        try { _speakEnabled = await JS.InvokeAsync<bool>("game.voice.getSpeakPref"); }
+        catch (JSException) { _speakEnabled = false; }
+        try { _playerName = await JS.InvokeAsync<string?>("game.net.getName"); }
+        catch (JSException) { _playerName = null; }
+        try { _sceneryStyle = await JS.InvokeAsync<string>("game.scenery.get") ?? "procedural"; }
+        catch (JSException) { _sceneryStyle = "procedural"; }
+        try
+        {
+            BuildId = await JS.InvokeAsync<string>("game.build") is { Length: > 0 } b ? b[..Math.Min(10, b.Length)] : "dev";
+        }
+        catch (JSException) { BuildId = "dev"; } // game.build não existe em todos os builds; o id é só do HUD de dev
+        // Dica de controles como mensagem transitória (snackbar SUI), não bloco fixo na tela.
+        Snackbar.Info("WASD/setas andam · E conversa · Esc fecha · Painel abre multiplayer, IA e ajuda");
         StateHasChanged();
         _ = LoadRemoteContentAsync();
     }
@@ -424,7 +538,9 @@
 
     private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-    private WorldSnapshot Snapshot() => new(_posX, _posZ, _near, _nearWanderer, _view is not null, _aiState == "ready", NowMs());
+    private bool PlayerNearWanderer() => _remoteCount > 0;
+
+    private WorldSnapshot Snapshot() => new(_posX, _posZ, _near, PlayerNearWanderer(), _view is not null, _aiState == "ready", NowMs());
 
     private void Dispatch(GameEvent e)
     {
@@ -466,6 +582,19 @@
                     break;
                 case SetReply(int index, var text, _):
                     _ = SpeakLineAsync(new DialogLine(decision.View!.Lines[index].Speaker, text));
+                    // t50: funil único do registro de conversas — chega aqui todo turno com
+                    // resposta (roteiro, chat da Guardiã ou IA local); a pergunta do jogador
+                    // é a linha anterior do mesmo diálogo. O módulo JS sanitiza e enfileira.
+                    try
+                    {
+                        var dlg = decision.View;
+                        var playerLine = index > 0 && dlg.Lines[index - 1].Speaker == "Você"
+                            ? dlg.Lines[index - 1].Text : string.Empty;
+                        var ms = _turnStartedMs > 0 ? (long)(NowMs() - _turnStartedMs) : 0;
+                        _ = JS.InvokeVoidAsync("game.dialogLog.turn",
+                            dlg.Speaker, playerLine, text, dlg.ReplySource, ms);
+                    }
+                    catch (JSException) { /* registro é opcional: nunca atrapalha o diálogo */ }
                     break;
             }
         }
@@ -483,14 +612,11 @@
         if (text.Length > 300) text = text[..300];
         _dialogDraft = string.Empty;
         _speechError = string.Empty;
+        _turnStartedMs = NowMs();   // t50: base do tempo de resposta do turno registrado
         Dispatch(new PlayerSpoke(NowMs(), text));
         // Produtores caros (WebLLM na GPU, API do jogo, fallback local) correm fora do
-        // tick; a resposta vira evento e o cérebro a aplica em um tick futuro. Os
-        // produtores atuais têm a persona da Guardiã; o Andarilho responde com falas
-        // locais até existir produtor próprio para ele.
-        var (reply, source) = _view.Speaker == "Andarilho"
-            ? ("Hm… sigo pensando nisso enquanto caminho. Sobre o jardim, pergunte à Guardiã; das trilhas, eu conto.", "falas locais do andarilho")
-            : await AskGuardianAsync(text);
+        // tick; a resposta vira evento e o cérebro a aplica em um tick futuro.
+        var (reply, source) = await AskGuardianAsync(text);
         Dispatch(new ReplyArrived(NowMs(), reply, source));
     }
 
@@ -571,9 +697,9 @@
     private Task SpeakLineAsync(DialogLine line) =>
         _speakEnabled ? JS.InvokeVoidAsync("game.voice.speak", line.Text, line.Speaker).AsTask() : Task.CompletedTask;
 
-    private async Task ToggleSpeakAsync()
+    private async Task OnSpeakToggled(bool enabled)
     {
-        _speakEnabled = !_speakEnabled;
+        _speakEnabled = enabled;
         await JS.InvokeVoidAsync("game.voice.setSpeakPref", _speakEnabled);
         if (_speakEnabled && _view is not null) await SpeakLineAsync(_view.Lines[_view.CurrentLine]);
     }
@@ -585,15 +711,15 @@
         else await JS.InvokeVoidAsync("game.voice.startDictation");
     }
 
-    private async Task ToggleMicAsync()
+    private async Task OnMicToggled(bool enabled)
     {
-        if (_micEnabled) await JS.InvokeVoidAsync("game.voice.stopMic");
-        else await JS.InvokeVoidAsync("game.voice.startMic");
+        if (enabled) await JS.InvokeVoidAsync("game.voice.startMic");
+        else await JS.InvokeVoidAsync("game.voice.stopMic");
     }
 
-    private async Task OnPlayerNameInput(ChangeEventArgs e)
+    private async Task OnPlayerNameChanged(string value)
     {
-        _playerName = e.Value?.ToString() ?? string.Empty;
+        _playerName = value;
         await JS.InvokeVoidAsync("game.net.setName", _playerName);
     }
 
