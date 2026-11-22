@@ -7,33 +7,31 @@ Data: 2026-11-22 · Escopo: jogável no celular (retrato e paisagem), menus ocul
 - Ponto de corte mobile: `max-width: 760px` OU `pointer: coarse` (mesmo critério já usado para mostrar .touch-controls). Tablet 768×1024 é smoke test (fica acima de 760px → comportamento desktop, sem quebrar).
 - IDs lidos pelo JS permanecem únicos e sempre renderizados: game-canvas, move-stick, move-thumb, look-stick, look-thumb, touch-action, touch-cancel, dialog-input, network-chat-input, ultima-dialog-queue-count, workshop-prompt, workshop-scale.
 - Botões da SUI dentro de painéis já têm tamanho de componente; o critério 48×48 será medido e, onde faltar, minimum-height CSS por classe (sem tocar no pacote).
-- Publicação pelo caminho github_cli api (git/trees → git/commits → PATCH refs/heads/main), push direto não funciona. Só publicar quando origin/main já contiver o commit t50 (mensagem "t50"/"dialog").
+- Publicação pelo caminho github_cli api (git/trees → git/commits → PATCH refs/heads/main), push direto não funciona. Condição t50 na main: **cumprida** (verificado 23:10 — tests/dialog-log.e2e.js e js/dialog-log.js presentes em origin/main 5208961).
 
 ## Estrutura escolhida
-- `.ultima-menu` envolvendo status + oficina + toggle + painel: `display: contents` no desktop (posições idênticas às atuais); vira folha quase inteira (retrato) / gaveta rolável (paisagem) no mobile, aberta pelo botão hamburger. Sem duplicar IDs.
-- Altura: 100dvh com fallback 100vh; `viewport-fit=cover` + `env(safe-area-inset-*)`; sem maximum-scale (zoom acessível preservado); font-size ≥16px no campo de diálogo (evita auto-zoom iOS).
-- Uma única fonte da verdade para toque: bloco `.touch-*` sai do extras.css e fica só no app.css (extras.css mantém apenas o que é identidade).
-- Diálogo no mobile: folha inferior com safe-area; sticks ocultos enquanto diálogo aberto (A/B continuam); game.js recalcula raio por pointerdown via getBoundingClientRect (verificado — raio não fica em cache).
+- `.ultima-menu` envolvendo status + oficina + toggle + painel: `display: contents` no desktop (posições idênticas às atuais); vira folha quase inteira (retrato) / gaveta rolável (paisagem) no mobile, aberta pelo botão hamburger `#ultima-menu-fab` + backdrop `#ultima-menu-backdrop`. Sem duplicar IDs.
+- Altura: 100dvh com fallback 100vh **na cadeia completa** (`#app, #app > .sui-root, #app > :has(> .game-shell), .game-shell` — seletor da origin/main 5208961 unificado com dvh do t56); `viewport-fit=cover` + `env(safe-area-inset-*)`; sem maximum-scale; font-size ≥16px no campo de diálogo.
+- Uma única fonte da verdade para toque: bloco `.touch-*` saiu do extras.css e fica só no app.css (extras.css mantém só o reposicionamento do painel de rede).
+- Diálogo no mobile: folha inferior com safe-area + `--ultima-vv-bottom` (visualViewport); sticks ocultos enquanto diálogo aberto (A/B continuam); raio do stick recalculado por evento.
+- Paisagem baixa (≤480px): controles mínimos nos cantos (sticks 112, A 64, B 52).
 
-## Medidas (linha de base — antes)
-A MEDIR após build local (ports: 8090 API em uso, 8091 site em uso → usar 8092/8093):
-- Retrato 390×844, paisagem 844×390, desktop 1280×720: retângulos de .ultima-status, .workshop-panel, .ultima-panel-toggle, .ultima-panel, .ultima-chat-log, .ultima-dialog, #move-stick, #look-stick, #touch-action, #touch-cancel, canvas.
-- JSON completo será gravado em decisions/ (ui-mobile-baseline.json) e resumido aqui.
-
-## Decisões tomadas
-- game.js: resize só escuta window.resize; adicionar `visualViewport.resize` + `orientationchange` redundando o deliver (barato, cobre iOS).
-- Em paisagem baixa (≤480px de altura): controles encolhem até mínimo (sticks 112, A 64, B 52 — valores mínimos do enunciado) e ficam ancorados nos cantos; nenhum HUD no centro.
+## Linha de base medida (decisions/ui-mobile-baseline.json, build pré-t56 às 22:58)
+- Canvas **2:1 em todas as janelas** (390×195, 844×422, 1280×640, 768×384) — **causa identificada como bug já corrigido na origin/main** (cadeia de altura do host SUI, commits 208ff8a+5208961), não como defeito do t56. Correção integrada por merge local.
+- HUD visível no "antes": status, oficina, toggle (+chat em ≥844px de largura) sobrepondo o jogo; 12 alvos <48px (oficina/diálogo); retrato com 13 sobreposições de HUD; paisagem com scroll horizontal.
+- meshes=0 era artefato de medição (window.game não expõe `scene`); teste corrigido para usar `cameraState`/`playerState` (novas APIs públicas do core, responder via query nos dois modos).
 
 ## Progresso
-- [x] 22:20 — Árvore conferida: HEAD local 8b19ea3; origin/main 7a9e45d **já contém t50** ("t50: registro de conversas...") → via de publicação liberada quando tudo verde.
-- [x] 22:22 — Leitura: index.html, app.css, extras.css, Index.razor (HUD/touch/diálogo), game.js (sticks recalculam raio por evento — sem cache; resize só window), harness tests/dialog-log.e2e.js (padrão playwright-core + chromium headless shell 1255).
-- [~] 22:23 — dotnet publish Release → /tmp/ultima-mobile rodando em segundo plano (log /tmp/ultima-t56/publish-baseline.log).
-- [ ] Medir linha de base nos 3 viewports + screenshots "antes".
-- [ ] Implementar CSS/Razor/JS.
-- [ ] tests/ui-mobile.e2e.js + medições "depois".
-- [ ] Build Release + dialog-log.e2e.js.
-- [ ] Commit, publicar main, Pages success, validação ao vivo.
+- [x] Leitura completa (index.html, app.css, extras.css, Index.razor, game.js/game-core.js/game-worker.js, harness dialog-log.e2e.js).
+- [x] Linha de base medida nos 4 viewports + JSON + screenshots "antes" (/tmp/mobile-shots/antes-*.png).
+- [x] Implementação: viewport-fit=cover (index.html); cadeia de altura + dvh; menu mobile completo no Razor (fab/backdrop/folha/`ToggleMenu`/`_menuOpen`, desktop `display:contents`); app.css com bloco mobile único (typo corrigido, sem escapes, status/oficina/painel/chat ocultos no mobile); extras.css dedup; game.js com visualViewport+orientationchange; diálogo em folha inferior ≥16px.
+- [x] Merge da origin/main (5208961, correção do canvas 2:1) → conflitos app.css/game.js resolvidos por união, commit 44dc913 sobre WIP b3ce871. WIP commitado antes do merge para não perder edições.
+- [~] Build Release pós-merge → /tmp/ultima-mobile2 (game.js/game-core.js atualizados pós-publish), servido em 127.0.0.1:8093; **validação completa (ui-mobile.e2e.js modo full) em execução** — log /tmp/ultima-t56/after-run.log, relatório decisions/ui-mobile-after.json.
+- [ ] Remeção pós-edição verde nos 4 viewports (rotação, sticks, A/B diálogo, menu, teclado virtual).
+- [ ] Regressão desktop (rects == linha de base, WASD, mouse, E/Esc, toggle painel).
+- [ ] dotnet build Release limpo + dialog-log.e2e.js passando.
+- [ ] Commit final + publicação main via github_cli api (t50 já na main ✓) + Pages success + validação ao vivo.
 
 ## Concorrência
-- Sub-sessão t50 ativa: não tocar em dialog-log.js, tests/dialog-log.e2e.js, app/; regra read-before-write em Index.razor/app.css/extras.css/index.html/game.js; nunca git checkout/restore/reset/stash/clean.
-- Memória cgroup 2 GB: um build e um navegador por vez; conferir ps antes de cada um.
+- Sub-sessão t50: arquivos dela (dialog-log.js, tests/dialog-log.e2e.js, app/) não alterados; regra read-before-write respeitada; nenhum checkout/restore/reset/stash/clean.
+- Memória cgroup 2 GB (1,36 GB em uso às 23:20): um build e um navegador por vez; servidores antigos de /tmp/ultima-mobile* derrubados antes de servir o novo.
