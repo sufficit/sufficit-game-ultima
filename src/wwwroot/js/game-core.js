@@ -25,6 +25,12 @@
     // lineage-rust amortiza a entrada de personagens com 4 ms/frame (CHARACTER_BUDGET_MS).
     const MODEL_BUDGET_MS = 4.0;
     const MODEL_SCATTER_BATCH = 24; // instâncias por passo de espalhamento
+    // Estilo do cenário (PLAN-PLAYER-ASSETS fase 5): 'procedural' (DLLs C#, padrão) ou
+    // 'lowpoly' (GLBs CC0 alternativos substituem árvores/pedras/grama). Vem do host no
+    // boot (a preferência mora no localStorage da página); a troca pede recarga.
+    const sceneryStyle = host.scenery === 'lowpoly' ? 'lowpoly' : 'procedural';
+    // id do modelo procedural -> id do asset GLB que o substitui no estilo lowpoly
+    const SCENERY_ALT = { 'tree.pine': 'flora.pine', 'rock.boulder': 'rock.boulder2', 'scenery.grass': 'scenery.grass2' };
 
     let engine = null;
     let scene = null;
@@ -750,7 +756,8 @@
         };
         if (registered) {
             const place = modelPlacements[desc.id];
-            if (place) { yield* place(protos, desc); }
+            // No estilo lowpoly a versão GLB alternativa assume o espalhamento (fase 5).
+            if (place && !(sceneryStyle === 'lowpoly' && SCENERY_ALT[desc.id])) { yield* place(protos, desc); }
         }
     }
 
@@ -760,6 +767,35 @@
             work: modelWork(desc, placeholder)
         });
         modelStatus.queue = modelQueue.length;
+    }
+
+    // Descarta as malhas e instâncias de um modelo registrado (variação paramétrica troca
+    // o cenário: o descritor antigo sai de cena inteiro antes do novo entrar na fila).
+    function disposeModel(id) {
+        const reg = modelRegistry.get(id);
+        if (!reg) { return; }
+        modelRegistry.delete(id);
+        for (const p of reg.protos) {
+            if (sceneShadows) { try { sceneShadows.removeShadowCaster(p); } catch (e) { /* já fora */ } }
+            for (const inst of (p.instances || []).slice()) { inst.dispose(); }
+            p.dispose();
+        }
+    }
+
+    // Troca um modelo em cena pelo descritor JSON dado (mesmo id): descarta o antigo e
+    // enfileira a reconstrução — texturas/malhas/espalhamento seguem o orçamento normal.
+    function replaceModel(json) {
+        try {
+            const desc = JSON.parse(json);
+            if (!scene) { throw new Error('cena ainda não criada'); }
+            disposeModel(desc.id);
+            enqueueModel(desc, false);
+            return true;
+        } catch (e) {
+            modelStatus.errors.push('replace: ' + (e && e.message || e));
+            console.warn('[modelos] falha ao trocar modelo', e);
+            return false;
+        }
     }
 
     // Drena a fila até o orçamento do frame; o primeiro passo do item da frente sempre roda.
@@ -995,19 +1031,31 @@
         'prop.stump': { scaleM: 0.75, shadows: true, place: (p) => batchedSteps('tocos', makeInstancePlacer(p, 16, { minScale: 0.8, maxScale: 1.4, maxAlt: 16, maxSlope: 0.45, sink: 0.04, minR: 6 })) }
     };
 
+    // Alternativas low-poly (fase 5): assumem o espalhamento com as mesmas regras e
+    // contagens dos modelos procedurais que substituem — o mundo fica igual em forma.
+    const glbAltPlacements = {
+        'flora.pine': { scaleM: 7.0, shadows: true, place: (p) => batchedSteps('árvores low-poly', makeTreePlacer([p], 0.12, 64)) },
+        'rock.boulder2': { scaleM: 1.9, shadows: true, place: (p) => batchedSteps('pedras low-poly', makeInstancePlacer(p, 26, { minScale: 0.6, maxScale: 2.2, maxAlt: 26, maxSlope: 0.9, sink: -0.18, minR: 6 })) },
+        'scenery.grass2': { scaleM: 0.55, shadows: false, place: (p) => batchedSteps('grama low-poly', makeInstancePlacer(p, 420, { minScale: 0.7, maxScale: 1.5, maxAlt: 14, maxSlope: 0.55, sink: 0, minR: 4.5 })) }
+    };
+
     // Um asset do catálogo: rede/hash fora da fila (I/O), o espalhamento (CPU real:
     // terreno/ruído por instância) entra na fila de modelos com o orçamento por frame.
+    // No estilo lowpoly, os assets alternativos (glbAltPlacements) assumem o lugar dos
+    // procedurais; no estilo padrão eles carregam sem espalhar (ficam de reserva).
     async function loadGlbAsset(entry) {
         const cfg = glbPlacements[entry.id];
+        const alt = glbAltPlacements[entry.id];
         const bytes = await fetchVerifiedGlb(entry);
-        const proto = await importGlbProto(entry.id, bytes, cfg ? cfg.scaleM : 1);
+        const proto = await importGlbProto(entry.id, bytes, (alt || cfg) ? (alt || cfg).scaleM : 1);
         glbRegistry.set(entry.id, { proto: proto, entry: entry });
         glbStatus.loaded.push(entry.id);
-        if (cfg) {
-            if (cfg.shadows && sceneShadows) { sceneShadows.addShadowCaster(proto); }
+        const active = (sceneryStyle === 'lowpoly' && alt) ? alt : (!alt ? cfg : null);
+        if (active) {
+            if (active.shadows && sceneShadows) { sceneShadows.addShadowCaster(proto); }
             modelQueue.push({
                 timing: { id: entry.id, queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
-                work: cfg.place(proto)
+                work: active.place(proto)
             });
             modelStatus.queue = modelQueue.length;
         }
@@ -1029,6 +1077,79 @@
             glbStatus.errors.push('catálogo: ' + (e && e.message || e));
             console.warn('[glb] catálogo indisponível — sigo só com os modelos DLL:', e);
         }
+    }
+
+    // ---------- Espalhamento determinístico (ativos do mundo compartilhado, fase 4) ----------
+    // Posições derivadas do hash do id do asset: todos os clientes que veem o mesmo
+    // catálogo do servidor veem o mesmo mundo — sem precisar de posições no servidor.
+    function seedHash(str) {
+        let h = 2166136261;
+        for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return h >>> 0;
+    }
+
+    function mulberry32(a) {
+        return function () {
+            a |= 0; a = (a + 0x6D2B79F5) | 0;
+            let t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+
+    function seededScatterWork(proto, count, opts, seed) {
+        const rnd = mulberry32(seed);
+        let placed = 0, tries = 0;
+        return (function* () {
+            while (true) {
+                let done = false;
+                yield {
+                    label: 'oficina ' + proto.name + ' ' + placed + '/' + count,
+                    run: function () {
+                        let n = MODEL_SCATTER_BATCH;
+                        while (placed < count && tries < count * 40 && n > 0) {
+                            tries += 1;
+                            const x = (rnd() * 2 - 1) * (WORLD_HALF + 4);
+                            const z = (rnd() * 2 - 1) * (WORLD_HALF + 4);
+                            const r = Math.hypot(x, z);
+                            if (r < (opts.minR || 5)) { continue; }
+                            if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 4.5) { continue; }
+                            if (pathBlend(x, z) < 0.72) { continue; }
+                            const y = terrainHeight(x, z);
+                            if (opts.maxAlt !== undefined && y > opts.maxAlt) { continue; }
+                            if (slopeAt(x, z) > (opts.maxSlope || 0.6)) { continue; }
+                            const s = opts.minScale + rnd() * ((opts.maxScale || opts.minScale) - opts.minScale);
+                            const inst = proto.createInstance(proto.name + '-w' + placed);
+                            inst.position.set(x, y + (opts.sink || 0) * s, z);
+                            inst.rotation.y = rnd() * Math.PI * 2;
+                            inst.scaling.set(s, s * (0.9 + rnd() * 0.3), s);
+                            placed += 1;
+                            n -= 1;
+                        }
+                        done = placed >= count || tries >= count * 40;
+                    }
+                };
+                if (done) { return; }
+            }
+        })();
+    }
+
+    // Espalha um asset já registrado em posições determinísticas (mesmas em todo cliente).
+    function scatterSeeded(id, opts) {
+        const g = glbRegistry.get(id);
+        if (!g || !scene) { return false; }
+        if (opts && opts.shadows && sceneShadows) { sceneShadows.addShadowCaster(g.proto); }
+        modelQueue.push({
+            timing: { id: id + ':espalhar', queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
+            work: seededScatterWork(g.proto, (opts && opts.count) || 3,
+                {
+                    minScale: (opts && opts.minScale) || 0.85, maxScale: (opts && opts.maxScale) || 1.25,
+                    maxAlt: 16, maxSlope: 0.55, sink: (opts && opts.sink) !== undefined ? opts.sink : 0.02, minR: 6
+                },
+                seedHash(id))
+        });
+        modelStatus.queue = modelQueue.length;
+        return true;
     }
 
     function buildScene(canvas) {
@@ -1577,7 +1698,16 @@
             },
             loaderDone(log) { modelStatus.log = Array.from(log || []); },
             status() { return JSON.parse(JSON.stringify(modelStatus)); },
-            get(id) { const m = modelRegistry.get(id); return m ? m.desc : null; }
+            get(id) { const m = modelRegistry.get(id); return m ? m.desc : null; },
+            // Variação paramétrica (PLAN-PLAYER-ASSETS fase 2): o C# (ponte do shell)
+            // reconstrói o descritor com novos Seed/Detalhe e a cena troca + re-espalha.
+            async vary(id, opts) {
+                if (typeof host.varyModel !== 'function') { throw new Error('ponte de variação indisponível'); }
+                const o = opts || {};
+                const json = await host.varyModel(id, o.seed | 0, o.detail === undefined ? 1 : Number(o.detail));
+                if (!json) { throw new Error('modelo ' + id + ' não carregado (DLL ausente)'); }
+                return replaceModel(json);
+            }
         },
         glb: {
             status() {
@@ -1588,17 +1718,20 @@
             },
             get(id) { const g = glbRegistry.get(id); return g ? g.entry : null; },
             // Costura para produtores futuros (IA interna, API, upload do jogador):
-            // registra bytes GLB já confiáveis, normaliza (scaleM) e devolve o protótipo.
+            // registra bytes GLB já confiáveis, normaliza (scaleM). Devolve true (o
+            // protótipo é interno do motor — pela ponte do worker só viajam valores JSON).
             async register(id, bytes, opts) {
                 if (!scene) { throw new Error('cena ainda não criada'); }
-                const existing = glbRegistry.get(id);
-                if (existing) { return existing.proto; }
+                if (glbRegistry.has(id)) { return false; }
                 const proto = await importGlbProto(id, bytes, (opts && opts.scaleM) || 1);
                 if (opts && opts.shadows && sceneShadows) { sceneShadows.addShadowCaster(proto); }
                 glbRegistry.set(id, { proto: proto, entry: { id: id, file: 'runtime:' + id, sha256: null } });
                 glbStatus.loaded.push(id + ' (runtime)');
-                return proto;
-            }
+                return true;
+            },
+            // Espalha um asset registrado em posições determinísticas por id (fase 4):
+            // usado pela oficina (workshop.js) para os assets do mundo compartilhado.
+            scatter(id, opts) { return scatterSeeded(id, opts); }
         },
         perf: {
             // Custo de CPU do loop de render (sem incluir a espera de GPU): amostras dos

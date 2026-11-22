@@ -8,8 +8,28 @@ importScripts('game-core.js');
 
 let core = null;
 
+// Variação paramétrica pedida pelo core: vai à main thread (ModelsInterop no .NET)
+// e volta como descritor JSON — pending por request id, como os diagnósticos do shell.
+let varySeq = 0;
+const varyPending = new Map();
+function varyModelViaShell(modelId, seed, detail) {
+    return new Promise(function (resolve, reject) {
+        const reqId = ++varySeq;
+        varyPending.set(reqId, { resolve: resolve, reject: reject });
+        self.postMessage({ type: 'varyModel', reqId: reqId, modelId: modelId, seed: seed, detail: detail });
+    });
+}
+
 self.onmessage = function (e) {
     const msg = e.data || {};
+    if (msg.type === 'varyResult') {
+        const p = varyPending.get(msg.reqId);
+        if (p) {
+            varyPending.delete(msg.reqId);
+            if (msg.error) { p.reject(new Error(msg.error)); } else { p.resolve(msg.json); }
+        }
+        return;
+    }
     if (msg.type === 'init') {
         try {
             core = self.UltimaCore.create({
@@ -17,11 +37,13 @@ self.onmessage = function (e) {
                 mode: 'worker',
                 build: msg.build,
                 pageBase: msg.pageBase,
+                scenery: msg.scenery,
                 global: self,
                 dom: false,
                 postEvent: function (name, args) { self.postMessage({ type: 'event', name: name, args: args }); },
                 sendPose: function (x, z, ry) { self.postMessage({ type: 'pose', x: x, z: z, ry: ry }); },
                 onInputMode: function (kind) { self.postMessage({ type: 'inputMode', kind: kind }); },
+                varyModel: varyModelViaShell,
                 onCoreReady: function () { self.postMessage({ type: 'ready' }); },
                 onCoreError: function (message) { self.postMessage({ type: 'fatal', message: message }); }
             });

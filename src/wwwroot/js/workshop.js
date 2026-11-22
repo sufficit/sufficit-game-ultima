@@ -20,16 +20,29 @@
         if (dotnet) { dotnet.invokeMethodAsync('OnWorkshopStatus', String(text || '').slice(0, 160)); }
     }
 
-    // Baixa um asset do servidor com verificação de SHA-256 (mesma regra do catálogo
-    // local), registra o protótipo e espalha em posições determinísticas por id.
+    async function sha256Hex(buf) {
+        const digest = await crypto.subtle.digest('SHA-256', buf);
+        return Array.from(new Uint8Array(digest), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    }
+
+    // Baixa do servidor (na main thread) com verificação de SHA-256 e entrega os bytes
+    // ao motor pela ponte — o cache HTTP imutável do servidor faz o papel do OPFS aqui.
+    async function fetchVerified(asset, base) {
+        const res = await fetch(base + '/' + asset.file + '?h=' + asset.sha256, { cache: 'no-store' });
+        if (!res.ok) { throw new Error('HTTP ' + res.status + ' em ' + asset.file); }
+        const buf = await res.arrayBuffer();
+        const sha = await sha256Hex(buf);
+        if (sha !== asset.sha256) { throw new Error('SHA-256 divergente (' + sha.slice(0, 12) + '…)'); }
+        return buf;
+    }
+
+    // Baixa um asset do servidor com verificação de hash, registra o protótipo no motor
+    // e espalha em posições determinísticas por id (mesmas para todos os clientes).
     async function bring(asset) {
         if (known.has(asset.id)) { return true; }
         const l = live();
         if (!l || !game.glb) { return false; }
-        const bytes = await game.glb.fetchVerified({
-            id: asset.id, file: asset.file, sha256: asset.sha256,
-            baseUrl: l.api() + '/v1/assets/'
-        });
+        const bytes = await fetchVerified(asset, l.api() + '/v1/assets');
         await game.glb.register(asset.id, bytes, { scaleM: asset.scaleM || 1, shadows: true });
         game.glb.scatter(asset.id, { count: 3, minScale: 0.85, maxScale: 1.25, sink: 0.02 });
         known.add(asset.id);
