@@ -8,6 +8,7 @@
 'use strict';
 const path = require('path');
 const fs = require('fs');
+const observeCommandConflicts = require('./game-command-conflicts.cjs');
 const { chromium } = require('playwright-core');
 
 const SITE = (process.argv[2] || 'http://127.0.0.1:8092').replace(/\/+$/, ''); // sem barra final: evita "//?render=main"
@@ -131,6 +132,7 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
         });
         const page = await ctx.newPage();
         const errors = [];
+        const classify = observeCommandConflicts(page);
         page.on('pageerror', (e) => errors.push(String(e)));
         page.on('console', (m) => { if (m.type() === 'error') { const loc = m.location(); errors.push(m.text() + ' <<' + ((loc && loc.url) || '?') + '>>'); } });
         await page.goto(SITE + '/?render=main', { waitUntil: 'domcontentloaded', timeout: 45000 });
@@ -157,7 +159,7 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
             await page.waitForTimeout(1000);
         }
         await page.waitForTimeout(400);
-        return { ctx, page, errors };
+        return { ctx, page, errors, classify };
     }
 
     // ---------- medição por viewport ----------
@@ -204,7 +206,7 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
     if (!BASELINE) {
         // mobile retrato: sticks, A abre diálogo perto da Guardiã, B fecha, menu
         {
-            const { ctx, page, errors } = await openVP('portrait');
+            const { ctx, page, errors, classify } = await openVP('portrait');
             // O arrasto tem que FICAR SEGURADO por vários frames: o core amostra o
             // stick por frame (headless ~1-2 fps); disparar tudo na mesma task não move nada.
             const dlgGone = () => page.evaluate(() => {
@@ -345,18 +347,15 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                 }
                 ok('menu: fecha por toque e volta à tela limpa', !!shut);
             }
-            const rel = errors.filter((e) => !/favicon|wllama|React DevTools|WebGPU|webkitExitFullscreen/i.test(e));
-            // 409 em /v1/game/command = too_fast (anti-teleporte do servidor); o live.js recusa teleporte
-            // de teste por design e o navegador envia a pose seguinte — não é defeito do produto.
-            const tol = rel.filter((e) => /409 \(Conflict\).*\/v1\/game\/command/.test(e));
-            ok('retrato: console sem erros', rel.length - tol.length === 0,
-                rel.filter((e) => !tol.includes(e)).slice(0, 3).join(' | ').slice(0, 200) + (tol.length ? ` [tolerado: ${tol.length}x 409 too_fast anti-teleporte]` : ''));
+            const { failures, tolerated } = await classify(errors);
+            ok('retrato: console sem erros', failures.length === 0,
+                failures.slice(0, 3).join(' | ').slice(0, 200) + (tolerated ? ` [tolerado: ${tolerated}x pose/too_fast]` : ''));
             await ctx.close();
         }
 
         // desktop: regressão + comparação com a linha de base
         {
-            const { ctx, page, errors } = await openVP('desktop');
+            const { ctx, page, errors, classify } = await openVP('desktop');
             const m = await measure(page);
             report.views['desktop'] = m;
             ok('desktop: sticks ocultos', !m.touch['#move-stick'] && !m.touch['#touch-action'], JSON.stringify(Object.keys(m.touch)));
@@ -412,11 +411,9 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
             const panel = await page.waitForSelector('.ultima-panel', { timeout: 20000, state: 'visible' }).catch(() => null);
             ok('desktop: toggle abre painel', !!panel);
             await page.screenshot({ path: `${SHOTS}/depois-desktop-panel.png` }).catch((e) => console.log('info  captura depois-desktop-panel falhou (sem bloquear): ' + (e && e.message || '').split('\n')[0]));
-            const rel = errors.filter((e) => !/favicon|wllama|React DevTools|WebGPU|webkitExitFullscreen/i.test(e));
-            // 409 em /v1/game/command = too_fast (anti-teleporte do servidor recusando a pose ap\u00f3s o teleporte do teste); o cliente trata por design (.catch), o Chromium ainda registra o 4xx
-            const tol = rel.filter((e) => /409.*\/v1\/game\/command/.test(e));
-            ok('desktop: console sem erros', rel.length - tol.length === 0,
-                rel.filter((e) => !tol.includes(e)).slice(0, 3).join(' | ').slice(0, 200) + (tol.length ? ` [tolerado: ${tol.length}x 409 too_fast anti-teleporte]` : ''));
+            const { failures, tolerated } = await classify(errors);
+            ok('desktop: console sem erros', failures.length === 0,
+                failures.slice(0, 3).join(' | ').slice(0, 200) + (tolerated ? ` [tolerado: ${tolerated}x pose/too_fast]` : ''));
             await ctx.close();
         }
     }
