@@ -70,11 +70,33 @@ async function wait(callback,label) {
         if(errors.length) throw Error(errors.join('\n'));
         return pose();
     }
-    const walking=await walk(['w'],700,false);
+    // Mede velocidade real (Δposição/Δtempo de parede) segurando a tecla: sob renderização
+    // por software o delta por quadro é truncado em 0,05 s (game-core.js), então distâncias
+    // absolutas de janelas distintas não são comparáveis; a razão de velocidades preserva
+    // a mesma condição ("Shift distingue caminhada e corrida") em qualquer runner.
+    async function speed(keys,ms,sprint=true){
+        if(sprint) await p.keyboard.down('Shift');
+        for(const key of keys) await p.keyboard.down(key);
+        try{
+            const hold=Math.round(ms*walkScale);
+            const marks=[{t:Date.now(),s:await p.evaluate(()=>window.game.playerState())}];
+            while(Date.now()-marks[0].t<hold){
+                await p.waitForTimeout(Math.max(250,Math.round(hold/8)));
+                marks.push({t:Date.now(),s:await p.evaluate(()=>window.game.playerState())});
+            }
+            const first=marks[0],last=marks[marks.length-1];
+            const dt=(last.t-first.t)/1000;
+            return {v:(last.s.z-first.s.z)/dt,z:last.s.z,dt};
+        } finally {
+            for(const key of keys) await p.keyboard.up(key);
+            if(sprint) await p.keyboard.up('Shift');
+        }
+    }
+    const walking=await speed(['w'],700,false);
     await p.evaluate(()=>game.resetPlayer());
-    const running=await walk(['w'],700);
+    const running=await speed(['w'],700);
     console.log(JSON.stringify({walking,running}));
-    assert.ok(walking.z>1.5 && running.z>walking.z*1.45, 'Shift distingue caminhada e corrida');
+    assert.ok(walking.v>0.3 && running.v>walking.v*1.45, 'Shift distingue caminhada e corrida');
     await p.evaluate(()=>game.resetPlayer());
     await apply(fixture);
     await p.waitForTimeout(T300);
