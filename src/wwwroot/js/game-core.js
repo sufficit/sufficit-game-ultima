@@ -461,34 +461,47 @@
     // renderiza neste motor (worker e main), e a textura é o caminho garantido (o mesmo
     // das vegetações). O grão do solo vai assado na própria textura.
     const CHUNK_TEX = 128;   // 0,25 m por texel
+    // Defesa em profundidade (F7c): a textura é um GRÃO em torno do branco e a COR vive
+    // no diffuseColor do material (a média da paleta do chunk). Se qualquer um dos dois
+    // caminhos falhar na GPU, o outro carrega a cor sozinho — multiplicação segura.
     function paintChunkTexture(tex, cx, cz) {
         const ctx = tex.getContext();
         const img = ctx.createImageData(CHUNK_TEX, CHUNK_TEX);
         const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
         const rnd = makeNoise(9090);
         const data = img.data;
+        let sr = 0, sg = 0, sb = 0;
+        const N = CHUNK_TEX * CHUNK_TEX;
         for (let ty = 0; ty < CHUNK_TEX; ty++) for (let tx = 0; tx < CHUNK_TEX; tx++) {
             const x = x0 + (tx + 0.5) / CHUNK_TEX * CHUNK;
             const z = z0 + (ty + 0.5) / CHUNK_TEX * CHUNK;
             const c = terrainColorAt(x, terrainHeight(x, z), z);
-            // grão assado (periódico em X para não costurar em emenda visível)
+            sr += c[0]; sg += c[1]; sb += c[2];
+            // grão em torno do BRANCO (periódico em X: sem emenda visível)
             const u = tx / CHUNK_TEX * Math.PI * 2;
-            const g = 0.9 + rnd(Math.cos(u) * 6 + 3, ty * 0.3 + Math.sin(u) * 6) * 0.2 - 0.1;
+            const g = 0.86 + rnd(Math.cos(u) * 6 + 3, ty * 0.3 + Math.sin(u) * 6) * 0.28;
+            const k = Math.max(0, Math.min(255, g * 255)) | 0;
             const i = (ty * CHUNK_TEX + tx) * 4;
-            data[i] = Math.max(0, Math.min(255, c[0] * g * 255));
-            data[i + 1] = Math.max(0, Math.min(255, c[1] * g * 255));
-            data[i + 2] = Math.max(0, Math.min(255, c[2] * g * 255));
-            data[i + 3] = 255;
+            data[i] = k; data[i + 1] = k; data[i + 2] = k; data[i + 3] = 255;
         }
         ctx.putImageData(img, 0, 0);
         tex.update(true);
+        return [sr / N, sg / N, sb / N];
+    }
+
+    function applyChunkTint(mat, avg) {
+        mat.diffuseColor = new BABYLON.Color3(
+            Math.max(0.05, Math.min(1, avg[0] * 1.15)),
+            Math.max(0.05, Math.min(1, avg[1] * 1.15)),
+            Math.max(0.05, Math.min(1, avg[2] * 1.15)));
     }
 
     function chunkTexture(cx, cz) {
         const tex = new BABYLON.DynamicTexture('chunkTex-' + chunkKey(cx, cz), { width: CHUNK_TEX, height: CHUNK_TEX }, scene, true);
-        paintChunkTexture(tex, cx, cz);
+        const avg = paintChunkTexture(tex, cx, cz);
         const m = new BABYLON.StandardMaterial('groundMat-' + chunkKey(cx, cz), scene);
         m.diffuseTexture = tex;
+        applyChunkTint(m, avg);
         m.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
         return m;
     }
@@ -499,6 +512,7 @@
         if (hit && hit.positions.length === n * n * 3 && hit.normals.length === n * n * 3) {
             mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, hit.positions);
             mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind, hit.normals);
+            mesh.refreshBoundingInfo();
             mesh.material = chunkTexture(cx, cz);
             mesh.receiveShadows = true;
             return;
@@ -523,6 +537,7 @@
         }
         mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
         mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
+        mesh.refreshBoundingInfo();   // posições mundiais: bounding original ±16 estava stale
         saveChunk(cx, cz, positions, normals);
     }
 
@@ -612,11 +627,12 @@
         }
         mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, pos);
         mesh.updateVerticesData(BABYLON.VertexBuffer.NormalKind, nor);
-        // paleta repintada (a cor vive na textura do chunk, não no vértice)
+        // grão repintado e tinta média atualizada (a cor vive no diffuseColor)
         const mat = mesh.material;
         if (mat && mat.diffuseTexture && mat.diffuseTexture.getContext) {
             const ch = mesh.name.slice('ground-'.length).split(',');
-            paintChunkTexture(mat.diffuseTexture, Number(ch[0]), Number(ch[1]));
+            const avg = paintChunkTexture(mat.diffuseTexture, Number(ch[0]), Number(ch[1]));
+            applyChunkTint(mat, avg);
         }
     }
 
