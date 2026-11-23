@@ -1,7 +1,7 @@
 {
   "mode": "full",
   "site": "http://127.0.0.1:8092",
-  "at": "2026-11-23T00:06:22.602Z",
+  "at": "2026-11-23T14:10:21.556Z",
   "views": {
     "portrait": {
       "viewport": {
@@ -67,7 +67,9 @@
         "h": 844
       },
       "meshes": 1,
-      "smallTouchTargets": [],
+      "smallTouchTargets": [
+        "button.sui-snackbar__close 44x44"
+      ],
       "overlaps": [],
       "consoleErrors": [],
       "camera": {
@@ -213,11 +215,11 @@
         "h": 390
       },
       "meshes": 1,
-      "smallTouchTargets": [],
-      "overlaps": [],
-      "consoleErrors": [
-        "Failed to load resource: the server responded with a status of 404 (File not found)"
+      "smallTouchTargets": [
+        "button.sui-snackbar__close 44x44"
       ],
+      "overlaps": [],
+      "consoleErrors": [],
       "camera": {
         "alpha": -1.571,
         "beta": 1.12,
@@ -240,7 +242,7 @@
           "x": 12,
           "y": 12,
           "w": 300,
-          "h": 205.4
+          "h": 233.4
         },
         ".workshop-panel": {
           "x": 11.2,
@@ -357,11 +359,11 @@
         "h": 1024
       },
       "meshes": 1,
-      "smallTouchTargets": [],
-      "overlaps": [],
-      "consoleErrors": [
-        "Failed to load resource: the server responded with a status of 404 (File not found)"
+      "smallTouchTargets": [
+        "button.sui-snackbar__close 44x44"
       ],
+      "overlaps": [],
+      "consoleErrors": [],
       "camera": {
         "alpha": -1.571,
         "beta": 1.12,
@@ -373,6 +375,231 @@
         "canvasW": 768,
         "canvasH": 1024
       }
+    },
+    "portrait-dialog": {
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "rects": {
+        ".ultima-dialog": {
+          "x": 8,
+          "y": 557.3,
+          "w": 374,
+          "h": 278
+        },
+        "#ultima-menu-fab": {
+          "x": 333.2,
+          "y": 8.8,
+          "w": 48,
+          "h": 48
+        }
+      },
+      "touch": {
+        "#touch-action": {
+          "x": 14.4,
+          "y": 689.6,
+          "w": 68,
+          "h": 68
+        },
+        "#touch-cancel": {
+          "x": 26.4,
+          "y": 770.4,
+          "w": 56,
+          "h": 56
+        }
+      },
+      "page": {
+        "scrollW": 390,
+        "clientW": 390,
+        "scrollH": 844,
+        "clientH": 844
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 844
+      },
+      "meshes": 0,
+      "smallTouchTargets": [
+        "#dialog-input 334x44",
+        "button.sui-btn 79x44",
+        "button.sui-btn 70x44",
+        "button.sui-btn 126x44",
+        "button.sui-btn 109x44"
+      ],
+      "overlaps": [
+        ".ultima-dialog ∩ #touch-action 68x68",
+        ".ultima-dialog ∩ #touch-cancel 56x56"
+      ]
+    },
+    "portrait-dialog-keyboard": {
+      "viewport": {
+        "w": 390,
+        "h": 500
+      },
+      "rects": {
+        ".ultima-dialog": {
+          "x": 8,
+          "y": 213.3,
+          "w": 374,
+          "h": 278
+        },
+        "#ultima-menu-fab": {
+          "x": 333.2,
+          "y": 8.8,
+          "w": 48,
+          "h": 48
+        }
+      },
+      "touch": {
+        "#touch-action": {
+          "x": 14.4,
+          "y": 345.6,
+          "w": 68,
+          "h": 68
+        },
+        "#touch-cancel": {
+          "x": 26.4,
+          "y": 426.4,
+          "w": 56,
+          "h": 56
+        }
+      },
+      "page": {
+        "scrollW": 390,
+        "clientW": 390,
+        "scrollH": 500,
+        "clientH": 500
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 500
+      },
+      "meshes": 0,
+      "smallTouchTargets": [
+        "#dialog-input 334x44",
+        "button.sui-btn 79x44",
+        "button.sui-btn 70x44",
+        "button.sui-btn 126x44",
+        "button.sui-btn 109x44"
+      ],
+      "overlaps": [
+        ".ultima-dialog ∩ #touch-action 68x68",
+        ".ultima-dialog ∩ #touch-cancel 56x56"
+      ]
+    },
+    "portrait-menu": {
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "rects": {
+        ".ultima-status": {
+          "x": 24.2,
+          "y": 81,
+          "w": 341.6,
+          "h": 207.4
+        },
+        ".workshop-panel": {
+          "x": 24.2,
+          "y": 298.8,
+          "w": 341.6,
+          "h": 64.4
+        },
+        ".ultima-menu": {
+          "x": 8.8,
+          "y": 8.8,
+          "w": 372.4,
+          "h": 826.4
+        },
+        "#ultima-menu-fab": {
+          "x": 333.2,
+          "y": 8.8,
+          "w": 48,
+          "h": 48
+        },
+        ".ultima-menu-backdrop": {
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 844
+        }
+      },
+      "touch": {
+        "#move-stick": {
+          "x": 14.4,
+          "y": 702.4,
+          "w": 124,
+          "h": 124
+        },
+        "#move-thumb": {
+          "x": 50.4,
+          "y": 738.4,
+          "w": 52,
+          "h": 52
+        },
+        "#look-stick": {
+          "x": 251.6,
+          "y": 702.4,
+          "w": 124,
+          "h": 124
+        },
+        "#look-thumb": {
+          "x": 287.6,
+          "y": 738.4,
+          "w": 52,
+          "h": 52
+        },
+        "#touch-action": {
+          "x": 307.6,
+          "y": 552.8,
+          "w": 68,
+          "h": 68
+        },
+        "#touch-cancel": {
+          "x": 319.6,
+          "y": 633.6,
+          "w": 56,
+          "h": 56
+        }
+      },
+      "page": {
+        "scrollW": 390,
+        "clientW": 390,
+        "scrollH": 844,
+        "clientH": 844
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 844
+      },
+      "meshes": 0,
+      "smallTouchTargets": [],
+      "overlaps": [
+        ".ultima-status ∩ .ultima-menu-backdrop 342x207",
+        ".workshop-panel ∩ .ultima-menu-backdrop 342x64",
+        ".ultima-menu ∩ #ultima-menu-fab 48x48",
+        ".ultima-menu ∩ .ultima-menu-backdrop 372x826",
+        ".ultima-menu ∩ #move-stick 124x124",
+        ".ultima-menu ∩ #move-thumb 52x52",
+        ".ultima-menu ∩ #look-stick 124x124",
+        ".ultima-menu ∩ #look-thumb 52x52",
+        ".ultima-menu ∩ #touch-action 68x68",
+        ".ultima-menu ∩ #touch-cancel 56x56",
+        "#ultima-menu-fab ∩ .ultima-menu-backdrop 48x48",
+        ".ultima-menu-backdrop ∩ #move-stick 124x124",
+        ".ultima-menu-backdrop ∩ #move-thumb 52x52",
+        ".ultima-menu-backdrop ∩ #look-stick 124x124",
+        ".ultima-menu-backdrop ∩ #look-thumb 52x52",
+        ".ultima-menu-backdrop ∩ #touch-action 68x68",
+        ".ultima-menu-backdrop ∩ #touch-cancel 56x56"
+      ]
     }
   }
 }
