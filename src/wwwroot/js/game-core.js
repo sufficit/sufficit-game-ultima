@@ -448,7 +448,11 @@
         if (!(G.game && G.game.assets) || worldSculpts.length || worldPaints.length) { return; }
         game.assets.digest(['chunk-v1', host.build, cx, cz]).then(function (key) {
             return game.assets.save(key,
-                { v: 1, kind: 'chunk', cx: cx, cz: cz, parts: [positions.length, colors.length, normals.length] },
+                // O formato do cache (game.assets) declara cada parte em BYTES — como
+                // fazem os outros saves (byteLength). Em elementos (¼ dos bytes de um
+                // Float32Array) a leitura rejeitava o chunk e ele era regravado errado a
+                // cada visita.
+                { v: 1, kind: 'chunk', cx: cx, cz: cz, parts: [positions.byteLength, colors.byteLength, normals.byteLength] },
                 [positions.buffer, colors.buffer, normals.buffer]);
         }).catch(function () { /* cache é otimização */ });
     }
