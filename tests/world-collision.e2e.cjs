@@ -101,9 +101,10 @@ async function wait(callback,label) {
         const ankles=['left','right'].map(side=>scene.getTransformNodeByName('player-ankle-'+side));
         const samples=[];
         const observer=scene.onAfterRenderObservable.add(()=>{
-            const {y,z}=player.position;
-            samples.push({y,z,bend:Math.max(...knees.map(knee=>knee.rotation.x)),
-                feetDifference:Math.abs(ankles[0].getAbsolutePosition().y-ankles[1].getAbsolutePosition().y)});
+            const {z}=player.position;
+            const heights=ankles.map(ankle=>ankle.getAbsolutePosition().y);
+            samples.push({z,ankleY:Math.max(...heights),bend:Math.max(...knees.map(knee=>knee.rotation.x)),
+                feetDifference:Math.abs(heights[0]-heights[1])});
         });
         globalThis.stopStepTrace=()=>{
             scene.onAfterRenderObservable.remove(observer);
@@ -119,14 +120,15 @@ async function wait(callback,label) {
     await p.waitForTimeout(300);
     const samples=await renderer.evaluate(()=>globalThis.stopStepTrace());
     const pastLog=await pose();
+    const overLog=samples.filter(sample=>sample.z>1.4 && sample.z<2.6);
     const step={
-        peak:Math.max(...samples.map(sample=>sample.y)),
-        flex:Math.max(...samples.filter(sample=>sample.z>1.4 && sample.z<2.6).map(sample=>sample.bend||0)),
-        feetDifference:Math.max(...samples.filter(sample=>sample.z>1.4 && sample.z<2.6).map(sample=>sample.feetDifference||0)),
+        anklePeak:Math.max(...overLog.map(sample=>sample.ankleY)),
+        flex:Math.max(...overLog.map(sample=>sample.bend)),
+        feetDifference:Math.max(...overLog.map(sample=>sample.feetDifference)),
         end:pastLog,
     };
     console.log(JSON.stringify({step}));
-    assert.ok(step.peak>0.17 && pastLog.z>3.2 && pastLog.y<0.19,'sobe e volta ao chão');
+    assert.ok(step.anklePeak>0.28 && pastLog.z>3.2 && pastLog.y<0.19,'a perna sobe sobre o tronco e o jogador volta ao chão');
     assert.ok(step.flex>0.55 && step.feetDifference>0.10,'joelho flexiona e os pés alternam apoio');
     {
         const contact = await renderer.evaluate(async () => {
