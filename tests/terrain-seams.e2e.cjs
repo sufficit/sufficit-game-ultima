@@ -30,6 +30,8 @@ const procedural = process.env.ULTIMA_PROCEDURAL === '1';
             await page.waitForTimeout(250);
         }
         const renderer = main ? page : page.workers()[0];
+        assert.equal(await page.evaluate(() => game.mode), main ? 'main' : 'worker');
+        assert.equal((await page.evaluate(() => game.debugChunk(0, 0))).terrainEngine, 'csharp-wasm');
         const compare = () => renderer.evaluate(() => {
             const scene = BABYLON.EngineStore.LastCreatedScene;
             const canvasPixels = name => {

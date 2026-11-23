@@ -1,0 +1,54 @@
+using System.Runtime.InteropServices.JavaScript;
+using System.Runtime.Versioning;
+
+namespace Ultima.Terrain;
+
+[SupportedOSPlatform("browser")]
+internal static partial class BrowserExports
+{
+    private static TerrainSurface _surface = new();
+
+    [JSExport]
+    internal static void Reset() => _surface = new TerrainSurface();
+
+    [JSExport]
+    internal static double BaseHeight(double x, double z) => TerrainSurface.BaseHeight(x, z);
+
+    [JSExport]
+    internal static double Height(double x, double z) => _surface.Height(x, z);
+
+    [JSExport]
+    internal static double Depth(double x, double z) => _surface.Depth(x, z);
+
+    [JSExport]
+    internal static double Slope(double x, double z, bool natural) => _surface.Slope(x, z, natural);
+
+    [JSExport]
+    internal static void AddDig(double x, double z) => _surface.AddDig(x, z);
+
+    [JSExport]
+    internal static void SetEdits(double[] values) => _surface.SetEdits(values);
+
+    [JSExport]
+    internal static byte[] Build(int cx, int cz) => TerrainMesh.Build(_surface, cx, cz);
+
+    [JSExport]
+    internal static double[] SamplePalette(int cx, int cz, int samples, int gutter)
+    {
+        var side = samples + 2 * gutter;
+        var data = new double[side * side * 3];
+        var x0 = cx * TerrainSurface.Chunk - TerrainSurface.Chunk / 2;
+        var z0 = cz * TerrainSurface.Chunk - TerrainSurface.Chunk / 2;
+        var index = 0;
+        for (var j = 0; j < side; j++)
+        for (var i = 0; i < side; i++)
+        {
+            var x = x0 + (i - gutter + 0.5) * TerrainSurface.Chunk / samples;
+            var z = z0 + (j - gutter + 0.5) * TerrainSurface.Chunk / samples;
+            data[index++] = _surface.Height(x, z);
+            data[index++] = _surface.Slope(x, z, false);
+            data[index++] = _surface.Depth(x, z);
+        }
+        return data;
+    }
+}

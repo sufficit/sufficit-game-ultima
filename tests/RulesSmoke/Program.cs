@@ -1,5 +1,7 @@
 using Ultima.Npc;
 using Ultima.Rules;
+using Ultima.Terrain;
+using System.Runtime.InteropServices;
 
 int failures = 0;
 void Check(string name, bool ok)
@@ -190,6 +192,19 @@ Check("fila restante drena nos ticks seguintes", rest == 6);
 
 for (var i = 0; i < NpcScheduler.MaxQueuedEvents + 10; i++) { busy.Submit(new PlayerInteracted(3000 + i)); }
 Check("transbordo da fila descarta o mais antigo sem estourar", busy.PendingEvents == NpcScheduler.MaxQueuedEvents && busy.DroppedEvents == 10);
+
+var surface = new TerrainSurface();
+Check("terreno mantém a altura da clareira inicial", surface.Height(0, 0) == 0.05);
+var baseGeometry = TerrainMesh.Build(surface, 0, 0);
+Check("terreno base mantém a grade de 64 células",
+    MemoryMarshal.Cast<byte, int>(baseGeometry.AsSpan())[0] == 4225);
+surface.AddDig(0, 0);
+surface.AddDig(0, 0);
+Check("escavação acumula duas camadas", Math.Abs(surface.Height(0, 0) + 0.91) < 1e-10);
+var refinedGeometry = TerrainMesh.Build(surface, 0, 0);
+Check("a malha refina apenas perto da escavação", MemoryMarshal.Cast<byte, int>(refinedGeometry.AsSpan())[0] > 4225);
+surface.SetEdits([0, 0, 0, 2, 1]);
+Check("escultura preserva as marcas da mochila", Math.Abs(surface.Height(0, 0) - 0.09) < 1e-10);
 
 Console.WriteLine(failures == 0 ? "\nTODOS OS TESTES PASSARAM" : $"\n{failures} FALHA(S)");
 return failures == 0 ? 0 : 1;

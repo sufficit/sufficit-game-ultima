@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Ultima</RootNamespace>
     <AssemblyName>Ultima</AssemblyName>
@@ -13,6 +14,11 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.15" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.15" PrivateAssets="all" />
     <PackageReference Include="Sufficit.Blazor.UI" Version="2.26.1102.2231" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../engine/Ultima.Terrain/Terrain*.cs" Link="Terrain/%(Filename)%(Extension)" />
+    <Compile Include="../engine/Ultima.Terrain/BrowserExports.cs" Link="Terrain/BrowserExports.cs" />
   </ItemGroup>
 
   <!-- Contrato comum dos modelos 3D. Fica inteiro (sem trimming): os pacotes de modelos

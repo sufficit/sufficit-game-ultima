@@ -11,6 +11,8 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 
 Prioritários:
 
+- [Malha do terreno em C# WebAssembly](PLAN-TERRENO-CSHARP-WASM.md) — validação no GitHub Pages em andamento.
+
 1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **concluído em 23/11/2026**
    (commit `70720cd`): persistência durável (journal+PVC), terreno em chunks com
    streaming, mundo que cresce ao andar com cristalização assistida, esculpir/pintar,
