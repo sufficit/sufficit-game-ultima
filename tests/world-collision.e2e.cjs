@@ -27,11 +27,12 @@ async function wait(callback,label) {
     if(process.env.ULTIMA_BUILD) assert.equal(build, process.env.ULTIMA_BUILD);
     await wait(()=>p.evaluate(async()=>{
         if(!window.game?.glb?.status || !window.game?.build?.state) return false;
-        const map=await game.build.state(), glb=await game.glb.status();
+        const map=await game.build.state(), glb=await game.glb.status(), models=await game.models.status();
         return map?.chunks>=25 && glb?.loaded.some(id=>id.startsWith('flora.pine')) &&
             glb?.loaded.some(id=>id.startsWith('prop.stump')) &&
             glb?.loaded.some(id=>id.startsWith('prop.log')) &&
-            glb?.loaded.some(id=>id.startsWith('rock.boulder2')) && (await game.models.status()).loaded.includes('character.villager v2');
+            glb?.loaded.some(id=>id.startsWith('rock.boulder2')) && models.queue===0 &&
+            models.loaded.includes('character.villager v2');
     }),'mundo carregado');
     assert.equal(await p.evaluate(()=>game.mode),main?'main':'worker');
     const renderer=main ? p : p.workers()[0];
@@ -61,8 +62,8 @@ async function wait(callback,label) {
     const walking=await walk(['w'],700,false);
     await p.evaluate(()=>game.resetPlayer());
     const running=await walk(['w'],700);
-    assert.ok(walking.z>1.5 && running.z>walking.z*1.45, 'Shift distingue caminhada e corrida');
     console.log(JSON.stringify({walking,running}));
+    assert.ok(walking.z>1.5 && running.z>walking.z*1.45, 'Shift distingue caminhada e corrida');
     await p.evaluate(()=>game.resetPlayer());
     await apply(fixture);
     await p.waitForTimeout(300);
