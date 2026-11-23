@@ -302,7 +302,18 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                     await fireAt('touch-cancel', 'pointerdown', c.x, c.y);
                     await fireAt('touch-cancel', 'pointerup', c.x, c.y);
                 }
-                const closed = await page.waitForSelector('.ultima-dialog', { timeout: 90000, state: 'hidden' }).catch(() => null);
+                // render=main + swiftshader (FPS ~1-2): waitForSelector state:hidden pode perder
+                // a remocao do no' (probe4 comprovou fechamento por polling direto). Polling + ate 4 toques.
+                let closed = null;
+                for (let i = 0; i < 4 && !closed; i++) {
+                    const c = await page.evaluate(() => { const el = document.getElementById('touch-cancel'); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+                    if (c) { await fireAt('touch-cancel', 'pointerdown', c.x, c.y); await fireAt('touch-cancel', 'pointerup', c.x, c.y); }
+                    const end = Date.now() + 15000;
+                    while (Date.now() < end) {
+                        if (await dlgGone().catch(() => null)) { closed = true; break; }
+                        await page.waitForTimeout(500);
+                    }
+                }
                 ok('retrato: B fecha o diálogo', !!closed);
                 await page.screenshot({ path: `${SHOTS}/depois-dialog-fechado.png` }).catch((e) => console.log('info  captura depois-dialog-fechado falhou (sem bloquear): ' + (e && e.message || '').split('\n')[0]));
             }
@@ -321,8 +332,17 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                 const scrollable = await page.evaluate(() => { const el = document.querySelector('.ultima-menu'); if (!el) return false; return el.scrollHeight > el.clientHeight + 8 || getComputedStyle(el).overflowY === 'auto'; });
                 console.log('info  menu rola internamente: ' + scrollable);
                 await page.screenshot({ path: `${SHOTS}/depois-menu-aberto.png` }).catch((e) => console.log('info  captura depois-menu-aberto falhou (sem bloquear): ' + (e && e.message || '').split('\n')[0]));
-                await page.evaluate(() => { const el = document.querySelector('.ultima-menu__close, .ultima-menu-backdrop'); if (el) el.click(); });
-                const shut = await page.waitForSelector('.game-shell.ultima-menu-open .ultima-menu', { timeout: 90000, state: 'hidden' }).catch(() => null);
+                // Polling em vez de waitForSelector hidden (ver B fecha o dialogo). Ate 4 toques.
+                const menuGone = () => page.evaluate(() => document.querySelector('.game-shell.ultima-menu-open') ? null : true);
+                let shut = null;
+                for (let i = 0; i < 4 && !shut; i++) {
+                    await page.evaluate(() => { const el = document.querySelector('.ultima-menu__close, .ultima-menu-backdrop'); if (el) el.click(); });
+                    const end = Date.now() + 15000;
+                    while (Date.now() < end) {
+                        if (await menuGone().catch(() => null)) { shut = true; break; }
+                        await page.waitForTimeout(500);
+                    }
+                }
                 ok('menu: fecha por toque e volta à tela limpa', !!shut);
             }
             const rel = errors.filter((e) => !/favicon|wllama|React DevTools|WebGPU|webkitExitFullscreen/i.test(e));
@@ -370,7 +390,20 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
             await page.keyboard.press('KeyE');
             const d = await page.waitForSelector('.ultima-dialog', { timeout: 30000, state: 'visible' }).catch(() => null);
             ok('desktop: E abre diálogo', !!d);
-            if (d) { await page.keyboard.press('Escape'); const c = await page.waitForSelector('.ultima-dialog', { timeout: 90000, state: 'hidden' }).catch(() => null); ok('desktop: Esc fecha diálogo', !!c); }
+            if (d) {
+                // Polling em vez de waitForSelector hidden (ver B fecha o diálogo no retrato).
+                const gone = () => page.evaluate(() => { const el = document.querySelector('.ultima-dialog'); return (!el || el.getBoundingClientRect().height === 0) ? true : null; });
+                let closed = null;
+                for (let i = 0; i < 4 && !closed; i++) {
+                    await page.keyboard.press('Escape');
+                    const end = Date.now() + 15000;
+                    while (Date.now() < end) {
+                        if (await gone().catch(() => null)) { closed = true; break; }
+                        await page.waitForTimeout(500);
+                    }
+                }
+                ok('desktop: Esc fecha diálogo', !!closed);
+            }
             await page.evaluate(() => { const el = document.querySelector('.ultima-panel-toggle button') || document.querySelector('.ultima-panel-toggle'); if (el) el.click(); }); // o OnClick e do button (SUIButton), nao do involumetro
             const panel = await page.waitForSelector('.ultima-panel', { timeout: 20000, state: 'visible' }).catch(() => null);
             ok('desktop: toggle abre painel', !!panel);
