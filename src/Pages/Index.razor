@@ -226,6 +226,10 @@
                                                            aria-pressed="@(_gfxStyle == "pbr" ? "true" : "false")" OnClick="@(() => SetGfxAsync("pbr"))">PBR + IBL</SUIButton>
                                             </SUIStack>
                                             <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@(_gfxDirty ? "Recarregue para aplicar." : "Ativo: " + (_gfxStyle == "pbr" ? "PBR + IBL" : "padrão") + ".")</SUIText>
+                                            <SUISelect TValue="string" Id="weather-mode" Label="Clima" Value="_weatherMode" ValueChanged="OnWeatherChanged">
+                                                <SUISelectItem Value='@("clear")'>Céu limpo</SUISelectItem>
+                                                <SUISelectItem Value='@("rain")'>Chuva</SUISelectItem>
+                                            </SUISelect>
                                             @if (_gfxDirty)
                                             {
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="restart" OnClick="ReloadPage">Recarregar para aplicar</SUIButton>
@@ -488,6 +492,7 @@
     private string _buildAsset = string.Empty;
     private string _gfxStyle = "padrao";
     private bool _gfxDirty;
+    private string _weatherMode = "clear";
 
     // Resultado de uma operação da oficina: linha de status dentro dela e, quando ela
     // está fechada (ex.: recusa de uma edição feita direto no mundo), aviso transitório
@@ -568,6 +573,11 @@
         _gfxStyle = await JS.InvokeAsync<string>("setGfx", style);
         _gfxDirty = true;
     }
+    private async Task OnWeatherChanged(string? value)
+    {
+        _weatherMode = await JS.InvokeAsync<string>("game.weather.set", value);
+    }
+
     private Task EnableAiAsync() => JS.InvokeVoidAsync("game.ai.load").AsTask();
     private Task DisableAiAsync() => JS.InvokeVoidAsync("game.ai.disable").AsTask();
     private Task RetryAiAsync() => JS.InvokeVoidAsync("game.ai.retry").AsTask();
@@ -678,6 +688,8 @@
         catch (JSException) { _sceneryStyle = "procedural"; }
         try { _gfxStyle = await JS.InvokeAsync<string>("getGfx") is "pbr" ? "pbr" : "padrao"; }
         catch (JSException) { _gfxStyle = "padrao"; }
+        try { _weatherMode = await JS.InvokeAsync<string>("game.weather.get"); }
+        catch (JSException) { _weatherMode = "clear"; }
         try
         {
             BuildId = await JS.InvokeAsync<string>("game.build") is { Length: > 0 } b ? b[..Math.Min(10, b.Length)] : "dev";

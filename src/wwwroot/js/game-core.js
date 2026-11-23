@@ -39,6 +39,9 @@
     let engine = null;
     let scene = null;
     let sceneShadows = null;
+    let weatherMode = host.weather === 'rain' ? 'rain' : 'clear';
+    let rainLevel = weatherMode === 'rain' ? 1 : 0;
+    let rainParticles = null;
     let player = null;
     let camera = null;
     const G = host.global;
@@ -271,6 +274,7 @@
         mat.specularColor = new BABYLON.Color3(0, 0, 0);
         mat.fogEnabled = false;
         sky.material = mat;
+        return mat;
     }
 
     // ---------- Texturas procedurais com cache OPFS (game.assets) ----------
@@ -402,8 +406,7 @@
         r = lerp(r, dr * 1.08, (1 - path) * core * 0.5);
         g = lerp(g, dg * 1.08, (1 - path) * core * 0.5);
         b = lerp(b, db * 1.08, (1 - path) * core * 0.5);
-        const slope = slopeAt(x, z);
-        const rocky = Math.max(0, Math.min(1, (slope - 0.55) / 0.55));
+        const rocky = smoothstep(0.55, 1.10, slopeAt(x, z));
         r = lerp(r, lerp(rock[0], rockLight[0], fine), rocky);
         g = lerp(g, lerp(rock[1], rockLight[1], fine), rocky);
         b = lerp(b, lerp(rock[2], rockLight[2], fine), rocky);
@@ -424,11 +427,15 @@
             g = lerp(g, value * 1.03, exposedRock);
             b = lerp(b, value * 0.92, exposedRock);
         }
+        const cover = (1 - rocky) * (1 - snowy) * (1 - exposedRock);
+        let grassDetail = path * cover, dirtDetail = (1 - path) * cover;
         for (let i = 0; i < worldPaints.length; i++) {
             const op = worldPaints[i];
             const w = brushWeight(x, z, op);
             if (w > 0) {
                 const c = PAINT_COLORS[op.mat];
+                grassDetail = lerp(grassDetail, op.mat === 'grass' ? 1 : 0, w);
+                dirtDetail = lerp(dirtDetail, op.mat === 'dirt' ? 1 : 0, w);
                 // Pinturas de rocha do journal também recebem o relevo mineral.
                 if (op.mat === 'rock') { mineral ??= rockRelief(rockU, rockV); }
                 const relief = op.mat === 'rock' ? 1 + mineral * 0.36 : 1;
@@ -437,7 +444,7 @@
                 b = lerp(b, c[2] * relief, w);
             }
         }
-        return [r, g, b];
+        return [r, g, b, grassDetail, dirtDetail];
     }
 
     function chunkKey(cx, cz) { return cx + ',' + cz; }
@@ -477,7 +484,10 @@
     }
 
     const CHUNK_TEX = 128;   // 0,25 m por texel
-    const CARVE_TEX = 256;   // mais detalhe de perto, só nos chunks escavados
+    const CARVE_TEX = 256;   // amostra mais fina da paleta em terreno escavado
+    const DETAIL_TEX = 512;
+    const MATERIAL_TILE = DETAIL_TEX / 8;   // uma repetição a cada 4 m, alinhada entre chunks
+    let groundMaterials = [];
     const groundGrain = makeNoise(9090);
     const rockNoise = makeNoise(577);
 
@@ -488,45 +498,117 @@
         return coarse * 0.55 + fine * 0.25 + strata * 0.55;
     }
 
-    // A paleta e o grão são amostrados nas coordenadas do mundo, inclusive na borda.
-    function paintChunkTexture(tex, cx, cz, size) {
+    async function loadGroundMaterials() {
+        try {
+            const tiles = await Promise.all(['grass', 'dirt'].map(async name => {
+                const url = pageUrl('terrain/' + name + '.webp?v=' + encodeURIComponent(host.build));
+                const response = await fetch(url);
+                if (!response.ok) { throw new Error(name + ': HTTP ' + response.status); }
+                return createImageBitmap(await response.blob(), {
+                    resizeWidth: MATERIAL_TILE, resizeHeight: MATERIAL_TILE, resizeQuality: 'high'
+                });
+            }));
+            const blend = engine.createCanvas(DETAIL_TEX, DETAIL_TEX).getContext('2d');
+            const patterns = tiles.map(tile => blend.createPattern(tile, 'repeat'));
+            const palette = engine.createCanvas(CHUNK_TEX, CHUNK_TEX).getContext('2d');
+            if (!palette || patterns.some(pattern => !pattern)) { throw new Error('canvas de composição indisponível'); }
+            terrainBlend = blend;
+            terrainPalette = palette;
+            groundMaterials = patterns;
+
+            // Quem já apareceu recebe o acabamento pela mesma fila dos chunks novos.
+            for (const ch of chunkMap.values()) {
+                const id = 'textura ' + chunkKey(ch.cx, ch.cz);
+                modelQueue.push({
+                    timing: { id, queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
+                    work: (function* () {
+                        yield { label: id, run: () => {
+                            if (!ch.mesh.isDisposed()) { updateChunkTexture(ch.mesh.material, ch.cx, ch.cz); }
+                        } };
+                    })()
+                });
+            }
+        } catch (error) {
+            console.warn('[terreno] mantendo a textura procedural:', error.message);
+        }
+    }
+
+    let terrainBlend = null, terrainPalette = null;
+
+    // A resolução da imagem é independente da amostragem de paleta e relevo.
+    function paintChunkTexture(tex, cx, cz, samples) {
         const ctx = tex.getContext();
-        const img = ctx.createImageData(size, size);
+        const img = ctx.createImageData(samples, samples);
+        const masks = groundMaterials.map(() => ctx.createImageData(samples, samples));
         const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
-        for (let ty = 0; ty < size; ty++) for (let tx = 0; tx < size; tx++) {
-            const x = x0 + tx / (size - 1) * CHUNK;
-            const z = z0 + ty / (size - 1) * CHUNK;
-            const c = terrainColorAt(x, terrainHeight(x, z), z);
+        const detailed = masks.length > 0;
+        for (let ty = 0; ty < samples; ty++) for (let tx = 0; tx < samples; tx++) {
+            const x = x0 + tx / (samples - 1) * CHUNK;
+            const z = z0 + ty / (samples - 1) * CHUNK;
+            const [r, g, b, grass, dirt] = terrainColorAt(x, terrainHeight(x, z), z);
             const mottling = groundGrain(x * 0.94, z * 0.94);
             const grit = groundGrain(x * 2.1 + 13, z * 2.1 - 17);
-            const grain = 1.07 + mottling * 0.25 + grit * 0.22;
-            const i = (ty * size + tx) * 4;
-            img.data[i] = c[0] * grain * 255;
-            img.data[i + 1] = c[1] * grain * 255;
-            img.data[i + 2] = c[2] * grain * 255;
+            const relief = detailed ? 1 - (grass + dirt) * 0.52 : 1;
+            const grain = 1.07 + (mottling * 0.25 + grit * 0.22) * relief;
+            const i = (ty * samples + tx) * 4;
+            img.data[i] = r * grain * 255;
+            img.data[i + 1] = g * grain * 255;
+            img.data[i + 2] = b * grain * 255;
             img.data[i + 3] = 255;
+            if (detailed) {
+                masks[0].data[i + 3] = grass * 196;
+                masks[1].data[i + 3] = dirt * 184;
+            }
         }
-        ctx.putImageData(img, 0, 0);
-        tex.update(false);   // a primeira linha da imagem coincide com v=0 (menor Z)
+        if (detailed) {
+            const palette = terrainPalette.canvas;
+            if (palette.width !== samples) { palette.width = palette.height = samples; }
+            terrainPalette.putImageData(img, 0, 0);
+            ctx.drawImage(palette, 0, 0, DETAIL_TEX, DETAIL_TEX);
+            for (let i = 0; i < masks.length; i++) {
+                terrainBlend.globalCompositeOperation = 'copy';
+                terrainBlend.fillStyle = groundMaterials[i];
+                terrainBlend.fillRect(0, 0, DETAIL_TEX, DETAIL_TEX);
+                terrainPalette.putImageData(masks[i], 0, 0);
+                terrainBlend.globalCompositeOperation = 'destination-in';
+                terrainBlend.drawImage(palette, 0, 0, DETAIL_TEX, DETAIL_TEX);
+                ctx.drawImage(terrainBlend.canvas, 0, 0);
+            }
+        } else {
+            ctx.putImageData(img, 0, 0);
+        }
+        tex.update(false);
     }
 
     function updateChunkTexture(mat, cx, cz) {
-        const size = worldCarves.some(op => brushTouchesChunk({ cx, cz }, op)) ? CARVE_TEX : CHUNK_TEX;
-        const previous = mat.emissiveTexture;
+        const samples = worldCarves.some(op => brushTouchesChunk({ cx, cz }, op)) ? CARVE_TEX : CHUNK_TEX;
+        const size = groundMaterials.length ? DETAIL_TEX : samples;
+        const previous = mat.diffuseTexture;
         if (previous && previous.getSize().width === size) {
-            paintChunkTexture(previous, cx, cz, size);
+            paintChunkTexture(previous, cx, cz, samples);
             return;
         }
         const tex = new BABYLON.DynamicTexture('chunkTex-' + chunkKey(cx, cz), { width: size, height: size }, scene, true);
         tex.wrapU = tex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
-        paintChunkTexture(tex, cx, cz, size);
-        mat.emissiveTexture = tex;
+        tex.anisotropicFilteringLevel = 8;
+        paintChunkTexture(tex, cx, cz, samples);
+        mat.diffuseTexture = tex;
         if (previous) { previous.dispose(); }
+    }
+
+    function applyGroundLight(mat) {
+        // A base ambiente mantém ambos os materiais legíveis à sombra. O
+        // albedo recebe luzes e sombras da cena, mais brilho discreto no molhado.
+        mat.emissiveColor.set(lerp(0.63, 0.48, rainLevel), lerp(0.65, 0.51, rainLevel), lerp(0.60, 0.55, rainLevel));
+        const glint = lerp(0.025, 0.18, rainLevel);
+        mat.specularColor.set(glint, glint, glint);
     }
 
     function chunkMaterial(cx, cz) {
         const mat = new BABYLON.StandardMaterial('groundMat-' + chunkKey(cx, cz), scene);
-        mat.disableLighting = true;
+        mat.diffuseColor.set(0.57, 0.57, 0.57);
+        mat.specularPower = 48;
+        applyGroundLight(mat);
         updateChunkTexture(mat, cx, cz);
         return mat;
     }
@@ -590,6 +672,7 @@
                     run: function () {
                         const mesh = buildChunkMesh(cx, cz);
                         mesh.material = chunkMaterial(cx, cz);
+                        mesh.receiveShadows = true;
                         mesh.isPickable = true;
                         chunkMap.set(chunkKey(cx, cz), { mesh: mesh, cx: cx, cz: cz });
                     }
@@ -720,12 +803,14 @@
         }
     }
 
-    // Vento (F7b-2): instâncias de vegetação balançam — fase por hash do nome, custo
-    // amortizado (um terço das instâncias por frame).
+    // Rajadas atravessam a vegetação perto da câmera, um terço por frame.
     const windInstances = [];
     const WIND_IDS = ['scenery.bush', 'flora.fern', 'flora.flowers', 'scenery.grass2'];
     function collectWindInstances() {
         windInstances.length = 0;
+        for (const proto of modelRegistry.get('scenery.grass')?.protos || []) {
+            windInstances.push(...proto.instances);
+        }
         for (const [id, g] of glbRegistry) {
             if (!WIND_IDS.includes(id)) { continue; }
             for (const inst of g.proto.instances) { windInstances.push(inst); }
@@ -734,17 +819,23 @@
     let windCursor = 0, windFrames = 0;
     function windTick() {
         windFrames++;
-        if (windFrames % 360 === 1) { collectWindInstances(); }   // repõe a cada ~6 s
+        if (windFrames % 180 === 1) {
+            collectWindInstances();
+            windCursor = 0;
+        }
         if (windInstances.length === 0) { return; }
         const t = performance.now() * 0.001;
+        const gust = lerp(0.06, 0.17, rainLevel) * (0.65 + 0.35 * Math.sin(t * 0.62));
         const third = Math.ceil(windInstances.length / 3);
         for (let n = 0; n < third; n++) {
             const inst = windInstances[windCursor];
             windCursor = (windCursor + 1) % windInstances.length;
-            if (!inst || inst.isDisposed()) { continue; }
-            let h = 0;
-            for (const c of inst.name) { h = (h * 31 + c.charCodeAt(0)) | 0; }
-            inst.rotation.z = Math.sin(t * 1.4 + (h & 31) * 0.7) * 0.035;
+            if (inst.isDisposed() || !inst.isEnabled()) { continue; }
+            const { x, z } = inst.position;
+            if (player && (Math.abs(x - player.position.x) > 42 || Math.abs(z - player.position.z) > 42)) { continue; }
+            const lean = gust * (0.50 + 0.50 * Math.sin(t * 2.1 - x * 0.57 - z * 0.24));
+            inst.rotation.z = -Math.cos(inst.rotation.y) * lean;
+            inst.rotation.x = Math.sin(inst.rotation.y) * lean;
         }
     }
 
@@ -984,18 +1075,23 @@
             canvas.width = N; canvas.height = N;
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, N, N);
-            const tones = ['#3d6b21', '#4d7d2a', '#5d8f33', '#35591c'];
-            for (let i = 0; i < 16; i++) {
-                const x0 = 6 + Math.random() * (N - 12);
-                const h = 40 + Math.random() * 70;
-                const bend = (Math.random() - 0.5) * 34;
-                ctx.strokeStyle = tones[(Math.random() * tones.length) | 0];
-                ctx.lineWidth = 2 + Math.random() * 2;
-                ctx.lineCap = 'round';
+            const rand = mulberry32(1751);
+            const tips = ['#9ab359', '#788d41', '#afb968', '#879749'];
+            for (let i = 0; i < 23; i++) {
+                const x = 24 + rand() * (N - 48);
+                const height = 34 + rand() * 63;
+                const bend = (rand() - 0.5) * 46;
+                const width = 3 + rand() * 4;
+                const tint = ctx.createLinearGradient(0, N, 0, N - height);
+                tint.addColorStop(0, '#39451d');
+                tint.addColorStop(0.42, '#667a38');
+                tint.addColorStop(1, tips[i % tips.length]);
+                ctx.fillStyle = tint;
                 ctx.beginPath();
-                ctx.moveTo(x0, N);
-                ctx.quadraticCurveTo(x0 + bend * 0.4, N - h * 0.6, x0 + bend, N - h);
-                ctx.stroke();
+                ctx.moveTo(x - width / 2, N);
+                ctx.quadraticCurveTo(x + bend * 0.18, N - height * 0.62, x + bend, N - height);
+                ctx.quadraticCurveTo(x + bend * 0.60, N - height * 0.55, x + width / 2, N);
+                ctx.fill();
             }
             return { rgba: ctx.getImageData(0, 0, N, N).data, h: null };
         });
@@ -1656,12 +1752,82 @@
         }
     }
 
+    function createRain(capacity) {
+        const texture = new BABYLON.DynamicTexture('rain-streak', { width: 8, height: 64 }, scene, false);
+        const ctx = texture.getContext();
+        const fade = ctx.createLinearGradient(0, 0, 0, 64);
+        fade.addColorStop(0, 'rgba(220,235,255,0)');
+        fade.addColorStop(0.43, 'rgba(220,235,255,0.39)');
+        fade.addColorStop(1, 'rgba(235,245,255,0.90)');
+        ctx.fillStyle = fade;
+        ctx.fillRect(2, 0, 4, 64);
+        texture.update(false);
+        texture.hasAlpha = true;
+
+        const rain = new BABYLON.ParticleSystem('chuva', capacity, scene);
+        rain.particleTexture = texture;
+        rain.emitter = new BABYLON.Vector3();
+        rain.minEmitBox.set(-11, 5, -11);
+        rain.maxEmitBox.set(11, 9, 11);
+        rain.direction1.set(-3.6, -21, -1.4);
+        rain.direction2.set(-1.1, -17, -0.3);
+        rain.minEmitPower = 1;
+        rain.maxEmitPower = 1.25;
+        rain.minLifeTime = 0.35;
+        rain.maxLifeTime = 0.65;
+        rain.minScaleX = 0.017;
+        rain.maxScaleX = 0.038;
+        rain.minScaleY = 0.28;
+        rain.maxScaleY = 0.54;
+        rain.minSize = rain.maxSize = 1;
+        rain.color1 = new BABYLON.Color4(0.75, 0.85, 1, 0.34);
+        rain.color2 = new BABYLON.Color4(0.85, 0.92, 1, 0.51);
+        rain.colorDead = new BABYLON.Color4(0.75, 0.85, 1, 0.06);
+        rain.billboardMode = BABYLON.ParticleSystem.BILLBOARDMODE_STRETCHED;
+        rain.blendMode = BABYLON.ParticleSystem.BLENDMODE_STANDARD;
+        return rain;
+    }
+
+    function weatherUpdate(sun, hemi, sky, horizon, capacity) {
+        const overcast = new BABYLON.Color3(0.41, 0.48, 0.57);
+        let last = -1;
+        let emitting = false;
+        return function () {
+            const target = weatherMode === 'rain' ? 1 : 0;
+            rainLevel = lerp(rainLevel, target, Math.min(1, engine.getDeltaTime() / 650));
+            if (Math.abs(rainLevel - target) < 0.012) { rainLevel = target; }
+            if (rainLevel !== last) {
+                last = rainLevel;
+                sun.intensity = lerp(0.95, 0.25, rainLevel);
+                hemi.intensity = lerp(0.55, 0.61, rainLevel);
+                sky.emissiveTexture.level = lerp(1, 0.61, rainLevel);
+                scene.fogDensity = lerp(0.0072, 0.017, rainLevel);
+                BABYLON.Color3.LerpToRef(horizon, overcast, rainLevel, scene.fogColor);
+                scene.clearColor.set(scene.fogColor.r, scene.fogColor.g, scene.fogColor.b, 1);
+                for (const ch of chunkMap.values()) { applyGroundLight(ch.mesh.material); }
+            }
+            if (!player) { return; }
+            if (rainLevel > 0 && !emitting) {
+                rainParticles ??= createRain(capacity);
+                rainParticles.start();
+                emitting = true;
+            } else if (rainLevel === 0 && emitting) {
+                rainParticles.stop();
+                emitting = false;
+            }
+            if (emitting) {
+                rainParticles.emitter.copyFrom(player.position);
+                rainParticles.emitRate = Math.round(capacity * 1.8 * rainLevel);
+            }
+        };
+    }
+
     function buildScene(canvas) {
         scene = new BABYLON.Scene(engine);
         const horizon = new BABYLON.Color3(0.60, 0.69, 0.78);   // mais escuro que o céu baixo
         scene.clearColor = new BABYLON.Color4(horizon.r, horizon.g, horizon.b, 1);
         scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
-        scene.fogColor = horizon;
+        scene.fogColor = horizon.clone();
         scene.fogDensity = 0.0072;   // menos névoa: o vale lê como terreno, não céu
         scene.ambientColor = new BABYLON.Color3(0.18, 0.20, 0.22);
 
@@ -1701,11 +1867,14 @@
         shadows.normalBias = 0.02;
         shadows.darkness = 0.5;
 
-        skyDome();
+        const sky = skyDome();
         if (graphicsStyle === 'pbr') { setupProceduralEnv(); }
         buildTerrain();   // grade de chunks na fila com orçamento por frame
+        void loadGroundMaterials();
+        const updateWeather = weatherUpdate(sun, hemi, sky, horizon, softwareRenderer ? 240 : 520);
         scene.registerBeforeRender(function () {
             if (waterTex) { waterTex.uOffset += engine.getDeltaTime() * 0.00003; }
+            updateWeather();
             windTick();
         });
 
@@ -2267,6 +2436,11 @@
         setWorldEdits(edits, revision) { setWorldEdits(edits, revision); },
         setPlacements(list) { setPlacements(list); },
         applyWorldOp(op) { return applyWorldOp(op); },
+        setWeather(mode) { weatherMode = mode === 'rain' ? 'rain' : 'clear'; },
+        weatherStatus() {
+            return { mode: weatherMode, rain: rainLevel, drops: rainParticles?.getActiveCount() ?? 0,
+                materials: groundMaterials.length, vegetation: windInstances.length };
+        },
         // Sonda de altura (debug/validação): altura efetiva com as edições aplicadas.
         heightAt(x, z) { return Math.round(terrainHeight(x, z) * 100) / 100; },
         // Sonda de render: estado do material/vertex colors de um chunk (debug F7c).
@@ -2276,7 +2450,7 @@
             if (!ch) { return { chunk: 'ausente' }; }
             const col = ch.mesh.getVerticesData(BABYLON.VertexBuffer.ColorKind);
             const pos = ch.mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-            const texture = ch.mesh.material?.emissiveTexture;
+            const texture = ch.mesh.material?.diffuseTexture;
             return {
                 chunk: chunkKey(ccx, ccz),
                 useVertexColors: ch.mesh.useVertexColors,
@@ -2285,7 +2459,7 @@
                 colorSample: col ? [col[0], col[1], col[2], col[3]].map(function (v) { return Math.round(v * 100) / 100; }) : null,
                 matName: ch.mesh.material ? ch.mesh.material.name : null,
                 hasDiffuseTex: !!(ch.mesh.material && ch.mesh.material.diffuseTexture),
-                hasEmissiveTex: !!texture,
+                hasEmissiveTex: !!ch.mesh.material?.emissiveTexture,
                 diffuseColor: ch.mesh.material ? ch.mesh.material.diffuseColor.toString() : null,
                 matCount: scene.materials.length,
                 subMeshes: ch.mesh.subMeshes ? ch.mesh.subMeshes.length : -1,

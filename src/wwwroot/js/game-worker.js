@@ -42,6 +42,7 @@ self.onmessage = function (e) {
                 pageBase: msg.pageBase,
                 scenery: msg.scenery,
                 graphics: msg.graphics,
+                weather: msg.weather,
                 size: msg.size || null,
                 global: self,
                 dom: false,
