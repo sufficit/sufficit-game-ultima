@@ -506,22 +506,18 @@
         return m;
     }
 
-    function fillChunk(mesh, cx, cz) {
+    // Geometria do chunk construída NA MÃO (VertexData): posições mundiais, normais
+    // analíticas com anel extra (costura sem emenda entre chunks), UVs explícitos e
+    // índices de grade — sem depender de CreateGround nem de estado residual dele.
+    // (F7c-3: CreateGround+sobrescrita não desenhava em GPUs reais.)
+    function buildChunkMesh(cx, cz) {
         const n = CHUNK_SUB + 1;
-        const hit = chunkCacheHits.get(chunkKey(cx, cz));
-        if (hit && hit.positions.length === n * n * 3 && hit.normals.length === n * n * 3) {
-            mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, hit.positions);
-            mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind, hit.normals);
-            mesh.refreshBoundingInfo();
-            mesh.material = chunkTexture(cx, cz);
-            mesh.receiveShadows = true;
-            return;
-        }
-        const positions = new Float32Array(n * n * 3);
-        const normals = new Float32Array(n * n * 3);
         const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
         const step = CHUNK / CHUNK_SUB;
-        const w = n + 2;                            // grade com anel extra para normais
+        const positions = new Float32Array(n * n * 3);
+        const normals = new Float32Array(n * n * 3);
+        const uvs = new Float32Array(n * n * 2);
+        const w = n + 2;                            // grade com anel extra p/ normais de borda
         const hgt = new Float32Array(w * w);
         for (let j = -1; j <= n; j++) for (let i = -1; i <= n; i++) {
             hgt[(j + 1) * w + (i + 1)] = terrainHeight(x0 + i * step, z0 + j * step);
@@ -529,16 +525,28 @@
         for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
             const vi = j * n + i;
             const h = hgt[(j + 1) * w + (i + 1)];
-            positions[vi * 3] = x0 + i * step; positions[vi * 3 + 1] = h; positions[vi * 3 + 2] = z0 + j * step;
+            positions[vi * 3] = x0 + i * step;
+            positions[vi * 3 + 1] = h;
+            positions[vi * 3 + 2] = z0 + j * step;
             const hx = hgt[(j + 1) * w + (i + 2)] - hgt[(j + 1) * w + i];
             const hz = hgt[(j + 2) * w + (i + 1)] - hgt[j * w + (i + 1)];
             const nl = Math.hypot(hx, step, hz) || 1;   // normal do heightfield
             normals[vi * 3] = -hx / nl; normals[vi * 3 + 1] = step / nl; normals[vi * 3 + 2] = -hz / nl;
+            uvs[vi * 2] = i / CHUNK_SUB; uvs[vi * 2 + 1] = j / CHUNK_SUB;
         }
-        mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
-        mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
-        mesh.refreshBoundingInfo();   // posições mundiais: bounding original ±16 estava stale
+        const indices = new Uint32Array(CHUNK_SUB * CHUNK_SUB * 6);
+        let k = 0;
+        for (let j = 0; j < CHUNK_SUB; j++) for (let i = 0; i < CHUNK_SUB; i++) {
+            const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
+            indices[k++] = a; indices[k++] = c; indices[k++] = b;
+            indices[k++] = b; indices[k++] = c; indices[k++] = d;
+        }
+        const mesh = new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene);
+        const vd = new BABYLON.VertexData();
+        vd.positions = positions; vd.normals = normals; vd.uvs = uvs; vd.indices = indices;
+        vd.applyToMesh(mesh, false);
         saveChunk(cx, cz, positions, normals);
+        return mesh;
     }
 
     // Terreno em streaming (F3): janela de chunks ao redor do jogador na fila orçada;
@@ -553,9 +561,8 @@
                 yield {
                     label: label,
                     run: function () {
-                        const mesh = BABYLON.MeshBuilder.CreateGround('ground-' + chunkKey(cx, cz), { width: CHUNK, height: CHUNK, subdivisions: CHUNK_SUB }, scene);
-                        fillChunk(mesh, cx, cz);
-                        mesh.material = chunkTexture(cx, cz);   // paleta pintada (vertex color não renderiza)
+                        const mesh = buildChunkMesh(cx, cz);
+                        mesh.material = chunkTexture(cx, cz);   // cor: diffuseColor+tinta; grão na textura
                         mesh.receiveShadows = true;
                         mesh.isPickable = true;
                         chunkMap.set(chunkKey(cx, cz), { mesh: mesh, cx: cx, cz: cz });
