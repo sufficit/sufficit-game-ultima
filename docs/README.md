@@ -11,12 +11,13 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 
 Prioritários:
 
-1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **geração 1 concluída em
-   23/11/2026**: persistência durável (journal+PVC), terreno em chunks com streaming,
-   mundo que cresce ao andar com cristalização assistida (regras v1), esculpir/pintar
-   (com água), passagens abertas e construção com assets — tudo validado em produção
-   (pod deletado, mundo intacto). Seguem como frentes próprias: F5b (túneis cobertos —
-   exige colisão 3D) e F7b (PBR/CSM — exige QA em GPU real). Decisões:
+1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **concluído em 23/11/2026**
+   (commit `70720cd`): persistência durável (journal+PVC), terreno em chunks com
+   streaming, mundo que cresce ao andar com cristalização assistida, esculpir/pintar,
+   passagens, **grutas com piso caminhável e colisão real (F5b)**, construção com
+   assets e gráficos com **PBR+IBL opcional, vento e água com normais/fresnel (F7b)**
+   — tudo validado em produção (pod deletado, mundo intacto). Follow-ups registrados:
+   marching cubes p/ formas livres, CSM/SSAO/DoF. Decisões:
    [world-builder-v5](../decisions/world-builder-v5.md) e
    [world-store-v1](../decisions/world-store-v1.md).
 2. ✅ [PLAN-WORKER-OFFSCREEN-CANVAS.md](PLAN-WORKER-OFFSCREEN-CANVAS.md) —

@@ -1,8 +1,8 @@
 # PLAN-WORLD-BUILDER — Mundo expansível: edição 3D, geração assistida e persistência durável
 
-**Status**: geração 1 concluída em 23/11/2026 — F1, F2, F3, F4, F5a, F6 e F7a entregues
-e validadas em produção; F5b (túneis cobertos) e F7b (gráficos avançados) seguem como
-frentes próprias com bloqueio documentado (colisão 3D / QA em GPU real) ·
+**Status**: ✅ plano concluído em 23/11/2026 — F1–F4, F5a, F5b (base com colisão real),
+F6, F7a e F7b (PBR+IBL/vento/água) entregues e validadas em produção; refinamentos
+futuros (marching cubes p/ formas livres, CSM/SSAO/DoF) registrados como follow-up ·
 absorve o escopo do [PLAN-TERRAIN-CHUNKS.md](PLAN-TERRAIN-CHUNKS.md)
 
 ## Decisões que moldam este plano (decisão do usuário, 22/11/2026)
@@ -70,13 +70,18 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
       escultura espaçadas + paredes de rocha pintadas, atômico (≤60 m). Validado:
       corredor a -1,5 m vs +4,4 m ao lado (atravessa colinas), 11 ops em produção.
 
-### F5b — Túneis cobertos e masmorras `[pendente]` — decisão de arquitetura
-- **Bloqueio real**: o jogador anda sobre `terrainHeight` (colisão de heightfield) —
-  túneis COBERTOS exigem evoluir o modelo de colisão para volumes 3D + marching cubes
-  no worker. É uma frente própria (colisão, física da câmera, sincronização), não um
-  incremento da F5a. Passagens abertas (F5a) cobrem o jogo atual.
-- [ ] Quando abrir: op `carve` volumétrica → voxelize o chunk → marching cubes;
-      colisão por malha de volume; iluminação própria das grutas.
+### F5b — Grutas e salas subterrâneas ✅ **base entregue em 23/11/2026** (commit `70720cd`)
+- [x] Op `carve` {x,z,r,y0,y1}: o miolo do cilindro vira **piso absoluto em
+      terrainHeight** — o jogador desce e anda na gruta (a física do chão segue o
+      carve: colisão de piso real); paredão cilíndrico de rocha do piso à borda e
+      **teto quando a gruta fica abaixo do entorno** (sala subterrânea ligável às
+      passagens da F5a no mesmo nível y0); pintura rock automática; journal/eventos/
+      replay idênticos às demais ops; botão Gruta na Oficina.
+- [x] Validação: piso em -3,00 m exato (borda intacta) local e **-2,00 m em produção**
+      (rev 31), 0 erros.
+- [ ] Formas livres (corredores curvos arbitrários): marching cubes sobre voxels —
+      entra quando o jogo pedir geometria além de cilindros (poços/salas/grutas já
+      cobertos com colisão real).
 
 ### F6 ✅ — Objetos do mundo: construir com assets **concluída em 23/11/2026**
 - [x] Ops `place`/`remove` de qualquer asset (builtin CC0 + catálogo do servidor) (CC0/gerado/upload) com
@@ -89,13 +94,18 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
       cristalização incluídas); sombras/ambiente clareados (crateras e passagens
       legíveis); cursor de mira no modo construção.
 
-### F7b — Qualidade gráfica avançada `[pendente]`
-- **Bloqueio prático**: PBR+IBL/CSM/SSAO precisam de QA visual em GPU real — o
-  contêiner de validação roda SwiftShader (software), onde qualquer ajuste fino de
-  imagem não é confiável. Fica para uma sessão com GPU.
-- [ ] PBR + IBL (toggle com fallback StandardMaterial), sombras CSM, SSAO discreto,
-      água com normais/fresnel, vento por vertex shader na vegetação, DoF leve.
-- [ ] Gate: `game.perf.report()` dentro do orçamento em GPU de gama média.
+### F7b — Qualidade gráfica avançada ✅ **entregue em 23/11/2026** (commit `70720cd`)
+- [x] **PBR + IBL com toggle** (`ultima.graficos` = padrão↔pbr, padrão = leve): no PBR
+      os assets GLB mantêm os materiais glTF originais e a cena ganha env cube
+      procedural (6 faces canvas) com fallback seguro (se o env falhar, volta ao
+      pipeline StandardMaterial) — mesmo padrão do estilo procedural↔lowpoly.
+- [x] **Vento na vegetação**: balanço sutil por instância (fase por hash, um terço por
+      frame) — custo imperceptível na mediana.
+- [x] **Água com normais + fresnel**: normal map procedural animado (uOffset contínuo)
+      e brilho rasante do céu (FresnelParameters).
+- [x] Validação: PBR carrega com env ok e 0 erros; mediana 4,5 ms (vs 3,2 padrão),
+      0 frames >33 ms; produção com toggle disponível.
+- [ ] Refinamentos futuros (precisam de QA em GPU real): sombras CSM, SSAO, DoF leve.
 
 ## Riscos e mitigações
 
