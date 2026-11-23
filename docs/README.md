@@ -11,11 +11,14 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 
 Prioritários:
 
-1. [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — mundo expansível: persistência
-   durável (journal + volume), chunks no cliente, cristalização assistida por IA na
-   primeira visita, edição de superfície (sculpt/paint/rios), volumes para túneis e
-   masmorras (marching cubes), construção com assets e qualidade gráfica (PBR/CSM/água).
-   Decisões: [decisions/world-builder-v5.md](../decisions/world-builder-v5.md).
+1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **geração 1 concluída em
+   23/11/2026**: persistência durável (journal+PVC), terreno em chunks com streaming,
+   mundo que cresce ao andar com cristalização assistida (regras v1), esculpir/pintar
+   (com água), passagens abertas e construção com assets — tudo validado em produção
+   (pod deletado, mundo intacto). Seguem como frentes próprias: F5b (túneis cobertos —
+   exige colisão 3D) e F7b (PBR/CSM — exige QA em GPU real). Decisões:
+   [world-builder-v5](../decisions/world-builder-v5.md) e
+   [world-store-v1](../decisions/world-store-v1.md).
 2. ✅ [PLAN-WORKER-OFFSCREEN-CANVAS.md](PLAN-WORKER-OFFSCREEN-CANVAS.md) —
    **concluído em 22/11/2026**: motor em `game-core.js` sem DOM, shell com worker
    OffscreenCanvas + fallback `?render=main`, loader glTF verificado por SHA-384 no

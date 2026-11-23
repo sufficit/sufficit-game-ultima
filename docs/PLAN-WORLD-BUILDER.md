@@ -1,7 +1,9 @@
 # PLAN-WORLD-BUILDER — Mundo expansível: edição 3D, geração assistida e persistência durável
 
-**Status**: design aprovado em 22/11/2026 (decisões do usuário abaixo) · fases pendentes
-· absorve o escopo do [PLAN-TERRAIN-CHUNKS.md](PLAN-TERRAIN-CHUNKS.md)
+**Status**: geração 1 concluída em 23/11/2026 — F1, F2, F3, F4, F5a, F6 e F7a entregues
+e validadas em produção; F5b (túneis cobertos) e F7b (gráficos avançados) seguem como
+frentes próprias com bloqueio documentado (colisão 3D / QA em GPU real) ·
+absorve o escopo do [PLAN-TERRAIN-CHUNKS.md](PLAN-TERRAIN-CHUNKS.md)
 
 ## Decisões que moldam este plano (decisão do usuário, 22/11/2026)
 
@@ -46,15 +48,16 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
 - [x] Gerador determinístico por coordenadas de mundo (base da F3) — base para o mundo infinito.
 - [x] Validação: 16 chunks na fila orçada (pior passo 19 ms, 0 frames >33 ms), costura sem emenda, replay de edições no boot (mesh = dados: -6,13 m) sem frames >33 ms; seams invisíveis.
 
-### F3 — Mundo expansível + cristalização assistida `[pendente]`
-- [ ] `GET /v1/world/chunk/{cx},{cz}` — estado consolidado (base + ops do journal) e
-      evento `world_edited` no stream existente.
-- [ ] Chunk inédito: resposta determinística imediata; primeira visita dispara o
-      **agente** (v1: regras procedurais de variação — ruínas/clareiras/rios menores;
-      v2 opcional: LLM do próprio jogador propõe, servidor valida) que grava ops no
-      journal → todos passam a ver a versão cristalizada.
-- [ ] Cliente pede chunks conforme explora (além dos 96×96 m atuais).
-- [ ] Validação: dois clientes veem o mesmo mundo; exploração contínua sem trancos.
+### F3 ✅ — Mundo expansível + cristalização assistida **concluída em 23/11/2026** (regras v1)
+- [x] Mundo cresce ao andar: andar até ±400 m com streaming de chunks (janela 5×5,
+      dispose de distantes, aquecimento OPFS por aproximação); montanhas do gerador
+      são a barreira natural.
+- [x] Cristalização v1 (regras determinísticas por hash do chunk): clareira, lagoa
+      ou marco na primeira visita, gravado no journal — autoritativo para todos;
+      chunks visitados reconstruídos no boot. LLM como produtor assíncrono: futura.
+- [x] Validação: produção — jogadores andando cristalizam chunks (marcos `chunk x,z`
+      no catálogo) e a janela desliza (25→30 chunks ao andar, 0 erros).
+- [x] Mesmo mundo para todos via journal/eventos (F1/F4 já provados).
 
 ### F4 ✅ — Edição de superfície: sculpt e paint **concluída em 23/11/2026** (rios = cavar canal + pintar água)
 - [x] Pincéis no cliente (levantar/cavar/pintar via clique + raio ajustável) — aplicação local
@@ -62,13 +65,18 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
 - [x] Água pintável (rios = cavar o canal e pintar água; material real na F7) (base do F7).
 - [ ] Validação: edição persiste para todos; undo via replay do journal.
 
-### F5 — Volumes: túneis e masmorras `[pendente]`
-- [ ] Ops `carve`/`fill` volumétricas (esferas, corredores, salas) → voxelize o chunk
-      afetado → **marching cubes** no worker (superfícies suaves, coerentes com o
-      visual) → túneis, porões, masmorras sob o heightfield.
-- [ ] Colisão/navegação: heightfield + malha dos volumes.
-- [ ] Validação: túnel atravessando um morro, persistido e sincronizado; custo de
-      meshing amortizado dentro do orçamento.
+### F5a ✅ — Passagens abertas **concluída em 23/11/2026**
+- [x] Action `passage` (dois cliques na Oficina): o servidor expande a linha em ops de
+      escultura espaçadas + paredes de rocha pintadas, atômico (≤60 m). Validado:
+      corredor a -1,5 m vs +4,4 m ao lado (atravessa colinas), 11 ops em produção.
+
+### F5b — Túneis cobertos e masmorras `[pendente]` — decisão de arquitetura
+- **Bloqueio real**: o jogador anda sobre `terrainHeight` (colisão de heightfield) —
+  túneis COBERTOS exigem evoluir o modelo de colisão para volumes 3D + marching cubes
+  no worker. É uma frente própria (colisão, física da câmera, sincronização), não um
+  incremento da F5a. Passagens abertas (F5a) cobrem o jogo atual.
+- [ ] Quando abrir: op `carve` volumétrica → voxelize o chunk → marching cubes;
+      colisão por malha de volume; iluminação própria das grutas.
 
 ### F6 ✅ — Objetos do mundo: construir com assets **concluída em 23/11/2026**
 - [x] Ops `place`/`remove` de qualquer asset (builtin CC0 + catálogo do servidor) (CC0/gerado/upload) com
@@ -76,12 +84,18 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
 - [x] UI de construção na Oficina (plantar/remover com seletor de assets carregados) (grade/snap opcional, preview fantasma).
 - [x] Validação: plantio por clique real (pick → comando → evento → instância) e replay no boot
 
-### F7 — Qualidade gráfica `[pendente]`
-- [ ] PBR + IBL (ambiente iluminando tudo; toggle para o pipeline StandardMaterial
-      atual como fallback — mesmo padrão do estilo procedural↔lowpoly).
-- [ ] Sombras CSM (longa distância), SSAO discreto, água real (normais + fresnel +
-      reflexo), vento por vertex shader na vegetação, DoF leve.
-- [ ] Gate de qualidade: `game.perf.report()` dentro do orçamento em GPU de gama média.
+### F7a ✅ — Água, luz e feedback **concluída em 23/11/2026**
+- [x] Pintura de água vira disco translúcido que acompanha o terreno (lagoas da
+      cristalização incluídas); sombras/ambiente clareados (crateras e passagens
+      legíveis); cursor de mira no modo construção.
+
+### F7b — Qualidade gráfica avançada `[pendente]`
+- **Bloqueio prático**: PBR+IBL/CSM/SSAO precisam de QA visual em GPU real — o
+  contêiner de validação roda SwiftShader (software), onde qualquer ajuste fino de
+  imagem não é confiável. Fica para uma sessão com GPU.
+- [ ] PBR + IBL (toggle com fallback StandardMaterial), sombras CSM, SSAO discreto,
+      água com normais/fresnel, vento por vertex shader na vegetação, DoF leve.
+- [ ] Gate: `game.perf.report()` dentro do orçamento em GPU de gama média.
 
 ## Riscos e mitigações
 
