@@ -9,6 +9,8 @@ sealed class WorldState
     public int Revision = 1;
     public JsonObject Tiles = new();
     public List<Job> Jobs = [];
+    public List<JsonObject> SurfaceEdits = [];   // ops sculpt/paint (replay determinístico no cliente)
+    public List<Placement> Placements = [];      // objetos plantados (F6)
 }
 
 /// <summary>
@@ -113,6 +115,8 @@ sealed class JournalWorldStore : IWorldStore
                 ["revision"] = state.Revision,
                 ["tiles"] = state.Tiles.DeepClone(),
                 ["jobs"] = J.Arr(state.Jobs.Select(j => (JsonNode?)JobStored(j))),
+                ["edits"] = J.Arr(state.SurfaceEdits.Select(e => (JsonNode?)e.DeepClone())),
+                ["placements"] = J.Arr(state.Placements.Select(p => (JsonNode?)p.ToJson())),
             };
             WriteAtomic(_snapshot, obj.ToJsonString(J.Opts));
             WriteAtomic(_journal, "");   // ops consumidas pelo snapshot
@@ -177,6 +181,22 @@ sealed class JournalWorldStore : IWorldStore
             case "jobCancel":
                 st.Jobs.RemoveAll(j => j.Id == J.Str(o["id"]));
                 break;
+            case "sculpt":
+            case "paint":
+                st.SurfaceEdits.Add((JsonObject)o.DeepClone());
+                if (J.TryInt(o["rev"], out var revE) && revE > st.Revision) st.Revision = (int)Math.Min(int.MaxValue, revE);
+                break;
+            case "place":
+            {
+                var p = Placement.FromJson(o);
+                if (st.Placements.All(x => x.Uid != p.Uid)) st.Placements.Add(p);
+                if (J.TryInt(o["rev"], out var revP) && revP > st.Revision) st.Revision = (int)Math.Min(int.MaxValue, revP);
+                break;
+            }
+            case "remove":
+                st.Placements.RemoveAll(p => p.Uid == J.Str(o["uid"]));
+                if (J.TryInt(o["rev"], out var revR) && revR > st.Revision) st.Revision = (int)Math.Min(int.MaxValue, revR);
+                break;
             // kinds desconhecidos (futuros) são pulados: forward compatibility
         }
         st.OpSeq = seq;
@@ -198,6 +218,10 @@ sealed class JournalWorldStore : IWorldStore
             };
             if (o["jobs"] is JsonArray jobs)
                 foreach (var j in jobs.OfType<JsonObject>()) st.Jobs.Add(JobFrom(j));
+            if (o["edits"] is JsonArray edits)
+                foreach (var e in edits.OfType<JsonObject>()) st.SurfaceEdits.Add((JsonObject)e.DeepClone());
+            if (o["placements"] is JsonArray placements)
+                foreach (var p in placements.OfType<JsonObject>()) st.Placements.Add(Placement.FromJson(p));
             _seq = Math.Max(_seq, st.OpSeq);
             return st;
         }

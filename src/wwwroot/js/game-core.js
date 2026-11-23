@@ -183,7 +183,7 @@
     function pathOffset(z) { return noise(z * 0.09 + 3.1, 17.7) * 1.6; }
     function pathBlend(x, z) { return smoothstep(1.5, 3.4, Math.abs(x - pathOffset(z))); }
 
-    function terrainHeight(x, z) {
+    function baseHeight(x, z) {
         const r = Math.hypot(x, z);
         // Montanhas em cristas no perímetro, subindo até ~25 m.
         const edge = r + noise(x * 0.07 - 51.7, z * 0.07 + 91.3) * 5.0;
@@ -329,104 +329,306 @@
         return tex;
     }
 
-    const GROUND_SUBDIVISIONS = 192;
-    // Malha do terreno (posições/cores/normais) em cache OPFS: chave por {build, nº de
-    // vértices}. Sem cache, computa o ruído por vértice como antes e grava o artefato
-    // pronto para a próxima visita (async, sem travar a carga).
-    let terrainCache = null;
-    async function warmTerrain() {
+    // ---------- Terreno em chunks (F2) + edição de superfície (F4) ----------
+    // Mundo dividido em chunks de 32 m (malha própria, criada na fila com orçamento por
+    // frame): rebuilds locais ao editar, costura invisível (alturas e normais amostradas
+    // do MESMO gerador nas coordenadas de mundo — anel extra cobre as normais de borda)
+    // e cache OPFS por chunk do TERRENO BASE. As ops sculpt/paint do servidor (journal)
+    // são reaplicadas em memória a cada visita, depois do mapa chegar.
+    const CHUNK = 32, CHUNK_SUB = 48;
+    const CHUNK_MIN = -2, CHUNK_MAX = 1;   // grade 4×4 cobre -64..64 (mundo 104 m + margem)
+    const chunkMap = new Map();            // "cx,cz" -> { mesh, cx, cz }
+    const chunkCacheHits = new Map();      // "cx,cz" -> { positions, colors, normals }
+    let editsAppliedRev = -1;              // revisão do servidor já refletida no terreno
+
+    // Ops de edição (F4): esculturas somam altura com falloff suave; pinturas trocam o
+    // material do solo num raio. terrainHeight as incorpora — jogador, câmera,
+    // espalhamento e chunks passam a respeitar as edições automaticamente.
+    const worldSculpts = [];
+    const worldPaints = [];
+    const PAINT_COLORS = {
+        grass: [0.30, 0.46, 0.16], dirt: [0.47, 0.36, 0.23], sand: [0.78, 0.70, 0.50],
+        rock: [0.46, 0.45, 0.44], snow: [0.93, 0.95, 0.97], water: [0.16, 0.42, 0.62],
+    };
+
+    function brushWeight(x, z, op) {
+        const t = 1 - Math.hypot(x - op.x, z - op.z) / op.r;
+        return t <= 0 ? 0 : t * t * (3 - 2 * t);   // falloff suave na borda do pincel
+    }
+
+    // Altura efetiva do mundo: gerador base + esculturas (em ordem de journal).
+    function terrainHeight(x, z) {
+        let h = baseHeight(x, z);
+        for (let i = 0; i < worldSculpts.length; i++) {
+            const op = worldSculpts[i];
+            const t = 1 - Math.hypot(x - op.x, z - op.z) / op.r;
+            if (t > 0) { h += op.dh * t * t * (3 - 2 * t); }
+        }
+        return h;
+    }
+
+    // Paleta do solo (mesma lógica do gerador original), agora pintável por material.
+    function terrainColorAt(x, y, z) {
+        const grassDark = [0.16, 0.34, 0.13], grassLight = [0.38, 0.52, 0.20], grassDry = [0.55, 0.55, 0.26];
+        const dirt = [0.47, 0.36, 0.23], dirtLight = [0.58, 0.47, 0.32];
+        const rock = [0.42, 0.41, 0.40], rockLight = [0.55, 0.54, 0.52], snow = [0.93, 0.95, 0.97];
+        const patch = noise(x * 0.11 + 100, z * 0.11 - 60);
+        const fine = noise(x * 0.85 - 13.7, z * 0.85 + 77.1) * 0.5 + 0.5;
+        const t = Math.max(0, Math.min(1, y * 0.16 + 0.42 + patch * 0.45 + (fine - 0.5) * 0.18));
+        let r = lerp(lerp(grassDark[0], grassLight[0], t), grassDry[0], Math.max(0, patch - 0.35) * 1.4);
+        let g = lerp(lerp(grassDark[1], grassLight[1], t), grassDry[1], Math.max(0, patch - 0.35) * 1.4);
+        let b = lerp(lerp(grassDark[2], grassLight[2], t), grassDry[2], Math.max(0, patch - 0.35) * 1.4);
+        const path = pathBlend(x, z);
+        const core = 1 - smoothstep(0.4, 2.6, Math.abs(x - pathOffset(z)));
+        const dr = lerp(dirtLight[0], dirt[0], path), dg = lerp(dirtLight[1], dirt[1], path), db = lerp(dirtLight[2], dirt[2], path);
+        r = lerp(dr, r, path); g = lerp(dg, g, path); b = lerp(db, b, path);
+        r = lerp(r, dr * 1.08, (1 - path) * core * 0.5);
+        g = lerp(g, dg * 1.08, (1 - path) * core * 0.5);
+        b = lerp(b, db * 1.08, (1 - path) * core * 0.5);
+        const slope = slopeAt(x, z);
+        const rocky = Math.max(0, Math.min(1, (slope - 0.55) / 0.55));
+        r = lerp(r, lerp(rock[0], rockLight[0], fine), rocky);
+        g = lerp(g, lerp(rock[1], rockLight[1], fine), rocky);
+        b = lerp(b, lerp(rock[2], rockLight[2], fine), rocky);
+        const snowLine = 8.5 + noise(x * 0.18 + 7.7, z * 0.18 - 3.3) * 1.6 - rocky * 1.2;
+        const snowy = Math.max(0, Math.min(1, (y - snowLine) / 1.6));
+        r = lerp(r, snow[0], snowy); g = lerp(g, snow[1], snowy); b = lerp(b, snow[2], snowy);
+        for (let i = 0; i < worldPaints.length; i++) {
+            const op = worldPaints[i];
+            const w = brushWeight(x, z, op);
+            if (w > 0) { const c = PAINT_COLORS[op.mat]; r = lerp(r, c[0], w); g = lerp(g, c[1], w); b = lerp(b, c[2], w); }
+        }
+        return [r, g, b];
+    }
+
+    function chunkKey(cx, cz) { return cx + ',' + cz; }
+
+    async function warmChunks() {
         if (!(G.game && G.game.assets && G.game.assets.report().opfs)) { return; }
-        const vc = (GROUND_SUBDIVISIONS + 1) * (GROUND_SUBDIVISIONS + 1);
-        const hit = await game.assets.loadTerrain(vc);
-        if (hit && hit.positions.length === vc * 3 && hit.colors.length === vc * 4 && hit.normals.length === vc * 3) {
-            terrainCache = hit;
+        for (let cx = CHUNK_MIN; cx <= CHUNK_MAX; cx++) for (let cz = CHUNK_MIN; cz <= CHUNK_MAX; cz++) {
+            try {
+                const key = await game.assets.digest(['chunk-v1', host.build, cx, cz]);
+                const hit = await game.assets.load(key);
+                if (hit && hit.parts && hit.parts.length === 3) {
+                    chunkCacheHits.set(chunkKey(cx, cz), {
+                        positions: new Float32Array(hit.parts[0]),
+                        colors: new Float32Array(hit.parts[1]),
+                        normals: new Float32Array(hit.parts[2]),
+                    });
+                }
+            } catch (e) { /* cache é otimização */ }
         }
     }
 
+    // O cache é do TERRENO BASE: nunca grava depois que edições são conhecidas.
+    function saveChunk(cx, cz, positions, colors, normals) {
+        if (!(G.game && G.game.assets) || worldSculpts.length || worldPaints.length) { return; }
+        game.assets.digest(['chunk-v1', host.build, cx, cz]).then(function (key) {
+            return game.assets.save(key,
+                { v: 1, kind: 'chunk', cx: cx, cz: cz, parts: [positions.length, colors.length, normals.length] },
+                [positions.buffer, colors.buffer, normals.buffer]);
+        }).catch(function () { /* cache é otimização */ });
+    }
+
+    // Preenche um chunk: alturas do gerador, cores da paleta e normais analíticas com
+    // anel extra — vértices de borda usam vizinhos reais, então chunks costuram sem emenda.
+    function fillChunk(mesh, cx, cz) {
+        const n = CHUNK_SUB + 1;
+        const hit = chunkCacheHits.get(chunkKey(cx, cz));
+        if (hit && hit.positions.length === n * n * 3 && hit.colors.length === n * n * 4 && hit.normals.length === n * n * 3) {
+            mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, hit.positions);
+            mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind, hit.colors);
+            mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind, hit.normals);
+            return;
+        }
+        const positions = new Float32Array(n * n * 3);
+        const colors = new Float32Array(n * n * 4);
+        const normals = new Float32Array(n * n * 3);
+        const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
+        const step = CHUNK / CHUNK_SUB;
+        const w = n + 2;                            // grade com anel extra para normais
+        const hgt = new Float32Array(w * w);
+        for (let j = -1; j <= n; j++) for (let i = -1; i <= n; i++) {
+            hgt[(j + 1) * w + (i + 1)] = terrainHeight(x0 + i * step, z0 + j * step);
+        }
+        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+            const vi = j * n + i;
+            const x = x0 + i * step, z = z0 + j * step;
+            const h = hgt[(j + 1) * w + (i + 1)];
+            positions[vi * 3] = x; positions[vi * 3 + 1] = h; positions[vi * 3 + 2] = z;
+            const hx = hgt[(j + 1) * w + (i + 2)] - hgt[(j + 1) * w + i];
+            const hz = hgt[(j + 2) * w + (i + 1)] - hgt[j * w + (i + 1)];
+            const nl = Math.hypot(hx, step, hz) || 1;   // normal do heightfield
+            normals[vi * 3] = -hx / nl; normals[vi * 3 + 1] = step / nl; normals[vi * 3 + 2] = -hz / nl;
+            const c = terrainColorAt(x, h, z);
+            colors[vi * 4] = c[0]; colors[vi * 4 + 1] = c[1]; colors[vi * 4 + 2] = c[2]; colors[vi * 4 + 3] = 1;
+        }
+        mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
+        mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind, colors);
+        mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
+        saveChunk(cx, cz, positions, colors, normals);
+    }
+
+    // Terreno inteiro = grade de chunks na fila com orçamento por frame (um por passo).
     function buildTerrain() {
-        const size = WORLD_HALF * 2 + 8;
-        const ground = BABYLON.MeshBuilder.CreateGround('ground', { width: size, height: size, subdivisions: GROUND_SUBDIVISIONS }, scene);
-        if (terrainCache) {
-            ground.setVerticesData(BABYLON.VertexBuffer.PositionKind, terrainCache.positions);
-            ground.setVerticesData(BABYLON.VertexBuffer.ColorKind, terrainCache.colors);
-            ground.setVerticesData(BABYLON.VertexBuffer.NormalKind, terrainCache.normals);
-            const groundMatReady = groundMaterial();
-            ground.material = groundMatReady;
-            ground.receiveShadows = true;
-            return ground;
+        for (let cx = CHUNK_MIN; cx <= CHUNK_MAX; cx++) for (let cz = CHUNK_MIN; cz <= CHUNK_MAX; cz++) {
+            const ccx = cx, ccz = cz;
+            const label = 'chunk ' + chunkKey(cx, cz);
+            modelQueue.push({
+                timing: { id: label, queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
+                work: (function* () {
+                    yield {
+                        label: label,
+                        run: function () {
+                            const mesh = BABYLON.MeshBuilder.CreateGround('ground-' + chunkKey(ccx, ccz), { width: CHUNK, height: CHUNK, subdivisions: CHUNK_SUB }, scene);
+                            fillChunk(mesh, ccx, ccz);
+                            mesh.material = groundMaterial();
+                            mesh.receiveShadows = true;
+                            mesh.isPickable = true;
+                            chunkMap.set(chunkKey(ccx, ccz), { mesh: mesh, cx: ccx, cz: ccz });
+                        }
+                    };
+                })()
+            });
         }
-        const positions = ground.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-        const colors = new Float32Array((positions.length / 3) * 4);
-
-        // Paleta: grama em duas tonalidades, terra da trilha, rocha úmida e neve.
-        const grassDark = [0.16, 0.34, 0.13];
-        const grassLight = [0.38, 0.52, 0.20];
-        const grassDry = [0.55, 0.55, 0.26];
-        const dirt = [0.47, 0.36, 0.23];
-        const dirtLight = [0.58, 0.47, 0.32];
-        const rock = [0.42, 0.41, 0.40];
-        const rockLight = [0.55, 0.54, 0.52];
-        const snow = [0.93, 0.95, 0.97];
-
-        for (let i = 0; i < positions.length; i += 3) {
-            const x = positions[i], z = positions[i + 2];
-            const y = terrainHeight(x, z);
-            positions[i + 1] = y;
-
-            // Manchas de grama seca e variação fina de tom (quebra a monotonia).
-            const patch = noise(x * 0.11 + 100, z * 0.11 - 60);
-            const fine = noise(x * 0.85 - 13.7, z * 0.85 + 77.1) * 0.5 + 0.5;
-            const t = Math.max(0, Math.min(1, y * 0.16 + 0.42 + patch * 0.45 + (fine - 0.5) * 0.18));
-            let r = lerp(lerp(grassDark[0], grassLight[0], t), grassDry[0], Math.max(0, patch - 0.35) * 1.4);
-            let g = lerp(lerp(grassDark[1], grassLight[1], t), grassDry[1], Math.max(0, patch - 0.35) * 1.4);
-            let b = lerp(lerp(grassDark[2], grassLight[2], t), grassDry[2], Math.max(0, patch - 0.35) * 1.4);
-
-            // Trilha de terra batida, mais clara no centro.
-            const path = pathBlend(x, z);
-            const core = 1 - smoothstep(0.4, 2.6, Math.abs(x - pathOffset(z)));
-            const dr = lerp(dirtLight[0], dirt[0], path), dg = lerp(dirtLight[1], dirt[1], path), db = lerp(dirtLight[2], dirt[2], path);
-            r = lerp(dr, r, path); g = lerp(dg, g, path); b = lerp(db, b, path);
-            r = lerp(r, dr * 1.08, (1 - path) * core * 0.5);
-            g = lerp(g, dg * 1.08, (1 - path) * core * 0.5);
-            b = lerp(b, db * 1.08, (1 - path) * core * 0.5);
-
-            // Encostas íngremes viram rocha exposta.
-            const slope = slopeAt(x, z);
-            const rocky = Math.max(0, Math.min(1, (slope - 0.55) / 0.55));
-            const rr = lerp(rock[0], rockLight[0], fine);
-            r = lerp(r, rr, rocky); g = lerp(g, lerp(rock[1], rockLight[1], fine), rocky); b = lerp(b, lerp(rock[2], rockLight[2], fine), rocky);
-
-            // Neve acima de ~8,5 m, avançando antes nos pontos abrigados do ruído.
-            const snowLine = 8.5 + noise(x * 0.18 + 7.7, z * 0.18 - 3.3) * 1.6 - rocky * 1.2;
-            const snowy = Math.max(0, Math.min(1, (y - snowLine) / 1.6));
-            r = lerp(r, snow[0], snowy); g = lerp(g, snow[1], snowy); b = lerp(b, snow[2], snowy);
-
-            const ci = (i / 3) * 4;
-            colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b; colors[ci + 3] = 1;
-        }
-        ground.setVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
-        ground.setVerticesData(BABYLON.VertexBuffer.ColorKind, colors);
-        const normals = new Float32Array(positions.length);
-        BABYLON.VertexData.ComputeNormals(positions, ground.getIndices(), normals);
-        ground.setVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
-        if (G.game && G.game.assets) { G.game.assets.saveTerrain(positions.length / 3, positions, colors, normals); }
-
-        ground.material = groundMaterial();
-        ground.receiveShadows = true;
-        return ground;
+        modelStatus.queue = modelQueue.length;
     }
 
-    // Material do chão (granulação em ladrilhos de ~3 m), compartilhado pelos dois
-    // caminhos do buildTerrain (cacheado ou computado).
+    // Material do chão (granulação em ladrilhos de ~3 m) compartilhado por todos os chunks.
     function groundMaterial() {
-        const size = WORLD_HALF * 2 + 8;
         const groundMat = new BABYLON.StandardMaterial('groundMat', scene);
         groundMat.diffuseColor = new BABYLON.Color3(1, 1, 1);
         groundMat.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
         const detail = makeDetailTexture();
-        detail.uScale = size / 3; detail.vScale = size / 3;   // um ladrilho a cada ~3 m
+        detail.uScale = CHUNK / 3; detail.vScale = CHUNK / 3;   // um ladrilho a cada ~3 m
         groundMat.diffuseTexture = detail;
         return groundMat;
+    }
+
+    // ---------- Aplicação de edições e objetos plantados (F4/F6) ----------
+    function applySurfaceEdit(op) {
+        if (op.kind === 'sculpt') { worldSculpts.push(op); }
+        else if (op.kind === 'paint') { worldPaints.push(op); }
+        else { return false; }
+        refreshChunksAround(op.x, op.z, op.r);
+        return true;
+    }
+
+    function refreshChunksAround(x, z, r) {
+        for (const ch of chunkMap.values()) {
+            const minX = ch.cx * CHUNK - CHUNK / 2, maxX = minX + CHUNK;
+            const minZ = ch.cz * CHUNK - CHUNK / 2, maxZ = minZ + CHUNK;
+            if (x + r < minX || x - r > maxX || z + r < minZ || z - r > maxZ) { continue; }
+            refreshChunkRegion(ch.mesh, x, z, r);
+        }
+    }
+
+    // Re-computa a região do pincel num chunk: altura, cor e normal analítica.
+    function refreshChunkRegion(mesh, x, z, r) {
+        const pos = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+        const col = mesh.getVerticesData(BABYLON.VertexBuffer.ColorKind);
+        const nor = mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind);
+        if (!pos || !col || !nor) { return; }
+        const step = CHUNK / CHUNK_SUB;
+        for (let i = 0; i < pos.length; i += 3) {
+            const px = pos[i], pz = pos[i + 2];
+            if (Math.hypot(px - x, pz - z) > r + step) { continue; }
+            const py = terrainHeight(px, pz);
+            pos[i + 1] = py;
+            const c = terrainColorAt(px, py, pz);
+            const ci = (i / 3) * 4;
+            col[ci] = c[0]; col[ci + 1] = c[1]; col[ci + 2] = c[2]; col[ci + 3] = 1;
+            const e = step;
+            const hx = terrainHeight(px + e, pz) - terrainHeight(px - e, pz);
+            const hz = terrainHeight(px, pz + e) - terrainHeight(px, pz - e);
+            const nl = Math.hypot(hx / (2 * e), 1, hz / (2 * e)) || 1;
+            nor[i] = -hx / (2 * e) / nl; nor[i + 1] = 1 / nl; nor[i + 2] = -hz / (2 * e) / nl;
+        }
+        mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, pos);
+        mesh.updateVerticesData(BABYLON.VertexBuffer.ColorKind, col);
+        mesh.updateVerticesData(BABYLON.VertexBuffer.NormalKind, nor);
+    }
+
+    // Replay do boot: limpa e reaplica a lista completa (chamado quando o mapa chega).
+    function setWorldEdits(edits, revision) {
+        if (revision !== undefined && revision === editsAppliedRev) { return; }
+        if (revision !== undefined) { editsAppliedRev = revision; }
+        worldSculpts.length = 0;
+        worldPaints.length = 0;
+        for (const op of edits || []) { applySurfaceEdit(op); }
+    }
+
+    const placements = new Map();       // uid -> InstancedMesh
+    const pendingPlacements = [];       // à espera do asset carregar
+
+    function spawnPlacement(p) {
+        if (!p || !p.uid || placements.has(p.uid)) { return; }
+        const g = glbRegistry.get(p.asset);
+        if (!g) {
+            if (!pendingPlacements.some(function (q) { return q.uid === p.uid; })) { pendingPlacements.push(p); }
+            return;
+        }
+        const inst = g.proto.createInstance('place-' + p.uid);
+        inst.position.set(p.x, (p.y || terrainHeight(p.x, p.z)) - 0.02, p.z);
+        inst.rotation.y = p.rot || 0;
+        inst.scaling.setAll(p.scale || 1);
+        if (sceneShadows) { try { sceneShadows.addShadowCaster(inst); } catch (e) { /* já fora */ } }
+        placements.set(p.uid, inst);
+    }
+
+    function flushPendingPlacements() {
+        for (const p of pendingPlacements.splice(0)) { spawnPlacement(p); }
+    }
+
+    function removePlacement(uid) {
+        const inst = placements.get(uid);
+        if (inst) {
+            if (sceneShadows) { try { sceneShadows.removeShadowCaster(inst); } catch (e) { /* já fora */ } }
+            inst.dispose();
+            placements.delete(uid);
+        }
+        const ix = pendingPlacements.findIndex(function (q) { return q.uid === uid; });
+        if (ix >= 0) { pendingPlacements.splice(ix, 1); }
+    }
+
+    function setPlacements(list) {
+        const seen = new Set();
+        for (const p of list || []) { if (p && p.uid) { seen.add(p.uid); spawnPlacement(p); } }
+        for (const uid of Array.from(placements.keys())) { if (!seen.has(uid)) { removePlacement(uid); } }
+    }
+
+    function applyWorldOp(op) {
+        if (!op) { return false; }
+        if (op.kind === 'place') { spawnPlacement(op); return true; }
+        if (op.kind === 'remove') { removePlacement(op.uid); return true; }
+        if (op.rev !== undefined) { editsAppliedRev = op.rev; }
+        return applySurfaceEdit(op);
+    }
+
+    // ---------- Modo construção: cliques no terreno viram ops (F4/F6) ----------
+    const buildState = { mode: 'off', asset: '', r: 5, dh: 1.2, mat: 'sand' };
+
+    function terrainClickImpl(sx, sy) {
+        if (buildState.mode === 'off' || !scene || typeof host.worldOp !== 'function') { return; }
+        const cid = 'c' + Math.random().toString(36).slice(2, 8);
+        if (buildState.mode === 'remove') {
+            const pick = scene.pick(sx, sy, function (m) { return !!(m && m.name && m.name.indexOf('place-') === 0); });
+            const uid = pick && pick.hit ? pick.pickedMesh.name.slice(6) : null;
+            if (uid) { host.worldOp({ action: 'remove', uid: uid, cid: cid }); }
+            return;
+        }
+        const pick = scene.pick(sx, sy, function (m) { return !!(m && m.name && m.name.indexOf('ground-') === 0); });
+        if (!pick || !pick.hit) { return; }
+        const p = pick.pickedPoint;
+        const r3 = function (v) { return Math.round(v * 1000) / 1000; };
+        if (buildState.mode === 'raise' || buildState.mode === 'dig') {
+            host.worldOp({ action: 'sculpt', x: r3(p.x), z: r3(p.z), r: buildState.r, dh: r3(buildState.mode === 'raise' ? buildState.dh : -buildState.dh), cid: cid });
+        } else if (buildState.mode === 'paint') {
+            host.worldOp({ action: 'paint', x: r3(p.x), z: r3(p.z), r: buildState.r, mat: buildState.mat, cid: cid });
+        } else if (buildState.mode === 'place') {
+            if (!buildState.asset) { return; }
+            host.worldOp({ action: 'place', asset: buildState.asset, x: r3(p.x), y: r3(p.y), z: r3(p.z), rot: 0, scale: 1, cid: cid });
+        }
     }
 
     // ---------- v3: relevo (normal map) e oclusão ambiente nos vértices ----------
@@ -1050,6 +1252,7 @@
         const proto = await importGlbProto(entry.id, bytes, (alt || cfg) ? (alt || cfg).scaleM : 1);
         glbRegistry.set(entry.id, { proto: proto, entry: entry });
         glbStatus.loaded.push(entry.id);
+        flushPendingPlacements();
         const active = (sceneryStyle === 'lowpoly' && alt) ? alt : (!alt ? cfg : null);
         if (active) {
             if (active.shadows && sceneShadows) { sceneShadows.addShadowCaster(proto); }
@@ -1189,7 +1392,7 @@
         shadows.darkness = 0.3;
 
         skyDome();
-        const ground = buildTerrain();
+        buildTerrain();   // grade de chunks na fila com orçamento por frame
 
         // Árvores: chegam como modelos C# carregados em runtime (game.models.register).
         sceneShadows = shadows;
@@ -1570,7 +1773,7 @@
         try {
             if (G.game && G.game.assets) {
                 await G.game.assets.init(host.build);
-                await Promise.all([warmTextures(), warmTerrain()]);
+                await Promise.all([warmTextures(), warmChunks()]);
             }
             // No worker o OffscreenCanvas não tem layout nem devicePixelRatio: o shell
             // mede (CSS × densidade) e o tamanho é aplicado daqui; sem isso o canvas
@@ -1648,6 +1851,7 @@
         pad(x, y, lookX, lookY) { padState.x = x || 0; padState.y = y || 0; padState.lookX = lookX || 0; padState.lookY = lookY || 0; },
         camera(dx, dy, wheel) { camPending.dx += dx || 0; camPending.dy += dy || 0; camPending.wheel += wheel || 0; },
         action() { interact(); },
+        terrainClick(sx, sy) { terrainClickImpl(sx, sy); },
         cancel() { dotnet.invokeMethodAsync('OnClose'); },
         clear() { for (const k of Object.keys(keys)) { keys[k] = false; } moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 }; },
         resize(w, h, dpr) {
@@ -1698,6 +1902,38 @@
         removeRemote,
         setMapTiles,
         setMapJobs,
+        // Edição do mundo (F4/F6): replay do boot (mapa) e ops ao vivo (eventos).
+        setWorldEdits(edits, revision) { setWorldEdits(edits, revision); },
+        setPlacements(list) { setPlacements(list); },
+        applyWorldOp(op) { return applyWorldOp(op); },
+        // Sonda de altura (debug/validação): altura efetiva com as edições aplicadas.
+        heightAt(x, z) { return Math.round(terrainHeight(x, z) * 100) / 100; },
+        // Sonda do MESH: y do vértice mais próximo de (x,z) nos chunks em cena.
+        probeMesh(x, z) {
+            let best = null;
+            for (const ch of chunkMap.values()) {
+                const pos = ch.mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+                if (!pos) { continue; }
+                for (let i = 0; i < pos.length; i += 3) {
+                    const d = Math.hypot(pos[i] - x, pos[i + 2] - z);
+                    if (best === null || d < best.d) { best = { d: d, y: pos[i + 1] }; }
+                }
+            }
+            return best ? { d: Math.round(best.d * 100) / 100, y: Math.round(best.y * 100) / 100 } : null;
+        },
+        build: {
+            mode(m, opts) {
+                buildState.mode = m || 'off';
+                if (opts) {
+                    if (opts.asset) { buildState.asset = String(opts.asset); }
+                    if (opts.r) { buildState.r = Math.min(8, Math.max(0.5, Number(opts.r) || 5)); }
+                    if (opts.dh) { buildState.dh = Math.min(2, Math.max(0.1, Number(opts.dh) || 1.2)); }
+                    if (opts.mat) { buildState.mat = String(opts.mat); }
+                }
+                return buildState.mode;
+            },
+            state() { return JSON.parse(JSON.stringify(buildState)); }
+        },
         models: {
             // Chamado pelo ModelLoader (C#) com o descritor JSON de cada modelo. O trabalho
             // pesado entra na fila com orçamento por frame (game.perf.report() mostra o efeito).
@@ -1745,6 +1981,7 @@
                 if (opts && opts.shadows && sceneShadows) { sceneShadows.addShadowCaster(proto); }
                 glbRegistry.set(id, { proto: proto, entry: { id: id, file: 'runtime:' + id, sha256: null } });
                 glbStatus.loaded.push(id + ' (runtime)');
+                flushPendingPlacements();
                 return true;
             },
             // Espalha um asset registrado em posições determinísticas por id (fase 4):

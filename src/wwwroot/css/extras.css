@@ -100,6 +100,8 @@ body[data-input="touch"] .hint-touch { display: inline; }
 .ws-row { display: flex; gap: .4rem; align-items: center; }
 .ws-row input[type="file"] { font-size: .68rem; padding: .25rem .4rem; }
 .ws-row input[type="number"] { width: 4.2rem; flex: none; text-align: center; }
+.ws-row input[type="range"] { flex: 1; padding: 0; border: none; background: none; accent-color: #38d9a9; }
+.ws-select { flex: 1; padding: 0.3rem 0.45rem; font-size: 0.75rem; }
 @media (pointer: coarse), (max-width: 760px) {
     .workshop-panel { top: 3rem; }
     .workshop-panel summary span { max-width: 9rem; }

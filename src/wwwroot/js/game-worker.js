@@ -47,6 +47,7 @@ self.onmessage = function (e) {
                 postEvent: function (name, args) { self.postMessage({ type: 'event', name: name, args: args }); },
                 sendPose: function (x, z, ry) { self.postMessage({ type: 'pose', x: x, z: z, ry: ry }); },
                 onInputMode: function (kind) { self.postMessage({ type: 'inputMode', kind: kind }); },
+                worldOp: function (op) { self.postMessage({ type: 'worldOp', op: op }); },
                 varyModel: varyModelViaShell,
                 onCoreReady: function () { self.postMessage({ type: 'ready' }); },
                 onCoreError: function (message) { self.postMessage({ type: 'fatal', message: message }); }

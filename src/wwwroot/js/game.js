@@ -59,6 +59,12 @@
         if (document.body) { document.body.dataset.input = kind; }
     }
 
+    // Ops do mundo vindas do motor (cliques do modo construção): a oficina vive na main
+    // thread e é ela quem aplica/valida no servidor — igual à ponte varyModel.
+    function routeWorldOp(op) {
+        if (window.game && game.workshop && game.workshop.worldOp) { game.workshop.worldOp(op); }
+    }
+
     // ---------- Modo main: Babylon injetado com SRI, core direto ----------
     function loadBabylon() {
         if (window.BABYLON) { return Promise.resolve(); }
@@ -89,6 +95,7 @@
                     sendPose: sendPose,
                     onInputMode: onInputMode,
                     varyModel: varyModelAsync,
+                    worldOp: routeWorldOp,
                     onCoreReady: function () { resolve(true); },
                     onCoreError: reject
                 });
@@ -148,6 +155,8 @@
         } else if (msg.type === 'result') {
             const r = calls.get(msg.id);
             if (r) { calls.delete(msg.id); r(msg.value); }
+        } else if (msg.type === 'worldOp') {
+            routeWorldOp(msg.op);
         } else if (msg.type === 'varyModel') {
             // Core pediu variação paramétrica: chama o C# e devolve o descritor JSON ao worker.
             varyModelAsync(msg.modelId, msg.seed, msg.detail).then(function (json) {
@@ -245,9 +254,17 @@
 
         // Câmera no modo worker: arrasto e roda no canvas viram deltas (a attachControl
         // do Babylon pertence ao core na main). No modo main o core cuida disso sozinho.
-        let dragging = false, lastX = 0, lastY = 0;
-        canvas.addEventListener('pointerdown', function (e) { dragging = true; lastX = e.clientX; lastY = e.clientY; });
-        window.addEventListener('pointerup', function () { dragging = false; });
+        let dragging = false, lastX = 0, lastY = 0, downAt = 0, downX = 0, downY = 0;
+        canvas.addEventListener('pointerdown', function (e) { dragging = true; lastX = e.clientX; lastY = e.clientY; downAt = Date.now(); downX = e.clientX; downY = e.clientY; });
+        window.addEventListener('pointerup', function (e) {
+            dragging = false;
+            // Clique curto sem arrasto: candidata a edição do mundo (o core ignora fora do modo).
+            if (Date.now() - downAt < 500 && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
+                const rect = canvas.getBoundingClientRect();
+                const dpr = window.devicePixelRatio || 1;
+                deliver('terrainClick', [(e.clientX - rect.left) * dpr, (e.clientY - rect.top) * dpr]);
+            }
+        });
         window.addEventListener('pointermove', function (e) {
             if (!dragging) { return; }
             deliver('camera', [e.clientX - lastX, e.clientY - lastY, 0]);
@@ -383,6 +400,19 @@
         removeRemote(id) { post('removeRemote', [id]); },
         setMapTiles(tiles) { post('setMapTiles', [tiles]); },
         setMapJobs(jobs) { post('setMapJobs', [jobs]); },
+        setWorldEdits(edits, revision) { post('setWorldEdits', [edits, revision]); },
+        setPlacements(list) { post('setPlacements', [list]); },
+        applyWorldOp(op) { post('applyWorldOp', [op]); },
+        build: {
+            mode(m, opts) { return query('build.mode', [m, opts]); },
+            state() { return query('build.state'); }
+        },
+        // Clique no terreno pelo caminho interno (automação/teste do modo construção).
+        terrainClick(sx, sy) { post('input.terrainClick', [sx, sy]); },
+        camBias(dx, dy, wheel) { post('input.camera', [dx, dy, wheel]); },
+        keyInput(code, down) { post('input.key', [code, down]); },
+        heightAt(x, z) { return query('heightAt', [x, z]); },
+        probeMesh(x, z) { return query('probeMesh', [x, z]); },
         models: {
             register(json, placeholder) { post('models.register', [json, placeholder]); return true; },
             loaderDone(log) { post('models.loaderDone', [log]); },

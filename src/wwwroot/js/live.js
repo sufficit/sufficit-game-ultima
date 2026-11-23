@@ -84,6 +84,8 @@
             if (window.game) {
                 if (game.setMapTiles) { game.setMapTiles(m.tiles || {}); }
                 if (game.setMapJobs) { game.setMapJobs(m.jobs || []); }
+                if (game.setWorldEdits) { game.setWorldEdits(m.edits || [], m.revision); }
+                if (game.setPlacements) { game.setPlacements(m.placements || []); }
             }
         }).catch(() => { /* mapa volta no próximo evento/snapshot */ });
     }
@@ -140,6 +142,8 @@
             if (window.game) {
                 if (game.setMapTiles) { game.setMapTiles((st.map && st.map.tiles) || {}); }
                 if (game.setMapJobs) { game.setMapJobs((st.map && st.map.jobs) || []); }
+                if (game.setWorldEdits) { game.setWorldEdits((st.map && st.map.edits) || [], st.map && st.map.revision); }
+                if (game.setPlacements) { game.setPlacements((st.map && st.map.placements) || []); }
             }
             return true;
         } catch (e) {

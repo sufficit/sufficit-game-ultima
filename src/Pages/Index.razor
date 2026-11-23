@@ -63,6 +63,45 @@
                     </div>
                 </section>
                 <section class="ws-block">
+                    <strong>Esculpir o terreno</strong>
+                    <small>Clique no terreno para aplicar. Cada pincelada fica no mundo de todos.</small>
+                    <div class="ws-row">
+                        <label class="sr-only" for="build-radius">Raio do pincel</label>
+                        <input id="build-radius" type="range" min="2" max="8" step="0.5" value="5" oninput="game.build.mode(null,{r:this.value}); document.getElementById('build-radius-val').textContent = this.value + ' m'" title="Raio do pincel (m)" />
+                        <span id="build-radius-val">5 m</span>
+                    </div>
+                    <div class="ws-actions">
+                        <button type="button" class="secondary" onclick="game.build.mode('raise')">⛰ Levantar</button>
+                        <button type="button" class="secondary" onclick="game.build.mode('dig')">🕳 Cavar</button>
+                        <button type="button" class="secondary" onclick="game.build.mode('paint')">🎨 Pintar</button>
+                        <button type="button" class="secondary" onclick="game.build.mode('off')">Sair do modo</button>
+                    </div>
+                    <div class="ws-row">
+                        <label class="sr-only" for="paint-mat">Material da pintura</label>
+                        <select id="paint-mat" class="ws-select" onchange="game.build.mode(null,{mat:this.value})">
+                            <option value="sand">areia</option>
+                            <option value="grass">grama</option>
+                            <option value="dirt">terra</option>
+                            <option value="rock">rocha</option>
+                            <option value="snow">neve</option>
+                            <option value="water">água</option>
+                        </select>
+                    </div>
+                </section>
+                <section class="ws-block">
+                    <strong>Construir</strong>
+                    <small>Plante modelos no terreno; a posição fica salva para todos os jogadores.</small>
+                    <div class="ws-row">
+                        <select id="build-asset" class="ws-select"></select>
+                        <button type="button" class="secondary" onclick="game.workshop.refreshBuildOptions()" title="Recarregar lista">↻</button>
+                    </div>
+                    <div class="ws-actions">
+                        <button type="button" class="secondary" onclick="game.build.mode('place', { asset: document.getElementById('build-asset').value })">🌱 Plantar</button>
+                        <button type="button" class="secondary" onclick="game.build.mode('remove')">🗑 Remover</button>
+                        <button type="button" class="secondary" onclick="game.build.mode('off')">Sair do modo</button>
+                    </div>
+                </section>
+                <section class="ws-block">
                     <strong>Estilo do mundo</strong>
                     <div class="ws-actions">
                         <button type="button" class='chip @(_sceneryStyle == "procedural" ? "ok-chip" : null)' aria-pressed='@(_sceneryStyle == "procedural")' @onclick='() => SetSceneryAsync("procedural")'>Procedural (padrão)</button>

@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Ultima.Server;
 
 // Backend do Ultima em ASP.NET Core. O endereço de escuta vem de ASPNETCORE_URLS
@@ -39,6 +40,7 @@ var worldStore = new JournalWorldStore(dataDir, log);
 var game = new GameWorld(worldStore, content, chat, log);
 var net = new Signaling();
 var assetsSvc = new WorldAssets(dataDir, game, log);
+game.AssetExists = id => (assetsSvc.Catalog()["assets"] as JsonArray)?.Any(a => a is JsonObject o && J.Str(o["id"]) == id) == true;
 game.Start(app.Lifetime.ApplicationStopping);
 
 var api = new Api(content, game, net, chat, assetsSvc, new DialogAnalytics(log), log);

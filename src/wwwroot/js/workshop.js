@@ -57,7 +57,7 @@
             for (const asset of (cat && cat.assets) || []) {
                 bring(asset).catch(function (e) {
                     console.warn('[oficina] asset do mundo recusado, sigo sem ele:', asset.id, e);
-                });
+                }).then(refreshBuildOptions);
             }
         } catch (e) {
             // 404 = servidor ainda sem a rota de assets; offline = API fora. Silencioso:
@@ -129,16 +129,54 @@
         input.value = '';
     }
 
+    // Op do mundo pedida pelo motor (clique no modo construção): segue para o servidor
+    // autoritativo; o eco (evento world_edited) é quem aplica em cena para todos.
+    async function worldOp(op) {
+        const l = live();
+        if (!l || !l.token()) { status('Conecte-se ao servidor do jogo para editar o mundo.'); return; }
+        try {
+            const res = await l.call('POST', '/v1/game/command', op, 15000);
+            if (res && res.error) { status('Edição recusada: ' + res.error + '.'); }
+        } catch (e) {
+            if (e && e.status === 401) { status('Conecte-se ao servidor do jogo para editar o mundo.'); }
+            else { status('Edição falhou: ' + ((e && e.message) || e)); }
+        }
+    }
+
+    // Opções do seletor de construção: assets carregados no motor (locais + do servidor).
+    function refreshBuildOptions() {
+        const sel = document.getElementById('build-asset');
+        if (!sel) { return; }
+        let ids = [];
+        try {
+            const st = window.game.glb.status();
+            ids = (st && st.instances ? Object.keys(st.instances) : []).filter(function (id) {
+                return id.indexOf('gen.') !== 0;
+            }).sort();
+        } catch (e) { ids = []; }
+        const current = sel.value;
+        sel.innerHTML = '';
+        for (const id of ids) {
+            const o = document.createElement('option');
+            o.value = id; o.textContent = id;
+            sel.appendChild(o);
+        }
+        if (ids.indexOf(current) >= 0) { sel.value = current; }
+    }
+
     window.game = window.game || {};
     window.game.workshop = {
         init(dotnetRef) {
             dotnet = dotnetRef;
             if (timer) { clearInterval(timer); }
+            refreshBuildOptions();
             sync();
             timer = setInterval(sync, SYNC_MS);
         },
         generate: generate,
         upload: upload,
+        worldOp: worldOp,
+        refreshBuildOptions: refreshBuildOptions,
         status: function () { return { known: Array.from(known) }; }
     };
 })();

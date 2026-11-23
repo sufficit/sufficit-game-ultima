@@ -51,6 +51,8 @@ sealed partial class GameWorld
     int _revision = 1;
     JsonObject _tiles = new();
     List<Job> _jobs = [];
+    List<JsonObject> _edits = [];        // ops sculpt/paint (F4) — replay no cliente
+    List<Placement> _placements = [];    // objetos plantados (F6)
     TaskCompletionSource _changed = NewSignal();
     readonly double _start = J.Now;
     readonly IWorldStore _store;
@@ -78,6 +80,8 @@ sealed partial class GameWorld
         _revision = st.Revision;
         _tiles = st.Tiles;
         _jobs = st.Jobs;
+        _edits = st.SurfaceEdits;
+        _placements = st.Placements;
     }
 
     // Ops do journal — quem muta o mundo registra a op correspondente (dentro do _lock).
@@ -166,6 +170,9 @@ sealed partial class GameWorld
         ["revision"] = _revision,
         ["tiles"] = _tiles.DeepClone(),
         ["jobs"] = J.Arr(_jobs.Select(j => (JsonNode?)JobPublic(j))),
+        // Edição de mundo (F4/F6): ops de pincel para o replay do terreno e objetos plantados.
+        ["edits"] = J.Arr(_edits.Select(e => (JsonNode?)e.DeepClone())),
+        ["placements"] = J.Arr(_placements.Select(p => (JsonNode?)p.ToJson())),
     };
 
     // ---------- auxiliares ----------

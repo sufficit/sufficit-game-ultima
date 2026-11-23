@@ -5,7 +5,8 @@ namespace Ultima.Server;
 sealed partial class GameWorld
 {
     static readonly string[] Actions =
-        ["move", "moveto", "look", "pose", "stop", "say", "interact", "dig", "queue", "cancel_order", "stop_job"];
+        ["move", "moveto", "look", "pose", "stop", "say", "interact", "dig", "queue", "cancel_order", "stop_job",
+         "sculpt", "paint", "place", "remove"];
 
     static bool CmdAllowed(Character ch, double now)
     {
@@ -209,6 +210,10 @@ sealed partial class GameWorld
                     res["queue"] = new JsonArray();
                     return (200, res);
                 }
+                case "sculpt": return SculptCmd(ch, data, now);
+                case "paint": return PaintCmd(ch, data, now);
+                case "place": return PlaceCmd(ch, data, now);
+                case "remove": return RemoveCmd(ch, data, now);
                 default:
                     return (400, new JsonObject { ["error"] = "unknown_action", ["actions"] = J.StrArr(Actions) });
             }
