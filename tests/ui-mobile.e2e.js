@@ -196,7 +196,7 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
             const m2 = await measure(page);
             ok('retrato→paisagem: canvas acompanha', !!m2.canvas && Math.abs(m2.canvas.w - 844) <= 1 && Math.abs(m2.canvas.h - 390) <= 1, JSON.stringify(m2.canvas));
             ok('retrato→paisagem: sem sobreposição', m2.overlaps.length === 0, m2.overlaps.slice(0, 3).join(' | '));
-            await page.screenshot({ path: `${SHOTS}/depois-rotate-landscape.png` });
+            await page.screenshot({ path: `${SHOTS}/depois-rotate-landscape.png` }).catch((e) => console.log('info  captura rotate-landscape falhou (sem bloquear): ' + (e && e.message || '').split('\n')[0]));
             report.views['portrait→landscape'] = m2;
         }
         await ctx.close();
