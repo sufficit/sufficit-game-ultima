@@ -102,6 +102,7 @@ body[data-input="touch"] .hint-touch { display: inline; }
 /* Telas baixas (celular deitado): com a Oficina aberta ela ocupa a coluna inteira, por
    cima do cartão de status — senão sobravam poucos pixels de altura para o conteúdo. */
 @media (max-height: 480px) {
+    .ultima-corner--oficina { bottom: .75rem; }
     .ultima-corner--oficina .ultima-workshop { position: absolute; inset: 0; }
 }
 
