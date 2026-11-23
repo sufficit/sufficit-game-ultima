@@ -66,3 +66,8 @@ Data: 2026-11-22 · Escopo: jogável no celular (retrato e paisagem), menus ocul
 
 ## Run 12 — publish Release do 3fa0bcc (F7d-3+F7e) + revalidação
 - Publicação isolada (do-run12-publish.sh) para caber no teto de 600 s; harness completo vem depois (do-run12-harness.sh) e dialog-log fecha no build final — só então publicação na main via github_cli api.
+
+## Run 12 — resultado
+- Publish Release do dfa4832 (src/ idêntico ao 6340028) concluído em 206 s (job 08ac, P12_EXIT=0): 8092 rebindado, game.js servido idêntico à fonte (md5 b93174c…), duas advertências CS8xxx pré-existentes em Index.razor (nulabilidade), sem erros.
+- 1ª execução do harness (job 08b1, 35 ok / 2 falhas): as duas falhas eram o MESMO item — `retrato: console sem erros` — por **409 Conflict em `POST /v1/game/command`** (com URL, agora registrada pelo harness). Diagnóstico: `too_fast` do anti-teleporte do servidor (GameCommands.cs: jump > WalkSpeed*dt*3+2 recusa); o harness de retrato teleporta o jogador para medir o HUD e a pose resultante é legitimamente recusada. O live.js envia a pose seguinte normalmente — comportamento por design, não defeito do produto. Antes do F7e (run 11) o 409 não aparecia porque a pose extra só passou a sair com o novo ciclo de envio.
+- Correção no harness (não commitada ainda): tolerância POR URL — só `409 (Conflict)` cujo texto cite `/v1/game/command` é tolerado no check de console do retrato, com contagem explícita no detalhe (`[tolerado: Nx 409 too_fast anti-teleporte]`); qualquer outro erro de console continua derrubando. `node --check` OK. Reexecução lançada (job 08be).
