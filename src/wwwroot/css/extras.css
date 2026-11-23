@@ -17,12 +17,9 @@
 /* Cartões do jogo em vidro: mantêm a estrutura da SUI, ganham canto generoso */
 .ultima-theme .sui-card.ultima-card--glass { border-radius: var(--sui-radius-lg); }
 
-/* Campos dentro dos painéis do jogo (Painel, diálogo e Oficina) ocupam a largura
-   disponível. Os controles da Oficina são todos componentes da SUI — não há mais
-   estilos próprios para botão, entrada, seletor ou arquivo. */
+/* Campos do Painel (incluindo a Oficina) e do diálogo ocupam a largura disponível. */
 .ultima-theme .ultima-panel .sui-field,
-.ultima-theme .ultima-dialog .sui-field,
-.ultima-theme .ultima-workshop .sui-field { width: 100%; }
+.ultima-theme .ultima-dialog .sui-field { width: 100%; }
 
 /* Lista de modelos da IA na CPU: botões SUI como itens de seleção à esquerda */
 .ultima-models { display: flex; flex-direction: column; gap: .3rem; }
