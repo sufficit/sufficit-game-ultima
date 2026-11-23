@@ -3,6 +3,8 @@
 // Fluxo: abre o jogo, anda até a Guardiã, E → pergunta → resposta por regras,
 // confere a fila em localStorage, flush() → POST 200, GET traz o lote,
 // pagehide envia e limpa a fila.
+// t56: esperas por polling (headless+swiftshader engasga o rAF — lição dos runs 7-9
+// do ui-mobile.e2e.js) e 401 de sessão do live.js validado por URL, não por texto.
 'use strict';
 const path = require('path');
 const { chromium } = require('playwright-core'); // npm i playwright-core; navegadores em ~/.cache/ms-playwright
@@ -31,9 +33,23 @@ const ok = (label, cond, extra) => console.log((cond ? 'ok  ' : 'FALHOU ') + lab
     // Mesma receita do fluxo validado localmente via MCP: worker (sem render=main),
     // teleporte pela URL + chamada ao atalho do core, dev=1.
     await page.goto(SITE + '/?api=' + encodeURIComponent(API) + '&teleportToGuardian=1&dev=1', { waitUntil: 'domcontentloaded', timeout: 45000 });
-    // Motor + Blazor prontos: canvas existe e game.dialogLog disponível.
-    await page.waitForFunction(() => window.game && window.game.dialogLog && document.getElementById('game-canvas'), null, { timeout: 45000 });
+
+    // Motor + Blazor prontos: polling em vez de waitForFunction (rAF engasgado no
+    // headless estoura a espera mesmo com o jogo pronto).
+    let booted = false;
+    for (let t = 0; t < 45 && !booted; t++) {
+        booted = await page.evaluate(() => !!(window.game && window.game.dialogLog && document.getElementById('game-canvas'))).catch(() => false);
+        if (!booted) await page.waitForTimeout(1000);
+    }
+    if (!booted) throw new Error('boot: window.game.dialogLog/#game-canvas indisponíveis após 45s; console: ' + errors.slice(0, 4).join(' | ').slice(0, 300));
     ok('módulo dialogLog carregado', true);
+
+    // Cena pronta: câmera responde (o worker sobe depois do DOM).
+    for (let t = 0; t < 45; t++) {
+        const c = await page.evaluate(() => (window.game && window.game.cameraState ? window.game.cameraState() : null)).catch(() => null);
+        if (c && isFinite(c.alpha)) break;
+        await page.waitForTimeout(1000);
+    }
 
     // IA da CPU servida e painel presente (frente 84d2e9e, validação pendente).
     const aiCpu = await page.evaluate(async () => (await fetch('js/ai-cpu.js')).status);
@@ -41,28 +57,39 @@ const ok = (label, cond, extra) => console.log((cond ? 'ok  ' : 'FALHOU ') + lab
 
     // Chega perto da Guardiã (NPC em z=-14) e abre o diálogo com E.
     // Atalho de dev primeiro (determinístico); caminhar com W é o fallback.
+    // Tudo por polling: dica visível → E (até 4 tentativas; com o diálogo aberto o
+    // foco vai para #dialog-input e E extra é digitado, não fecha nada).
     await page.waitForSelector('#game-canvas', { timeout: 10000 });
     const teleported = await page.evaluate(() => { try { window.game.teleportToGuardian(); return true; } catch (e) { return false; } });
     if (!teleported) await page.keyboard.down('KeyW');
-    await page.waitForFunction(() => {
-        const t = document.querySelector('.ultima-status') || document.body;
-        return document.querySelector('.ultima-hint, .ultima-dialog') !== null;
-    }, null, { timeout: 20000 }).catch(() => {});
+    let near = null;
+    for (let t = 0; t < 20 && !near; t++) {
+        near = await page.evaluate(() => { const el = document.querySelector('.ultima-hint, .ultima-dialog'); return el && el.getBoundingClientRect().height > 0 ? true : null; }).catch(() => null);
+        if (!near) await page.waitForTimeout(1000);
+    }
     await page.keyboard.up('KeyW');
-    await page.keyboard.press('KeyE');
-    const dialog = await page.waitForSelector('.ultima-dialog', { timeout: 15000 }).catch(() => null);
-    ok('diálogo aberto com a Guardiã (E)', !!dialog);
+    let dialog = null;
+    for (let i = 0; i < 4 && !dialog; i++) {
+        await page.keyboard.press('KeyE');
+        const end = Date.now() + 10000;
+        while (Date.now() < end && !dialog) {
+            dialog = await page.evaluate(() => { const el = document.querySelector('.ultima-dialog'); return el && el.getBoundingClientRect().height > 0 ? true : null; }).catch(() => null);
+            if (!dialog) await page.waitForTimeout(500);
+        }
+    }
+    ok('diálogo aberto com a Guardiã (E)', !!dialog, teleported ? 'teleport' : 'andando');
     if (!dialog) { await page.screenshot({ path: '/tmp/ultima-t50/e2e-no-dialog.png', timeout: 5000 }).catch(() => {}); }
 
     if (dialog) {
-        await page.waitForSelector('#dialog-input', { timeout: 10000 });
+        await page.waitForSelector('#dialog-input', { timeout: 10000, state: 'visible' });
         await page.fill('#dialog-input', 'Onde fica o santuário?');
         await page.press('#dialog-input', 'Enter');
-        // Resposta por regras substitui as reticências.
-        const reply = await page.waitForFunction(() => {
-            const el = document.querySelector('.ultima-dialog__line');
-            return el && el.textContent && !el.textContent.includes('…') ? el.textContent : false;
-        }, null, { timeout: 30000 }).catch(() => null);
+        // Resposta por regras substitui as reticências — por polling.
+        let reply = null;
+        for (let t = 0; t < 30 && !reply; t++) {
+            reply = await page.evaluate(() => { const el = document.querySelector('.ultima-dialog__line'); return el && el.textContent && !el.textContent.includes('…') ? el.textContent : null; }).catch(() => null);
+            if (!reply) await page.waitForTimeout(1000);
+        }
         ok('resposta da Guardiã chegou', !!reply, reply ? String(reply).slice(0, 60) : 'sem resposta');
     }
 
@@ -94,7 +121,17 @@ const ok = (label, cond, extra) => console.log((cond ? 'ok  ' : 'FALHOU ') + lab
     const queue2 = await page.evaluate(() => JSON.parse(localStorage.getItem('ultima-dialog-queue') || '[]'));
     ok('pagehide enviou e limpou a fila', queue2.length === 0, 'fila agora ' + queue2.length);
 
-    const relevant = errors.filter(e => !/favicon|wllama|Download the React DevTools|WebGPU|webkitExitFullscreen/i.test(e));
+    // Console/HTTP: 401 do ciclo de sessão do live.js (resume/rejoin de token
+    // volátil — servidor autoritativo reconstruído; o cliente reentra sozinho) e
+    // 409/429 do command (rede, fora do escopo) são validados POR URL em
+    // badResponses; o texto do console não carrega URL. Qualquer outra falha HTTP derruba.
+    const tolerated = badResponses.filter(b =>
+        /^401 \S+ .*\/v1\/game\/(state|events)(\?|$)/.test(b) ||
+        /^(409|429) \S+ .*\/v1\/game\/command(\?|$)/.test(b));
+    const otherBad = badResponses.filter(b => !tolerated.includes(b));
+    const relevant = errors.filter(e => !/favicon|wllama|Download the React DevTools|WebGPU|webkitExitFullscreen|401/i.test(e));
     ok('console sem erros relevantes', relevant.length === 0, relevant.slice(0, 3).join(' | ').slice(0, 200));
+    ok('HTTP fora do ciclo de sessão limpo', otherBad.length === 0,
+        'tolerados=' + tolerated.length + (otherBad.length ? ' outros=' + otherBad.slice(0, 3).join(' | ').slice(0, 160) : ''));
     await browser.close();
 })().catch(e => { fail(e && e.stack || e); process.exit(1); });
