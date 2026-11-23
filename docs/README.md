@@ -9,8 +9,6 @@ Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
-- [Migração do JavaScript para C#](PLAN-MIGRACAO-JS-PARA-CSHARP.md)
-
 Prioritários:
 
 1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **concluído em 23/11/2026**
@@ -64,6 +62,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 `/mnt/sufficit/lineage-rust`). Cada plano cita os arquivos-fonte correspondentes.
 
 ## Atividades (`activities/`)
+
+- [Migração de serviços JavaScript para C#](activities/202611231825-migracao-js-para-csharp.md)
 
 - [Movimento e expressão dos personagens](activities/202611231810-expressao-dos-personagens.md)
 
