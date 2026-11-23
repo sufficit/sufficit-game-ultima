@@ -66,6 +66,8 @@ Fonte técnica das frentes 1–11: análise do repositório
 
 ## Atividades (`activities/`)
 
+- [Colisão do jogador e inspeção de objetos](activities/202611231650-colisao-e-interacao-com-objetos.md)
+
 - [Texturas de grama e terra, luz, vento e chuva](activities/202611231639-grama-terra-e-clima.md)
 
 - [Oficina do mundo dentro do Painel do jogo](activities/202611231606-oficina-no-painel.md)

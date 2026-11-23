@@ -1,0 +1,114 @@
+// Fixture local ao navegador. Requer playwright-core e Chromium.
+// ULTIMA_SITE pode apontar para um publish local. ULTIMA_MODE=main exercita o fallback.
+const {chromium}=require('playwright-core');
+const assert=require('node:assert/strict');
+const site=process.env.ULTIMA_SITE || 'https://sufficit.github.io/sufficit-game-ultima/';
+const main=process.env.ULTIMA_MODE==='main';
+const fixture={kind:'place',uid:'browser-tree',asset:'flora.pine',x:0,z:2,rot:0,scale:1};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function wait(callback,label) {
+    for(let i=0;i<100;i++){
+        const v=await callback();
+        if(v) return v;
+        await sleep(250);
+    }
+    throw Error(label);
+}
+(async()=>{
+ const browser=await chromium.launch({executablePath:process.env.ULTIMA_CHROMIUM || undefined,
+    args:(process.env.ULTIMA_CHROMIUM_ARGS || '').split(' ').filter(Boolean)});
+ try{
+    const p=await browser.newPage({viewport:{width:1200,height:720}});
+    const errors=[];
+    p.on('pageerror',e=>errors.push(String(e)));
+    const url=site+'?live=0&rede=0&api=http%3A%2F%2F127.0.0.1%3A19999'+(main?'&render=main&gpu=0':'');
+    await p.goto(url,{waitUntil:'domcontentloaded'});
+    const build=await p.locator('meta[name=ultima-build]').getAttribute('content');
+    if(process.env.ULTIMA_BUILD) assert.equal(build, process.env.ULTIMA_BUILD);
+    await wait(()=>p.evaluate(async()=>{
+        if(!window.game?.glb?.status || !window.game?.build?.state) return false;
+        const map=await game.build.state(), glb=await game.glb.status();
+        return map?.chunks>=25 && glb?.loaded.some(id=>id.startsWith('flora.pine')) &&
+            glb?.loaded.some(id=>id.startsWith('prop.stump')) &&
+            glb?.loaded.some(id=>id.startsWith('rock.boulder2')) && (await game.models.status()).queue===0;
+    }),'mundo carregado');
+    assert.equal(await p.evaluate(()=>game.mode),main?'main':'worker');
+    await p.getByRole('button',{name:'detalhes',exact:true}).click();
+    await p.locator('#game-canvas').focus();
+    const pose=async()=> {
+        if(main) return p.evaluate(()=>{
+            const {x,y,z}=BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('player').position;
+            return {x,y,z};
+        });
+        const status=await p.locator('.ultima-status').innerText();
+        const match=/pos \((-?[\d.,]+), (-?[\d.,]+)\)/.exec(status);
+        assert.ok(match, status);
+        return {x:Number(match[1].replace(',','.')),z:Number(match[2].replace(',','.'))};
+    };
+    const apply=op=>p.evaluate(op=>game.applyWorldOp(op),op);
+    async function walk(keys,ms){
+        for(const key of keys) await p.keyboard.down(key);
+        await p.waitForTimeout(ms);
+        for(const key of keys) await p.keyboard.up(key);
+        await p.waitForTimeout(300);
+        if(errors.length) throw Error(errors.join('\n'));
+        return pose();
+    }
+    await apply(fixture);
+    await p.waitForTimeout(300);
+    const blocked=await walk(['w'],1150);
+    console.log(JSON.stringify({build,mode:main?'main':'worker',blocked}));
+    assert.ok(blocked.z>1.28 && blocked.z<1.61,'o tronco deve parar o jogador em z≈1,47');
+    await p.locator('.ultima-hint').getByText('para examinar',{exact:false}).waitFor();
+    await p.keyboard.press('e');
+    await p.getByText('Você examinou: Pinheiro',{exact:true}).waitFor();
+    const slide=await walk(['w','d'],450);
+    assert.ok(slide.x>0.45 && slide.z>2, 'desliza pela lateral '+JSON.stringify(slide));
+    await apply({kind:'remove',uid:fixture.uid});
+    await p.evaluate(()=>game.resetPlayer());
+    await p.waitForTimeout(300);
+    const free=await walk(['w'],820);
+    assert.ok(free.z>2.65, 'remoção libera o caminho');
+    await p.evaluate(()=>game.resetPlayer());
+    await apply({...fixture,uid:'browser-soft',asset:'flora.fern'});
+    await p.waitForTimeout(300);
+    const soft=await walk(['w'],850);
+    assert.ok(soft.z>2.65,'samambaia permite passagem');
+    await apply({kind:'remove',uid:'browser-soft'});
+    await p.evaluate(()=>game.resetPlayer());
+    await apply({...fixture,uid:'browser-stump',asset:'prop.stump'});
+    await p.waitForTimeout(300);
+    const stump=await walk(['w'],850);
+    assert.ok(stump.z>0.9 && stump.z<1.72,'toco sólido '+JSON.stringify(stump));
+    await apply({kind:'remove',uid:'browser-stump'});
+    await p.evaluate(()=>game.resetPlayer());
+    await apply({...fixture,uid:'browser-rock',asset:'rock.boulder2'});
+    await p.waitForTimeout(300);
+    const rock=await walk(['w'],850);
+    assert.ok(rock.z>0.45 && rock.z<1.7,'pedra sólida '+JSON.stringify(rock));
+    await apply({kind:'remove',uid:'browser-rock'});
+
+    let nativeTree;
+    if(main) {
+        const tree=await p.evaluate(()=>{
+            const s=BABYLON.EngineStore.LastCreatedScene;
+            const player=s.getTransformNodeByName('player');
+            const tree=s.meshes.filter(m=>m.name.startsWith('tree-tree.pine-trunk-')&&m.isEnabled()&&Math.abs(m.position.x)>6)
+                .sort((a,b)=>a.position.lengthSquared()-b.position.lengthSquared())[0];
+            if(!tree) return null;
+            player.position.set(tree.position.x,tree.position.y+0.25,tree.position.z-1.15);
+            return {x:tree.position.x,z:tree.position.z};
+        });
+        assert.ok(tree,'tronco DLL');
+        await p.waitForTimeout(300);
+        nativeTree=await walk(['w'],480);
+        assert.ok(Math.abs(nativeTree.x-tree.x)<0.1 && nativeTree.z<tree.z-0.38 && nativeTree.z>tree.z-0.95,'pinheiro do cenário bloqueia '+JSON.stringify({nativeTree,tree}));
+    }
+    await p.evaluate(()=>game.teleportToGuardian());
+    await p.waitForTimeout(500);
+    await p.keyboard.press('e');
+    await p.locator('.ultima-dialog').waitFor();
+    assert.deepEqual(errors,[]);
+    console.log(JSON.stringify({slide,free,soft,stump,rock,nativeTree,dialog:true}));
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1});

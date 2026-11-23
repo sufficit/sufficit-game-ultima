@@ -21,14 +21,14 @@
             <div class="ultima-toast ultima-announce" role="note">@_announcement</div>
         }
 
-        @if ((_near || _nearWanderer) && _view is null)
+        @if ((_near || _nearWanderer || _nearObject is not null) && _view is null)
         {
             <div class="ultima-toast ultima-hint" role="status">
-                Perto @(_near ? "da Guardiã" : "do Andarilho") —
+                @(_near ? "Perto da Guardiã" : _nearWanderer ? "Perto do Andarilho" : _nearObject) —
                 <span class="hint-kb">pressione <kbd>E</kbd></span>
                 <span class="hint-pad">pressione <kbd>A</kbd> no controle</span>
                 <span class="hint-touch">toque no botão <kbd>A</kbd></span>
-                para conversar
+                @(_near || _nearWanderer ? "para conversar" : "para examinar")
             </div>
         }
 
@@ -396,7 +396,7 @@
             <div class="touch-right-controls">
                 <div id="look-stick" class="touch-stick look-stick" aria-label="Analógico para câmera"><span id="look-thumb"></span><small>CÂMERA</small></div>
                 <button id="touch-cancel" type="button" aria-label="Fechar diálogo">B</button>
-                <button id="touch-action" type="button" aria-label="Conversar com a Guardiã">A</button>
+                <button id="touch-action" type="button" aria-label="Interagir">A</button>
             </div>
         </div>
 
@@ -443,6 +443,7 @@
     private string _renderer = string.Empty;
     private bool _near;
     private bool _nearWanderer;
+    private string? _nearObject;
     private DialogView? _view;
     private readonly NpcScheduler _npc = new();
     private double _posX, _posY, _posZ, _fps, _micLevel;
@@ -626,6 +627,7 @@
             EngineReady = renderer => _ = InvokeAsync(() => { _renderer = renderer; StateHasChanged(); }),
             NearChanged = near => _ = InvokeAsync(() => { _near = near; StateHasChanged(); }),
             WandererNearChanged = near => _ = InvokeAsync(() => { _nearWanderer = near; StateHasChanged(); }),
+            ObjectNear = label => _ = InvokeAsync(() => { _nearObject = label; StateHasChanged(); }),
             BuildAssets = ids => _ = InvokeAsync(() =>
             {
                 _buildAssets = [.. ids];
@@ -797,7 +799,18 @@
         StateHasChanged();
     }
 
-    private Task OnInteractAsync() { Dispatch(new PlayerInteracted(NowMs())); return Task.CompletedTask; }
+    private Task OnInteractAsync()
+    {
+        if (_view is null && !_near && !_nearWanderer && _nearObject is { } label)
+        {
+            Snackbar.Info($"Você examinou: {label}");
+        }
+        else
+        {
+            Dispatch(new PlayerInteracted(NowMs()));
+        }
+        return Task.CompletedTask;
+    }
 
     private Task AdvanceAsync() { Dispatch(new PlayerInteracted(NowMs())); return Task.CompletedTask; }
 
