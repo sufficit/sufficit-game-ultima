@@ -593,7 +593,31 @@
         }
     }
 
-    function buildTerrain() { ensureChunksAround(0, 0); }
+    function buildTerrain() {
+        ensureChunksAround(0, 0);
+        // DEBUG F7g (remove depois): teste binário na GPU do usuário — verde emissivo
+        // sem luz/sombra/textura. (0,0) dupla-face + (0,1) culling normal.
+        modelQueue.push({
+            timing: { id: 'diag-emissive', queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
+            work: (function* () {
+                yield {
+                    label: 'diagnóstico emissivo',
+                    run: function () {
+                        for (var t = 0; t < 2; t++) {
+                            var ch = chunkMap.get(t === 0 ? '0,0' : '0,1');
+                            if (!ch) { continue; }
+                            var m = new BABYLON.StandardMaterial('diag-em-' + t, scene);
+                            m.emissiveColor = new BABYLON.Color3(0.1, 0.85, 0.15);
+                            m.diffuseColor = new BABYLON.Color3(0, 0, 0);
+                            m.disableLighting = true;
+                            if (t === 0) { m.backFaceCulling = false; }
+                            ch.mesh.material = m;
+                        }
+                    }
+                };
+            })()
+        });
+    }
 
     // (A paleta e o grão do chão vivem na textura de cada chunk — paintChunkTexture.)
 
