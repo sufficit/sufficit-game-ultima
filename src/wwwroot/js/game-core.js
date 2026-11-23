@@ -456,60 +456,40 @@
         }).catch(function () { /* cache é otimização */ });
     }
 
-    // Preenche um chunk: alturas/normais do gerador (analíticas, anel extra para as
-    // bordas) e a PALETA PINTADA NUMA TEXTURA PRÓPRIA — o pipeline de vertex color não
-    // renderiza neste motor (worker e main), e a textura é o caminho garantido (o mesmo
-    // das vegetações). O grão do solo vai assado na própria textura.
     const CHUNK_TEX = 128;   // 0,25 m por texel
-    // Defesa em profundidade (F7c): a textura é um GRÃO em torno do branco e a COR vive
-    // no diffuseColor do material (a média da paleta do chunk). Se qualquer um dos dois
-    // caminhos falhar na GPU, o outro carrega a cor sozinho — multiplicação segura.
+    const groundGrain = makeNoise(9090);
+
+    // A paleta e o grão são amostrados nas coordenadas do mundo, inclusive na borda.
     function paintChunkTexture(tex, cx, cz) {
         const ctx = tex.getContext();
         const img = ctx.createImageData(CHUNK_TEX, CHUNK_TEX);
         const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
-        const rnd = makeNoise(9090);
-        const data = img.data;
-        let sr = 0, sg = 0, sb = 0;
-        const N = CHUNK_TEX * CHUNK_TEX;
         for (let ty = 0; ty < CHUNK_TEX; ty++) for (let tx = 0; tx < CHUNK_TEX; tx++) {
-            const x = x0 + (tx + 0.5) / CHUNK_TEX * CHUNK;
-            const z = z0 + (ty + 0.5) / CHUNK_TEX * CHUNK;
+            const x = x0 + tx / (CHUNK_TEX - 1) * CHUNK;
+            const z = z0 + ty / (CHUNK_TEX - 1) * CHUNK;
             const c = terrainColorAt(x, terrainHeight(x, z), z);
-            sr += c[0]; sg += c[1]; sb += c[2];
-            // grão em torno do BRANCO (periódico em X: sem emenda visível)
-            const u = tx / CHUNK_TEX * Math.PI * 2;
-            const g = 0.86 + rnd(Math.cos(u) * 6 + 3, ty * 0.3 + Math.sin(u) * 6) * 0.28;
-            const k = Math.max(0, Math.min(255, g * 255)) | 0;
+            const grain = 1 + groundGrain(x * 0.9, z * 0.9) * 0.14;
             const i = (ty * CHUNK_TEX + tx) * 4;
-            data[i] = k; data[i + 1] = k; data[i + 2] = k; data[i + 3] = 255;
+            img.data[i] = c[0] * grain * 255;
+            img.data[i + 1] = c[1] * grain * 255;
+            img.data[i + 2] = c[2] * grain * 255;
+            img.data[i + 3] = 255;
         }
         ctx.putImageData(img, 0, 0);
-        tex.update(true);
-        return [sr / N, sg / N, sb / N];
+        tex.update(false);   // a primeira linha da imagem coincide com v=0 (menor Z)
     }
 
-    function applyChunkTint(mat, avg, emissive) {
-        const g = emissive ? 2.1 : 1.15;   // unlit: sem luz multiplicando, tinta compensa
-        const c = emissive ? mat.emissiveColor || (mat.emissiveColor = new BABYLON.Color3(0, 0, 0)) : mat.diffuseColor || (mat.diffuseColor = new BABYLON.Color3(1, 1, 1));
-        c.r = Math.max(0.05, Math.min(1, avg[0] * g));
-        c.g = Math.max(0.05, Math.min(1, avg[1] * g));
-        c.b = Math.max(0.05, Math.min(1, avg[2] * g));
-    }
+    function chunkMaterial(cx, cz) {
+        const key = chunkKey(cx, cz);
+        const tex = new BABYLON.DynamicTexture('chunkTex-' + key, { width: CHUNK_TEX, height: CHUNK_TEX }, scene, true);
+        tex.wrapU = tex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
+        paintChunkTexture(tex, cx, cz);
 
-    function chunkTexture(cx, cz) {
-        const tex = new BABYLON.DynamicTexture('chunkTex-' + chunkKey(cx, cz), { width: CHUNK_TEX, height: CHUNK_TEX }, scene, true);
-        const avg = paintChunkTexture(tex, cx, cz);
-        // F7g-3: cor ASSADA (unlit) — a iluminação dinâmica avalia ~0 na GPU afetada
-        // (AMD/Wayland com GPU process instável); emissivo renderiza perfeito (42k px
-        // verdes comprovados). Grão × tinta: grama, terra, rocha e neve legíveis.
-        const m = new BABYLON.StandardMaterial('groundMat-' + chunkKey(cx, cz), scene);
-        m.disableLighting = true;
-        m.emissiveTexture = tex;         // grão branco (0,86–1,14)
-        applyChunkTint(m, avg, true);    // tinta multiplicando o emissivo
-        m.diffuseColor = new BABYLON.Color3(0, 0, 0);
-        m.specularColor = new BABYLON.Color3(0, 0, 0);
-        return m;
+        // Usa a paleta pronta no caminho emissivo, que funciona sem luzes da cena.
+        const mat = new BABYLON.StandardMaterial('groundMat-' + key, scene);
+        mat.disableLighting = true;
+        mat.emissiveTexture = tex;
+        return mat;
     }
 
     // Geometria do chunk construída NA MÃO (VertexData): posições mundiais, normais
@@ -536,23 +516,22 @@
             positions[vi * 3 + 2] = z0 + j * step;
             const hx = hgt[(j + 1) * w + (i + 2)] - hgt[(j + 1) * w + i];
             const hz = hgt[(j + 2) * w + (i + 1)] - hgt[j * w + (i + 1)];
-            const nl = Math.hypot(hx, step, hz) || 1;   // normal do heightfield
-            normals[vi * 3] = -hx / nl; normals[vi * 3 + 1] = step / nl; normals[vi * 3 + 2] = -hz / nl;
+            const nl = Math.hypot(hx, 2 * step, hz);
+            normals[vi * 3] = -hx / nl; normals[vi * 3 + 1] = 2 * step / nl; normals[vi * 3 + 2] = -hz / nl;
             uvs[vi * 2] = i / CHUNK_SUB; uvs[vi * 2 + 1] = j / CHUNK_SUB;
         }
-        // Winding na ordem EXATA do GroundBuilder do Babylon — o meu anterior vinha
-        // invertido (faces pra baixo) e o backface culling escondia o terreno inteiro.
-        const indices = new Uint32Array(CHUNK_SUB * CHUNK_SUB * 6);
+        // As linhas avançam em +Z. A ordem dos vértices mantém a face visível de cima.
+        const indices = new Uint16Array(CHUNK_SUB * CHUNK_SUB * 6);
         let k = 0;
         for (let j = 0; j < CHUNK_SUB; j++) for (let i = 0; i < CHUNK_SUB; i++) {
             const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
-            indices[k++] = d; indices[k++] = b; indices[k++] = a;
-            indices[k++] = c; indices[k++] = d; indices[k++] = a;
+            indices[k++] = d; indices[k++] = a; indices[k++] = b;
+            indices[k++] = c; indices[k++] = a; indices[k++] = d;
         }
         const mesh = new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene);
         const vd = new BABYLON.VertexData();
         vd.positions = positions; vd.normals = normals; vd.uvs = uvs; vd.indices = indices;
-        vd.applyToMesh(mesh, false);
+        vd.applyToMesh(mesh, true);
         mesh.refreshBoundingInfo();          // posições mundiais: bounding nasce certa
         saveChunk(cx, cz, positions, normals);
         return mesh;
@@ -571,8 +550,7 @@
                     label: label,
                     run: function () {
                         const mesh = buildChunkMesh(cx, cz);
-                        mesh.material = chunkTexture(cx, cz);   // cor: diffuseColor+tinta; grão na textura
-                        mesh.receiveShadows = true;
+                        mesh.material = chunkMaterial(cx, cz);
                         mesh.isPickable = true;
                         chunkMap.set(chunkKey(cx, cz), { mesh: mesh, cx: cx, cz: cz });
                     }
@@ -593,7 +571,7 @@
         }
         for (const [k, ch] of Array.from(chunkMap)) {
             if (Math.abs(ch.cx - ccx) > CHUNK_VIEW + 1 || Math.abs(ch.cz - ccz) > CHUNK_VIEW + 1) {
-                ch.mesh.dispose();
+                ch.mesh.dispose(false, true);
                 chunkMap.delete(k);
             }
         }
@@ -623,12 +601,12 @@
             const minX = ch.cx * CHUNK - CHUNK / 2, maxX = minX + CHUNK;
             const minZ = ch.cz * CHUNK - CHUNK / 2, maxZ = minZ + CHUNK;
             if (x + r < minX || x - r > maxX || z + r < minZ || z - r > maxZ) { continue; }
-            refreshChunkRegion(ch.mesh, x, z, r);
+            refreshChunkRegion(ch, x, z, r);
         }
     }
 
     // Re-computa a região do pincel num chunk: altura, cor e normal analítica.
-    function refreshChunkRegion(mesh, x, z, r) {
+    function refreshChunkRegion({ mesh, cx, cz }, x, z, r) {
         const pos = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
         const nor = mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind);
         if (!pos || !nor) { return; }
@@ -644,15 +622,9 @@
             const nl = Math.hypot(hx / (2 * e), 1, hz / (2 * e)) || 1;
             nor[i] = -hx / (2 * e) / nl; nor[i + 1] = 1 / nl; nor[i + 2] = -hz / (2 * e) / nl;
         }
-        mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, pos);
+        mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, pos, true);
         mesh.updateVerticesData(BABYLON.VertexBuffer.NormalKind, nor);
-        // grão repintado e tinta média atualizada (a cor vive no diffuseColor)
-        const mat = mesh.material;
-        if (mat && mat.diffuseTexture && mat.diffuseTexture.getContext) {
-            const ch = mesh.name.slice('ground-'.length).split(',');
-            const avg = paintChunkTexture(mat.diffuseTexture, Number(ch[0]), Number(ch[1]));
-            applyChunkTint(mat, avg);
-        }
+        paintChunkTexture(mesh.material.emissiveTexture, cx, cz);
     }
 
     // Água pintada (F7a): discos translúcidos sobre o terreno, reposicionados a cada
@@ -2234,6 +2206,7 @@
             if (!ch) { return { chunk: 'ausente' }; }
             const col = ch.mesh.getVerticesData(BABYLON.VertexBuffer.ColorKind);
             const pos = ch.mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+            const texture = ch.mesh.material?.emissiveTexture;
             return {
                 chunk: chunkKey(ccx, ccz),
                 useVertexColors: ch.mesh.useVertexColors,
@@ -2242,6 +2215,7 @@
                 colorSample: col ? [col[0], col[1], col[2], col[3]].map(function (v) { return Math.round(v * 100) / 100; }) : null,
                 matName: ch.mesh.material ? ch.mesh.material.name : null,
                 hasDiffuseTex: !!(ch.mesh.material && ch.mesh.material.diffuseTexture),
+                hasEmissiveTex: !!texture,
                 diffuseColor: ch.mesh.material ? ch.mesh.material.diffuseColor.toString() : null,
                 matCount: scene.materials.length,
                 subMeshes: ch.mesh.subMeshes ? ch.mesh.subMeshes.length : -1,
@@ -2252,7 +2226,7 @@
                 depthFunc: ch.mesh.material && ch.mesh.material.needDepthPrePass,
                 texCanvasSample: (function () {
                     try {
-                        const t = ch.mesh.material && ch.mesh.material.diffuseTexture;
+                        const t = texture;
                         if (!t || !t.getContext) { return 'sem textura'; }
                         const c = t.getContext();
                         const d = c.getImageData(64, 64, 1, 1).data;
@@ -2260,7 +2234,7 @@
                     } catch (e) { return 'erro: ' + (e && e.message); }
                 })(),
                 texSize: (function () {
-                    const t = ch.mesh.material && ch.mesh.material.diffuseTexture;
+                    const t = texture;
                     return t && t.getSize ? t.getSize().width : null;
                 })(),
                 verts: pos ? pos.length / 3 : 0,
