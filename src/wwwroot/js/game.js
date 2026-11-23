@@ -40,6 +40,12 @@
         catch (e) { return 'padrao'; }
     }
 
+    const WEATHER_PREF_KEY = 'ultima.clima';
+    function weatherPref() {
+        try { return localStorage.getItem(WEATHER_PREF_KEY) === 'rain' ? 'rain' : 'clear'; }
+        catch (e) { return 'clear'; }
+    }
+
     function buildStamp() {
         const meta = document.querySelector('meta[name="ultima-build"]');
         return (meta && meta.content) || 'dev';
@@ -128,6 +134,7 @@
                     pageBase: location.href,
                     scenery: sceneryPref(),
                     graphics: graphicsPref(),
+                    weather: weatherPref(),
                     global: window,
                     dom: true,
                     postEvent: postEventToDotnet,
@@ -167,7 +174,7 @@
                 reject(new Error('worker: ' + (e && e.message || 'erro')));
             };
             worker.postMessage(
-                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref() },
+                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), weather: weatherPref() },
                 [off]);
         });
     }
@@ -529,6 +536,16 @@
                 try { localStorage.setItem(GRAPHICS_PREF_KEY, value); } catch (e) { /* sem storage */ }
                 return value;
             }
+        },
+        weather: {
+            get() { return weatherPref(); },
+            set(mode) {
+                const value = mode === 'rain' ? 'rain' : 'clear';
+                try { localStorage.setItem(WEATHER_PREF_KEY, value); } catch (e) { /* sem storage */ }
+                post('setWeather', [value]);
+                return value;
+            },
+            status() { return query('weatherStatus'); }
         },
         perf: {
             report() { return query('perf.report'); }

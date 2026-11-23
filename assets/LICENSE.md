@@ -39,3 +39,10 @@ Cópia vendorizada (pinada) do loader glTF oficial do Babylon.js, versão 9.36.0
 
 Vendorizar (em vez de CDN sem versão) garante que o arquivo é exatamente este,
 auditável no git, e continua disponível mesmo se o CDN mudar.
+
+
+## src/wwwroot/terrain/*.webp — materiais do terreno
+
+`grass.webp` e `dirt.webp` foram geradas para o Ultima com OpenAI ImageGen a
+partir de descrições originais de grama curta e terra compactada. As imagens
+ortográficas foram convertidas em WebP sRGB de 256 × 256 para publicação.
