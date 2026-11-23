@@ -248,7 +248,7 @@ form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
     .game-shell.ultima-menu-open .ultima-status,
     .game-shell.ultima-menu-open .workshop-panel { display: block; }
     /* alvos confortáveis dentro da folha */
-    .game-shell.ultima-menu-open .ultima-menu button { min-height: 48px; }
+    .game-shell.ultima-menu-open .ultima-menu button { min-height: 48px; min-width: 48px; } /* run 7: botão-ícone ↻ tinha 27px de largura */
     .game-shell.ultima-menu-open .ultima-menu input,
     .game-shell.ultima-menu-open .ultima-menu select { min-height: 48px; } /* campos da Oficina: alvo de 48px (run 6: 21px) */
     .game-shell.ultima-menu-open .ultima-menu summary { min-height: 48px; display: flex; align-items: center; } /* painel do jogo sempre disponível na folha */

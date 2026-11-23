@@ -132,7 +132,7 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
         const page = await ctx.newPage();
         const errors = [];
         page.on('pageerror', (e) => errors.push(String(e)));
-        page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+        page.on('console', (m) => { if (m.type() === 'error') { const loc = m.location(); errors.push(m.text() + ' <<' + ((loc && loc.url) || '?') + '>>'); } });
         await page.goto(SITE + '/?render=main', { waitUntil: 'domcontentloaded', timeout: 45000 });
         // Boot por polling (page.evaluate), nao waitForFunction: no headless com
         // swiftshader o rAF engasga (FPS ~1-2) e a espera por animation frame
