@@ -151,10 +151,7 @@
         }
     }
 
-    function clampToWorld(mesh) {
-        mesh.position.x = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, mesh.position.x));
-        mesh.position.z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, mesh.position.z));
-    }
+    function clampWorld(value) { return Math.max(-WORLD_HALF, Math.min(WORLD_HALF, value)); }
 
     // ---------- Ruído de Perlin 2D (valor/gradiente) ----------
     const lerp = (a, b, t) => a + (b - a) * t;
@@ -211,10 +208,10 @@
         return lerp(h, 0.05, npcFlat * 0.9);
     }
 
-    function slopeAt(x, z) {
+    function slopeAt(x, z, surface = terrainHeight) {
         const e = 0.7;
-        const dhx = Math.abs(terrainHeight(x + e, z) - terrainHeight(x - e, z));
-        const dhz = Math.abs(terrainHeight(x, z + e) - terrainHeight(x, z - e));
+        const dhx = Math.abs(surface(x + e, z) - surface(x - e, z));
+        const dhz = Math.abs(surface(x, z + e) - surface(x, z - e));
         return Math.max(dhx, dhz) / (2 * e);
     }
 
@@ -865,6 +862,126 @@
         }
     }
 
+    // A base sólida acompanha a instância, inclusive quando uma escavação a oculta.
+    const obstacles = new Map();
+    const solidAssets = new Map([
+        ['flora.pine', 'Pinheiro'], ['rock.boulder2', 'Pedra'],
+        ['prop.log', 'Tronco caído'], ['prop.stump', 'Toco']
+    ]);
+    const softAssets = new Set(['scenery.bush', 'flora.flowers', 'flora.mushroom', 'flora.fern', 'scenery.grass2']);
+
+    function trackObstacle(mesh, proto, label, fixedRadius) {
+        const bounds = proto.getBoundingInfo().boundingBox;
+        const halfX = bounds.extendSize.x * Math.abs(mesh.scaling.x);
+        const halfZ = bounds.extendSize.z * Math.abs(mesh.scaling.z);
+        const minY = mesh.position.y + bounds.minimum.y * mesh.scaling.y;
+        const maxY = mesh.position.y + bounds.maximum.y * mesh.scaling.y;
+        if (maxY - minY < 0.22) { return; }
+
+        // Troncos alongados usam uma fileira de círculos seguindo a rotação.
+        const radius = fixedRadius || Math.min(halfX, halfZ);
+        if (radius < 0.05) { return; }
+        const longSide = fixedRadius ? radius : Math.max(halfX, halfZ);
+        const span = Math.max(0, longSide - radius);
+        const parts = Math.max(1, Math.min(7, 1 + Math.ceil(span / radius)));
+        const yaw = mesh.rotation.y + (halfZ > halfX ? -Math.PI / 2 : 0);
+        const circles = [];
+        for (let i = 0; i < parts; i++) {
+            const offset = parts === 1 ? 0 : lerp(-span, span, i / (parts - 1));
+            circles.push({
+                x: mesh.position.x + Math.cos(yaw) * offset,
+                z: mesh.position.z - Math.sin(yaw) * offset,
+                radius
+            });
+        }
+        obstacles.set(mesh, { circles, minY, maxY, label });
+        mesh.onDisposeObservable.addOnce(() => obstacles.delete(mesh));
+    }
+
+    function trackGlbObstacle(mesh, proto, id, planted = false) {
+        const label = solidAssets.get(id);
+        if (!label && (!planted || softAssets.has(id))) { return; }
+        const trunkRadius = id === 'flora.pine' ? 0.28 * Math.abs(mesh.scaling.x) : 0;
+        trackObstacle(mesh, proto, label || 'Objeto plantado', trunkRadius);
+    }
+
+    function touchesPlayerHeight(position, obstacle) {
+        return position.y + PLAYER_HEIGHT > obstacle.minY && position.y < obstacle.maxY;
+    }
+
+    function firstContact(position, dx, dz, lengthSquared) {
+        let first = null;
+        let best = 1;
+        const distance = Math.sqrt(lengthSquared);
+        for (const [mesh, obstacle] of obstacles) {
+            if (!mesh.isEnabled() || !touchesPlayerHeight(position, obstacle)) { continue; }
+            for (const circle of obstacle.circles) {
+                const x = position.x - circle.x, z = position.z - circle.z;
+                const radius = PLAYER_RADIUS + circle.radius;
+                const reach = distance + radius;
+                if (Math.abs(x) > reach || Math.abs(z) > reach) { continue; }
+                const toward = x * dx + z * dz;
+                if (toward >= 0) { continue; }
+                const gap = x * x + z * z - radius * radius;
+                const discriminant = toward * toward - lengthSquared * gap;
+                if (discriminant <= 0) { continue; }
+                const t = gap <= 0 ? 0 : (-toward - Math.sqrt(discriminant)) / lengthSquared;
+                if (t >= best) { continue; }
+                best = t;
+                const nx = x + dx * t, nz = z + dz * t;
+                const normalLength = Math.hypot(nx, nz);
+                first = { t, nx: nx / normalLength, nz: nz / normalLength };
+            }
+        }
+        return first;
+    }
+
+    function moveWithObstacles(position, dx, dz) {
+        // Varre todo o percurso para evitar atravessar troncos mesmo com quadros longos.
+        // Depois do contato, tenta só a parcela tangente do deslocamento restante.
+        for (let i = 0; i < 3; i++) {
+            dx = clampWorld(position.x + dx) - position.x;
+            dz = clampWorld(position.z + dz) - position.z;
+            const lengthSquared = dx * dx + dz * dz;
+            if (lengthSquared < 1e-10) { return; }
+            const hit = firstContact(position, dx, dz, lengthSquared);
+            if (!hit) {
+                position.x += dx;
+                position.z += dz;
+                return;
+            }
+            const t = Math.max(0, hit.t - 0.001 / Math.sqrt(lengthSquared));
+            position.x += dx * t;
+            position.z += dz * t;
+            const inward = dx * hit.nx + dz * hit.nz;
+            dx = (dx - inward * hit.nx) * (1 - hit.t);
+            dz = (dz - inward * hit.nz) * (1 - hit.t);
+        }
+    }
+
+    let nearbyObject = null;
+    function updateNearbyObject() {
+        let label = null;
+        let best = 1.15;
+        for (const [mesh, obstacle] of obstacles) {
+            if (!mesh.isEnabled() || !touchesPlayerHeight(player.position, obstacle)) { continue; }
+            for (const circle of obstacle.circles) {
+                const x = player.position.x - circle.x, z = player.position.z - circle.z;
+                const reach = best + circle.radius;
+                if (Math.abs(x) > reach || Math.abs(z) > reach) { continue; }
+                const distance = Math.hypot(x, z) - circle.radius;
+                if (distance < best) {
+                    label = obstacle.label;
+                    best = distance;
+                }
+            }
+        }
+        if (label !== nearbyObject) {
+            nearbyObject = label;
+            dotnet.invokeMethodAsync('OnObjectNear', label);
+        }
+    }
+
     const scatteredScenery = new Set();
     function trackScenery(mesh) {
         scatteredScenery.add(mesh);
@@ -915,6 +1032,7 @@
         inst.rotation.y = p.rot || 0;
         inst.scaling.setAll(p.scale || 1);
         if (sceneShadows) { try { sceneShadows.addShadowCaster(inst); } catch (e) { /* já fora */ } }
+        trackGlbObstacle(inst, g.proto, p.asset, true);
         placements.set(p.uid, inst);
     }
 
@@ -937,6 +1055,9 @@
         const seen = new Set();
         for (const p of list || []) { if (p && p.uid) { seen.add(p.uid); spawnPlacement(p); } }
         for (const uid of Array.from(placements.keys())) { if (!seen.has(uid)) { removePlacement(uid); } }
+        for (let i = pendingPlacements.length - 1; i >= 0; i--) {
+            if (!seen.has(pendingPlacements[i].uid)) { pendingPlacements.splice(i, 1); }
+        }
     }
 
     function applyWorldOp(op) {
@@ -1122,28 +1243,31 @@
     // entre tronco e copa garantido pelo Ultima.Models.Core se mantém em qualquer tamanho.
     // Resumível: cada chamada coloca até "n" árvores e devolve true ao terminar, para a fila
     // de modelos espalhar em lotes sem estourar o orçamento do frame.
-    function makeTreePlacer(protos, sink, count) {
+    function makeTreePlacer(protos, sink, count, radius) {
+        const rand = mulberry32(seedHash('tree.pine'));
         let placed = 0, tries = 0;
         return function (n) {
             while (placed < count && tries < 2400 && n > 0) {
                 tries += 1;
-                const x = (Math.random() * 2 - 1) * SCATTER_HALF;
-                const z = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
+                const x = (rand() * 2 - 1) * SCATTER_HALF;
+                const z = (rand() * 2 - 1) * (WORLD_HALF + 4);
                 const r = Math.hypot(x, z);
                 if (r < 6.5) { continue; }                                                     // clareira inicial
                 if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 5.5) { continue; }    // clareira da Guardiã
                 if (pathBlend(x, z) < 0.75) { continue; }                                      // longe da trilha
+                if (baseHeight(x, z) > 17) { continue; }                                                      // acima da linha das árvores
+                if (slopeAt(x, z, baseHeight) > 0.5) { continue; }                                         // encosta íngreme
+                const s = 0.75 + rand() * 0.9;
+                const sy = s * (0.9 + rand() * 0.5);
+                const rotation = rand() * Math.PI * 2;
                 const y = terrainHeight(x, z);
-                if (y > 17) { continue; }                                                      // acima da linha das árvores
-                if (slopeAt(x, z) > 0.5) { continue; }                                         // encosta íngreme
-                const s = 0.75 + Math.random() * 0.9;
-                const sy = s * (0.9 + Math.random() * 0.5);
                 for (const proto of protos) {
                     const inst = proto.createInstance(proto.name.replace('model-', 'tree-') + '-' + placed);
                     inst.position.set(x, y - sink * sy, z);
                     inst.scaling.set(s, sy, s);
-                    inst.rotation.y = Math.random() * Math.PI * 2;
+                    inst.rotation.y = rotation;
                     trackScenery(inst);
+                    if (proto === protos[0]) { trackObstacle(inst, proto, 'Pinheiro', radius * s); }
                 }
                 placed += 1;
                 n -= 1;
@@ -1273,13 +1397,13 @@
     // de espalhamento em lotes.
     const modelPlacements = {
         'tree.pine': function* (protos, desc) {
-            yield* batchedSteps('árvores', makeTreePlacer(protos, desc.groundSink || 0, 64));
+            yield* batchedSteps('árvores', makeTreePlacer(protos, desc.groundSink || 0, 64, desc.collisionRadius || 0.3));
         },
         // Pedras: mesmas regras do protótipo antigo (26 por grupo, escala 0,6–2,2,
         // centro afundado 0,25 m no terreno).
-        'rock.boulder': function* (protos) {
+        'rock.boulder': function* (protos, desc) {
             for (const proto of protos) {
-                yield* batchedSteps('pedras', makeInstancePlacer(proto, 26, { minScale: 0.6, maxScale: 2.2, maxAlt: 26, maxSlope: 0.9, sink: -0.25, minR: 6 }));
+                yield* batchedSteps('pedras', makeInstancePlacer(proto, 26, { minScale: 0.6, maxScale: 2.2, maxAlt: 26, maxSlope: 0.9, sink: -0.25, minR: 6, radius: desc.collisionRadius, label: 'Pedra' }));
             }
         },
         // Tufos de grama: mesmas 420 posições/regras do protótipo antigo (vale, solo de grama).
@@ -1413,25 +1537,31 @@
     // Espalha instâncias de um protótipo com filtros de altitude/inclinação (resumível,
     // em lotes, para o orçamento por frame da fila de modelos).
     function makeInstancePlacer(proto, count, opts) {
+        const asset = proto.name.startsWith('glb-') ? proto.name.slice(4) : '';
+        const solid = opts.radius > 0 || solidAssets.has(asset);
+        const rand = solid ? mulberry32(seedHash(proto.name)) : Math.random;
+        const surface = solid ? baseHeight : terrainHeight;
         let placed = 0, tries = 0;
         return function (n) {
             while (placed < count && tries < count * 40 && n > 0) {
                 tries += 1;
-                const x = (Math.random() * 2 - 1) * SCATTER_HALF;
-                const z = (Math.random() * 2 - 1) * SCATTER_HALF;
+                const x = (rand() * 2 - 1) * SCATTER_HALF;
+                const z = (rand() * 2 - 1) * SCATTER_HALF;
                 const r = Math.hypot(x, z);
                 if (r < (opts.minR || 5)) { continue; }
                 if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 4.5) { continue; }
                 if (pathBlend(x, z) < 0.72) { continue; }
-                const y = terrainHeight(x, z);
+                const y = surface(x, z);
                 if (opts.maxAlt !== undefined && y > opts.maxAlt) { continue; }
-                if (slopeAt(x, z) > (opts.maxSlope || 0.6)) { continue; }
-                const s = opts.minScale + Math.random() * ((opts.maxScale || opts.minScale) - opts.minScale);
+                if (slopeAt(x, z, surface) > (opts.maxSlope || 0.6)) { continue; }
+                const s = opts.minScale + rand() * ((opts.maxScale || opts.minScale) - opts.minScale);
                 const inst = proto.createInstance(proto.name + '-i' + placed);
-                inst.position.set(x, y + (opts.sink || 0) * s, z);
-                inst.rotation.y = Math.random() * Math.PI * 2;
-                inst.scaling.set(s, s * (0.85 + Math.random() * 0.5), s);
+                inst.position.set(x, terrainHeight(x, z) + (opts.sink || 0) * s, z);
+                inst.rotation.y = rand() * Math.PI * 2;
+                inst.scaling.set(s, s * (0.85 + rand() * 0.5), s);
                 trackScenery(inst);
+                if (opts.radius) { trackObstacle(inst, proto, opts.label, opts.radius * s); }
+                else if (solid) { trackGlbObstacle(inst, proto, asset); }
                 placed += 1;
                 n -= 1;
             }
@@ -1573,11 +1703,13 @@
         }
         const merged = meshes.length === 1 ? meshes[0] : BABYLON.Mesh.MergeMeshes(meshes, true, true, undefined, false, true);
         if (!merged) { throw new Error('falha ao mesclar malhas'); }
+        // MergeMeshes já incorpora as transformações importadas. Uma malha única
+        // também precisa incorporá-las antes de substituir sua escala.
+        if (meshes.length === 1) { merged.bakeCurrentTransformIntoVertices(true, true); }
         // Normaliza: escala uniforme até a maior dimensão = scaleM metros e origem no
         // centro da base (min.y = 0) — o colocador só posiciona/rotaciona/escala.
         merged.refreshBoundingInfo();
-        const min = merged.getBoundingInfo().boundingBox.minimumWorld;
-        const max = merged.getBoundingInfo().boundingBox.maximumWorld;
+        const { minimum: min, maximum: max } = merged.getBoundingInfo().boundingBox;
         const maxDim = Math.max(max.x - min.x, max.y - min.y, max.z - min.z) || 1;
         const k = scaleM / maxDim;
         merged.scaling.setAll(k);
@@ -1604,7 +1736,7 @@
     // Alternativas low-poly (fase 5): assumem o espalhamento com as mesmas regras e
     // contagens dos modelos procedurais que substituem — o mundo fica igual em forma.
     const glbAltPlacements = {
-        'flora.pine': { scaleM: 7.0, shadows: true, place: (p) => batchedSteps('árvores low-poly', makeTreePlacer([p], 0.12, 64)) },
+        'flora.pine': { scaleM: 7.0, shadows: true, place: (p) => batchedSteps('árvores low-poly', makeTreePlacer([p], 0.12, 64, 0.28)) },
         'rock.boulder2': { scaleM: 1.9, shadows: true, place: (p) => batchedSteps('pedras low-poly', makeInstancePlacer(p, 26, { minScale: 0.6, maxScale: 2.2, maxAlt: 26, maxSlope: 0.9, sink: -0.18, minR: 6 })) },
         'scenery.grass2': { scaleM: 0.55, shadows: false, place: (p) => batchedSteps('grama low-poly', makeInstancePlacer(p, 420, { minScale: 0.7, maxScale: 1.5, maxAlt: 14, maxSlope: 0.55, sink: 0, minR: 4.5 })) }
     };
@@ -1695,6 +1827,7 @@
                             inst.rotation.y = rnd() * Math.PI * 2;
                             inst.scaling.set(s, s * (0.9 + rnd() * 0.3), s);
                             trackScenery(inst);
+                            trackGlbObstacle(inst, proto, proto.name.slice(4), true);
                             placed += 1;
                             n -= 1;
                         }
@@ -2023,9 +2156,8 @@
         const magnitude = Math.min(1, Math.hypot(ix, iz));
         const run = keys.ShiftLeft || keys.ShiftRight || magnitude > 0.92;
         const speed = run ? RUN_SPEED : WALK_SPEED;
-        player.position.x += (dx / len) * speed * magnitude * deltaSeconds;
-        player.position.z += (dz / len) * speed * magnitude * deltaSeconds;
-        clampToWorld(player);
+        const distance = speed * magnitude * deltaSeconds;
+        moveWithObstacles(player.position, dx / len * distance, dz / len * distance);
         player.rotation.y = Math.atan2(dx, dz);
     }
 
@@ -2347,6 +2479,7 @@
                     ensureChunksAround(player.position.x, player.position.z);
                 }
                 checkNear();
+                updateNearbyObject();
                 // Seguir mutando o vetor-alvo NO LUGAR: preserva alfa/beta/raio (a
                 // distância que o jogador escolheu na roda). O setTarget recalcula o
                 // raio a partir da posição atual da câmera — a cada frame com o jogador
