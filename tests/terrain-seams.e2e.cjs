@@ -62,20 +62,39 @@ const procedural = process.env.ULTIMA_PROCEDURAL === '1';
                 return sum / (128 * 3);
             }
             const vertices = center.mesh.getTotalVertices();
-            const row = Math.sqrt(vertices);
             let geometryGap = 0;
-            for (const kind of [BABYLON.VertexBuffer.PositionKind, BABYLON.VertexBuffer.NormalKind]) {
-                const base = center.mesh.getVerticesData(kind);
-                for (const [neighbor, alongX] of [[east, true], [north, false]]) {
-                    const side = neighbor.mesh.getVerticesData(kind);
-                    for (let i = 0; i < row; i++) for (let axis = 0; axis < 3; axis++) {
-                        const a = alongX ? i * row + row - 1 : (row - 1) * row + i;
-                        const b = alongX ? i * row : i;
-                        geometryGap = Math.max(geometryGap, Math.abs(base[3 * a + axis] - side[3 * b + axis]));
-                    }
+            function edge(mesh, alongX) {
+                const positions = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+                const normals = mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind);
+                const points = new Map();
+                for (let i = 0; i < positions.length; i += 3) {
+                    if (positions[i + (alongX ? 0 : 2)] !== 16) continue;
+                    points.set(positions[i + (alongX ? 2 : 0)], [positions[i + 1], ...normals.slice(i, i + 3)]);
+                }
+                return points;
+            }
+            for (const [neighbor, alongX] of [[east, true], [north, false]]) {
+                const base = edge(center.mesh, alongX);
+                const side = edge(neighbor.mesh, alongX);
+                if (base.size !== side.size) throw new Error('as bordas têm topologias diferentes');
+                for (const [key, a] of base) {
+                    const b = side.get(key);
+                    if (!b) throw new Error('um vértice da emenda não tem par');
+                    for (let axis = 0; axis < a.length; axis++)
+                        geometryGap = Math.max(geometryGap, Math.abs(a[axis] - b[axis]));
                 }
             }
-            return { east: compareAxis(east, true), north: compareAxis(north, false), vertices, geometryGap };
+            let wallError = 0;
+            const down = new BABYLON.Vector3(0, -1, 0);
+            for (const radius of [0.54, 0.68, 0.82, 0.94]) for (let i = 0; i < 48; i++) {
+                const angle = i * Math.PI / 24;
+                const x = 15.82 + Math.cos(angle) * radius;
+                const z = 16.05 + Math.sin(angle) * radius;
+                const ray = new BABYLON.Ray(new BABYLON.Vector3(x, 100, z), down);
+                const visible = scene.pickWithRay(ray, mesh => mesh.name.startsWith('ground-')).pickedPoint.y;
+                wallError = Math.max(wallError, Math.abs(visible - game.heightAt(x, z)));
+            }
+            return { east: compareAxis(east, true), north: compareAxis(north, false), vertices, geometryGap, wallError };
         });
         const initial = await compare();
         await page.evaluate(() => {
@@ -92,6 +111,16 @@ const procedural = process.env.ULTIMA_PROCEDURAL === '1';
             assert.ok(sample.vertices >= 4225, 'a malha deve resolver curvas em escala inferior a 0,67 m');
             assert.ok(sample.geometryGap < 0.00001, 'alturas e normais precisam coincidir na borda');
         }
+        assert.equal(initial.vertices, 4225, 'mantém a malha estável fora das edições');
+        assert.ok(edited.wallError < 0.16, 'a malha deve seguir a curvatura da parede escavada');
+        const otherChunkVertices = () => renderer.evaluate(() =>
+            BABYLON.EngineStore.LastCreatedScene.getMeshByName('ground--1,0').getTotalVertices());
+        await page.evaluate(() => game.setWorldEdits([{ kind: 'sculpt', x: -24, z: 4, r: 2, dh: -2 }], 1));
+        await page.waitForTimeout(250);
+        assert.ok(await otherChunkVertices() > 4225, 'refina a escultura compartilhada');
+        await page.evaluate(() => game.setWorldEdits([], 2));
+        await page.waitForTimeout(250);
+        assert.equal(await otherChunkVertices(), 4225, 'volta à malha base ao remover a escultura');
         assert.deepEqual(errors, []);
     } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

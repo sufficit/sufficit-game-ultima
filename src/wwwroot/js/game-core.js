@@ -359,6 +359,7 @@
     // são reaplicadas em memória a cada visita, depois do mapa chegar.
     const CHUNK = 32, CHUNK_SUB = 64;
     const CHUNK_STEP = CHUNK / CHUNK_SUB;
+    const DETAIL_SPLIT = 4;
     const CHUNK_VIEW = 2;                  // janela 5×5 ao redor do jogador (streaming F3)
     const chunkMap = new Map();            // "cx,cz" -> { mesh, cx, cz }
     const chunkCacheHits = new Map();      // "cx,cz" -> { positions, colors, normals }
@@ -686,7 +687,7 @@
     // analíticas com anel extra (costura sem emenda entre chunks), UVs explícitos e
     // índices de grade — sem depender de CreateGround nem de estado residual dele.
     // (F7c-3: CreateGround+sobrescrita não desenhava em GPUs reais.)
-    function buildChunkMesh(cx, cz) {
+    function buildChunkMesh(cx, cz, mesh = new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene)) {
         const n = CHUNK_SUB + 1;
         const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
         const step = CHUNK_STEP;
@@ -710,26 +711,121 @@
             normals[vi * 3] = -hx / nl; normals[vi * 3 + 1] = 2 * step / nl; normals[vi * 3 + 2] = -hz / nl;
             uvs[vi * 2] = i / CHUNK_SUB; uvs[vi * 2 + 1] = j / CHUNK_SUB;
         }
-        // As linhas avançam em +Z. A ordem dos vértices mantém a face visível de cima.
-        const indices = new Uint16Array(CHUNK_SUB * CHUNK_SUB * 6);
-        let k = 0;
-        for (let j = 0; j < CHUNK_SUB; j++) for (let i = 0; i < CHUNK_SUB; i++) {
-            const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
-            if ((i + j) % 2 === 0) {
-                indices[k++] = d; indices[k++] = a; indices[k++] = b;
-                indices[k++] = c; indices[k++] = a; indices[k++] = d;
-            } else {
-                indices[k++] = c; indices[k++] = a; indices[k++] = b;
-                indices[k++] = c; indices[k++] = b; indices[k++] = d;
-            }
-        }
-        const mesh = new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene);
+        const detail = chunkDetailMask(x0, z0);
         const vd = new BABYLON.VertexData();
-        vd.positions = positions; vd.normals = normals; vd.uvs = uvs; vd.indices = indices;
+        vd.positions = detail ? Array.from(positions) : positions;
+        vd.normals = detail ? Array.from(normals) : normals;
+        vd.uvs = detail ? Array.from(uvs) : uvs;
+        mesh.metadata = { terrainCells: triangulateChunk(vd, detail, x0, z0) };
         vd.applyToMesh(mesh, true);
         mesh.refreshBoundingInfo();          // posições mundiais: bounding nasce certa
-        saveChunk(cx, cz, positions, normals);
+        if (!detail) { saveChunk(cx, cz, positions, normals); }
         return mesh;
+    }
+
+    // Inclui as células do outro lado de cada divisa. Os dois chunks conseguem
+    // deduzir as mesmas subdivisões sem depender da ordem de carregamento.
+    function chunkDetailMask(x0, z0) {
+        const side = CHUNK_SUB + 2;
+        let mask = null;
+        const cuts = new Set(worldSculpts.concat(worldCarves));
+        if (soilBuckets.size) {
+            for (let bx = soilBucketIndex(x0 - CHUNK_STEP); bx <= soilBucketIndex(x0 + CHUNK + CHUNK_STEP); bx++) {
+                for (let bz = soilBucketIndex(z0 - CHUNK_STEP); bz <= soilBucketIndex(z0 + CHUNK + CHUNK_STEP); bz++) {
+                    for (const cut of soilBuckets.get(bx + ',' + bz) || []) { cuts.add(cut); }
+                }
+            }
+        }
+        for (const cut of cuts) {
+            const minX = Math.max(-1, Math.floor((cut.x - cut.r - x0) / CHUNK_STEP));
+            const maxX = Math.min(CHUNK_SUB, Math.floor((cut.x + cut.r - x0) / CHUNK_STEP));
+            const minZ = Math.max(-1, Math.floor((cut.z - cut.r - z0) / CHUNK_STEP));
+            const maxZ = Math.min(CHUNK_SUB, Math.floor((cut.z + cut.r - z0) / CHUNK_STEP));
+            for (let j = minZ; j <= maxZ; j++) for (let i = minX; i <= maxX; i++) {
+                const dx = Math.max(0, Math.abs(cut.x - x0 - (i + 0.5) * CHUNK_STEP) - CHUNK_STEP / 2);
+                const dz = Math.max(0, Math.abs(cut.z - z0 - (j + 0.5) * CHUNK_STEP) - CHUNK_STEP / 2);
+                if (dx * dx + dz * dz >= cut.r * cut.r) { continue; }
+                mask ??= new Uint8Array(side * side);
+                mask[(j + 1) * side + i + 1] = 1;
+            }
+        }
+        return mask;
+    }
+
+    function triangulateChunk(vd, detail, x0, z0) {
+        const n = CHUNK_SUB + 1;
+        const fineStep = CHUNK_STEP / DETAIL_SPLIT;
+        const fineSide = CHUNK_SUB * DETAIL_SPLIT + 1;
+        const extraVertices = detail ? new Map() : null;
+        const cellStarts = detail ? new Uint32Array(CHUNK_SUB * CHUNK_SUB + 1) : null;
+        const indices = detail ? [] : new Uint16Array(CHUNK_SUB * CHUNK_SUB * 6);
+        const isFine = (i, j) => detail[(j + 1) * (CHUNK_SUB + 2) + i + 1] !== 0;
+        let k = 0;
+
+        function vertex(ix, iz) {
+            if (ix % DETAIL_SPLIT === 0 && iz % DETAIL_SPLIT === 0) {
+                return iz / DETAIL_SPLIT * n + ix / DETAIL_SPLIT;
+            }
+            const key = iz * fineSide + ix;
+            if (extraVertices.has(key)) { return extraVertices.get(key); }
+            const x = x0 + ix * fineStep, z = z0 + iz * fineStep;
+            const e = CHUNK_STEP;
+            const hx = terrainHeight(x + e, z) - terrainHeight(x - e, z);
+            const hz = terrainHeight(x, z + e) - terrainHeight(x, z - e);
+            const length = Math.hypot(hx, 2 * e, hz);
+            const index = vd.positions.length / 3;
+            vd.positions.push(x, terrainHeight(x, z), z);
+            vd.normals.push(-hx / length, 2 * e / length, -hz / length);
+            vd.uvs.push(ix / (fineSide - 1), iz / (fineSide - 1));
+            extraVertices.set(key, index);
+            return index;
+        }
+
+        function triangle(a, b, c) { indices[k++] = a; indices[k++] = b; indices[k++] = c; }
+        function quad(a, b, c, d, alternate) {
+            if (alternate) {
+                triangle(c, a, b); triangle(c, b, d);
+            } else {
+                triangle(d, a, b); triangle(c, a, d);
+            }
+        }
+
+        for (let j = 0; j < CHUNK_SUB; j++) for (let i = 0; i < CHUNK_SUB; i++) {
+            if (cellStarts) { cellStarts[j * CHUNK_SUB + i] = k; }
+            const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
+            if (!detail) { quad(a, b, c, d, (i + j) % 2 !== 0); continue; }
+
+            const x = i * DETAIL_SPLIT, z = j * DETAIL_SPLIT;
+            if (isFine(i, j)) {
+                for (let dz = 0; dz < DETAIL_SPLIT; dz++) for (let dx = 0; dx < DETAIL_SPLIT; dx++) {
+                    const u = x + dx, v = z + dz;
+                    quad(vertex(u, v), vertex(u + 1, v), vertex(u, v + 1), vertex(u + 1, v + 1),
+                        (dx + dz) % 2 !== 0);
+                }
+                continue;
+            }
+
+            const top = isFine(i, j - 1), right = isFine(i + 1, j);
+            const bottom = isFine(i, j + 1), left = isFine(i - 1, j);
+            if (!(top || right || bottom || left)) { quad(a, b, c, d, (i + j) % 2 !== 0); continue; }
+
+            // A célula de transição compartilha os vértices da borda fina.
+            const edge = [a];
+            for (let t = 1; top && t < DETAIL_SPLIT; t++) edge.push(vertex(x + t, z));
+            edge.push(b);
+            for (let t = 1; right && t < DETAIL_SPLIT; t++) edge.push(vertex(x + DETAIL_SPLIT, z + t));
+            edge.push(d);
+            for (let t = DETAIL_SPLIT - 1; bottom && t > 0; t--) edge.push(vertex(x + t, z + DETAIL_SPLIT));
+            edge.push(c);
+            for (let t = DETAIL_SPLIT - 1; left && t > 0; t--) edge.push(vertex(x, z + t));
+            const center = vertex(x + DETAIL_SPLIT / 2, z + DETAIL_SPLIT / 2);
+            for (let p = 0; p < edge.length; p++) triangle(center, edge[p], edge[(p + 1) % edge.length]);
+        }
+        if (cellStarts) { cellStarts[cellStarts.length - 1] = k; }
+        vd.indices = detail
+            ? (vd.positions.length / 3 > 65535 ? new Uint32Array(indices) : new Uint16Array(indices))
+            : indices;
+        return cellStarts;
     }
 
     // Terreno em streaming (F3): janela de chunks ao redor do jogador na fila orçada;
@@ -792,7 +888,7 @@
     function applySurfaceEdit(op) {
         if (!recordSurfaceEdit(op)) { return false; }
         for (const ch of chunkMap.values()) {
-            if (brushTouchesChunk(ch, op)) { refreshChunk(ch, op); }
+            if (brushTouchesChunk(ch, op)) { refreshChunk(ch, op.kind !== 'paint'); }
         }
         if (op.mat === 'water') { syncWaterDiscs(); }
         if (op.kind === 'sculpt' || op.kind === 'carve') { syncCarveRoofs(); }
@@ -808,23 +904,11 @@
         return Math.abs(cx * CHUNK - x) <= reach && Math.abs(cz * CHUNK - z) <= reach;
     }
 
-    // Recalcula a região editada e o anel usado pelas normais. No replay, refaz o chunk inteiro.
-    function refreshChunk({ mesh, cx, cz }, brush) {
-        const pos = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-        const nor = mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind);
-        if (!pos || !nor) { return; }
-        const e = CHUNK_STEP;
-        for (let i = 0; i < pos.length; i += 3) {
-            const px = pos[i], pz = pos[i + 2];
-            if (brush && Math.hypot(px - brush.x, pz - brush.z) > brush.r + e) { continue; }
-            pos[i + 1] = terrainHeight(px, pz);
-            const hx = terrainHeight(px + e, pz) - terrainHeight(px - e, pz);
-            const hz = terrainHeight(px, pz + e) - terrainHeight(px, pz - e);
-            const nl = Math.hypot(hx / (2 * e), 1, hz / (2 * e)) || 1;
-            nor[i] = -hx / (2 * e) / nl; nor[i + 1] = 1 / nl; nor[i + 2] = -hz / (2 * e) / nl;
+    function refreshChunk({ mesh, cx, cz }, geometryChanged) {
+        if (geometryChanged) {
+            buildChunkMesh(cx, cz, mesh);
+            clearGroundPreview();
         }
-        mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, pos, true);
-        mesh.updateVerticesData(BABYLON.VertexBuffer.NormalKind, nor);
         updateChunkTexture(mesh.material, cx, cz);
     }
 
@@ -1121,7 +1205,7 @@
             if (collectedIds.has(entry.id)) { continue; }
             collectedIds.add(entry.id);
             if (entry.kind === 'soil') {
-                const cut = { x: entry.x, z: entry.z, r: SOIL_RADIUS };
+                const cut = { x: entry.x, z: entry.z, r: SOIL_RADIUS, geometryChanged: true };
                 indexSoilCut(cut);
                 newCuts.push(cut);
             } else if (entry.brush) {
@@ -1131,7 +1215,8 @@
         syncCarveScenery();
         if (newCuts.length) {
             for (const ch of chunkMap.values()) {
-                if (newCuts.some(cut => brushTouchesChunk(ch, cut))) { refreshChunk(ch); }
+                const touched = newCuts.filter(cut => brushTouchesChunk(ch, cut));
+                if (touched.length) { refreshChunk(ch, touched.some(cut => cut.geometryChanged)); }
             }
         }
     }
@@ -1242,6 +1327,25 @@
         const gz = Math.max(0, Math.min(CHUNK_SUB, (z - (cz * CHUNK - CHUNK / 2)) / CHUNK_STEP));
         const i = Math.min(Math.floor(gx), CHUNK_SUB - 1);
         const j = Math.min(Math.floor(gz), CHUNK_SUB - 1);
+        const starts = chunk.mesh.metadata?.terrainCells;
+        if (starts) {
+            const cell = j * CHUNK_SUB + i;
+            const indices = chunk.mesh.getIndices();
+            for (let index = starts[cell]; index < starts[cell + 1]; index += 3) {
+                const a = indices[index] * 3, b = indices[index + 1] * 3, c = indices[index + 2] * 3;
+                const bx = vertices[b] - vertices[c], bz = vertices[b + 2] - vertices[c + 2];
+                const ax = vertices[a] - vertices[c], az = vertices[a + 2] - vertices[c + 2];
+                const px = x - vertices[c], pz = z - vertices[c + 2];
+                const determinant = bz * ax - bx * az;
+                const u = (bz * px - bx * pz) / determinant;
+                const v = (ax * pz - az * px) / determinant;
+                const w = 1 - u - v;
+                if (Math.min(u, v, w) >= -0.00001) {
+                    return u * vertices[a + 1] + v * vertices[b + 1] + w * vertices[c + 1];
+                }
+            }
+            return terrainHeight(x, z);
+        }
         const u = gx - i, v = gz - j;
         const stride = (CHUNK_SUB + 1) * 3;
         const a = j * stride + i * 3 + 1;
@@ -1329,7 +1433,8 @@
             if (recordSurfaceEdit(op)) { dirty.push(op); }
         }
         for (const ch of chunkMap.values()) {
-            if (dirty.some(op => brushTouchesChunk(ch, op))) { refreshChunk(ch); }
+            const touched = dirty.filter(op => brushTouchesChunk(ch, op));
+            if (touched.length) { refreshChunk(ch, touched.some(op => op.kind !== 'paint')); }
         }
         syncWaterDiscs();
         syncCarveRoofs();
