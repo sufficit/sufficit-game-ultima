@@ -154,7 +154,7 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
         m.camera = await page.evaluate(CAMERA); m.render = await page.evaluate(RENDER); m.meshes = m.camera ? 1 : 0;
         console.log(`info  ${name}: render ${m.render ? m.render.width + 'x' + m.render.height + ' (buffer ' + m.render.canvasW + 'x' + m.render.canvasH + ')' : 'n/d'}`);
         report.views[name] = m;
-        try { await page.screenshot({ path: `${SHOTS}/${BASELINE ? 'antes' : 'depois'}-${name}.png`, timeout: 15000 }); }
+        try { await page.screenshot({ path: `${SHOTS}/${BASELINE ? 'antes' : 'depois'}-${name}.png`, timeout: 30000 }); }
         catch (e) { console.log('info  captura ' + name + ' falhou (sem bloquear): ' + String(e).split('\n')[0].slice(0, 120)); }
         const summary = {
             viewport: `${m.viewport.w}x${m.viewport.h}`, canvas: m.canvas ? `${m.canvas.w}x${m.canvas.h}` : null,
@@ -211,7 +211,7 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                     await fireAt(id, 'pointermove', c.cx + (dx * i) / steps, c.cy + (dy * i) / steps);
                     await page.waitForTimeout(200);
                 }
-                return { cx: c.cx + dx, cy: c.cy + dy };
+                return { id: id, cx: c.cx + dx, cy: c.cy + dy };
             };
             const stickUp = async (end) => {
                 await fireAt(end.id, 'pointerup', end.cx, end.cy);
@@ -219,24 +219,38 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
             };
 
             const p0 = await page.evaluate(PLAYER);
-            await dragStick('move-stick', 0, -72, 12);
-            await page.waitForTimeout(2600);
-            const p1 = await page.evaluate(PLAYER);
+            // Segurado e amostrado: em headless (render por software) o motor roda a ~1 fps e a
+            // simulação avança no máximo 50 ms por frame — andar 1 m leva vários frames.
+            let end = await stickDown('move-stick', 0, -72, 6);
+            let p1 = p0;
+            for (let i = 0; i < 20; i++) {
+                await page.waitForTimeout(1000);
+                p1 = await page.evaluate(PLAYER);
+                if (p0 && p1 && Math.hypot(p1.x - p0.x, p1.z - p0.z) > 1.5) break;
+            }
+            await stickUp(end);
             ok('retrato: arrastar stick de andar move o jogador (>1m)',
                 !!(p0 && p1 && Math.hypot(p1.x - p0.x, p1.z - p0.z) > 1),
                 p0 && p1 ? `${p0.x},${p0.z} → ${p1.x},${p1.z} (${p1.src})` : 'posição indisponível');
 
             const y0 = await page.evaluate(YAW);
-            await dragStick('look-stick', 70, 0, 10);
-            await page.waitForTimeout(1200);
-            const y1 = await page.evaluate(YAW);
+            end = await stickDown('look-stick', 70, 0, 5);
+            let y1 = y0;
+            for (let i = 0; i < 15; i++) {
+                await page.waitForTimeout(1000);
+                y1 = await page.evaluate(YAW);
+                if (y0 !== null && y1 !== null && Math.abs(y1 - y0) > 0.15) break;
+            }
+            await stickUp(end);
             ok('retrato: arrastar stick de câmera muda o yaw', y0 !== null && y1 !== null && Math.abs(y1 - y0) > 0.02, `${y0} → ${y1}`);
 
             // perto da Guardiã: A abre diálogo; sticks somem; B fecha
             await page.evaluate(() => window.game.teleportToGuardian && window.game.teleportToGuardian());
             await page.waitForTimeout(800);
-            await page.locator('#touch-action').tap({ timeout: 8000 }).catch(() => page.evaluate(() => document.getElementById('touch-action').click()));
-            const dialog = await page.waitForSelector('.ultima-dialog', { timeout: 15000, state: 'visible' }).catch(() => null);
+            // A e B respondem a pointerdown (game-core.js): um .click() sintético nunca os
+            // dispara, e o fallback escondia isso. Toque real, sem fallback.
+            await page.locator('#touch-action').tap({ timeout: 30000 });
+            const dialog = await page.waitForSelector('.ultima-dialog', { timeout: 30000, state: 'visible' }).catch(() => null);
             ok('retrato: A perto da Guardiã abre o diálogo', !!dialog);
             if (dialog) {
                 const dm = await measure(page);
@@ -256,15 +270,15 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                 ok('diálogo com teclado (390x500): continua na tela', !!rct && rct.y + rct.h <= 501, JSON.stringify(rct));
                 await page.setViewportSize({ width: 390, height: 844 });
                 await page.waitForTimeout(600);
-                await page.locator('#touch-cancel').tap({ timeout: 8000 }).catch(() => page.evaluate(() => document.getElementById('touch-cancel').click()));
-                const closed = await page.waitForSelector('.ultima-dialog', { timeout: 8000, state: 'hidden' }).catch(() => null);
+                await page.locator('#touch-cancel').tap({ timeout: 30000 });
+                const closed = await page.waitForSelector('.ultima-dialog', { timeout: 20000, state: 'hidden' }).catch(() => null);
                 ok('retrato: B fecha o diálogo', !!closed);
                 await page.screenshot({ path: `${SHOTS}/depois-dialog-fechado.png` });
             }
 
             // menu abre/fecha por toque; folha cabe e rola; alvos ≥48 dentro
-            await page.locator('#ultima-menu-fab').tap({ timeout: 8000 }).catch(() => page.evaluate(() => document.getElementById('ultima-menu-fab') && document.getElementById('ultima-menu-fab').click()));
-            const menu = await page.waitForSelector('.game-shell.ultima-menu-open .ultima-menu', { timeout: 8000, state: 'visible' }).catch(() => null);
+            await page.locator('#ultima-menu-fab').tap({ timeout: 20000 }).catch(() => page.evaluate(() => document.getElementById('ultima-menu-fab') && document.getElementById('ultima-menu-fab').click()));
+            const menu = await page.waitForSelector('.game-shell.ultima-menu-open .ultima-menu', { timeout: 20000, state: 'visible' }).catch(() => null);
             ok('retrato: toque no fab abre o menu', !!menu);
             if (menu) {
                 await page.waitForTimeout(400);
@@ -277,8 +291,8 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                 console.log('info  menu rola internamente: ' + scrollable);
                 await page.screenshot({ path: `${SHOTS}/depois-menu-aberto.png` });
                 const closer = page.locator('.ultima-menu__close, .ultima-menu-backdrop').first();
-                await closer.tap({ timeout: 8000 }).catch(() => page.evaluate(() => document.getElementById('ultima-menu-fab').click()));
-                const shut = await page.waitForSelector('.game-shell.ultima-menu-open .ultima-menu', { timeout: 8000, state: 'hidden' }).catch(() => null);
+                await closer.tap({ timeout: 20000 }).catch(() => page.evaluate(() => document.getElementById('ultima-menu-fab').click()));
+                const shut = await page.waitForSelector('.game-shell.ultima-menu-open .ultima-menu', { timeout: 20000, state: 'hidden' }).catch(() => null);
                 ok('menu: fecha por toque e volta à tela limpa', !!shut);
             }
             const rel = errors.filter((e) => !/favicon|wllama|React DevTools|WebGPU|webkitExitFullscreen/i.test(e));
@@ -302,9 +316,13 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
             } catch (e) { console.log('info  linha de base desktop indisponível: ' + e.message); }
             const p0 = await page.evaluate(PLAYER);
             await page.keyboard.down('KeyW');
-            await page.waitForTimeout(2200);
+            let p1 = p0;   // mesmo motivo do stick: segurar até a distância aparecer
+            for (let i = 0; i < 20; i++) {
+                await page.waitForTimeout(1000);
+                p1 = await page.evaluate(PLAYER);
+                if (p0 && p1 && Math.hypot(p1.x - p0.x, p1.z - p0.z) > 1.5) break;
+            }
             await page.keyboard.up('KeyW');
-            const p1 = await page.evaluate(PLAYER);
             ok('desktop: WASD anda', !!(p0 && p1 && Math.hypot(p1.x - p0.x, p1.z - p0.z) > 1), p0 && p1 ? `${p0.x},${p0.z} → ${p1.x},${p1.z}` : '');
             const y0 = await page.evaluate(YAW);
             await page.mouse.move(640, 300); await page.mouse.down();
@@ -316,11 +334,11 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
             await page.evaluate(() => window.game.teleportToGuardian && window.game.teleportToGuardian());
             await page.waitForTimeout(600);
             await page.keyboard.press('KeyE');
-            const d = await page.waitForSelector('.ultima-dialog', { timeout: 12000, state: 'visible' }).catch(() => null);
+            const d = await page.waitForSelector('.ultima-dialog', { timeout: 30000, state: 'visible' }).catch(() => null);
             ok('desktop: E abre diálogo', !!d);
-            if (d) { await page.keyboard.press('Escape'); const c = await page.waitForSelector('.ultima-dialog', { timeout: 8000, state: 'hidden' }).catch(() => null); ok('desktop: Esc fecha diálogo', !!c); }
-            await page.locator('.ultima-panel-toggle').click({ timeout: 8000 }).catch(() => {});
-            const panel = await page.waitForSelector('.ultima-panel', { timeout: 8000, state: 'visible' }).catch(() => null);
+            if (d) { await page.keyboard.press('Escape'); const c = await page.waitForSelector('.ultima-dialog', { timeout: 20000, state: 'hidden' }).catch(() => null); ok('desktop: Esc fecha diálogo', !!c); }
+            await page.locator('.ultima-panel-toggle').click({ timeout: 20000 }).catch(() => {});
+            const panel = await page.waitForSelector('.ultima-panel', { timeout: 20000, state: 'visible' }).catch(() => null);
             ok('desktop: toggle abre painel', !!panel);
             await page.screenshot({ path: `${SHOTS}/depois-desktop-panel.png` });
             const rel = errors.filter((e) => !/favicon|wllama|React DevTools|WebGPU|webkitExitFullscreen/i.test(e));
