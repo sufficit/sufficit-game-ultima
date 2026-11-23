@@ -84,6 +84,10 @@
         </aside>
 
         <div class="ultima-panel-toggle">
+            @if (_collecting)
+            {
+                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Soft" OnClick="ToggleCollectionAsync">Parar coleta</SUIButton>
+            }
             <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Soft" StartIcon="menu" OnClick="TogglePanel"
                        aria-expanded="@(_panelOpen ? "true" : "false")"
                        aria-label="@(_panelOpen ? "Fechar painel do jogo" : "Abrir painel do jogo")">@(_panelOpen ? "Fechar" : "Painel")</SUIButton>
@@ -95,6 +99,29 @@
                 <SUICard Elevation="3" Class="ultima-card--glass">
                     <SUICardContent>
                         <SUIStack Spacing="2">
+
+                            <SUIExpansionPanel Title="Mochila" StartIcon="inbox">
+                                <SUIStack Spacing="2">
+                                    <SUIButton SizeValue="SUISize.Small" StartIcon="plus" OnClick="ToggleCollectionAsync">
+                                        @(_collecting ? "Parar coleta" : "Coletar")
+                                    </SUIButton>
+                                    @if (_backpack.Count == 0)
+                                    {
+                                        <SUIText Typo="SUITypo.caption">Mochila vazia.</SUIText>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var item in _backpack.OrderBy(item => item.Key))
+                                        {
+                                            <SUIStack Row="true" Spacing="1" AlignItems="center">
+                                                <SUIStatusBadge ToneValue="SUITone.Neutral">@item.Value</SUIStatusBadge>
+                                                <SUIText>@item.Key</SUIText>
+                                            </SUIStack>
+                                        }
+                                    }
+                                    <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">Coleta salva neste navegador.</SUIText>
+                                </SUIStack>
+                            </SUIExpansionPanel>
 
                             <SUIExpansionPanel Title="Oficina do mundo" StartIcon="settings"
                                                Expanded="_workshopOpen" ExpandedChanged="OnWorkshopToggled">
@@ -445,6 +472,8 @@
     private bool _dictating;
     private bool _statusExpanded;
     private bool _panelOpen;
+    private bool _collecting;
+    private Dictionary<string, int> _backpack = [];
     private bool _devHud;
     private long _turnStartedMs;   // t50: base do tempo de resposta registrado por turno
     private readonly List<ChatMessage> _chat = [];
@@ -488,7 +517,21 @@
     }
 
     private void OnWorkshopToggled(bool open) => _workshopOpen = open;
-    private Task BuildModeAsync(string? mode, object? options = null) => JS.InvokeVoidAsync("game.build.mode", mode, options).AsTask();
+    private async Task BuildModeAsync(string? mode, object? options = null)
+    {
+        await JS.InvokeVoidAsync("game.build.mode", mode, options);
+        _collecting = mode == "collect";
+    }
+
+    private async Task ToggleCollectionAsync()
+    {
+        await BuildModeAsync(_collecting ? "off" : "collect");
+        if (_collecting)
+        {
+            _panelOpen = false;
+            Snackbar.Info("Clique ou toque num objeto ou trecho de solo próximo para coletar.");
+        }
+    }
     private Task RefreshBuildAssetsAsync() => JS.InvokeVoidAsync("game.workshop.refreshBuildOptions").AsTask();
     private void OnUploadScaleChanged(double value) => _uploadScale = value;
     private void OnBrushRadiusChanged(double value) { _brushRadius = value; _ = BuildModeAsync(null, new { r = value }); }
@@ -616,6 +659,8 @@
                 if (!_buildAssets.Contains(_buildAsset)) { _buildAsset = _buildAssets.FirstOrDefault() ?? string.Empty; }
                 StateHasChanged();
             }),
+            BackpackChanged = items => _ = InvokeAsync(() => { _backpack = items; StateHasChanged(); }),
+            BackpackStatus = message => _ = InvokeAsync(() => Snackbar.Info(message)),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
             Close = () => _ = InvokeAsync(CloseDialog),
             MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; RunNpcTick(); StateHasChanged(); }),
@@ -652,6 +697,7 @@
         {
             return;   // sem motor não há o que registrar — evita o spam de "cena ainda não criada"
         }
+        await JS.InvokeVoidAsync("game.backpack.init", _bridge);
         _ = Models.LoadAllAsync();   // modelos 3D (DLLs C#) chegam em paralelo e entram na cena
         await JS.InvokeVoidAsync("game.net.init", _bridge);
         await JS.InvokeVoidAsync("game.live.init", _bridge);

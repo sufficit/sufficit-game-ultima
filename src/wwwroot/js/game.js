@@ -77,7 +77,8 @@
     // Ops do mundo vindas do motor (cliques do modo construção): a oficina vive na main
     // thread e é ela quem aplica/valida no servidor — igual à ponte varyModel.
     function routeWorldOp(op) {
-        if (window.game && game.workshop && game.workshop.worldOp) { game.workshop.worldOp(op); }
+        if (op.action === 'collect') { void game.backpack?.collect(op.resource); }
+        else if (window.game && game.workshop && game.workshop.worldOp) { game.workshop.worldOp(op); }
     }
 
     // Sonda de capacidade na thread principal: um canvas DESCARTÁVEL responde se o
@@ -301,8 +302,24 @@
             actionWasDown = action; cancelWasDown = cancel;
         })();
 
-        // Câmera no modo worker: arrasto e roda no canvas viram deltas (a attachControl
-        // do Babylon pertence ao core na main). No modo main o core cuida disso sozinho.
+        setupWorldPointer(canvas, true);
+
+        // Analógicos virtuais de toque continuam no DOM, entregando pela ponte.
+        setupVirtualStick('move-stick', 'move-thumb', function (x, y) { deliver('stick', ['move', x, y]); });
+        setupVirtualStick('look-stick', 'look-thumb', function (x, y) { deliver('stick', ['look', x, y]); });
+        const action = document.getElementById('touch-action');
+        if (action) {
+            action.addEventListener('pointerdown', function (e) { e.preventDefault(); deliver('inputMode', ['touch']); deliver('action', []); });
+        }
+        const cancelBtn = document.getElementById('touch-cancel');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); deliver('inputMode', ['touch']); postEventToDotnet('OnClose', []); });
+        }
+    }
+
+    function setupWorldPointer(canvas, forwardCamera) {
+        // O clique no mundo usa a mesma ponte nos dois renderizadores. Os deltas
+        // da câmera são encaminhados ao worker; na main o Babylon cuida deles.
         // Um dedo/mouse arrasta e gira; dois dedos são pinça (zoom) e o giro fica
         // suspenso. Convenção do attachControl do Babylon (pinchInwards): juntar os
         // dedos aproxima. A pinça usa a mesma escala da roda: reduzir a distância
@@ -311,6 +328,7 @@
         const pointers = new Map();
         let lastX = 0, lastY = 0, pinchDist = 0, downAt = 0, downX = 0, downY = 0, pinched = false;
         canvas.addEventListener('pointerdown', function (e) {
+            if (e.button !== 0) { return; }
             pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
             if (pointers.size === 2) {
                 const pts = Array.from(pointers.values());
@@ -322,10 +340,10 @@
             }
         });
         function solta(e) {
-            pointers.delete(e.pointerId);
+            if (!pointers.delete(e.pointerId)) { return; }
             if (pointers.size < 2) { pinchDist = 0; }
             // Clique curto sem arrasto: candidata a edição do mundo (o core ignora fora do modo).
-            if (pointers.size === 0 && !pinched && Date.now() - downAt < 500 && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
+            if (e.type === 'pointerup' && pointers.size === 0 && !pinched && Date.now() - downAt < 500 && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
                 const rect = canvas.getBoundingClientRect();
                 const dpr = window.devicePixelRatio || 1;
                 deliver('terrainClick', [(e.clientX - rect.left) * dpr, (e.clientY - rect.top) * dpr]);
@@ -333,6 +351,7 @@
         }
         window.addEventListener('pointerup', solta);
         window.addEventListener('pointercancel', solta);
+        if (!forwardCamera) { return; }
         window.addEventListener('pointermove', function (e) {
             if (!pointers.has(e.pointerId)) { return; }
             if (pointers.size === 2) {
@@ -354,17 +373,6 @@
             deliver('camera', [0, 0, e.deltaY, e.deltaMode]);
         }, { passive: false });
 
-        // Analógicos virtuais de toque continuam no DOM, entregando pela ponte.
-        setupVirtualStick('move-stick', 'move-thumb', function (x, y) { deliver('stick', ['move', x, y]); });
-        setupVirtualStick('look-stick', 'look-thumb', function (x, y) { deliver('stick', ['look', x, y]); });
-        const action = document.getElementById('touch-action');
-        if (action) {
-            action.addEventListener('pointerdown', function (e) { e.preventDefault(); deliver('inputMode', ['touch']); deliver('action', []); });
-        }
-        const cancelBtn = document.getElementById('touch-cancel');
-        if (cancelBtn) {
-            cancelBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); deliver('inputMode', ['touch']); postEventToDotnet('OnClose', []); });
-        }
     }
 
     // No modo main o Babylon só redimensiona no 'resize' da janela; mudanças de layout
@@ -476,9 +484,10 @@
                         throw err;
                     })
                 : startMain(canvas).then(function (ok) {
+                        setupWorldPointer(canvas, false);
                         watchSizeMain(canvas);
                         return ok;
-                    });   // no modo main os handlers de DOM são do próprio core
+                    });
             return start.then(function () { return true; });
         },
         setFrozen(v) { post('setFrozen', [!!v]); },
@@ -493,6 +502,7 @@
         setWorldEdits(edits, revision) { post('setWorldEdits', [edits, revision]); },
         setPlacements(list) { post('setPlacements', [list]); },
         applyWorldOp(op) { post('applyWorldOp', [op]); },
+        setCollectedResources(entries) { post('setCollectedResources', [entries]); },
         build: {
             mode(m, opts) { return query('build.mode', [m, opts]); },
             state() { return query('build.state'); }
