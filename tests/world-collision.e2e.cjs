@@ -30,6 +30,7 @@ async function wait(callback,label) {
         const map=await game.build.state(), glb=await game.glb.status();
         return map?.chunks>=25 && glb?.loaded.some(id=>id.startsWith('flora.pine')) &&
             glb?.loaded.some(id=>id.startsWith('prop.stump')) &&
+            glb?.loaded.some(id=>id.startsWith('prop.log')) &&
             glb?.loaded.some(id=>id.startsWith('rock.boulder2')) && (await game.models.status()).queue===0;
     }),'mundo carregado');
     assert.equal(await p.evaluate(()=>game.mode),main?'main':'worker');
@@ -41,9 +42,9 @@ async function wait(callback,label) {
             return {x,y,z};
         });
         const status=await p.locator('.ultima-status').innerText();
-        const match=/pos \((-?[\d.,]+), (-?[\d.,]+)\)/.exec(status);
+        const match=/pos \((-?[\d.,]+), (-?[\d.,]+)\) · alt (-?[\d.,]+)/.exec(status);
         assert.ok(match, status);
-        return {x:Number(match[1].replace(',','.')),z:Number(match[2].replace(',','.'))};
+        return {x:Number(match[1].replace(',','.')),z:Number(match[2].replace(',','.')),y:Number(match[3].replace(',','.'))};
     };
     const apply=op=>p.evaluate(op=>game.applyWorldOp(op),op);
     async function walk(keys,ms){
@@ -76,10 +77,10 @@ async function wait(callback,label) {
     assert.ok(soft.z>2.65,'samambaia permite passagem');
     await apply({kind:'remove',uid:'browser-soft'});
     await p.evaluate(()=>game.resetPlayer());
-    await apply({...fixture,uid:'browser-stump',asset:'prop.stump'});
+    await apply({...fixture,uid:'browser-stump',asset:'prop.stump',scale:1.45});
     await p.waitForTimeout(300);
     const stump=await walk(['w'],850);
-    assert.ok(stump.z>0.9 && stump.z<1.72,'toco sólido '+JSON.stringify(stump));
+    assert.ok(stump.z>0.7 && stump.z<1.55,'toco sólido '+JSON.stringify(stump));
     await apply({kind:'remove',uid:'browser-stump'});
     await p.evaluate(()=>game.resetPlayer());
     await apply({...fixture,uid:'browser-rock',asset:'rock.boulder2'});
@@ -87,6 +88,53 @@ async function wait(callback,label) {
     const rock=await walk(['w'],850);
     assert.ok(rock.z>0.45 && rock.z<1.7,'pedra sólida '+JSON.stringify(rock));
     await apply({kind:'remove',uid:'browser-rock'});
+
+    await p.evaluate(()=>game.resetPlayer());
+    await apply({...fixture,uid:'browser-log',asset:'prop.log',scale:0.56});
+    await p.waitForTimeout(400);
+    const samples=[];
+    await p.keyboard.down('w');
+    try {
+        const until=Date.now()+1250;
+        while (Date.now()<until) {
+            const position=await pose();
+            if (main) {
+                const joints=await p.evaluate(()=>{
+                    const scene=BABYLON.EngineStore.LastCreatedScene;
+                    const knees=['left','right'].map(side=>scene.getTransformNodeByName('player-knee-'+side));
+                    const ankles=['left','right'].map(side=>scene.getTransformNodeByName('player-ankle-'+side));
+                    if (knees.some(n=>!n) || ankles.some(n=>!n)) return null;
+                    return {
+                        bend:Math.max(...knees.map(n=>n.rotation.x)),
+                        feetDifference:Math.abs(ankles[0].getAbsolutePosition().y-ankles[1].getAbsolutePosition().y),
+                    };
+                });
+                Object.assign(position,joints);
+            }
+            samples.push(position);
+            await p.waitForTimeout(35);
+        }
+    } finally {
+        await p.keyboard.up('w');
+    }
+    await p.waitForTimeout(300);
+    const pastLog=await pose();
+    const step={
+        peak:Math.max(...samples.map(sample=>sample.y)),
+        flex:Math.max(...samples.filter(sample=>sample.z>1.4 && sample.z<2.6).map(sample=>sample.bend||0)),
+        feetDifference:Math.max(...samples.filter(sample=>sample.z>1.4 && sample.z<2.6).map(sample=>sample.feetDifference||0)),
+        end:pastLog,
+    };
+    console.log(JSON.stringify({step}));
+    assert.ok(step.peak>0.23 && pastLog.z>3.2 && pastLog.y<0.19,'sobe e volta ao chão');
+    if(main) assert.ok(step.flex>0.55 && step.feetDifference>0.10,'joelho flexiona e os pés alternam apoio');
+    await apply({kind:'remove',uid:'browser-log'});
+    await p.evaluate(()=>game.resetPlayer());
+    await apply({...fixture,uid:'browser-high-log',asset:'prop.log',scale:0.95});
+    await p.waitForTimeout(300);
+    const highLog=await walk(['w'],850);
+    assert.ok(highLog.z>0.5 && highLog.z<1.55 && highLog.y<0.19,'tronco acima do joelho bloqueia');
+    await apply({kind:'remove',uid:'browser-high-log'});
 
     let nativeTree;
     if(main) {
@@ -109,6 +157,6 @@ async function wait(callback,label) {
     await p.keyboard.press('e');
     await p.locator('.ultima-dialog').waitFor();
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({slide,free,soft,stump,rock,nativeTree,dialog:true}));
+    console.log(JSON.stringify({slide,free,soft,stump,rock,highLog,nativeTree,dialog:true}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -17,6 +17,12 @@
     const WALK_SPEED = 3.5;   // m/s (caminhada rápida)
     const RUN_SPEED = 6.5;    // m/s (corrida leve, Shift ou analógico no fim do curso)
     const PLAYER_HEIGHT = 1.75;
+    const FOOT_GAP = 0.03;
+    const HIP_HEIGHT = PLAYER_HEIGHT * 0.44;
+    const ANKLE_HEIGHT = 0.045;
+    const LEG_SEGMENT = (HIP_HEIGHT - ANKLE_HEIGHT + 0.004) / 2;
+    const KNEE_HEIGHT = HIP_HEIGHT - LEG_SEGMENT;
+    const LEG_SPACING = PLAYER_HEIGHT * 0.044;
     // Alvo da câmera fica na altura do peito (o root do personagem agora é os pés).
     const CAM_UP = new BABYLON.Vector3(0, PLAYER_HEIGHT / 2, 0);
     const PLAYER_RADIUS = 0.25;
@@ -43,6 +49,9 @@
     let rainLevel = weatherMode === 'rain' ? 1 : 0;
     let rainParticles = null;
     let player = null;
+    let playerLegs = null;
+    let gaitPhase = 0;
+    let gaitWeight = 0;
     let camera = null;
     const G = host.global;
     const dom = !!host.dom;
@@ -876,7 +885,7 @@
         const halfZ = bounds.extendSize.z * Math.abs(mesh.scaling.z);
         const minY = mesh.position.y + bounds.minimum.y * mesh.scaling.y;
         const maxY = mesh.position.y + bounds.maximum.y * mesh.scaling.y;
-        if (maxY - minY < 0.22) { return; }
+        if (maxY - minY < 0.065) { return; }
 
         // Troncos alongados usam uma fileira de círculos seguindo a rotação.
         const radius = fixedRadius || Math.min(halfX, halfZ);
@@ -909,12 +918,33 @@
         return position.y + PLAYER_HEIGHT > obstacle.minY && position.y < obstacle.maxY;
     }
 
-    function firstContact(position, dx, dz, lengthSquared) {
+    function canStepOn(obstacle, ground) {
+        const rise = obstacle.maxY - ground;
+        return rise > 0 && rise <= KNEE_HEIGHT && obstacle.minY <= ground + 0.10;
+    }
+
+    function stepSurfaceAt(x, z, ground, padding) {
+        let top = ground;
+        for (const [mesh, obstacle] of obstacles) {
+            if (!mesh.isEnabled() || !canStepOn(obstacle, ground)) { continue; }
+            for (const circle of obstacle.circles) {
+                const reach = circle.radius + padding;
+                const ox = x - circle.x, oz = z - circle.z;
+                if (Math.abs(ox) >= reach || Math.abs(oz) >= reach) { continue; }
+                const edge = Math.max(0, circle.radius - 0.045);
+                const support = 1 - smoothstep(edge, reach, Math.hypot(ox, oz));
+                top = Math.max(top, lerp(ground, obstacle.maxY, support));
+            }
+        }
+        return top;
+    }
+
+    function firstContact(position, dx, dz, lengthSquared, ground) {
         let first = null;
         let best = 1;
         const distance = Math.sqrt(lengthSquared);
         for (const [mesh, obstacle] of obstacles) {
-            if (!mesh.isEnabled() || !touchesPlayerHeight(position, obstacle)) { continue; }
+            if (!mesh.isEnabled() || !touchesPlayerHeight(position, obstacle) || canStepOn(obstacle, ground)) { continue; }
             for (const circle of obstacle.circles) {
                 const x = position.x - circle.x, z = position.z - circle.z;
                 const radius = PLAYER_RADIUS + circle.radius;
@@ -936,7 +966,7 @@
         return first;
     }
 
-    function moveWithObstacles(position, dx, dz) {
+    function moveWithObstacles(position, dx, dz, ground) {
         // Varre todo o percurso para evitar atravessar troncos mesmo com quadros longos.
         // Depois do contato, tenta só a parcela tangente do deslocamento restante.
         for (let i = 0; i < 3; i++) {
@@ -944,7 +974,7 @@
             dz = clampWorld(position.z + dz) - position.z;
             const lengthSquared = dx * dx + dz * dz;
             if (lengthSquared < 1e-10) { return; }
-            const hit = firstContact(position, dx, dz, lengthSquared);
+            const hit = firstContact(position, dx, dz, lengthSquared, ground);
             if (!hit) {
                 position.x += dx;
                 position.z += dz;
@@ -1359,6 +1389,7 @@
             const fallback = makeFallback();   // malha centrada, y local já definido
             fallback.parent = root;
             entry.onFallback = fallback;
+            if (name === 'player') { buildPlayerLegs(root); }
             if (sceneShadows) { sceneShadows.addShadowCaster(fallback); }
             const list = modelAwaiters.get(modelId) || [];
             list.push({ name: name, entry: entry, make: makeFallback });
@@ -1376,7 +1407,20 @@
             entry.onFallback.dispose(false, true);
             entry.onFallback = null;
         }
+        const localPlayer = entry.root.name === 'player';
+        if (localPlayer) {
+            if (!playerLegs) { buildPlayerLegs(entry.root); }
+            for (const leg of playerLegs) { leg.hip.setEnabled(!reg.placeholder); }
+        }
         for (const proto of reg.protos) {
+            if (localPlayer && proto.name === 'model-character.villager-legs') {
+                for (const leg of playerLegs) { leg.thigh.material = leg.shin.material = proto.material; }
+                continue;
+            }
+            if (localPlayer && proto.name === 'model-character.villager-shoes') {
+                for (const leg of playerLegs) { leg.shoe.material = proto.material; }
+                continue;
+            }
             const clone = proto.clone(proto.name.replace('model-', 'char-') + '-' + entry.root.name);
             clone.isVisible = true;
             clone.parent = entry.root;
@@ -2022,7 +2066,7 @@
         // enquanto a DLL não chega, o protótipo JS serve de fallback. Origem do root = pés.
         player = spawnFromModel('character.villager', 'player',
             new BABYLON.Vector3(0, terrainHeight(0, 0) + 0.03, 0), 0,
-            () => { const m = buildHumanoid('player-js', { shirt:new BABYLON.Color3(0.20,0.50,0.92), pants:new BABYLON.Color3(0.20,0.22,0.28), skin:new BABYLON.Color3(0.90,0.72,0.58) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
+            () => { const m = buildHumanoid('player-js', { shirt:new BABYLON.Color3(0.20,0.50,0.92), pants:new BABYLON.Color3(0.20,0.22,0.28), skin:new BABYLON.Color3(0.90,0.72,0.58) }, false); m.position.y = PLAYER_HEIGHT / 2; return m; });
 
         // Guardiã: figura encapuzada dourada (1,7 m) com anel de destaque no chão —
         // modelo C# (character.guardian) carregado em runtime, fallback JS centrado.
@@ -2138,12 +2182,12 @@
     }
 
     function movePlayer(deltaSeconds, pad) {
-        if (frozen || !player) { return; }
+        if (frozen || !player) { return 0; }
         let ix = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
         let iz = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
         ix += pad.x + moveStick.x;
         iz += pad.y + moveStick.y;
-        if (ix === 0 && iz === 0) { return; }
+        if (ix === 0 && iz === 0) { return 0; }
 
         // Movimento relativo à câmera, com limites e velocidade normalizada.
         const forward = camera.getForwardRay().direction;
@@ -2156,9 +2200,15 @@
         const magnitude = Math.min(1, Math.hypot(ix, iz));
         const run = keys.ShiftLeft || keys.ShiftRight || magnitude > 0.92;
         const speed = run ? RUN_SPEED : WALK_SPEED;
-        const distance = speed * magnitude * deltaSeconds;
-        moveWithObstacles(player.position, dx / len * distance, dz / len * distance);
-        player.rotation.y = Math.atan2(dx, dz);
+        const { x, z } = player.position;
+        const ground = terrainHeight(x, z);
+        const stepping = player.position.y - FOOT_GAP > ground + 0.015;
+        const distance = (stepping ? Math.min(2.8, speed) : speed) * magnitude * deltaSeconds;
+        moveWithObstacles(player.position, dx / len * distance, dz / len * distance, ground);
+        const actualX = player.position.x - x, actualZ = player.position.z - z;
+        const travelled = Math.hypot(actualX, actualZ);
+        player.rotation.y = travelled > 0.001 ? Math.atan2(actualX, actualZ) : Math.atan2(dx, dz);
+        return travelled;
     }
 
     function checkNear() {
@@ -2178,15 +2228,88 @@
         }
     }
 
+    function buildPlayerLegs(root) {
+        const pants = new BABYLON.StandardMaterial('player-leg-pants', scene);
+        pants.diffuseColor.set(0.20, 0.22, 0.28);
+        const shoes = new BABYLON.StandardMaterial('player-leg-shoes', scene);
+        shoes.diffuseColor.set(0.13, 0.10, 0.09);
+        const radius = PLAYER_HEIGHT * 0.039;
+        playerLegs = [-1, 1].map(side => {
+            const suffix = side < 0 ? 'left' : 'right';
+            const hip = new BABYLON.TransformNode('player-hip-' + suffix, scene);
+            hip.parent = root;
+            hip.position.set(side * LEG_SPACING, HIP_HEIGHT, 0);
+            const knee = new BABYLON.TransformNode('player-knee-' + suffix, scene);
+            knee.parent = hip;
+            knee.position.y = -LEG_SEGMENT;
+            const ankle = new BABYLON.TransformNode('player-ankle-' + suffix, scene);
+            ankle.parent = knee;
+            ankle.position.y = -LEG_SEGMENT;
+
+            const options = { height: LEG_SEGMENT + 0.085, radius, subdivisions: 4 };
+            const thigh = BABYLON.MeshBuilder.CreateCapsule('player-thigh-' + suffix, options, scene);
+            const shin = BABYLON.MeshBuilder.CreateCapsule('player-shin-' + suffix, options, scene);
+            thigh.parent = hip;
+            shin.parent = knee;
+            thigh.position.y = shin.position.y = -LEG_SEGMENT / 2;
+            thigh.material = shin.material = pants;
+            const shoe = BABYLON.MeshBuilder.CreateSphere('player-shoe-' + suffix,
+                { diameter: 2.5 * radius, segments: 8 }, scene);
+            shoe.parent = ankle;
+            shoe.position.z = 0.9 * radius;
+            shoe.scaling.set(1, 0.55, 1.9);
+            shoe.material = shoes;
+            for (const mesh of [thigh, shin, shoe]) {
+                mesh.isPickable = false;
+                if (sceneShadows) { sceneShadows.addShadowCaster(mesh); }
+            }
+            return { side, hip, knee, ankle, thigh, shin, shoe };
+        });
+    }
+
+    function updatePlayerLegs(delta, distance) {
+        const { x, y, z } = player.position;
+        const yaw = player.rotation.y;
+        const moving = distance > 0.0002;
+        gaitWeight = lerp(gaitWeight, moving ? 1 : 0, Math.min(1, delta * 13));
+        const speed = delta > 0 ? distance / delta : 0;
+        const stride = lerp(1.25, 2.45, smoothstep(2.6, RUN_SPEED, speed));
+        gaitPhase = (gaitPhase + distance * Math.PI * 2 / stride) % (Math.PI * 2);
+        const sine = Math.sin(yaw), cosine = Math.cos(yaw);
+        for (const leg of playerLegs || []) {
+            const phase = gaitPhase + (leg.side < 0 ? 0 : Math.PI);
+            const forward = Math.cos(phase) * 0.24 * gaitWeight;
+            const lift = Math.max(0, -Math.sin(phase)) * 0.14 * gaitWeight;
+            const localX = leg.side * LEG_SPACING;
+            const footX = x + localX * cosine + forward * sine;
+            const footZ = z - localX * sine + forward * cosine;
+            const floor = terrainHeight(footX, footZ);
+            const support = stepSurfaceAt(footX, footZ, floor, 0.16);
+            const drop = Math.max(0.16, y + HIP_HEIGHT - (support + FOOT_GAP + ANKLE_HEIGHT + lift));
+
+            // Dois segmentos de mesmo comprimento. A perna fica no plano de
+            // avanço e o sapato compensa as duas rotações para pousar nivelado.
+            const extent = Math.hypot(drop, forward);
+            const flex = Math.acos(Math.min(1, extent / (2 * LEG_SEGMENT)));
+            leg.hip.rotation.x = -Math.atan2(forward, drop) - flex;
+            leg.knee.rotation.x = 2 * flex;
+            leg.ankle.rotation.x = -leg.hip.rotation.x - leg.knee.rotation.x;
+        }
+    }
+
     // Humanoide de escala métrica: pernas, tronco, braços e cabeça em cores distintas.
-    function buildHumanoid(name, colors) {
+    function buildHumanoid(name, colors, withLegs = true) {
         const H=colors.height||PLAYER_HEIGHT, legH=H*0.44, torsoH=H*0.38, armH=H*0.36, headR=H*0.07;
         const legR=H*0.040, torsoR=H*0.088, armR=H*0.026, feet=-H/2;
         const mat=(label,c)=>{const m=new BABYLON.StandardMaterial(name+'-'+label,scene);m.diffuseColor=c;m.specularColor=new BABYLON.Color3(0.08,0.08,0.08);return m;};
-        const pants=mat('pants',colors.pants), shirt=mat('shirt',colors.shirt), skin=mat('skin',colors.skin), parts=[];
+        const pants=withLegs ? mat('pants',colors.pants) : null, shirt=mat('shirt',colors.shirt), skin=mat('skin',colors.skin), parts=[];
         for(const sx of [-1,1]){
-            const leg=BABYLON.MeshBuilder.CreateCapsule(name+'-leg',{height:legH,radius:legR,subdivisions:4},scene);
-            leg.position.set(sx*torsoR*0.5,feet+legH/2,0);leg.material=pants;parts.push(leg);
+            if (withLegs) {
+                const leg = BABYLON.MeshBuilder.CreateCapsule(name + '-leg', { height:legH, radius:legR, subdivisions:4 }, scene);
+                leg.position.set(sx * torsoR * 0.5, feet + legH / 2, 0);
+                leg.material = pants;
+                parts.push(leg);
+            }
             const arm=BABYLON.MeshBuilder.CreateCapsule(name+'-arm',{height:armH,radius:armR,subdivisions:2},scene);
             arm.position.set(sx*(torsoR+armR*1.3),feet+legH+torsoH-H*0.20,0);arm.material=shirt;parts.push(arm);
         }
@@ -2195,10 +2318,15 @@
         const head=BABYLON.MeshBuilder.CreateSphere(name+'-head',{diameter:headR*2,segments:8},scene);
         head.position.y=H/2-headR;head.material=skin;parts.push(head);
         // v3: sapatos, mãos, cabelo e olhos para leitura de silhueta e rosto.
-        const shoeMat=mat('shoe',new BABYLON.Color3(0.13,0.10,0.09)), hairMat=mat('hair',colors.hair||new BABYLON.Color3(0.20,0.13,0.08)), eyeMat=mat('eye',new BABYLON.Color3(0.05,0.05,0.06));
+        const shoeMat=withLegs ? mat('shoe',new BABYLON.Color3(0.13,0.10,0.09)) : null, hairMat=mat('hair',colors.hair||new BABYLON.Color3(0.20,0.13,0.08)), eyeMat=mat('eye',new BABYLON.Color3(0.05,0.05,0.06));
         for(const sx of [-1,1]){
-            const shoe=BABYLON.MeshBuilder.CreateSphere(name+'-shoe',{diameter:legR*2.5,segments:8},scene);
-            shoe.scaling.set(1,0.55,1.9);shoe.position.set(sx*torsoR*0.5,feet+legR*0.55,legR*0.9);shoe.material=shoeMat;parts.push(shoe);
+            if (withLegs) {
+                const shoe = BABYLON.MeshBuilder.CreateSphere(name + '-shoe', { diameter:legR * 2.5, segments:8 }, scene);
+                shoe.scaling.set(1, 0.55, 1.9);
+                shoe.position.set(sx * torsoR * 0.5, feet + legR * 0.55, legR * 0.9);
+                shoe.material = shoeMat;
+                parts.push(shoe);
+            }
             const hand=BABYLON.MeshBuilder.CreateSphere(name+'-hand',{diameter:armR*2.6,segments:8},scene);
             hand.position.set(sx*(torsoR+armR*1.3),feet+legH+torsoH-H*0.20-armH/2,0);hand.material=skin;parts.push(hand);
             const eye=BABYLON.MeshBuilder.CreateSphere(name+'-eye',{diameter:headR*0.22,segments:6},scene);
@@ -2473,10 +2601,12 @@
                         if (Math.abs(zoomTarget - camera.radius) < 1e-3) { camera.radius = zoomTarget; zoomTarget = null; }
                     }
                 }
-                movePlayer(delta, pad);
+                const travelled = movePlayer(delta, pad);
                 if (player) {
-                    player.position.y = terrainHeight(player.position.x, player.position.z) + 0.03;
-                    ensureChunksAround(player.position.x, player.position.z);
+                    const { x, z } = player.position;
+                    player.position.y = stepSurfaceAt(x, z, terrainHeight(x, z), PLAYER_RADIUS) + FOOT_GAP;
+                    updatePlayerLegs(delta, travelled);
+                    ensureChunksAround(x, z);
                 }
                 checkNear();
                 updateNearbyObject();
