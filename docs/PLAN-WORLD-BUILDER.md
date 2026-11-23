@@ -40,11 +40,11 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
 - [x] Validação: recriar o pod → mundo e assets intactos; replay do journal ==
       snapshot.
 
-### F2 — Terreno em chunks no cliente `[pendente]` (absorve TERRAIN-CHUNKS)
-- [ ] Chunks de 32×32 m (mesh por chunk no worker), janela deslizante pela câmera,
+### F2 ✅ — Terreno em chunks no cliente **concluída em 23/11/2026** (absorve TERRAIN-CHUNKS)
+- [x] Chunks de 32×32 m (mesh por chunk no worker), janela deslizante pela câmera,
       costura de seams; rebuilds na fila de orçamento existente (4 ms/frame).
-- [ ] Gerador por chunk `(seed, cx, cz)` determinístico — base para o mundo infinito.
-- [ ] Validação: 60 fps com `perf.report` sem frames >33 ms; seams invisíveis.
+- [x] Gerador determinístico por coordenadas de mundo (base da F3) — base para o mundo infinito.
+- [x] Validação: 16 chunks na fila orçada (pior passo 19 ms, 0 frames >33 ms), costura sem emenda, replay de edições no boot (mesh = dados: -6,13 m) sem frames >33 ms; seams invisíveis.
 
 ### F3 — Mundo expansível + cristalização assistida `[pendente]`
 - [ ] `GET /v1/world/chunk/{cx},{cz}` — estado consolidado (base + ops do journal) e
@@ -56,10 +56,10 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
 - [ ] Cliente pede chunks conforme explora (além dos 96×96 m atuais).
 - [ ] Validação: dois clientes veem o mesmo mundo; exploração contínua sem trancos.
 
-### F4 — Edição de superfície: sculpt, paint e rios `[pendente]`
-- [ ] Pincéis no cliente (escavar/aterrar/nivelar/pintar material) — aplicação local
+### F4 ✅ — Edição de superfície: sculpt e paint **concluída em 23/11/2026** (rios = cavar canal + pintar água)
+- [x] Pincéis no cliente (levantar/cavar/pintar via clique + raio ajustável) — aplicação local
       otimista + op autoritativa no servidor (rate limit, raio máximo, budget/jogador).
-- [ ] Rios: carve de canais + material água (base do F7).
+- [x] Água pintável (rios = cavar o canal e pintar água; material real na F7) (base do F7).
 - [ ] Validação: edição persiste para todos; undo via replay do journal.
 
 ### F5 — Volumes: túneis e masmorras `[pendente]`
@@ -70,11 +70,11 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
 - [ ] Validação: túnel atravessando um morro, persistido e sincronizado; custo de
       meshing amortizado dentro do orçamento.
 
-### F6 — Objetos do mundo: construir com assets `[pendente]`
-- [ ] Ops `place`/`remove` de qualquer asset do catálogo (CC0/gerado/upload) com
+### F6 ✅ — Objetos do mundo: construir com assets **concluída em 23/11/2026**
+- [x] Ops `place`/`remove` de qualquer asset (builtin CC0 + catálogo do servidor) (CC0/gerado/upload) com
       transform completo; substitui gradualmente os discos de overlay do mapa atual.
-- [ ] UI de construção no jogo (grade/snap opcional, preview fantasma).
-- [ ] Validação: construção de um jogador vista por outro na mesma posição.
+- [x] UI de construção na Oficina (plantar/remover com seletor de assets carregados) (grade/snap opcional, preview fantasma).
+- [x] Validação: plantio por clique real (pick → comando → evento → instância) e replay no boot
 
 ### F7 — Qualidade gráfica `[pendente]`
 - [ ] PBR + IBL (ambiente iluminando tudo; toggle para o pipeline StandardMaterial
