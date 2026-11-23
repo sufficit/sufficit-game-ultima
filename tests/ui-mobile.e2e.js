@@ -191,19 +191,30 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
         // mobile retrato: sticks, A abre diálogo perto da Guardiã, B fecha, menu
         {
             const { ctx, page, errors } = await openVP('portrait');
-            const dragStick = (id, dx, dy, steps) => page.evaluate(({ id, dx, dy, steps }) => {
+            // O arrasto tem que FICAR SEGURADO por vários frames: o core amostra o
+            // stick por frame (headless ~1-2 fps); disparar tudo na mesma task não move nada.
+            const fireAt = (id, type, x, y) => page.evaluate(({ id, type, x, y }) => {
                 const el = document.getElementById(id);
-                const r = el.getBoundingClientRect();
-                const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
-                const fire = (type, x, y) => el.dispatchEvent(new PointerEvent(type, {
+                el.dispatchEvent(new PointerEvent(type, {
                     pointerId: 9, pointerType: 'touch', isPrimary: true, bubbles: true, composed: true,
                     clientX: x, clientY: y, buttons: 1,
                 }));
-                fire('pointerdown', cx, cy);
-                for (let i = 1; i <= steps; i++) fire('pointermove', cx + (dx * i) / steps, cy + (dy * i) / steps);
-                fire('pointerup', cx + dx, cy + dy);
-                fire('lostpointercapture', cx + dx, cy + dy);
-            }, { id, dx, dy, steps });
+            }, { id, type, x, y });
+            const dragStick = async (id, dx, dy, steps, holdMs) => {
+                const c = await page.evaluate((id) => {
+                    const el = document.getElementById(id);
+                    const r = el.getBoundingClientRect();
+                    return { cx: r.x + r.width / 2, cy: r.y + r.height / 2 };
+                }, id);
+                await fireAt(id, 'pointerdown', c.cx, c.cy);
+                for (let i = 1; i <= steps; i++) {
+                    await fireAt(id, 'pointermove', c.cx + (dx * i) / steps, c.cy + (dy * i) / steps);
+                    await page.waitForTimeout(250);
+                }
+                await page.waitForTimeout(holdMs || 1200);   // seguro: frames amostram o vetor
+                await fireAt(id, 'pointerup', c.cx + dx, c.cy + dy);
+                await fireAt(id, 'lostpointercapture', c.cx + dx, c.cy + dy);
+            };
 
             const p0 = await page.evaluate(PLAYER);
             await dragStick('move-stick', 0, -72, 12);
