@@ -1,7 +1,7 @@
 {
   "mode": "full",
   "site": "http://127.0.0.1:8092",
-  "at": "2026-11-23T14:45:40.783Z",
+  "at": "2026-11-23T15:32:36.544Z",
   "views": {
     "portrait": {
       "viewport": {
@@ -242,17 +242,17 @@
           "x": 12,
           "y": 12,
           "w": 300,
-          "h": 233.4
+          "h": 205.4
         },
         ".ultima-corner": {
           "x": 12,
           "y": 12,
           "w": 340,
-          "h": 308.4
+          "h": 280.4
         },
         ".ultima-workshop": {
           "x": 12,
-          "y": 257.4,
+          "y": 229.4,
           "w": 340,
           "h": 63
         },
@@ -500,17 +500,17 @@
           "x": 24.2,
           "y": 81,
           "w": 240,
-          "h": 253.4
+          "h": 225.4
         },
         ".ultima-corner": {
           "x": 24.2,
           "y": 81,
           "w": 341.6,
-          "h": 347.4
+          "h": 319.4
         },
         ".ultima-workshop": {
           "x": 24.2,
-          "y": 346.4,
+          "y": 318.4,
           "w": 341.6,
           "h": 82
         },
@@ -586,8 +586,8 @@
       "meshes": 0,
       "smallTouchTargets": [],
       "overlaps": [
-        ".ultima-status ∩ .ultima-menu-backdrop 240x253",
-        ".ultima-corner ∩ .ultima-menu-backdrop 342x347",
+        ".ultima-status ∩ .ultima-menu-backdrop 240x225",
+        ".ultima-corner ∩ .ultima-menu-backdrop 342x319",
         ".ultima-workshop ∩ .ultima-menu-backdrop 342x82",
         ".ultima-menu ∩ #ultima-menu-fab 48x48",
         ".ultima-menu ∩ .ultima-menu-backdrop 372x826",
