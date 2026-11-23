@@ -223,7 +223,7 @@
           "x": 12,
           "y": 12,
           "w": 300,
-          "h": 205.4
+          "h": 125.2
         },
         ".workshop-panel": {
           "x": 11.2,
@@ -381,5 +381,6 @@
       ],
       "consoleErrors": []
     }
-  }
+  },
+  "revisao_2026_11_23": "desktop .ultima-status h 205.4->125.2: commit do usuario 34e807c (estilos isolados SUI, Ultima.styles.css) encolheu o cartao de status; mesmo valor medido ao vivo no Pages (build a369907) e no build mesclado local. Demais valores seguem da medicao de 22/11."
 }
