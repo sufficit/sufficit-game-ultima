@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const { chromium } = require('playwright-core');
 
-const SITE = process.argv[2] || 'http://127.0.0.1:8092';
+const SITE = (process.argv[2] || 'http://127.0.0.1:8092').replace(/\/+$/, ''); // sem barra final: evita "//?render=main"
 const BASELINE = process.argv.includes('--baseline');
 const EXE = path.join(process.env.HOME, '.cache/ms-playwright/chromium_headless_shell-1255/chrome-headless-shell-linux64/chrome-headless-shell');
 const SHOTS = '/tmp/mobile-shots';
