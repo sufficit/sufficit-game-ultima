@@ -126,13 +126,14 @@ const ok = (label, cond, extra) => console.log((cond ? 'ok  ' : 'FALHOU ') + lab
     // volátil — servidor autoritativo reconstruído; o cliente reentra sozinho) e
     // 409/429 do command (rede, fora do escopo) são validados POR URL em
     // badResponses; o texto do console não carrega URL. Qualquer outra falha HTTP derruba.
+    const fmt = (b) => b.s + ' ' + b.m + ' ' + b.u + ' (token:' + b.tok + ')';
     const tolerated = badResponses.filter(b =>
-        /^401 \S+ .*\/v1\/game\/(state|events)(\?|$)/.test(b) ||
-        /^(409|429) \S+ .*\/v1\/game\/command(\?|$)/.test(b));
+        (b.s === 401 && /\/v1\/game\/(state|events)(\?|$)/.test(b.u)) ||
+        ((b.s === 409 || b.s === 429) && /\/v1\/game\/command(\?|$)/.test(b.u)));
     const otherBad = badResponses.filter(b => !tolerated.includes(b));
     const relevant = errors.filter(e => !/favicon|wllama|Download the React DevTools|WebGPU|webkitExitFullscreen|401/i.test(e));
     ok('console sem erros relevantes', relevant.length === 0, relevant.slice(0, 3).join(' | ').slice(0, 200));
     ok('HTTP fora do ciclo de sessão limpo', otherBad.length === 0,
-        'tolerados=' + tolerated.length + (otherBad.length ? ' outros=' + otherBad.slice(0, 3).join(' | ').slice(0, 160) : ''));
+        (tolerated.length ? 'tolerados: ' + tolerated.map(fmt).join(' ; ') : 'tolerados=0') + (otherBad.length ? ' | outros: ' + otherBad.map(fmt).join(' | ').slice(0, 200) : ''));
     await browser.close();
 })().catch(e => { fail(e && e.stack || e); process.exit(1); });
