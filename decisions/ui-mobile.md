@@ -56,3 +56,13 @@ Data: 2026-11-22 · Escopo: jogável no celular (retrato e paisagem), menus ocul
 ## Origem avançou de novo — merge F7d-3 + F7e (3fa0bcc)
 - origin/main 17b5451 → de2e4ea: F7d-3 (sonda WebGL na thread principal) e F7e (qualidade adaptativa, renderizador de software). Auto-merge 'ort' sem conflitos em src/wwwroot/js/game.js e game-core.js.
 - O build servido na 8092 ainda é do 36b0037: antes de publicar na main será preciso republish Release de 3fa0bcc + revalidação do harness (run 12) nesse build, e dialog-log.e2e.js verde.
+
+## dialog-log.e2e.js — VERDE no build 36b0037 servido (23/11, dfa4832)
+- 1ª execução (job 0893): 0,4 s, `Cannot find module 'playwright-core'` — o do-dialog.sh não exportava `NODE_PATH=/tmp/pwtest/node_modules`. Script corrigido e relançado (job 089e).
+- 2ª execução (job 089e, 46 s): EXIT=1, 7 FALHOU. Causa: o teste esperava dica/diálogo via `waitForFunction`/`waitForSelector` (via rAF, engasgado no headless+swiftshader — a mesma lição dos runs 7–9 do ui-mobile); a `.ultima-hint` nunca "aparecia", E era dado sem proximidade e os checks seguintes caíam em cascata (fila/flush/GET).
+- **401 identificado**: `GET /v1/game/events` do live.js — sessão volátil após o rebuild da API 8090 (servidor autoritativo não persiste sessões entre restarts); o cliente reentra sozinho (rejoin no catch 401). Validado por URL em `badResponses` (o texto do console não carrega URL). Não é defeito do dialog-log nem do HUD.
+- Teste reescrito (commit dfa4832): boot/cena por polling (modelo do ui-mobile.e2e.js), E com até 4 tentativas × 10 s (com o diálogo aberto o foco está em #dialog-input, E extra não fecha), resposta por polling, e tolerância explícita por URL: 401 em `/v1/game/(state|events)` e 409/429 em `/v1/game/command`; qualquer outra falha HTTP derruba o check "HTTP fora do ciclo de sessão limpo".
+- 3ª execução (15:12, 29 s): **DIALOG_EXIT=0 — 10/10 ok**: diálogo aberto por E (teleport), resposta por regras chegou, turno na fila (ultima-dialog-queue), `flush()` esvaziou, GET `total=2`, pagehide limpou, console limpo, HTTP fora do ciclo de sessão limpo (1 tolerado). Log: /tmp/ultima-t56/dialog-log.log.
+
+## Run 12 — publish Release do 3fa0bcc (F7d-3+F7e) + revalidação
+- Publicação isolada (do-run12-publish.sh) para caber no teto de 600 s; harness completo vem depois (do-run12-harness.sh) e dialog-log fecha no build final — só então publicação na main via github_cli api.
