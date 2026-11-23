@@ -66,6 +66,12 @@ Fonte técnica das frentes 1–11: análise do repositório
 
 ## Atividades (`activities/`)
 
+- [Terreno em C# WebAssembly](activities/202611231906-terreno-csharp-wasm.md)
+
+- [Curvas nas bordas das escavações](activities/202611231851-relevo-escavado-sem-v.md)
+
+- [Emendas naturais no terreno](activities/202611231831-emendas-do-terreno.md)
+
 - [Migração de serviços JavaScript para C#](activities/202611231825-migracao-js-para-csharp.md)
 
 - [Movimento e expressão dos personagens](activities/202611231810-expressao-dos-personagens.md)

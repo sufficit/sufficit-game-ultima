@@ -203,32 +203,11 @@
     function pathOffset(z) { return noise(z * 0.09 + 3.1, 17.7) * 1.6; }
     function pathBlend(x, z) { return smoothstep(1.5, 3.4, Math.abs(x - pathOffset(z))); }
 
-    function baseHeight(x, z) {
-        const r = Math.hypot(x, z);
-        // Montanhas em cristas no perímetro, subindo até ~25 m.
-        const edge = r + noise(x * 0.07 - 51.7, z * 0.07 + 91.3) * 5.0;
-        const rim = smoothstep(24, 45, edge);
-        let h = Math.pow(rim, 1.5) * (21 + noise(x * 0.04 + 5, z * 0.04 - 5) * 7.0);
-        h += rim * Math.abs(noise(x * 0.16 + 3, z * 0.16 - 8)) * 3.5;
-        // Colinas suaves no vale e microrrelevo.
-        h += noise(x * 0.03, z * 0.03) * 2.2;
-        h += noise(x * 0.085 + 40.2, z * 0.085 - 17.4) * 0.6;
-        h += noise(x * 0.3 - 9.3, z * 0.3 + 23.8) * 0.15;
-        // A trilha aplaina o terreno, mas se dissolve nas montanhas.
-        const flat = (1 - pathBlend(x, z)) * (1 - smoothstep(22, 34, r));
-        h = lerp(h, Math.max(0, h * 0.12), flat * 0.9);
-        // Clareiras planas no ponto de partida e junto da Guardiã.
-        h = lerp(0.05, h, smoothstep(3.2, 9, r));
-        const npcFlat = smoothstep(6, 3, Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z));
-        return lerp(h, 0.05, npcFlat * 0.9);
-    }
-
-    function slopeAt(x, z, surface = terrainHeight) {
-        const e = 0.7;
-        const dhx = Math.abs(surface(x + e, z) - surface(x - e, z));
-        const dhz = Math.abs(surface(x, z + e) - surface(x, z - e));
-        return Math.max(dhx, dhz) / (2 * e);
-    }
+    const SLOPE_SAMPLE_RADIUS = 0.7;
+    let terrain;
+    function baseHeight(x, z) { return terrain.BaseHeight(x, z); }
+    function terrainHeight(x, z) { return terrain.Height(x, z); }
+    function slopeAt(x, z, surface = terrainHeight) { return terrain.Slope(x, z, surface === baseHeight); }
 
     // ---------- Cena ----------
     // Distorce levemente vértices do protótipo: silhueta orgânica replicada nas instâncias.
@@ -356,7 +335,7 @@
     // do MESMO gerador nas coordenadas de mundo — anel extra cobre as normais de borda)
     // e cache OPFS por chunk do TERRENO BASE. As ops sculpt/paint do servidor (journal)
     // são reaplicadas em memória a cada visita, depois do mapa chegar.
-    const CHUNK = 32, CHUNK_SUB = 48;
+    const CHUNK = 32, CHUNK_SUB = 64;
     const CHUNK_STEP = CHUNK / CHUNK_SUB;
     const CHUNK_VIEW = 2;                  // janela 5×5 ao redor do jogador (streaming F3)
     const chunkMap = new Map();            // "cx,cz" -> { mesh, cx, cz }
@@ -382,60 +361,18 @@
     const COLLECT_REACH = 3.5;
     const SOIL_DEPTH = 0.48;
     const SOIL_RADIUS = 1;
-    const SOIL_BUCKET_SIZE = 2;
-    const SOIL_FLAT_RADIUS = CHUNK_STEP * Math.SQRT1_2 + 0.01;
     const collectedIds = new Set();
-    const soilBuckets = new Map();
     function surfaceResourceId(kind, op) { return kind + ':' + (op.rev ?? [op.x, op.z, op.r].join(',')); }
 
-    function soilBucketIndex(position) { return Math.floor(position / SOIL_BUCKET_SIZE); }
-
-    // O índice limita a consulta da altura a cortes próximos. O pincel conserva
-    // a coordenada em que a malha foi atingida, inclusive entre os quadrantes.
-    function indexSoilCut(cut) {
-        for (let cx = soilBucketIndex(cut.x - cut.r); cx <= soilBucketIndex(cut.x + cut.r); cx++) {
-            for (let cz = soilBucketIndex(cut.z - cut.r); cz <= soilBucketIndex(cut.z + cut.r); cz++) {
-                const key = cx + ',' + cz;
-                if (!soilBuckets.has(key)) { soilBuckets.set(key, []); }
-                soilBuckets.get(key).push(cut);
-            }
-        }
-    }
-
-    function soilDepthAt(x, z) {
-        if (!soilBuckets.size) { return 0; }
-        const cuts = soilBuckets.get(soilBucketIndex(x) + ',' + soilBucketIndex(z));
-        if (!cuts) { return 0; }
-        let depth = 0;
-        for (const cut of cuts) {
-            const weight = 1 - smoothstep(SOIL_FLAT_RADIUS, cut.r, Math.hypot(x - cut.x, z - cut.z));
-            depth += SOIL_DEPTH * weight;
-        }
-        return depth;
-    }
-
-    // Altura efetiva do mundo: terreno base, esculturas, grutas e coleta local.
-    function terrainHeight(x, z) {
-        let sculptHeight = 0;
-        for (let i = 0; i < worldSculpts.length; i++) {
-            const op = worldSculpts[i];
-            const t = 1 - Math.hypot(x - op.x, z - op.z) / op.r;
-            if (t > 0) { sculptHeight += op.dh * t * t * (3 - 2 * t); }
-        }
-        let h = baseHeight(x, z) + sculptHeight;
-        for (const op of worldCarves) {
-            const floor = op.y0 + sculptHeight;
-            const inset = op.r - Math.hypot(x - op.x, z - op.z);
-            // O piso é plano no interior. A própria malha faz a parede junto à borda.
-            if (inset > 0 && h > Math.max(op.y0, floor)) {
-                h = lerp(h, floor, smoothstep(0, Math.min(1.2, op.r / 4), inset));
-            }
-        }
-        return h - soilDepthAt(x, z);
+    function syncTerrainEdits() {
+        const values = [];
+        for (const op of worldSculpts) { values.push(0, op.x, op.z, op.r, op.dh); }
+        for (const op of worldCarves) { values.push(1, op.x, op.z, op.r, op.y0); }
+        terrain.SetEdits(new Float64Array(values));
     }
 
     // Paleta do solo (mesma lógica do gerador original), agora pintável por material.
-    function terrainColorAt(x, y, z) {
+    function terrainColorAt(x, y, z, slope = slopeAt(x, z), soilDepth = terrain.Depth(x, z)) {
         const grassDark = [0.10, 0.27, 0.09], grassLight = [0.25, 0.44, 0.13], grassDry = [0.44, 0.42, 0.18];
         const dirt = [0.47, 0.36, 0.23], dirtLight = [0.58, 0.47, 0.32];
         const rock = [0.42, 0.41, 0.40], rockLight = [0.55, 0.54, 0.52], snow = [0.93, 0.95, 0.97];
@@ -445,20 +382,16 @@
         let r = lerp(lerp(grassDark[0], grassLight[0], t), grassDry[0], Math.max(0, patch - 0.35) * 1.4);
         let g = lerp(lerp(grassDark[1], grassLight[1], t), grassDry[1], Math.max(0, patch - 0.35) * 1.4);
         let b = lerp(lerp(grassDark[2], grassLight[2], t), grassDry[2], Math.max(0, patch - 0.35) * 1.4);
-        const path = pathBlend(x, z);
-        const core = 1 - smoothstep(0.4, 2.6, Math.abs(x - pathOffset(z)));
+        const fringe = noise(x * 0.67 + 4.2, z * 0.67 - 3.1) * 0.55 + (fine - 0.5) * 0.35;
+        const distanceToPath = Math.abs(x - pathOffset(z)) + fringe;
+        const path = smoothstep(1.3, 3.6, distanceToPath);
+        const core = 1 - smoothstep(0.4, 2.6, distanceToPath);
         const dr = lerp(dirtLight[0], dirt[0], path), dg = lerp(dirtLight[1], dirt[1], path), db = lerp(dirtLight[2], dirt[2], path);
         r = lerp(dr, r, path); g = lerp(dg, g, path); b = lerp(db, b, path);
         r = lerp(r, dr * 1.08, (1 - path) * core * 0.5);
         g = lerp(g, dg * 1.08, (1 - path) * core * 0.5);
         b = lerp(b, db * 1.08, (1 - path) * core * 0.5);
-        const rocky = smoothstep(0.55, 1.10, slopeAt(x, z));
-        r = lerp(r, lerp(rock[0], rockLight[0], fine), rocky);
-        g = lerp(g, lerp(rock[1], rockLight[1], fine), rocky);
-        b = lerp(b, lerp(rock[2], rockLight[2], fine), rocky);
-        const snowLine = 8.5 + noise(x * 0.18 + 7.7, z * 0.18 - 3.3) * 1.6 - rocky * 1.2;
-        const snowy = Math.max(0, Math.min(1, (y - snowLine) / 1.6));
-        r = lerp(r, snow[0], snowy); g = lerp(g, snow[1], snowy); b = lerp(b, snow[2], snowy);
+        const rocky = smoothstep(0.44, 1.22, slope + fringe * 0.35);
         let exposedRock = 0;
         for (const op of worldCarves) {
             const inset = op.r - Math.hypot(x - op.x, z - op.z);
@@ -466,22 +399,26 @@
         }
         const rockU = x * 1.15 + z * 0.36, rockV = z * 0.8 + y * 1.3;
         let mineral;
-        if (exposedRock > 0) {
+        const mineralCover = 1 - (1 - exposedRock) * (1 - rocky);
+        if (mineralCover > 0) {
             mineral = rockRelief(rockU, rockV);
-            const value = 0.36 + mineral * 0.20;
-            r = lerp(r, value * 1.07, exposedRock);
-            g = lerp(g, value * 1.03, exposedRock);
-            b = lerp(b, value * 0.92, exposedRock);
+            const shade = 1 + mineral * 0.4;
+            r = lerp(r, lerp(rock[0], rockLight[0], fine) * shade, mineralCover);
+            g = lerp(g, lerp(rock[1], rockLight[1], fine) * shade, mineralCover);
+            b = lerp(b, lerp(rock[2], rockLight[2], fine) * shade, mineralCover);
         }
+        const snowLine = 8.5 + noise(x * 0.18 + 7.7, z * 0.18 - 3.3) * 1.6 - rocky * 1.2;
+        const snowy = smoothstep(snowLine, snowLine + 1.6, y);
+        r = lerp(r, snow[0], snowy); g = lerp(g, snow[1], snowy); b = lerp(b, snow[2], snowy);
         let material = path >= 0.5 ? 'grass' : 'dirt';
         if (rocky >= 0.5 || exposedRock >= 0.5) { material = 'rock'; }
         if (snowy >= 0.5) { material = 'snow'; }
-        const cover = (1 - rocky) * (1 - snowy) * (1 - exposedRock);
+        const cover = (1 - mineralCover) * (1 - snowy);
         let grassDetail = path * cover, dirtDetail = (1 - path) * cover;
         for (let i = 0; i < worldPaints.length; i++) {
             const op = worldPaints[i];
             if (op.mat === 'water' && collectedIds.has(surfaceResourceId('water', op))) { continue; }
-            const w = brushWeight(x, z, op);
+            const w = brushWeight(x + (op.mat === 'water' ? 0 : fringe * 0.32), z, op);
             if (w > 0) {
                 const c = PAINT_COLORS[op.mat];
                 if (w >= 0.5) { material = op.mat; }
@@ -495,14 +432,14 @@
                 b = lerp(b, c[2] * relief, w);
             }
         }
-        if (material === 'grass') {
-            const exposedSoil = Math.min(1, soilDepthAt(x, z) / SOIL_DEPTH) * 0.85;
+        if (grassDetail > 0 && soilDepth > 0) {
+            const exposedSoil = Math.min(1, soilDepth / SOIL_DEPTH) * 0.85 * grassDetail;
             r = lerp(r, dirt[0], exposedSoil);
             g = lerp(g, dirt[1], exposedSoil);
             b = lerp(b, dirt[2], exposedSoil);
             grassDetail = lerp(grassDetail, 0, exposedSoil);
             dirtDetail = lerp(dirtDetail, 1, exposedSoil);
-            if (exposedSoil >= 0.5) { material = 'dirt'; }
+            if (material === 'grass' && exposedSoil >= 0.5) { material = 'dirt'; }
         }
         return [r, g, b, grassDetail, dirtDetail, material];
     }
@@ -543,9 +480,10 @@
         }).catch(function () { /* cache é otimização */ });
     }
 
-    const CHUNK_TEX = 128;   // 0,25 m por texel
-    const CARVE_TEX = 256;   // amostra mais fina da paleta em terreno escavado
+    const CHUNK_TEX = 128;   // 0,25 m por texel útil
     const DETAIL_TEX = 512;
+    const PALETTE_GUTTER = 4;
+    const DETAIL_GUTTER = PALETTE_GUTTER * DETAIL_TEX / CHUNK_TEX;
     const MATERIAL_TILE = DETAIL_TEX / 8;   // uma repetição a cada 4 m, alinhada entre chunks
     let groundMaterials = [];
     const groundGrain = makeNoise(9090);
@@ -568,9 +506,11 @@
                     resizeWidth: MATERIAL_TILE, resizeHeight: MATERIAL_TILE, resizeQuality: 'high'
                 });
             }));
-            const blend = engine.createCanvas(DETAIL_TEX, DETAIL_TEX).getContext('2d');
+            const size = DETAIL_TEX + 2 * DETAIL_GUTTER;
+            const blend = engine.createCanvas(size, size).getContext('2d');
             const patterns = tiles.map(tile => blend.createPattern(tile, 'repeat'));
-            const palette = engine.createCanvas(CHUNK_TEX, CHUNK_TEX).getContext('2d');
+            const paletteSize = CHUNK_TEX + 2 * PALETTE_GUTTER;
+            const palette = engine.createCanvas(paletteSize, paletteSize).getContext('2d');
             if (!palette || patterns.some(pattern => !pattern)) { throw new Error('canvas de composição indisponível'); }
             terrainBlend = blend;
             terrainPalette = palette;
@@ -596,16 +536,21 @@
     let terrainBlend = null, terrainPalette = null;
 
     // A resolução da imagem é independente da amostragem de paleta e relevo.
-    function paintChunkTexture(tex, cx, cz, samples) {
+    function paintChunkTexture(tex, cx, cz) {
         const ctx = tex.getContext();
+        // As bordas usam texels dos dois lados da divisa, na mesma grade mundial.
+        const samples = CHUNK_TEX + 2 * PALETTE_GUTTER;
         const img = ctx.createImageData(samples, samples);
         const masks = groundMaterials.map(() => ctx.createImageData(samples, samples));
         const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
         const detailed = masks.length > 0;
+        const paletteSamples = terrain.SamplePalette(cx, cz, CHUNK_TEX, PALETTE_GUTTER);
         for (let ty = 0; ty < samples; ty++) for (let tx = 0; tx < samples; tx++) {
-            const x = x0 + tx / (samples - 1) * CHUNK;
-            const z = z0 + ty / (samples - 1) * CHUNK;
-            const [r, g, b, grass, dirt] = terrainColorAt(x, terrainHeight(x, z), z);
+            const x = x0 + (tx - PALETTE_GUTTER + 0.5) * CHUNK / CHUNK_TEX;
+            const z = z0 + (ty - PALETTE_GUTTER + 0.5) * CHUNK / CHUNK_TEX;
+            const sample = 3 * (ty * samples + tx);
+            const [r, g, b, grass, dirt] = terrainColorAt(x, paletteSamples[sample], z,
+                paletteSamples[sample + 1], paletteSamples[sample + 2]);
             const mottling = groundGrain(x * 0.94, z * 0.94);
             const grit = groundGrain(x * 2.1 + 13, z * 2.1 - 17);
             const relief = detailed ? 1 - (grass + dirt) * 0.52 : 1;
@@ -622,16 +567,16 @@
         }
         if (detailed) {
             const palette = terrainPalette.canvas;
-            if (palette.width !== samples) { palette.width = palette.height = samples; }
+            const size = terrainBlend.canvas.width;
             terrainPalette.putImageData(img, 0, 0);
-            ctx.drawImage(palette, 0, 0, DETAIL_TEX, DETAIL_TEX);
+            ctx.drawImage(palette, 0, 0, size, size);
             for (let i = 0; i < masks.length; i++) {
                 terrainBlend.globalCompositeOperation = 'copy';
                 terrainBlend.fillStyle = groundMaterials[i];
-                terrainBlend.fillRect(0, 0, DETAIL_TEX, DETAIL_TEX);
+                terrainBlend.fillRect(0, 0, size, size);
                 terrainPalette.putImageData(masks[i], 0, 0);
                 terrainBlend.globalCompositeOperation = 'destination-in';
-                terrainBlend.drawImage(palette, 0, 0, DETAIL_TEX, DETAIL_TEX);
+                terrainBlend.drawImage(palette, 0, 0, size, size);
                 ctx.drawImage(terrainBlend.canvas, 0, 0);
             }
         } else {
@@ -641,17 +586,20 @@
     }
 
     function updateChunkTexture(mat, cx, cz) {
-        const samples = worldCarves.some(op => brushTouchesChunk({ cx, cz }, op)) ? CARVE_TEX : CHUNK_TEX;
-        const size = groundMaterials.length ? DETAIL_TEX : samples;
+        const center = groundMaterials.length ? DETAIL_TEX : CHUNK_TEX;
+        const gutter = groundMaterials.length ? DETAIL_GUTTER : PALETTE_GUTTER;
+        const size = center + 2 * gutter;
         const previous = mat.diffuseTexture;
         if (previous && previous.getSize().width === size) {
-            paintChunkTexture(previous, cx, cz, samples);
+            paintChunkTexture(previous, cx, cz);
             return;
         }
         const tex = new BABYLON.DynamicTexture('chunkTex-' + chunkKey(cx, cz), { width: size, height: size }, scene, true);
         tex.wrapU = tex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
+        tex.uScale = tex.vScale = center / size;
+        tex.uOffset = tex.vOffset = gutter / size;
         tex.anisotropicFilteringLevel = 8;
-        paintChunkTexture(tex, cx, cz, samples);
+        paintChunkTexture(tex, cx, cz);
         mat.diffuseTexture = tex;
         if (previous) { previous.dispose(); }
     }
@@ -673,48 +621,24 @@
         return mat;
     }
 
-    // Geometria do chunk construída NA MÃO (VertexData): posições mundiais, normais
-    // analíticas com anel extra (costura sem emenda entre chunks), UVs explícitos e
-    // índices de grade — sem depender de CreateGround nem de estado residual dele.
-    // (F7c-3: CreateGround+sobrescrita não desenhava em GPUs reais.)
-    function buildChunkMesh(cx, cz) {
-        const n = CHUNK_SUB + 1;
-        const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
-        const step = CHUNK_STEP;
-        const positions = new Float32Array(n * n * 3);
-        const normals = new Float32Array(n * n * 3);
-        const uvs = new Float32Array(n * n * 2);
-        const w = n + 2;                            // grade com anel extra p/ normais de borda
-        const hgt = new Float32Array(w * w);
-        for (let j = -1; j <= n; j++) for (let i = -1; i <= n; i++) {
-            hgt[(j + 1) * w + (i + 1)] = terrainHeight(x0 + i * step, z0 + j * step);
-        }
-        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
-            const vi = j * n + i;
-            const h = hgt[(j + 1) * w + (i + 1)];
-            positions[vi * 3] = x0 + i * step;
-            positions[vi * 3 + 1] = h;
-            positions[vi * 3 + 2] = z0 + j * step;
-            const hx = hgt[(j + 1) * w + (i + 2)] - hgt[(j + 1) * w + i];
-            const hz = hgt[(j + 2) * w + (i + 1)] - hgt[j * w + (i + 1)];
-            const nl = Math.hypot(hx, 2 * step, hz);
-            normals[vi * 3] = -hx / nl; normals[vi * 3 + 1] = 2 * step / nl; normals[vi * 3 + 2] = -hz / nl;
-            uvs[vi * 2] = i / CHUNK_SUB; uvs[vi * 2 + 1] = j / CHUNK_SUB;
-        }
-        // As linhas avançam em +Z. A ordem dos vértices mantém a face visível de cima.
-        const indices = new Uint16Array(CHUNK_SUB * CHUNK_SUB * 6);
-        let k = 0;
-        for (let j = 0; j < CHUNK_SUB; j++) for (let i = 0; i < CHUNK_SUB; i++) {
-            const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
-            indices[k++] = d; indices[k++] = a; indices[k++] = b;
-            indices[k++] = c; indices[k++] = a; indices[k++] = d;
-        }
-        const mesh = new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene);
+    // O módulo C# entrega a malha em um bloco binário. O Babylon consome
+    // as vistas tipadas no próprio contexto que executa o renderizador.
+    function buildChunkMesh(cx, cz, mesh = new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene)) {
+        const bytes = terrain.Build(cx, cz);
+        const words = new Uint32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+        const values = new Float32Array(bytes.buffer, bytes.byteOffset, words.length);
+        const [vertices, count, cellCount] = words;
+        const indexStart = 3 + vertices * 8;
         const vd = new BABYLON.VertexData();
-        vd.positions = positions; vd.normals = normals; vd.uvs = uvs; vd.indices = indices;
+        vd.positions = values.subarray(3, 3 + vertices * 3);
+        vd.normals = values.subarray(3 + vertices * 3, 3 + vertices * 6);
+        vd.uvs = values.subarray(3 + vertices * 6, indexStart);
+        const indices = words.subarray(indexStart, indexStart + count);
+        vd.indices = vertices > 65535 ? indices : Uint16Array.from(indices);
+        mesh.metadata = { terrainCells: cellCount ? words.subarray(indexStart + count) : null };
         vd.applyToMesh(mesh, true);
-        mesh.refreshBoundingInfo();          // posições mundiais: bounding nasce certa
-        saveChunk(cx, cz, positions, normals);
+        mesh.refreshBoundingInfo();
+        if (!cellCount) { saveChunk(cx, cz, vd.positions, vd.normals); }
         return mesh;
     }
 
@@ -777,8 +701,9 @@
 
     function applySurfaceEdit(op) {
         if (!recordSurfaceEdit(op)) { return false; }
+        if (op.kind !== 'paint') { syncTerrainEdits(); }
         for (const ch of chunkMap.values()) {
-            if (brushTouchesChunk(ch, op)) { refreshChunk(ch, op); }
+            if (brushTouchesChunk(ch, op)) { refreshChunk(ch, op.kind !== 'paint'); }
         }
         if (op.mat === 'water') { syncWaterDiscs(); }
         if (op.kind === 'sculpt' || op.kind === 'carve') { syncCarveRoofs(); }
@@ -787,27 +712,18 @@
     }
 
     function brushTouchesChunk({ cx, cz }, { x, z, r }) {
-        const reach = CHUNK / 2 + r + 2 * CHUNK_STEP;
+        // Uma edição fora da malha ainda pode alterar a faixa de filtragem
+        // e a amostragem de inclinação na textura vizinha.
+        const textureMargin = (PALETTE_GUTTER + 1) * CHUNK / CHUNK_TEX + SLOPE_SAMPLE_RADIUS;
+        const reach = CHUNK / 2 + r + textureMargin;
         return Math.abs(cx * CHUNK - x) <= reach && Math.abs(cz * CHUNK - z) <= reach;
     }
 
-    // Recalcula a região editada e o anel usado pelas normais. No replay, refaz o chunk inteiro.
-    function refreshChunk({ mesh, cx, cz }, brush) {
-        const pos = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-        const nor = mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind);
-        if (!pos || !nor) { return; }
-        const e = CHUNK_STEP;
-        for (let i = 0; i < pos.length; i += 3) {
-            const px = pos[i], pz = pos[i + 2];
-            if (brush && Math.hypot(px - brush.x, pz - brush.z) > brush.r + e) { continue; }
-            pos[i + 1] = terrainHeight(px, pz);
-            const hx = terrainHeight(px + e, pz) - terrainHeight(px - e, pz);
-            const hz = terrainHeight(px, pz + e) - terrainHeight(px, pz - e);
-            const nl = Math.hypot(hx / (2 * e), 1, hz / (2 * e)) || 1;
-            nor[i] = -hx / (2 * e) / nl; nor[i + 1] = 1 / nl; nor[i + 2] = -hz / (2 * e) / nl;
+    function refreshChunk({ mesh, cx, cz }, geometryChanged) {
+        if (geometryChanged) {
+            buildChunkMesh(cx, cz, mesh);
+            clearGroundPreview();
         }
-        mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, pos, true);
-        mesh.updateVerticesData(BABYLON.VertexBuffer.NormalKind, nor);
         updateChunkTexture(mesh.material, cx, cz);
     }
 
@@ -1104,8 +1020,8 @@
             if (collectedIds.has(entry.id)) { continue; }
             collectedIds.add(entry.id);
             if (entry.kind === 'soil') {
-                const cut = { x: entry.x, z: entry.z, r: SOIL_RADIUS };
-                indexSoilCut(cut);
+                const cut = { x: entry.x, z: entry.z, r: SOIL_RADIUS, geometryChanged: true };
+                terrain.AddDig(cut.x, cut.z);
                 newCuts.push(cut);
             } else if (entry.brush) {
                 newCuts.push(entry.brush);
@@ -1114,7 +1030,8 @@
         syncCarveScenery();
         if (newCuts.length) {
             for (const ch of chunkMap.values()) {
-                if (newCuts.some(cut => brushTouchesChunk(ch, cut))) { refreshChunk(ch); }
+                const touched = newCuts.filter(cut => brushTouchesChunk(ch, cut));
+                if (touched.length) { refreshChunk(ch, touched.some(cut => cut.geometryChanged)); }
             }
         }
     }
@@ -1225,12 +1142,35 @@
         const gz = Math.max(0, Math.min(CHUNK_SUB, (z - (cz * CHUNK - CHUNK / 2)) / CHUNK_STEP));
         const i = Math.min(Math.floor(gx), CHUNK_SUB - 1);
         const j = Math.min(Math.floor(gz), CHUNK_SUB - 1);
+        const starts = chunk.mesh.metadata?.terrainCells;
+        if (starts) {
+            const cell = j * CHUNK_SUB + i;
+            const indices = chunk.mesh.getIndices();
+            for (let index = starts[cell]; index < starts[cell + 1]; index += 3) {
+                const a = indices[index] * 3, b = indices[index + 1] * 3, c = indices[index + 2] * 3;
+                const bx = vertices[b] - vertices[c], bz = vertices[b + 2] - vertices[c + 2];
+                const ax = vertices[a] - vertices[c], az = vertices[a + 2] - vertices[c + 2];
+                const px = x - vertices[c], pz = z - vertices[c + 2];
+                const determinant = bz * ax - bx * az;
+                const u = (bz * px - bx * pz) / determinant;
+                const v = (ax * pz - az * px) / determinant;
+                const w = 1 - u - v;
+                if (Math.min(u, v, w) >= -0.00001) {
+                    return u * vertices[a + 1] + v * vertices[b + 1] + w * vertices[c + 1];
+                }
+            }
+            return terrainHeight(x, z);
+        }
         const u = gx - i, v = gz - j;
         const stride = (CHUNK_SUB + 1) * 3;
         const a = j * stride + i * 3 + 1;
         const d = a + stride + 3;
-        // Mesma diagonal a–d de buildChunkMesh. O anel segue as faces que
-        // estão na tela, inclusive nas escavações profundas.
+        // As duas diagonais de buildChunkMesh. O anel acompanha a malha visível.
+        if ((i + j) % 2 !== 0) {
+            return u + v <= 1
+                ? vertices[a] * (1 - u - v) + vertices[a + 3] * u + vertices[a + stride] * v
+                : vertices[d] * (u + v - 1) + vertices[a + 3] * (1 - v) + vertices[a + stride] * (1 - u);
+        }
         return u >= v
             ? vertices[a] * (1 - u) + vertices[a + 3] * (u - v) + vertices[d] * v
             : vertices[a] * (1 - v) + vertices[a + stride] * (v - u) + vertices[d] * u;
@@ -1307,8 +1247,10 @@
         for (const op of edits || []) {
             if (recordSurfaceEdit(op)) { dirty.push(op); }
         }
+        syncTerrainEdits();
         for (const ch of chunkMap.values()) {
-            if (dirty.some(op => brushTouchesChunk(ch, op))) { refreshChunk(ch); }
+            const touched = dirty.filter(op => brushTouchesChunk(ch, op));
+            if (touched.length) { refreshChunk(ch, touched.some(op => op.kind !== 'paint')); }
         }
         syncWaterDiscs();
         syncCarveRoofs();
@@ -2944,6 +2886,14 @@
     async function boot() {
         const initStart = performance.now();
         try {
+            if (dom) {
+                const runtime = G.getDotnetRuntime(0);
+                const exports = await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName);
+                terrain = exports.Ultima.Terrain.BrowserExports;
+            } else {
+                terrain = await host.terrainRuntime;
+            }
+            terrain.Reset();
             if (G.game && G.game.assets) {
                 await G.game.assets.init(host.build);
                 await warmTextures();   // chunks: aquecimento por aproximação (prefetchChunkCache)
@@ -3167,6 +3117,7 @@
                 matIsReady: ch.mesh.material && ch.mesh.material.isReady ? ch.mesh.material.isReady(ch.mesh, true) : null,
                 activeMeshCount: scene.getActiveMeshes().length,
                 totalVertices: ch.mesh.getTotalVertices(),
+                terrainEngine: "csharp-wasm",
                 indicesCount: ch.mesh.getTotalIndices ? ch.mesh.getTotalIndices() : null,
                 depthFunc: ch.mesh.material && ch.mesh.material.needDepthPrePass,
                 texCanvasSample: (function () {

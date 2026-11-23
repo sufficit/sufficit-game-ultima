@@ -15,10 +15,11 @@ Sem servidor centralizado de jogo — tudo acontece no cliente.
 O workflow [` .github/workflows/pages.yml`](.github/workflows/pages.yml) publica
 automaticamente a cada push em `main`:
 
-1. `dotnet publish src/Ultima.csproj -c Release`;
-2. ajusta o `base href` para `/sufficit-game-ultima/` (caminho do Pages);
-3. gera `404.html` e `.nojekyll`;
-4. publica o artefato em https://sufficit.github.io/sufficit-game-ultima/.
+1. compila o módulo C# do terrain worker com `bash scripts/build-terrain.sh`;
+2. executa `dotnet publish src/Ultima.csproj -c Release`;
+3. ajusta o `base href` para `/sufficit-game-ultima/` (caminho do Pages);
+4. gera `404.html` e `.nojekyll`;
+5. publica o artefato em https://sufficit.github.io/sufficit-game-ultima/.
 
 ## API de conteúdo dinâmico (opcional)
 
@@ -39,11 +40,14 @@ stdlib em `app/main.py`.
 Requisitos:
 
 - SDK do .NET 10 (`dotnet --version` deve mostrar 10.x);
+- Workload `wasm-tools` para compilar o módulo do worker;
 - Navegador com WebGL (qualquer navegador moderno).
 
 Passos:
 
 ```bash
+dotnet workload install wasm-tools
+bash scripts/build-terrain.sh
 cd src
 dotnet run
 ```
@@ -53,6 +57,7 @@ O comando acima sobe o servidor de desenvolvimento do Blazor WASM e abre o jogo
 Alternativa sem servidor de desenvolvimento:
 
 ```bash
+bash scripts/build-terrain.sh
 cd src
 dotnet publish -c Release -o publish
 python3 -m http.server -d publish/wwwroot 8080

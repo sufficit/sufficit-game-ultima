@@ -30,6 +30,11 @@ jobs:
       - name: Preparar catálogo de assets GLB CC0 (SHA-256)
         run: bash scripts/build-assets.sh
 
+      - name: Compilar motor do terreno em WebAssembly
+        run: |
+          dotnet workload install wasm-tools
+          bash scripts/build-terrain.sh
+
       - name: Publicar Blazor WebAssembly
         run: dotnet publish src/Ultima.csproj -c Release -o publish
 

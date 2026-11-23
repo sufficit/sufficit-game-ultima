@@ -26,4 +26,7 @@ src/wwwroot/models/
 
 # Assets GLB CC0: fontes vivem em assets/glb; cópia e catálogo gerados por scripts/build-assets.sh
 src/wwwroot/assets/
+src/wwwroot/terrain-wasm/
+engine/**/bin/
+engine/**/obj/
 .worktrees/

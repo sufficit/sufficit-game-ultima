@@ -8,6 +8,8 @@ const V = location.search;
 importScripts('https://cdn.jsdelivr.net/npm/babylonjs@9.36.0/babylon.js');
 importScripts('assets.js' + V);
 importScripts('game-core.js' + V);
+const terrainRuntime = import('../terrain-wasm/host.js' + V).then(module => module.ready);
+terrainRuntime.catch(() => {}); // A inicialização do core encaminha a falha ao shell.
 
 let core = null;
 
@@ -23,7 +25,8 @@ function varyModelViaShell(modelId, seed, detail) {
     });
 }
 
-self.onmessage = function (e) {
+// O bootstrap do .NET usa self.onmessage para distinguir seu worker auxiliar.
+self.addEventListener('message', function (e) {
     const msg = e.data || {};
     if (msg.type === 'varyResult') {
         const p = varyPending.get(msg.reqId);
@@ -44,6 +47,7 @@ self.onmessage = function (e) {
                 graphics: msg.graphics,
                 weather: msg.weather,
                 size: msg.size || null,
+                terrainRuntime,
                 global: self,
                 dom: false,
                 postEvent: function (name, args) { self.postMessage({ type: 'event', name: name, args: args }); },
@@ -90,4 +94,4 @@ self.onmessage = function (e) {
             console.warn('[worker] chamada falhou:', msg.method, err);
         }
     }
-};
+});
