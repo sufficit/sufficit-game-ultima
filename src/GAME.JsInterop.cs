@@ -13,6 +13,8 @@ public sealed class GameInterop
     public Action<bool>? WandererNearChanged { get; init; }
     public Action<string?>? ObjectNear { get; init; }
     public Action<string[]>? BuildAssets { get; init; }
+    public Action<Dictionary<string, int>>? BackpackChanged { get; init; }
+    public Action<string>? BackpackStatus { get; init; }
     public Action? Interact { get; init; }
     public Action? Close { get; init; }
     public Action<double, double, double, double>? MoveTick { get; init; }
@@ -32,6 +34,8 @@ public sealed class GameInterop
     [JSInvokable] public void OnNearChanged(bool near) => NearChanged?.Invoke(near);
     [JSInvokable] public void OnWandererNear(bool near) => WandererNearChanged?.Invoke(near);
     [JSInvokable] public void OnObjectNear(string? label) => ObjectNear?.Invoke(label);
+    [JSInvokable] public void OnBackpackChanged(Dictionary<string, int> items) => BackpackChanged?.Invoke(items);
+    [JSInvokable] public void OnBackpackStatus(string message) => BackpackStatus?.Invoke(message);
     [JSInvokable] public void OnBuildAssets(string[] ids) => BuildAssets?.Invoke(ids);
     [JSInvokable] public void OnInteract() => Interact?.Invoke();
     [JSInvokable] public void OnClose() => Close?.Invoke();

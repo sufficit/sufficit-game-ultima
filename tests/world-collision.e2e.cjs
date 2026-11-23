@@ -38,12 +38,15 @@ async function wait(callback,label) {
     if(process.env.ULTIMA_BUILD) assert.equal(build, process.env.ULTIMA_BUILD);
     await wait(()=>p.evaluate(async()=>{
         if(!window.game?.glb?.status || !window.game?.build?.state) return false;
-        const map=await game.build.state(), glb=await game.glb.status();
+        const map=await game.build.state(), glb=await game.glb.status(), models=await game.models.status();
         return map?.chunks>=25 && glb?.loaded.some(id=>id.startsWith('flora.pine')) &&
             glb?.loaded.some(id=>id.startsWith('prop.stump')) &&
-            glb?.loaded.some(id=>id.startsWith('rock.boulder2')) && (await game.models.status()).queue===0;
+            glb?.loaded.some(id=>id.startsWith('prop.log')) &&
+            glb?.loaded.some(id=>id.startsWith('rock.boulder2')) && models.queue===0 &&
+            models.loaded.includes('character.villager v2');
     }),'mundo carregado');
     assert.equal(await p.evaluate(()=>game.mode),main?'main':'worker');
+    const renderer=main ? p : p.workers()[0];
     await p.getByRole('button',{name:'detalhes',exact:true}).click();
     await p.locator('#game-canvas').focus();
     const pose=async()=> {
@@ -52,19 +55,27 @@ async function wait(callback,label) {
             return {x,y,z};
         });
         const status=await p.locator('.ultima-status').innerText();
-        const match=/pos \((-?[\d.,]+), (-?[\d.,]+)\)/.exec(status);
+        const match=/pos \((-?[\d.,]+), (-?[\d.,]+)\) · alt (-?[\d.,]+)/.exec(status);
         assert.ok(match, status);
-        return {x:Number(match[1].replace(',','.')),z:Number(match[2].replace(',','.'))};
+        return {x:Number(match[1].replace(',','.')),z:Number(match[2].replace(',','.')),y:Number(match[3].replace(',','.'))};
     };
     const apply=op=>p.evaluate(op=>game.applyWorldOp(op),op);
-    async function walk(keys,ms){const hold=Math.round(ms*walkScale);
+    async function walk(keys,ms,sprint=true){const hold=Math.round(ms*walkScale);
+        if(sprint) await p.keyboard.down('Shift');
         for(const key of keys) await p.keyboard.down(key);
         await p.waitForTimeout(hold);
         for(const key of keys) await p.keyboard.up(key);
+        if(sprint) await p.keyboard.up('Shift');
         await p.waitForTimeout(T300);
         if(errors.length) throw Error(errors.join('\n'));
         return pose();
     }
+    const walking=await walk(['w'],700,false);
+    await p.evaluate(()=>game.resetPlayer());
+    const running=await walk(['w'],700);
+    console.log(JSON.stringify({walking,running}));
+    assert.ok(walking.z>1.5 && running.z>walking.z*1.45, 'Shift distingue caminhada e corrida');
+    await p.evaluate(()=>game.resetPlayer());
     await apply(fixture);
     await p.waitForTimeout(T300);
     const blocked=await walk(['w'],1150);
@@ -73,6 +84,8 @@ async function wait(callback,label) {
     await p.locator('.ultima-hint').getByText('para examinar',{exact:false}).waitFor();
     await p.keyboard.press('e');
     await p.getByText('Você examinou: Pinheiro',{exact:true}).waitFor();
+    await wait(()=>renderer.evaluate(()=>BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('player-upper-body').rotation.x>0.10),
+        'o jogador se inclina ao examinar');
     const slide=await walk(['w','d'],450);
     assert.ok(slide.x>0.45 && slide.z>2, 'desliza pela lateral '+JSON.stringify(slide));
     await apply({kind:'remove',uid:fixture.uid});
@@ -87,10 +100,10 @@ async function wait(callback,label) {
     assert.ok(soft.z>2.65,'samambaia permite passagem');
     await apply({kind:'remove',uid:'browser-soft'});
     await p.evaluate(()=>game.resetPlayer());
-    await apply({...fixture,uid:'browser-stump',asset:'prop.stump'});
+    await apply({...fixture,uid:'browser-stump',asset:'prop.stump',scale:1.45});
     await p.waitForTimeout(T300);
     const stump=await walk(['w'],850);
-    assert.ok(stump.z>0.9 && stump.z<1.72,'toco sólido '+JSON.stringify(stump));
+    assert.ok(stump.z>0.7 && stump.z<1.55,'toco sólido '+JSON.stringify(stump));
     await apply({kind:'remove',uid:'browser-stump'});
     await p.evaluate(()=>game.resetPlayer());
     await apply({...fixture,uid:'browser-rock',asset:'rock.boulder2'});
@@ -98,6 +111,83 @@ async function wait(callback,label) {
     const rock=await walk(['w'],850);
     assert.ok(rock.z>0.45 && rock.z<1.7,'pedra sólida '+JSON.stringify(rock));
     await apply({kind:'remove',uid:'browser-rock'});
+
+    await p.evaluate(()=>game.resetPlayer());
+    await apply({...fixture,uid:'browser-log',asset:'prop.log',scale:0.56});
+    await p.waitForTimeout(Math.round(400*walkScale));
+    // Registra cada quadro no renderizador para captar o apoio curto em corrida.
+    await renderer.evaluate(()=>{
+        const scene=BABYLON.EngineStore.LastCreatedScene;
+        const player=scene.getTransformNodeByName('player');
+        const knees=['left','right'].map(side=>scene.getTransformNodeByName('player-knee-'+side));
+        const ankles=['left','right'].map(side=>scene.getTransformNodeByName('player-ankle-'+side));
+        const samples=[];
+        const observer=scene.onAfterRenderObservable.add(()=>{
+            const {z}=player.position;
+            const heights=ankles.map(ankle=>ankle.getAbsolutePosition().y);
+            samples.push({z,ankleY:Math.max(...heights),bend:Math.max(...knees.map(knee=>knee.rotation.x)),
+                feetDifference:Math.abs(heights[0]-heights[1])});
+        });
+        globalThis.stopStepTrace=()=>{
+            scene.onAfterRenderObservable.remove(observer);
+            return samples;
+        };
+    });
+    await p.keyboard.down('w');
+    try {
+        await p.waitForTimeout(Math.round(1050*walkScale));
+    } finally {
+        await p.keyboard.up('w');
+    }
+    await p.waitForTimeout(T300);
+    const samples=await renderer.evaluate(()=>globalThis.stopStepTrace());
+    const pastLog=await pose();
+    const overLog=samples.filter(sample=>sample.z>1.4 && sample.z<2.6);
+    const step={
+        anklePeak:Math.max(...overLog.map(sample=>sample.ankleY)),
+        flex:Math.max(...overLog.map(sample=>sample.bend)),
+        feetDifference:Math.max(...overLog.map(sample=>sample.feetDifference)),
+        end:pastLog,
+    };
+    console.log(JSON.stringify({step}));
+    assert.ok(step.anklePeak>0.28 && pastLog.z>3.2 && pastLog.y<0.19,'a perna sobe sobre o tronco e o jogador volta ao chão');
+    assert.ok(step.flex>0.55 && step.feetDifference>0.10,'joelho flexiona e os pés alternam apoio');
+    {
+        const contact = await renderer.evaluate(async () => {
+            const scene = BABYLON.EngineStore.LastCreatedScene;
+            const player = scene.getTransformNodeByName('player');
+            const log = scene.getMeshByName('place-browser-log');
+            const shoes = ['left', 'right'].map(side => scene.getMeshByName('player-shoe-' + side));
+            const down = new BABYLON.Vector3(0, -1, 0);
+            const samples = [];
+            player.rotation.y = 0;
+            for (const z of [1.7, 1.8, 1.9, 2, 2.1, 2.2, 2.3]) {
+                player.position.set(0, player.position.y, z);
+                await new Promise(resolve => scene.onAfterRenderObservable.addOnce(() =>
+                    scene.onAfterRenderObservable.addOnce(() => resolve())));
+                const feet = shoes.map(shoe => {
+                    const { centerWorld, minimumWorld } = shoe.getBoundingInfo().boundingBox;
+                    const ray = new BABYLON.Ray(new BABYLON.Vector3(centerWorld.x, 3, centerWorld.z), down);
+                    const bark = ray.intersectsMesh(log).pickedPoint;
+                    const floor = scene.pickWithRay(ray, mesh => mesh.name.startsWith('ground-')).pickedPoint;
+                    return { supportedByLog: !!bark, gap: minimumWorld.y - Math.max(floor.y, bark?.y ?? floor.y) };
+                });
+                samples.push({ z, feet });
+            }
+            return samples;
+        });
+        console.log(JSON.stringify({contact}));
+        assert.ok(contact.some(sample => sample.feet.every(foot => foot.supportedByLog)), 'os pés chegam ao topo do tronco');
+        assert.ok(contact.every(sample => sample.feet.every(foot => Math.abs(foot.gap)<0.04)),
+            'cada sola deve ficar a menos de 4 cm do tronco ou do chão, mesmo nas bordas');
+    }
+    await apply({kind:'remove',uid:'browser-log'});
+    await p.evaluate(()=>game.resetPlayer());
+    await apply({...fixture,uid:'browser-high-log',asset:'prop.log',scale:0.95});
+    await p.waitForTimeout(T300);
+    const highLog=await walk(['w'],850);
+    assert.ok(highLog.z>0.5 && highLog.z<1.55 && highLog.y<0.19,'tronco acima do joelho bloqueia');
+    await apply({kind:'remove',uid:'browser-high-log'});
 
     let nativeTree;
     if(main) {
@@ -119,7 +209,29 @@ async function wait(callback,label) {
     await p.waitForTimeout(500);
     await p.keyboard.press('e');
     await p.locator('.ultima-dialog').waitFor();
+    const conversation = await wait(()=>renderer.evaluate(()=>{
+        const s=BABYLON.EngineStore.LastCreatedScene;
+        const npc=s.getTransformNodeByName('npc');
+        const player=s.getTransformNodeByName('player');
+        const mouth=s.getMeshByName('npc-mouth');
+        const listening=s.getTransformNodeByName('player-head-pivot').rotation.z;
+        return mouth.scaling.y>0.016 && listening>0.06 && Math.cos(npc.rotation.y)>0.9 &&
+            Math.cos(player.rotation.y)<-0.9;
+    }),'os personagens se encaram, a Guardiã fala e o jogador escuta');
+    await p.keyboard.press('Escape');
+    await p.evaluate(()=>{
+        game.addRemote('gesture-test', 'Visitante');
+        game.updateRemote('gesture-test', 1, 8, 0);
+        game.updateRemote('gesture-test', 1, 10, 0);
+    });
+    await wait(()=>renderer.evaluate(()=>{
+        const s=BABYLON.EngineStore.LastCreatedScene;
+        const remote=s.getTransformNodeByName('remote-gesture-test');
+        const arm=s.getTransformNodeByName('remote-gesture-test-shoulder-right');
+        return remote?.position.z>8 && remote.position.z<9.999 && Math.abs(arm.rotation.x)>0.03;
+    }),'o remoto interpola a posição e move os braços');
+    await p.evaluate(()=>game.removeRemote('gesture-test'));
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({slide,free,soft,stump,rock,nativeTree,dialog:true}));
+    console.log(JSON.stringify({slide,free,soft,stump,rock,highLog,nativeTree,conversation,remoteMotion:true}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});

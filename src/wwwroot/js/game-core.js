@@ -17,6 +17,15 @@
     const WALK_SPEED = 3.5;   // m/s (caminhada rápida)
     const RUN_SPEED = 6.5;    // m/s (corrida leve, Shift ou analógico no fim do curso)
     const PLAYER_HEIGHT = 1.75;
+    const FOOT_GAP = 0.03;
+    const HIP_HEIGHT = PLAYER_HEIGHT * 0.44;
+    const LEG_RADIUS = PLAYER_HEIGHT * 0.039;
+    const SHOE_OFFSET = 0.9 * LEG_RADIUS;
+    const ANKLE_HEIGHT = LEG_RADIUS * 1.25 * 0.55;
+    const SOLE_CLEARANCE = 0.004;
+    const LEG_SEGMENT = (HIP_HEIGHT - ANKLE_HEIGHT + 0.004) / 2;
+    const KNEE_HEIGHT = HIP_HEIGHT - LEG_SEGMENT;
+    const LEG_SPACING = PLAYER_HEIGHT * 0.044;
     // Alvo da câmera fica na altura do peito (o root do personagem agora é os pés).
     const CAM_UP = new BABYLON.Vector3(0, PLAYER_HEIGHT / 2, 0);
     const PLAYER_RADIUS = 0.25;
@@ -43,6 +52,9 @@
     let rainLevel = weatherMode === 'rain' ? 1 : 0;
     let rainParticles = null;
     let player = null;
+    let movementSpeed = 0;
+    let movementX = 0, movementZ = 0;
+    let dialoguePartner = null;
     let camera = null;
     const G = host.global;
     const dom = !!host.dom;
@@ -57,7 +69,9 @@
     const pageUrl = function (path) { return new URL(path, host.pageBase).href; };
     let near = false;
     let nearWanderer = false;
+    let guardianRoot = null;
     let wandererRoot = null;
+    let wanderT = Math.random() * Math.PI * 2;
     let frozen = false;
     let lastTick = 0;
     let actionWasDown = false;
@@ -71,6 +85,7 @@
     const editable = (el) => !!(el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)));
 
     function interact() {
+        if (!frozen && !near && !nearWanderer && nearbyObject) { playCharacterAction('inspect'); }
         if (dotnet) { dotnet.invokeMethodAsync('OnInteract'); }
     }
 
@@ -364,8 +379,42 @@
         return t <= 0 ? 0 : t * t * (3 - 2 * t);   // falloff suave na borda do pincel
     }
 
-    // Altura efetiva do mundo: gerador base + esculturas (em ordem de journal) e grutas
-    // (o miolo do carve vira piso absoluto — o jogador anda até o fundo da gruta).
+    const COLLECT_REACH = 3.5;
+    const SOIL_DEPTH = 0.48;
+    const SOIL_RADIUS = 1;
+    const SOIL_BUCKET_SIZE = 2;
+    const SOIL_FLAT_RADIUS = CHUNK_STEP * Math.SQRT1_2 + 0.01;
+    const collectedIds = new Set();
+    const soilBuckets = new Map();
+    function surfaceResourceId(kind, op) { return kind + ':' + (op.rev ?? [op.x, op.z, op.r].join(',')); }
+
+    function soilBucketIndex(position) { return Math.floor(position / SOIL_BUCKET_SIZE); }
+
+    // O índice limita a consulta da altura a cortes próximos. O pincel conserva
+    // a coordenada em que a malha foi atingida, inclusive entre os quadrantes.
+    function indexSoilCut(cut) {
+        for (let cx = soilBucketIndex(cut.x - cut.r); cx <= soilBucketIndex(cut.x + cut.r); cx++) {
+            for (let cz = soilBucketIndex(cut.z - cut.r); cz <= soilBucketIndex(cut.z + cut.r); cz++) {
+                const key = cx + ',' + cz;
+                if (!soilBuckets.has(key)) { soilBuckets.set(key, []); }
+                soilBuckets.get(key).push(cut);
+            }
+        }
+    }
+
+    function soilDepthAt(x, z) {
+        if (!soilBuckets.size) { return 0; }
+        const cuts = soilBuckets.get(soilBucketIndex(x) + ',' + soilBucketIndex(z));
+        if (!cuts) { return 0; }
+        let depth = 0;
+        for (const cut of cuts) {
+            const weight = 1 - smoothstep(SOIL_FLAT_RADIUS, cut.r, Math.hypot(x - cut.x, z - cut.z));
+            depth += SOIL_DEPTH * weight;
+        }
+        return depth;
+    }
+
+    // Altura efetiva do mundo: terreno base, esculturas, grutas e coleta local.
     function terrainHeight(x, z) {
         let sculptHeight = 0;
         for (let i = 0; i < worldSculpts.length; i++) {
@@ -382,7 +431,7 @@
                 h = lerp(h, floor, smoothstep(0, Math.min(1.2, op.r / 4), inset));
             }
         }
-        return h;
+        return h - soilDepthAt(x, z);
     }
 
     // Paleta do solo (mesma lógica do gerador original), agora pintável por material.
@@ -424,13 +473,18 @@
             g = lerp(g, value * 1.03, exposedRock);
             b = lerp(b, value * 0.92, exposedRock);
         }
+        let material = path >= 0.5 ? 'grass' : 'dirt';
+        if (rocky >= 0.5 || exposedRock >= 0.5) { material = 'rock'; }
+        if (snowy >= 0.5) { material = 'snow'; }
         const cover = (1 - rocky) * (1 - snowy) * (1 - exposedRock);
         let grassDetail = path * cover, dirtDetail = (1 - path) * cover;
         for (let i = 0; i < worldPaints.length; i++) {
             const op = worldPaints[i];
+            if (op.mat === 'water' && collectedIds.has(surfaceResourceId('water', op))) { continue; }
             const w = brushWeight(x, z, op);
             if (w > 0) {
                 const c = PAINT_COLORS[op.mat];
+                if (w >= 0.5) { material = op.mat; }
                 grassDetail = lerp(grassDetail, op.mat === 'grass' ? 1 : 0, w);
                 dirtDetail = lerp(dirtDetail, op.mat === 'dirt' ? 1 : 0, w);
                 // Pinturas de rocha do journal também recebem o relevo mineral.
@@ -441,7 +495,16 @@
                 b = lerp(b, c[2] * relief, w);
             }
         }
-        return [r, g, b, grassDetail, dirtDetail];
+        if (material === 'grass') {
+            const exposedSoil = Math.min(1, soilDepthAt(x, z) / SOIL_DEPTH) * 0.85;
+            r = lerp(r, dirt[0], exposedSoil);
+            g = lerp(g, dirt[1], exposedSoil);
+            b = lerp(b, dirt[2], exposedSoil);
+            grassDetail = lerp(grassDetail, 0, exposedSoil);
+            dirtDetail = lerp(dirtDetail, 1, exposedSoil);
+            if (exposedSoil >= 0.5) { material = 'dirt'; }
+        }
+        return [r, g, b, grassDetail, dirtDetail, material];
     }
 
     function chunkKey(cx, cz) { return cx + ',' + cz; }
@@ -796,6 +859,7 @@
             m.emissiveFresnelParameters.rightColor = new BABYLON.Color3(0.45, 0.62, 0.78);
             disc.material = m;
             disc.position.set(op.x, terrainHeight(op.x, op.z) + 0.12, op.z);
+            trackGatherable(disc, surfaceResourceId('water', op), 'material.water', false, { x: op.x, z: op.z, r: op.r });
             waterDiscs.set(disc, disc);
         }
     }
@@ -858,6 +922,7 @@
             roof.position.set(op.x, op.y1 + 0.25, op.z);
             roof.material = carveRock;
             roof.isPickable = false;
+            trackGatherable(roof, surfaceResourceId('roof', op), 'material.rock', false);
             carveRoofs.push(roof);
         }
     }
@@ -876,7 +941,7 @@
         const halfZ = bounds.extendSize.z * Math.abs(mesh.scaling.z);
         const minY = mesh.position.y + bounds.minimum.y * mesh.scaling.y;
         const maxY = mesh.position.y + bounds.maximum.y * mesh.scaling.y;
-        if (maxY - minY < 0.22) { return; }
+        if (maxY - minY < 0.065) { return; }
 
         // Troncos alongados usam uma fileira de círculos seguindo a rotação.
         const radius = fixedRadius || Math.min(halfX, halfZ);
@@ -894,7 +959,9 @@
                 radius
             });
         }
-        obstacles.set(mesh, { circles, minY, maxY, label });
+        mesh.computeWorldMatrix(true);
+        const { minimumWorld, maximumWorld } = mesh.getBoundingInfo().boundingBox;
+        obstacles.set(mesh, { circles, minY, maxY, minimumWorld, maximumWorld, label });
         mesh.onDisposeObservable.addOnce(() => obstacles.delete(mesh));
     }
 
@@ -909,12 +976,32 @@
         return position.y + PLAYER_HEIGHT > obstacle.minY && position.y < obstacle.maxY;
     }
 
-    function firstContact(position, dx, dz, lengthSquared) {
+    function canStepOn(obstacle, ground) {
+        const rise = obstacle.maxY - ground;
+        return rise > 0 && rise <= KNEE_HEIGHT && obstacle.minY <= ground + 0.10;
+    }
+
+    const supportRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, -1, 0), KNEE_HEIGHT + 0.01);
+
+    function stepSurfaceAt(x, z, ground) {
+        let top = ground;
+        supportRay.origin.set(x, ground + supportRay.length, z);
+        for (const [mesh, obstacle] of obstacles) {
+            const { minimumWorld: min, maximumWorld: max } = obstacle;
+            if (x < min.x || x > max.x || z < min.z || z > max.z) { continue; }
+            if (!canStepOn(obstacle, ground) || !mesh.isEnabled()) { continue; }
+            const hit = supportRay.intersectsMesh(mesh);
+            if (hit.pickedPoint) { top = Math.max(top, hit.pickedPoint.y); }
+        }
+        return top;
+    }
+
+    function firstContact(position, dx, dz, lengthSquared, ground) {
         let first = null;
         let best = 1;
         const distance = Math.sqrt(lengthSquared);
         for (const [mesh, obstacle] of obstacles) {
-            if (!mesh.isEnabled() || !touchesPlayerHeight(position, obstacle)) { continue; }
+            if (!mesh.isEnabled() || !touchesPlayerHeight(position, obstacle) || canStepOn(obstacle, ground)) { continue; }
             for (const circle of obstacle.circles) {
                 const x = position.x - circle.x, z = position.z - circle.z;
                 const radius = PLAYER_RADIUS + circle.radius;
@@ -936,7 +1023,7 @@
         return first;
     }
 
-    function moveWithObstacles(position, dx, dz) {
+    function moveWithObstacles(position, dx, dz, ground) {
         // Varre todo o percurso para evitar atravessar troncos mesmo com quadros longos.
         // Depois do contato, tenta só a parcela tangente do deslocamento restante.
         for (let i = 0; i < 3; i++) {
@@ -944,7 +1031,7 @@
             dz = clampWorld(position.z + dz) - position.z;
             const lengthSquared = dx * dx + dz * dz;
             if (lengthSquared < 1e-10) { return; }
-            const hit = firstContact(position, dx, dz, lengthSquared);
+            const hit = firstContact(position, dx, dz, lengthSquared, ground);
             if (!hit) {
                 position.x += dx;
                 position.z += dz;
@@ -982,20 +1069,231 @@
         }
     }
 
-    const scatteredScenery = new Set();
-    function trackScenery(mesh) {
-        scatteredScenery.add(mesh);
-        mesh.onDisposeObservable.addOnce(() => scatteredScenery.delete(mesh));
-        updateSceneryVisibility(mesh);
+    const gatherableMeshes = new Map();
+    const resourceLabels = new Map([
+        ['tree.pine', 'Pinheiro'], ['flora.pine', 'Pinheiro'],
+        ['rock.boulder', 'Pedra'], ['rock.boulder2', 'Pedra'],
+        ['scenery.grass', 'Tufo de grama'], ['scenery.grass2', 'Tufo de grama'],
+        ['scenery.bush', 'Arbusto'], ['flora.flowers', 'Flores'],
+        ['flora.mushroom', 'Cogumelo'], ['flora.fern', 'Samambaia'],
+        ['prop.log', 'Tronco caído'], ['prop.stump', 'Toco'],
+        ['material.water', 'Água'], ['material.rock', 'Rocha']
+    ]);
+    const soilLabels = { grass: 'Solo com grama', dirt: 'Terra', sand: 'Areia', rock: 'Rocha', snow: 'Neve', water: 'Água' };
+
+    function trackGatherable(mesh, id, asset, scattered, brush) {
+        const resource = { id, item: resourceLabels.get(asset) || asset, scattered, brush };
+        gatherableMeshes.set(mesh, resource);
+        mesh.onDisposeObservable.addOnce(() => gatherableMeshes.delete(mesh));
+        updateGatherableVisibility(mesh, resource);
     }
 
-    function updateSceneryVisibility(mesh) {
+    function updateGatherableVisibility(mesh, resource) {
         const { x, z } = mesh.position;
-        mesh.setEnabled(!worldCarves.some(op => Math.hypot(x - op.x, z - op.z) < op.r));
+        const cut = resource.scattered && worldCarves.some(op => Math.hypot(x - op.x, z - op.z) < op.r);
+        mesh.setEnabled(!cut && !collectedIds.has(resource.id));
     }
 
     function syncCarveScenery() {
-        for (const mesh of scatteredScenery) { updateSceneryVisibility(mesh); }
+        for (const [mesh, resource] of gatherableMeshes) { updateGatherableVisibility(mesh, resource); }
+    }
+
+    function setCollectedResources(entries) {
+        const newCuts = [];
+        for (const entry of entries) {
+            if (collectedIds.has(entry.id)) { continue; }
+            collectedIds.add(entry.id);
+            if (entry.kind === 'soil') {
+                const cut = { x: entry.x, z: entry.z, r: SOIL_RADIUS };
+                indexSoilCut(cut);
+                newCuts.push(cut);
+            } else if (entry.brush) {
+                newCuts.push(entry.brush);
+            }
+        }
+        syncCarveScenery();
+        if (newCuts.length) {
+            for (const ch of chunkMap.values()) {
+                if (newCuts.some(cut => brushTouchesChunk(ch, cut))) { refreshChunk(ch); }
+            }
+        }
+    }
+
+    function pickCollectionTarget(sx, sy) {
+        return scene.pick(sx, sy, mesh => mesh.isEnabled() && mesh.isVisible &&
+            (gatherableMeshes.has(mesh) || mesh.name.startsWith('ground-')));
+    }
+
+    function withinCollectionReach(point) {
+        return BABYLON.Vector3.Distance(player.position.add(CAM_UP), point) <= COLLECT_REACH;
+    }
+
+    function collectAt(sx, sy) {
+        const hit = pickCollectionTarget(sx, sy);
+        if (!hit?.hit || !hit.pickedPoint) { return; }
+        const p = hit.pickedPoint;
+        if (!withinCollectionReach(p)) {
+            dotnet.invokeMethodAsync('OnBackpackStatus', 'Aproxime-se para coletar.');
+            return;
+        }
+        const target = gatherableMeshes.get(hit.pickedMesh);
+        let resource;
+        if (target) {
+            resource = { id: target.id, item: target.item, kind: 'object', brush: target.brush };
+        } else {
+            const material = terrainColorAt(p.x, p.y, p.z)[5];
+            resource = { item: soilLabels[material], kind: 'soil', x: p.x, z: p.z };
+        }
+        if (collectedIds.has(resource.id)) {
+            dotnet.invokeMethodAsync('OnBackpackStatus', 'Esse recurso já foi coletado.');
+            return;
+        }
+        host.worldOp({ action: 'collect', resource, point: { x: p.x, z: p.z } });
+    }
+
+    let collectionPointer = null;
+    let nextPreviewAt = 0;
+    let previewResourceId = null;
+    let previewPoint = null;
+    const previewObjects = [];
+    const previewRings = [];
+    const previewMaterials = new Map();
+
+    function collectionGlow(opacityTexture, ground = false) {
+        const key = ground ? 'terrain' : opacityTexture;
+        if (previewMaterials.has(key)) { return previewMaterials.get(key); }
+        const material = new BABYLON.StandardMaterial('collect-glow', scene);
+        material.disableLighting = true;
+        material.emissiveColor.set(0.95, 0.75, 0.20);
+        material.alpha = ground ? 0.9 : 0.45;
+        material.opacityTexture = opacityTexture;
+        material.disableDepthWrite = true;
+        material.zOffset = -2;
+        material.zOffsetUnits = -2;
+        material.backFaceCulling = !ground;
+        previewMaterials.set(key, material);
+        return material;
+    }
+
+    function clearObjectPreview() {
+        for (const overlay of previewObjects) {
+            const material = overlay.material;
+            overlay.dispose();
+            if (material instanceof BABYLON.MultiMaterial) { material.dispose(); }
+        }
+        previewObjects.length = 0;
+        previewResourceId = null;
+    }
+
+    function highlightCollectionObject(id) {
+        if (previewResourceId === id && previewObjects.every(mesh => !mesh.isDisposed())) { return; }
+        clearObjectPreview();
+        previewResourceId = id;
+        const glowFor = original => collectionGlow(original?.opacityTexture ||
+            (original?.diffuseTexture?.hasAlpha ? original.diffuseTexture : null) ||
+            (original?.albedoTexture?.hasAlpha ? original.albedoTexture : null));
+        for (const [mesh, resource] of gatherableMeshes) {
+            if (resource.id !== id || !mesh.isEnabled() || !mesh.isVisible) { continue; }
+            // Um Mesh independente compartilha o geometry buffer, mas só ilumina
+            // a instância apontada, inclusive em árvores com várias partes.
+            const source = mesh.sourceMesh || mesh;
+            const overlay = source.clone('collect-preview:' + mesh.name, mesh, true);
+            overlay.position.setAll(0);
+            overlay.rotationQuaternion = null;
+            overlay.rotation.setAll(0);
+            overlay.scaling.setAll(1);
+            overlay.isVisible = true;
+            overlay.isPickable = false;
+            const original = mesh.material;
+            if (original instanceof BABYLON.MultiMaterial) {
+                const multi = new BABYLON.MultiMaterial('collect-glow-parts', scene);
+                multi.subMaterials = original.subMaterials.map(glowFor);
+                overlay.material = multi;
+            } else {
+                overlay.material = glowFor(original);
+            }
+            previewObjects.push(overlay);
+        }
+    }
+
+    function visibleGroundHeight(x, z) {
+        const cx = Math.floor(x / CHUNK + 0.5), cz = Math.floor(z / CHUNK + 0.5);
+        const chunk = chunkMap.get(chunkKey(cx, cz));
+        const vertices = chunk?.mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+        if (!vertices) { return terrainHeight(x, z); }
+        const gx = Math.max(0, Math.min(CHUNK_SUB, (x - (cx * CHUNK - CHUNK / 2)) / CHUNK_STEP));
+        const gz = Math.max(0, Math.min(CHUNK_SUB, (z - (cz * CHUNK - CHUNK / 2)) / CHUNK_STEP));
+        const i = Math.min(Math.floor(gx), CHUNK_SUB - 1);
+        const j = Math.min(Math.floor(gz), CHUNK_SUB - 1);
+        const u = gx - i, v = gz - j;
+        const stride = (CHUNK_SUB + 1) * 3;
+        const a = j * stride + i * 3 + 1;
+        const d = a + stride + 3;
+        // Mesma diagonal a–d de buildChunkMesh. O anel segue as faces que
+        // estão na tela, inclusive nas escavações profundas.
+        return u >= v
+            ? vertices[a] * (1 - u) + vertices[a + 3] * (u - v) + vertices[d] * v
+            : vertices[a] * (1 - v) + vertices[a + stride] * (v - u) + vertices[d] * u;
+    }
+
+    function highlightCollectionGround(point) {
+        if (previewPoint && BABYLON.Vector3.DistanceSquared(previewPoint, point) < 0.000025) { return; }
+        previewPoint = point;
+        function ringPath(radius) {
+            return Array.from({ length: 64 }, (_, i) => {
+                const angle = i * Math.PI / 32;
+                const x = point.x + radius * Math.cos(angle);
+                const z = point.z + radius * Math.sin(angle);
+                return new BABYLON.Vector3(x, visibleGroundHeight(x, z) + 0.025, z);
+            });
+        }
+        [SOIL_RADIUS, 0.10].forEach((radius, i) => {
+            const pathArray = [ringPath(radius - 0.035), ringPath(radius)];
+            if (!previewRings[i]) {
+                const ring = BABYLON.MeshBuilder.CreateRibbon('collect-ring-' + i,
+                    { pathArray, closePath: true, updatable: true }, scene);
+                ring.material = collectionGlow(null, true);
+                ring.isPickable = false;
+                ring.alwaysSelectAsActiveMesh = true;
+                previewRings[i] = ring;
+            } else {
+                BABYLON.MeshBuilder.CreateRibbon(null, { pathArray, closePath: true, instance: previewRings[i] }, scene);
+                previewRings[i].setEnabled(true);
+            }
+        });
+    }
+
+    function clearGroundPreview() {
+        if (!previewPoint) { return; }
+        previewPoint = null;
+        for (const ring of previewRings) { ring.setEnabled(false); }
+    }
+
+    function updateCollectionPreview(now) {
+        if (!collectionPointer || now < nextPreviewAt) { return; }
+        nextPreviewAt = now + 35;
+        const hit = pickCollectionTarget(...collectionPointer);
+        if (!hit?.pickedPoint || !withinCollectionReach(hit.pickedPoint)) {
+            clearGroundPreview();
+            clearObjectPreview();
+            return;
+        }
+        const object = gatherableMeshes.get(hit.pickedMesh);
+        if (object) {
+            clearGroundPreview();
+            highlightCollectionObject(object.id);
+        } else {
+            clearObjectPreview();
+            highlightCollectionGround(hit.pickedPoint);
+        }
+    }
+
+    function setCollectionPointer(point) {
+        collectionPointer = buildState.mode === 'collect' ? point : null;
+        if (!collectionPointer) {
+            clearGroundPreview();
+            clearObjectPreview();
+        }
     }
 
     // Reaplica o journal e atualiza uma vez cada chunk tocado pelo estado anterior ou novo.
@@ -1033,6 +1331,7 @@
         inst.scaling.setAll(p.scale || 1);
         if (sceneShadows) { try { sceneShadows.addShadowCaster(inst); } catch (e) { /* já fora */ } }
         trackGlbObstacle(inst, g.proto, p.asset, true);
+        trackGatherable(inst, 'placed:' + p.uid, p.asset, false);
         placements.set(p.uid, inst);
     }
 
@@ -1073,6 +1372,7 @@
 
     function terrainClickImpl(sx, sy) {
         if (buildState.mode === 'off' || !scene || typeof host.worldOp !== 'function') { return; }
+        if (buildState.mode === 'collect') { collectAt(sx, sy); return; }
         const cid = 'c' + Math.random().toString(36).slice(2, 8);
         if (buildState.mode === 'remove') {
             const pick = scene.pick(sx, sy, function (m) { return !!(m && m.name && m.name.indexOf('place-') === 0); });
@@ -1266,7 +1566,7 @@
                     inst.position.set(x, y - sink * sy, z);
                     inst.scaling.set(s, sy, s);
                     inst.rotation.y = rotation;
-                    trackScenery(inst);
+                    trackGatherable(inst, 'pine:' + placed, 'tree.pine', true);
                     if (proto === protos[0]) { trackObstacle(inst, proto, 'Pinheiro', radius * s); }
                 }
                 placed += 1;
@@ -1341,7 +1641,7 @@
     const modelStatus = { loaded: [], placeholders: [], errors: [], log: [], queue: 0, timings: [] };
     // Entidades (jogador, Guardiã, remotos) que esperam um modelo chegar do carregador C#.
     const modelAwaiters = new Map();   // id do modelo -> [{ make, apply, fallback }]
-    const characterSpawns = new Map(); // chave 'modelo#nome' -> { root, onModel, onFallback }
+    const characterRigs = new Map();
 
     // Instancia um modelo registrado como root único (TransformNode) com origem nos pés:
     // cada grupo vira clone visível filho do root. Se o modelo ainda não chegou, entra na
@@ -1351,38 +1651,65 @@
         const root = new BABYLON.TransformNode(name, scene);
         root.position.copyFrom(groundPos);
         root.rotation.y = rotationY || 0;
-        const entry = { root: root, onModel: null, onFallback: null };
-        characterSpawns.set(modelId + '#' + name, entry);
-        if (modelRegistry.has(modelId)) {
+        const rig = createCharacterRig(root, modelId === 'character.guardian');
+        const entry = { root, rig, onFallback: null };
+        root.onDisposeObservable.addOnce(() => {
+            characterRigs.delete(root);
+            disposeCharacterFallback(entry);
+            for (const material of rig.fallbackLegMaterials) { material.dispose(); }
+        });
+        if (modelRegistry.has(modelId) && !modelRegistry.get(modelId).placeholder) {
             attachCharacterModel(modelId, entry);
         } else {
             const fallback = makeFallback();   // malha centrada, y local já definido
-            fallback.parent = root;
+            fallback.parent = rig.legs.length ? rig.upper : root;
+            if (rig.legs.length) { fallback.position.y -= HIP_HEIGHT; }
             entry.onFallback = fallback;
             if (sceneShadows) { sceneShadows.addShadowCaster(fallback); }
-            const list = modelAwaiters.get(modelId) || [];
-            list.push({ name: name, entry: entry, make: makeFallback });
-            modelAwaiters.set(modelId, list);
+            if (!modelRegistry.has(modelId)) {
+                const list = modelAwaiters.get(modelId) || [];
+                list.push({ entry });
+                modelAwaiters.set(modelId, list);
+            }
         }
         return root;
+    }
+
+    function disposeCharacterFallback(entry) {
+        if (!entry.onFallback) { return; }
+        sceneShadows?.removeShadowCaster(entry.onFallback);
+        entry.onFallback.dispose(false, true);
+        entry.onFallback = null;
     }
 
     // Troca o fallback JS pelas malhas do modelo C# (clones dos protótipos do descritor).
     function attachCharacterModel(modelId, entry) {
         const reg = modelRegistry.get(modelId);
-        if (!reg || !entry.root) { return; }
-        if (entry.onFallback) {
-            if (sceneShadows) { sceneShadows.removeShadowCaster(entry.onFallback); }
-            entry.onFallback.dispose(false, true);
-            entry.onFallback = null;
-        }
+        if (!reg || reg.placeholder || entry.root.isDisposed()) { return; }
+        disposeCharacterFallback(entry);
+        const { rig } = entry;
+        rig.face.setEnabled(true);
+        rig.eyes.setEnabled(true);
         for (const proto of reg.protos) {
+            const group = proto.name.slice(('model-' + modelId + '-').length);
+            if (rig.legs.length && group === 'legs') {
+                for (const leg of rig.legs) { leg.thigh.material = leg.shin.material = proto.material; }
+                continue;
+            }
+            if (rig.legs.length && group === 'shoes') {
+                for (const leg of rig.legs) { leg.shoe.material = proto.material; }
+                continue;
+            }
             const clone = proto.clone(proto.name.replace('model-', 'char-') + '-' + entry.root.name);
             clone.isVisible = true;
-            clone.parent = entry.root;
+            clone.isPickable = false;
+            const pivot = rig.attachments[group] || entry.root;
+            clone.parent = pivot;
             clone.position.set(0, 0, 0);
-            if (sceneShadows && reg.desc && !reg.placeholder) { sceneShadows.addShadowCaster(clone); }
+            if (pivot !== entry.root) { clone.position.copyFrom(pivot.metadata.modelOffset); }
+            if (sceneShadows) { sceneShadows.addShadowCaster(clone); }
         }
+        for (const material of rig.fallbackLegMaterials.splice(0)) { material.dispose(); }
     }
 
     // ---------- Fila de entrada de modelos com orçamento por frame ----------
@@ -1537,10 +1864,10 @@
     // Espalha instâncias de um protótipo com filtros de altitude/inclinação (resumível,
     // em lotes, para o orçamento por frame da fila de modelos).
     function makeInstancePlacer(proto, count, opts) {
-        const asset = proto.name.startsWith('glb-') ? proto.name.slice(4) : '';
+        const asset = proto.name.startsWith('glb-') ? proto.name.slice(4)
+            : proto.name.startsWith('model-rock.boulder-') ? 'rock.boulder' : 'scenery.grass';
         const solid = opts.radius > 0 || solidAssets.has(asset);
-        const rand = solid ? mulberry32(seedHash(proto.name)) : Math.random;
-        const surface = solid ? baseHeight : terrainHeight;
+        const rand = mulberry32(seedHash(proto.name));
         let placed = 0, tries = 0;
         return function (n) {
             while (placed < count && tries < count * 40 && n > 0) {
@@ -1551,15 +1878,15 @@
                 if (r < (opts.minR || 5)) { continue; }
                 if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 4.5) { continue; }
                 if (pathBlend(x, z) < 0.72) { continue; }
-                const y = surface(x, z);
+                const y = baseHeight(x, z);
                 if (opts.maxAlt !== undefined && y > opts.maxAlt) { continue; }
-                if (slopeAt(x, z, surface) > (opts.maxSlope || 0.6)) { continue; }
+                if (slopeAt(x, z, baseHeight) > (opts.maxSlope || 0.6)) { continue; }
                 const s = opts.minScale + rand() * ((opts.maxScale || opts.minScale) - opts.minScale);
                 const inst = proto.createInstance(proto.name + '-i' + placed);
                 inst.position.set(x, terrainHeight(x, z) + (opts.sink || 0) * s, z);
                 inst.rotation.y = rand() * Math.PI * 2;
                 inst.scaling.set(s, s * (0.85 + rand() * 0.5), s);
-                trackScenery(inst);
+                trackGatherable(inst, 'scenery:' + proto.name + ':' + placed, asset, true);
                 if (opts.radius) { trackObstacle(inst, proto, opts.label, opts.radius * s); }
                 else if (solid) { trackGlbObstacle(inst, proto, asset); }
                 placed += 1;
@@ -1818,15 +2145,15 @@
                             if (r < (opts.minR || 5)) { continue; }
                             if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 4.5) { continue; }
                             if (pathBlend(x, z) < 0.72) { continue; }
-                            const y = terrainHeight(x, z);
+                            const y = baseHeight(x, z);
                             if (opts.maxAlt !== undefined && y > opts.maxAlt) { continue; }
-                            if (slopeAt(x, z) > (opts.maxSlope || 0.6)) { continue; }
+                            if (slopeAt(x, z, baseHeight) > (opts.maxSlope || 0.6)) { continue; }
                             const s = opts.minScale + rnd() * ((opts.maxScale || opts.minScale) - opts.minScale);
                             const inst = proto.createInstance(proto.name + '-w' + placed);
-                            inst.position.set(x, y + (opts.sink || 0) * s, z);
+                            inst.position.set(x, terrainHeight(x, z) + (opts.sink || 0) * s, z);
                             inst.rotation.y = rnd() * Math.PI * 2;
                             inst.scaling.set(s, s * (0.9 + rnd() * 0.3), s);
-                            trackScenery(inst);
+                            trackGatherable(inst, 'catalog:' + proto.name + ':' + placed, proto.name.slice(4), true);
                             trackGlbObstacle(inst, proto, proto.name.slice(4), true);
                             placed += 1;
                             n -= 1;
@@ -2022,28 +2349,20 @@
         // enquanto a DLL não chega, o protótipo JS serve de fallback. Origem do root = pés.
         player = spawnFromModel('character.villager', 'player',
             new BABYLON.Vector3(0, terrainHeight(0, 0) + 0.03, 0), 0,
-            () => { const m = buildHumanoid('player-js', { shirt:new BABYLON.Color3(0.20,0.50,0.92), pants:new BABYLON.Color3(0.20,0.22,0.28), skin:new BABYLON.Color3(0.90,0.72,0.58) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
+            () => { const m = buildHumanoid('player-js', { shirt:new BABYLON.Color3(0.20,0.50,0.92), skin:new BABYLON.Color3(0.90,0.72,0.58) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
 
         // Guardiã: figura encapuzada dourada (1,7 m) com anel de destaque no chão —
         // modelo C# (character.guardian) carregado em runtime, fallback JS centrado.
-        const npc = spawnFromModel('character.guardian', 'npc',
+        guardianRoot = spawnFromModel('character.guardian', 'npc',
             new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.03, NPC_POSITION.z), 0,
             () => { const m = buildGuardian('npc-js'); m.position.y = 0.85; return m; });
 
         // Andarilho: segundo NPC (character.wanderer) na clareira inicial, circulando
         // devagar — o cérebro dele (WandererBrain) vive em C#; aqui é só o corpo.
         wandererRoot = spawnFromModel('character.wanderer', 'wanderer',
-            new BABYLON.Vector3(WANDERER_HOME.x, terrainHeight(WANDERER_HOME.x, WANDERER_HOME.z) + 0.03, WANDERER_HOME.z), 0,
-            () => { const m = buildHumanoid('wanderer-js', { shirt:new BABYLON.Color3(0.26,0.58,0.44), pants:new BABYLON.Color3(0.34,0.30,0.24), skin:new BABYLON.Color3(0.86,0.67,0.50) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
-        let wanderT = Math.random() * Math.PI * 2;
-        scene.registerBeforeRender(() => {
-            if (!wandererRoot || !engine) { return; }
-            wanderT += Math.min(0.05, engine.getDeltaTime() / 1000) * 0.22;
-            wandererRoot.position.x = WANDERER_HOME.x + Math.sin(wanderT) * 1.4;
-            wandererRoot.position.z = WANDERER_HOME.z + Math.cos(wanderT) * 1.4;
-            wandererRoot.position.y = terrainHeight(wandererRoot.position.x, wandererRoot.position.z) + 0.03;
-            wandererRoot.rotation.y = wanderT + Math.PI / 2;   // de frente para o caminhar
-        });
+            new BABYLON.Vector3(WANDERER_HOME.x + Math.sin(wanderT) * 1.4, terrainHeight(WANDERER_HOME.x, WANDERER_HOME.z) + FOOT_GAP,
+                WANDERER_HOME.z + Math.cos(wanderT) * 1.4), Math.PI / 2 + wanderT,
+            () => { const m = buildHumanoid('wanderer-js', { shirt:new BABYLON.Color3(0.26,0.58,0.44), skin:new BABYLON.Color3(0.86,0.67,0.50) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
 
         const marker = BABYLON.MeshBuilder.CreateTorus('npcMarker', { diameter: 1.5, thickness: 0.08, tessellation: 32 }, scene);
         marker.position = new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.06, NPC_POSITION.z);
@@ -2138,27 +2457,158 @@
     }
 
     function movePlayer(deltaSeconds, pad) {
-        if (frozen || !player) { return; }
+        if (frozen || !player) { return 0; }
         let ix = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
         let iz = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
         ix += pad.x + moveStick.x;
         iz += pad.y + moveStick.y;
-        if (ix === 0 && iz === 0) { return; }
-
-        // Movimento relativo à câmera, com limites e velocidade normalizada.
-        const forward = camera.getForwardRay().direction;
-        const fx = forward.x, fz = forward.z;
-        const flen = Math.hypot(fx, fz) || 1;
-        const nx = fz / flen, nz = -fx / flen;
-        let dx = (fx / flen) * iz + nx * ix;
-        let dz = (fz / flen) * iz + nz * ix;
-        const len = Math.hypot(dx, dz) || 1;
         const magnitude = Math.min(1, Math.hypot(ix, iz));
-        const run = keys.ShiftLeft || keys.ShiftRight || magnitude > 0.92;
-        const speed = run ? RUN_SPEED : WALK_SPEED;
-        const distance = speed * magnitude * deltaSeconds;
-        moveWithObstacles(player.position, dx / len * distance, dz / len * distance);
-        player.rotation.y = Math.atan2(dx, dz);
+        if (magnitude > 0) {
+            const { x: fx, z: fz } = camera.getForwardRay().direction;
+            const dx = fx * iz + fz * ix, dz = fz * iz - fx * ix;
+            const len = Math.hypot(dx, dz) || 1;
+            movementX = dx / len;
+            movementZ = dz / len;
+        }
+        const analogRun = Math.hypot(pad.x + moveStick.x, pad.y + moveStick.y) > 0.92;
+        const run = keys.ShiftLeft || keys.ShiftRight || analogRun;
+        const targetSpeed = (run ? RUN_SPEED : WALK_SPEED) * magnitude;
+        movementSpeed += Math.max(-26 * deltaSeconds, Math.min(22 * deltaSeconds, targetSpeed - movementSpeed));
+        if (movementSpeed <= 0) { return 0; }
+        const { x, z } = player.position;
+        const ground = terrainHeight(x, z);
+        const stepping = player.position.y - FOOT_GAP > ground + 0.015;
+        const distance = (stepping ? Math.min(2.8, movementSpeed) : movementSpeed) * deltaSeconds;
+        moveWithObstacles(player.position, movementX * distance, movementZ * distance, ground);
+        const actualX = player.position.x - x, actualZ = player.position.z - z;
+        const travelled = Math.hypot(actualX, actualZ);
+        const yaw = travelled > 0.001 ? Math.atan2(actualX, actualZ) : Math.atan2(movementX, movementZ);
+        turnCharacter(player, yaw, deltaSeconds, 16);
+        return travelled;
+    }
+
+    function turnCharacter(root, yaw, delta, rate) {
+        const difference = yaw - root.rotation.y;
+        root.rotation.y += Math.atan2(Math.sin(difference), Math.cos(difference)) * (1 - Math.exp(-rate * delta));
+    }
+
+    let faceInk;
+    function createCharacterRig(root, guardian) {
+        function joint(name, parent, x, y) {
+            const node = new BABYLON.TransformNode(root.name + '-' + name, scene);
+            node.parent = parent;
+            const offset = parent.metadata?.modelOffset;
+            node.position.set(x + (offset?.x ?? 0), y + (offset?.y ?? 0), 0);
+            node.metadata = { modelOffset: new BABYLON.Vector3(-x, -y, 0) };
+            return node;
+        }
+        const headRadius = guardian ? 1.7 * 0.075 : PLAYER_HEIGHT * 0.07;
+        const headBase = guardian ? 1.7 * 0.82 : PLAYER_HEIGHT - 2 * headRadius;
+        const upper = joint('upper-body', root, 0, guardian ? 1.7 * 0.52 : HIP_HEIGHT);
+        const head = joint('head-pivot', upper, 0, headBase);
+        const eyes = joint('eye-pivot', head, 0, headBase + 1.1 * headRadius);
+        eyes.setEnabled(false);
+        const armX = PLAYER_HEIGHT * (0.088 + 0.026 * 1.3);
+        const shoulders = guardian ? [] : [-1, 1].map(side =>
+            joint(side < 0 ? 'shoulder-left' : 'shoulder-right', upper, side * armX, PLAYER_HEIGHT * 0.80));
+        const face = new BABYLON.TransformNode(root.name + '-expression', scene);
+        face.parent = head;
+        face.setEnabled(false);
+        if (!faceInk) {
+            faceInk = new BABYLON.StandardMaterial('character-face-ink', scene);
+            faceInk.diffuseColor.set(0.10, 0.045, 0.028);
+            faceInk.emissiveColor.set(0.035, 0.014, 0.009);
+        }
+        function facialFeature(name, parent, x, y, z, width, height) {
+            const feature = BABYLON.MeshBuilder.CreateSphere(root.name + '-' + name, { diameter: 1, segments: 5 }, scene);
+            feature.parent = parent;
+            feature.position.set(x, y, z);
+            feature.scaling.set(width, height, 0.012);
+            feature.material = faceInk;
+            feature.isPickable = false;
+            return feature;
+        }
+        if (guardian) {
+            for (const side of [-1, 1]) {
+                facialFeature('eye-' + side, eyes, side * headRadius * 0.36, 0, headRadius * 0.94, 0.023, 0.018);
+            }
+        }
+        const brows = [-1, 1].map(side => facialFeature('brow-' + side, face,
+            side * headRadius * 0.36, headRadius * 1.34, headRadius * 0.9, 0.038, 0.009));
+        const mouth = facialFeature('mouth', face, 0, headRadius * 0.68, headRadius * 0.96, 0.048, 0.008);
+        const attachments = {
+            torso: upper, tunic: upper, neck: upper, head, hair: head, hood: head, skin: head, eyes,
+            'arm-left': shoulders[0], 'hand-left': shoulders[0], 'arm-right': shoulders[1], 'hand-right': shoulders[1]
+        };
+        const legs = guardian ? [] : buildCharacterLegs(root);
+        const rig = {
+            root, upper, head, eyes, shoulders, face, brows, mouth, attachments,
+            legs, fallbackLegMaterials: legs.length ? [legs[0].thigh.material, legs[0].shoe.material] : [],
+            clock: 0, gaitPhase: 0, gaitWeight: 0, speaking: 0, action: null
+        };
+        characterRigs.set(root, rig);
+        return rig;
+    }
+
+    const characterActions = {
+        inspect: { duration: 0.56, bend: 0.17, reach: 0.42 },
+        gather: { duration: 0.44, bend: 0.23, reach: 0.84 },
+        dig: { duration: 0.50, bend: 0.34, reach: 0.62 }
+    };
+
+    function playCharacterAction(name, point) {
+        const rig = characterRigs.get(player);
+        if (rig && characterActions[name] && !frozen) {
+            rig.action = { ...characterActions[name], elapsed: 0, point };
+        }
+    }
+
+    function updateCharacterPose(root, delta, distance) {
+        const rig = characterRigs.get(root);
+        if (!rig) { return; }
+        rig.clock += delta;
+        const speed = delta > 0 ? distance / delta : 0;
+        const run = smoothstep(WALK_SPEED, RUN_SPEED, speed);
+        rig.gaitWeight = lerp(rig.gaitWeight, Math.min(1, speed / 1.1), 1 - Math.exp(-13 * delta));
+        rig.gaitPhase = (rig.gaitPhase + distance * Math.PI * 2 / lerp(1.1, 2.35, smoothstep(1.4, RUN_SPEED, speed))) % (Math.PI * 2);
+        if (rig.legs.length) { updateCharacterLegs(rig, delta, distance, speed, terrainHeight(root.position.x, root.position.z)); }
+
+        const listening = frozen && (root === player || root === dialoguePartner);
+        rig.speaking = Math.max(0, rig.speaking - delta);
+        const speaking = rig.speaking > 0 && listening;
+        if (listening) {
+            const other = root === player ? dialoguePartner : player;
+            if (other) { turnCharacter(root, Math.atan2(other.position.x - root.position.x, other.position.z - root.position.z), delta, 7); }
+        }
+        let gesture = 0;
+        const action = rig.action;
+        if (action) {
+            if (action.point && speed < 0.4) {
+                turnCharacter(root, Math.atan2(action.point.x - root.position.x, action.point.z - root.position.z), delta, 13);
+            }
+            action.elapsed += delta;
+            gesture = Math.sin(Math.PI * Math.min(1, action.elapsed / action.duration));
+            if (action.elapsed >= action.duration) { rig.action = null; }
+        }
+        const breath = Math.sin(rig.clock * 2.9) * 0.012;
+        const swing = Math.cos(rig.gaitPhase) * rig.gaitWeight;
+        rig.upper.rotation.x = breath + 0.12 * run + gesture * (action?.bend ?? 0);
+        rig.upper.rotation.z = Math.sin(rig.gaitPhase) * 0.035 * rig.gaitWeight;
+        rig.head.rotation.x = -0.06 * run + gesture * 0.14 + (speaking ? Math.sin(rig.clock * 9) * 0.036 : 0);
+        rig.head.rotation.z = listening && !speaking ? 0.09 : 0;
+        const blink = (rig.clock + (root.name.length % 7) * 0.43) % 4.7;
+        rig.eyes.scaling.y = 1 - 0.94 * (1 - smoothstep(0.015, 0.085, Math.abs(blink - 0.09)));
+        rig.mouth.scaling.y = speaking ? 0.012 + Math.abs(Math.sin(rig.clock * 16)) * 0.021 : 0.008;
+        rig.mouth.scaling.x = listening ? 0.054 : 0.048;
+        rig.brows.forEach((brow, i) => {
+            brow.rotation.z = (i ? -1 : 1) * (0.26 * gesture - (listening ? 0.15 : 0));
+        });
+        if (rig.shoulders.length) {
+            const strideSwing = swing * lerp(0.34, 0.74, run);
+            rig.shoulders[0].rotation.x = strideSwing - gesture * 0.16;
+            rig.shoulders[1].rotation.x = -strideSwing - gesture * (action?.reach ?? 0)
+                - (speaking ? 0.24 + 0.10 * Math.sin(rig.clock * 4.5) : 0);
+        }
     }
 
     function checkNear() {
@@ -2178,15 +2628,94 @@
         }
     }
 
-    // Humanoide de escala métrica: pernas, tronco, braços e cabeça em cores distintas.
+    function buildCharacterLegs(root) {
+        const pants = new BABYLON.StandardMaterial(root.name + '-leg-pants', scene);
+        pants.diffuseColor.set(0.20, 0.22, 0.28);
+        const shoes = new BABYLON.StandardMaterial(root.name + '-leg-shoes', scene);
+        shoes.diffuseColor.set(0.13, 0.10, 0.09);
+        const radius = LEG_RADIUS;
+        return [-1, 1].map(side => {
+            const suffix = side < 0 ? 'left' : 'right';
+            const hip = new BABYLON.TransformNode(root.name + '-hip-' + suffix, scene);
+            hip.parent = root;
+            hip.position.set(side * LEG_SPACING, HIP_HEIGHT, 0);
+            const knee = new BABYLON.TransformNode(root.name + '-knee-' + suffix, scene);
+            knee.parent = hip;
+            knee.position.y = -LEG_SEGMENT;
+            const ankle = new BABYLON.TransformNode(root.name + '-ankle-' + suffix, scene);
+            ankle.parent = knee;
+            ankle.position.y = -LEG_SEGMENT;
+
+            const options = { height: LEG_SEGMENT + 0.085, radius, subdivisions: 4 };
+            const thigh = BABYLON.MeshBuilder.CreateCapsule(root.name + '-thigh-' + suffix, options, scene);
+            const shin = BABYLON.MeshBuilder.CreateCapsule(root.name + '-shin-' + suffix, options, scene);
+            thigh.parent = hip;
+            shin.parent = knee;
+            thigh.position.y = shin.position.y = -LEG_SEGMENT / 2;
+            thigh.material = shin.material = pants;
+            const shoe = BABYLON.MeshBuilder.CreateSphere(root.name + '-shoe-' + suffix,
+                { diameter: 2.5 * radius, segments: 8 }, scene);
+            shoe.parent = ankle;
+            shoe.position.z = SHOE_OFFSET;
+            shoe.scaling.set(1, 0.55, 1.9);
+            shoe.material = shoes;
+            for (const mesh of [thigh, shin, shoe]) {
+                mesh.isPickable = false;
+                if (sceneShadows) { sceneShadows.addShadowCaster(mesh); }
+            }
+            return { side, hip, knee, ankle, thigh, shin, shoe };
+        });
+    }
+
+    function updateCharacterLegs(rig, delta, distance, speed, ground) {
+        const { root, gaitPhase, gaitWeight } = rig;
+        const { x, z } = root.position;
+        const yaw = root.rotation.y;
+        const run = smoothstep(WALK_SPEED, RUN_SPEED, speed);
+        const sine = Math.sin(yaw), cosine = Math.cos(yaw);
+        const feet = rig.legs.map(leg => {
+            const phase = gaitPhase + (leg.side < 0 ? 0 : Math.PI);
+            const forward = Math.cos(phase) * lerp(0.18, 0.27, run) * gaitWeight;
+            const lift = Math.max(0, -Math.sin(phase)) * lerp(0.11, 0.17, run) * gaitWeight;
+            const localX = leg.side * LEG_SPACING;
+            const footX = x + localX * cosine + (forward + SHOE_OFFSET) * sine;
+            const footZ = z - localX * sine + (forward + SHOE_OFFSET) * cosine;
+            const floor = terrainHeight(footX, footZ);
+            const support = root === player ? stepSurfaceAt(footX, footZ, floor) : floor;
+            return { leg, forward, ankleY: support + ANKLE_HEIGHT + SOLE_CLEARANCE + lift, support, onObstacle: support > floor };
+        });
+        const baseY = ground + FOOT_GAP;
+        let bodyY = baseY;
+        if (feet.some(foot => foot.onObstacle)) {
+            const top = Math.max(...feet.map(foot => foot.support)) + FOOT_GAP;
+            // Na borda, limita a elevação ao que a perna mais estendida alcança.
+            const reachable = Math.min(...feet.map(({ ankleY, forward }) =>
+                ankleY + Math.sqrt(4 * LEG_SEGMENT ** 2 - forward ** 2) - HIP_HEIGHT));
+            const riseLimit = Math.max(baseY, root.position.y) + delta * 3;
+            bodyY = Math.min(Math.max(baseY, top), reachable, riseLimit);
+        }
+        root.position.y = bodyY;
+
+        for (const { leg, forward, ankleY } of feet) {
+            const drop = Math.max(0.16, bodyY + HIP_HEIGHT - ankleY);
+
+            // Dois segmentos de mesmo comprimento. A perna fica no plano de
+            // avanço e o sapato compensa as duas rotações para pousar nivelado.
+            const extent = Math.hypot(drop, forward);
+            const flex = Math.acos(Math.min(1, extent / (2 * LEG_SEGMENT)));
+            leg.hip.rotation.x = -Math.atan2(forward, drop) - flex;
+            leg.knee.rotation.x = 2 * flex;
+            leg.ankle.rotation.x = -leg.hip.rotation.x - leg.knee.rotation.x;
+        }
+    }
+
+    // Tronco provisório enquanto o pacote de malhas do personagem é carregado.
     function buildHumanoid(name, colors) {
         const H=colors.height||PLAYER_HEIGHT, legH=H*0.44, torsoH=H*0.38, armH=H*0.36, headR=H*0.07;
-        const legR=H*0.040, torsoR=H*0.088, armR=H*0.026, feet=-H/2;
+        const torsoR=H*0.088, armR=H*0.026, feet=-H/2;
         const mat=(label,c)=>{const m=new BABYLON.StandardMaterial(name+'-'+label,scene);m.diffuseColor=c;m.specularColor=new BABYLON.Color3(0.08,0.08,0.08);return m;};
-        const pants=mat('pants',colors.pants), shirt=mat('shirt',colors.shirt), skin=mat('skin',colors.skin), parts=[];
+        const shirt=mat('shirt',colors.shirt), skin=mat('skin',colors.skin), parts=[];
         for(const sx of [-1,1]){
-            const leg=BABYLON.MeshBuilder.CreateCapsule(name+'-leg',{height:legH,radius:legR,subdivisions:4},scene);
-            leg.position.set(sx*torsoR*0.5,feet+legH/2,0);leg.material=pants;parts.push(leg);
             const arm=BABYLON.MeshBuilder.CreateCapsule(name+'-arm',{height:armH,radius:armR,subdivisions:2},scene);
             arm.position.set(sx*(torsoR+armR*1.3),feet+legH+torsoH-H*0.20,0);arm.material=shirt;parts.push(arm);
         }
@@ -2195,10 +2724,8 @@
         const head=BABYLON.MeshBuilder.CreateSphere(name+'-head',{diameter:headR*2,segments:8},scene);
         head.position.y=H/2-headR;head.material=skin;parts.push(head);
         // v3: sapatos, mãos, cabelo e olhos para leitura de silhueta e rosto.
-        const shoeMat=mat('shoe',new BABYLON.Color3(0.13,0.10,0.09)), hairMat=mat('hair',colors.hair||new BABYLON.Color3(0.20,0.13,0.08)), eyeMat=mat('eye',new BABYLON.Color3(0.05,0.05,0.06));
+        const hairMat=mat('hair',colors.hair||new BABYLON.Color3(0.20,0.13,0.08)), eyeMat=mat('eye',new BABYLON.Color3(0.05,0.05,0.06));
         for(const sx of [-1,1]){
-            const shoe=BABYLON.MeshBuilder.CreateSphere(name+'-shoe',{diameter:legR*2.5,segments:8},scene);
-            shoe.scaling.set(1,0.55,1.9);shoe.position.set(sx*torsoR*0.5,feet+legR*0.55,legR*0.9);shoe.material=shoeMat;parts.push(shoe);
             const hand=BABYLON.MeshBuilder.CreateSphere(name+'-hand',{diameter:armR*2.6,segments:8},scene);
             hand.position.set(sx*(torsoR+armR*1.3),feet+legH+torsoH-H*0.20-armH/2,0);hand.material=skin;parts.push(hand);
             const eye=BABYLON.MeshBuilder.CreateSphere(name+'-eye',{diameter:headR*0.22,segments:6},scene);
@@ -2240,7 +2767,7 @@
         const serial = remoteSerial++;
         const avatar = spawnFromModel('character.wanderer', 'remote-' + id,
             new BABYLON.Vector3((serial % 5 - 2) * 1.5, terrainHeight(0, -2) + 0.03, -2 - Math.floor(serial / 5) * 2), 0,
-            () => { const m = buildHumanoid('remote-js-' + id, { shirt:new BABYLON.Color3(0.66,0.30,0.82), pants:new BABYLON.Color3(0.24,0.18,0.30), skin:new BABYLON.Color3(0.88,0.70,0.56) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
+            () => { const m = buildHumanoid('remote-js-' + id, { shirt:new BABYLON.Color3(0.66,0.30,0.82), skin:new BABYLON.Color3(0.88,0.70,0.56) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
 
         const label = BABYLON.MeshBuilder.CreatePlane('remote-label-' + id, { width: 1.8, height: 0.36 }, scene);
         label.position = avatar.position.add(new BABYLON.Vector3(0, 1.925, 0));
@@ -2265,20 +2792,46 @@
 
     function updateRemote(id, x, z, ry) {
         const p = remotes.get(id);
-        if (!p) { return; }
-        p.avatar.position.x = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, x));
-        p.avatar.position.z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, z));
-        p.avatar.position.y = terrainHeight(p.avatar.position.x, p.avatar.position.z) + 0.03;
-        p.avatar.rotation.y = ry;
-        p.label.position.x = p.avatar.position.x;
-        p.label.position.z = p.avatar.position.z;
-        p.label.position.y = p.avatar.position.y + 1.925;
+        if (!p || ![x, z, ry].every(Number.isFinite)) { return; }
+        const firstPose = !p.target;
+        p.target = { x: clampWorld(x), z: clampWorld(z), yaw: ry };
+        const position = p.avatar.position;
+        if (firstPose || Math.hypot(p.target.x - position.x, p.target.z - position.z) > 5) {
+            position.x = p.target.x;
+            position.z = p.target.z;
+            p.avatar.rotation.y = ry;
+        }
+    }
+
+    function updateOtherCharacters(delta) {
+        let distance = 0;
+        if (dialoguePartner !== wandererRoot) {
+            const { x, z } = wandererRoot.position;
+            wanderT = (wanderT + delta * 0.65) % (2 * Math.PI);
+            wandererRoot.position.x = WANDERER_HOME.x + Math.sin(wanderT) * 1.4;
+            wandererRoot.position.z = WANDERER_HOME.z + Math.cos(wanderT) * 1.4;
+            turnCharacter(wandererRoot, wanderT + Math.PI / 2, delta, 7);
+            distance = Math.hypot(wandererRoot.position.x - x, wandererRoot.position.z - z);
+        }
+        updateCharacterPose(wandererRoot, delta, distance);
+        updateCharacterPose(guardianRoot, delta, 0);
+        for (const { avatar, label, target } of remotes.values()) {
+            const { x, z } = avatar.position;
+            if (target) {
+                const blend = 1 - Math.exp(-12 * delta);
+                avatar.position.x = lerp(x, target.x, blend);
+                avatar.position.z = lerp(z, target.z, blend);
+                turnCharacter(avatar, target.yaw, delta, 12);
+            }
+            updateCharacterPose(avatar, delta, Math.hypot(avatar.position.x - x, avatar.position.z - z));
+            label.position.set(avatar.position.x, avatar.position.y + 1.925, avatar.position.z);
+        }
     }
 
     function removeRemote(id) {
         const p = remotes.get(id);
         if (!p) { return; }
-        p.avatar.dispose(false, true); p.label.dispose(); p.texture.dispose(); p.labelMat.dispose();
+        p.avatar.dispose(); p.label.dispose(); p.texture.dispose(); p.labelMat.dispose();
         remotes.delete(id);
         if (dotnet) { dotnet.invokeMethodAsync('OnRemoteCount', remotes.size); }
     }
@@ -2428,6 +2981,7 @@
                 window.addEventListener('keydown', onKeyDown);
                 window.addEventListener('keyup', onKeyUp);
                 window.addEventListener('blur', () => {
+                    movementSpeed = 0;
                     for (const k of Object.keys(keys)) { keys[k] = false; }
                     moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 };
                 });
@@ -2473,11 +3027,13 @@
                         if (Math.abs(zoomTarget - camera.radius) < 1e-3) { camera.radius = zoomTarget; zoomTarget = null; }
                     }
                 }
-                movePlayer(delta, pad);
+                const travelled = movePlayer(delta, pad);
                 if (player) {
-                    player.position.y = terrainHeight(player.position.x, player.position.z) + 0.03;
-                    ensureChunksAround(player.position.x, player.position.z);
+                    const { x, z } = player.position;
+                    updateCharacterPose(player, delta, travelled);
+                    ensureChunksAround(x, z);
                 }
+                updateOtherCharacters(delta);
                 checkNear();
                 updateNearbyObject();
                 // Seguir mutando o vetor-alvo NO LUGAR: preserva alfa/beta/raio (a
@@ -2485,6 +3041,7 @@
                 // raio a partir da posição atual da câmera — a cada frame com o jogador
                 // em movimento o raio rangueava de volta ao inicial.
                 camera.target.set(player.position.x, player.position.y + PLAYER_HEIGHT / 2, player.position.z);
+                updateCollectionPreview(frameStart);
                 scene.render();
                 framePerf(performance.now() - frameStart);
                 tick(performance.now());
@@ -2515,8 +3072,9 @@
         camera(dx, dy, wheel, deltaMode) { camPending.dx += dx || 0; camPending.dy += dy || 0; camPending.wheel += (wheel || 0) * (deltaMode === 1 ? 40 : 1); },
         action() { interact(); },
         terrainClick(sx, sy) { terrainClickImpl(sx, sy); },
+        terrainHover(point) { setCollectionPointer(point); },
         cancel() { dotnet.invokeMethodAsync('OnClose'); },
-        clear() { for (const k of Object.keys(keys)) { keys[k] = false; } moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 }; },
+        clear() { movementSpeed = 0; for (const k of Object.keys(keys)) { keys[k] = false; } moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 }; },
         resize(w, h, dpr) {
             if (!engine) { return; }
             if (dom) { engine.resize(); } else { applySize(w, h, dpr || (host.size && host.size.dpr) || 1); }
@@ -2525,9 +3083,9 @@
     };
 
     // Tamanho de render no worker. Semântica do Babylon (AbstractEngine.resize/setSize):
-    // setSize grava o canvas em PIXELS direto; o fator de escala só converte CSS↔pixels
-    // no resize(). Logo: canvas = CSS × densidade, escala = 1/densidade — o mesmo buffer
-    // que o adaptToDeviceRatio produz na main thread (getRenderWidth volta em CSS).
+    // setSize recebe o tamanho do buffer em pixels. A escala 1/densidade permite
+    // ao Babylon converter as coordenadas CSS usadas na seleção para esse buffer,
+    // como no adaptToDeviceRatio da main thread.
     function applySize(width, height, dpr) {
         if (!engine) { return; }
         const ratio = Math.max(0.25, dpr || 1);
@@ -2541,16 +3099,25 @@
 
     // Mescla em G.game (assets.js/net.js/... podem ter registrado antes).
     const api = {
-        setFrozen(value) {
+        setFrozen(value, speaker) {
             frozen = !!value;
+            dialoguePartner = !frozen ? null : speaker === 'Andarilho' ? wandererRoot : guardianRoot;
+            movementSpeed = 0;
             if (frozen) { for (const k of Object.keys(keys)) { keys[k] = false; } }
         },
+        characterAction: playCharacterAction,
+        characterDialogueLine(speaker, length) {
+            const rig = characterRigs.get(speaker === 'Você' ? player : dialoguePartner);
+            if (rig) { rig.speaking = Math.max(0.65, Math.min(3.2, length * 0.038)); }
+        },
         resetPlayer() {
+            movementSpeed = 0;
             if (player) { player.position.x = 0; player.position.z = 0; player.rotation.y = 0; }
             if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 7.5; zoomTarget = null; }
         },
         teleportToGuardian() {
             if (!player || !camera) return false;
+            movementSpeed = 0;
             player.position.x = NPC_POSITION.x;
             player.position.z = NPC_POSITION.z + 2.0;
             player.position.y = terrainHeight(player.position.x, player.position.z) + 0.03;
@@ -2569,6 +3136,7 @@
         setWorldEdits(edits, revision) { setWorldEdits(edits, revision); },
         setPlacements(list) { setPlacements(list); },
         applyWorldOp(op) { return applyWorldOp(op); },
+        setCollectedResources(entries) { setCollectedResources(entries); },
         setWeather(mode) { weatherMode = mode === 'rain' ? 'rain' : 'clear'; },
         weatherStatus() {
             return { mode: weatherMode, rain: rainLevel, drops: rainParticles?.getActiveCount() ?? 0,
@@ -2634,6 +3202,7 @@
         build: {
             mode(m, opts) {
                 buildState.mode = m || 'off';
+                if (buildState.mode !== 'collect') { setCollectionPointer(null); }
                 buildState.p1 = null;
                 if (host.onBuildMode) { host.onBuildMode(buildState.mode); }
                 if (opts) {

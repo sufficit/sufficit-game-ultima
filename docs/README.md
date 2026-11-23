@@ -66,6 +66,18 @@ Fonte técnica das frentes 1–11: análise do repositório
 
 ## Atividades (`activities/`)
 
+- [Movimento e expressão dos personagens](activities/202611231810-expressao-dos-personagens.md)
+
+- [Destaque do alvo de coleta](activities/202611231755-mira-de-coleta.md)
+
+- [Precisão dos cliques e escavação em camadas](activities/202611231736-precisao-e-camadas-da-coleta.md)
+
+- [Apoio dos pés em troncos baixos](activities/202611231730-apoio-nos-troncos.md)
+
+- [Mochila e coleta de recursos](activities/202611231722-mochila-e-coleta.md)
+
+- [Passo articulado sobre obstáculos baixos](activities/202611231701-passo-articulado-sobre-obstaculos.md)
+
 - [Colisão do jogador e inspeção de objetos](activities/202611231650-colisao-e-interacao-com-objetos.md)
 
 - [Texturas de grama e terra, luz, vento e chuva](activities/202611231639-grama-terra-e-clima.md)

@@ -91,7 +91,10 @@ body[data-input="touch"] .hint-touch { display: inline; }
 .ultima-status__more { margin-top: .35rem; }
 
 /* Alternador do painel do jogo: canto superior direito */
-.ultima-panel-toggle { position: absolute; top: .75rem; right: .75rem; z-index: 4; }
+.ultima-panel-toggle {
+    position: absolute; top: .75rem; right: .75rem; z-index: 4;
+    display: flex; gap: .35rem; flex-wrap: wrap; justify-content: flex-end;
+}
 
 /* Menu mobile (t56): no desktop o contêiner é transparente (display: contents)
    e os filhos mantêm exatamente as posições de sempre; o fab/backdrop só existem

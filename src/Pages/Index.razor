@@ -14,7 +14,7 @@
    do jogo e nunca podem ser renderizados condicionalmente. *@
 <div class="game-shell ultima-theme@((_menuOpen ? " ultima-menu-open" : "") + (_view is not null ? " ultima-dialog-open" : ""))">
     <main class="viewport">
-        <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D. WASD, setas, joystick ou controles de toque movem; E/A conversa."></canvas>
+        <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D. WASD ou setas andam, Shift corre, E conversa. O joystick também move."></canvas>
 
         @if (!string.IsNullOrEmpty(_announcement))
         {
@@ -97,6 +97,10 @@
         </aside>
 
         <div class="ultima-panel-toggle">
+            @if (_collecting)
+            {
+                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Soft" OnClick="ToggleCollectionAsync">Parar coleta</SUIButton>
+            }
             <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Soft" StartIcon="menu" OnClick="TogglePanel"
                        aria-expanded="@(_panelOpen ? "true" : "false")"
                        aria-label="@(_panelOpen ? "Fechar painel do jogo" : "Abrir painel do jogo")">@(_panelOpen ? "Fechar" : "Painel")</SUIButton>
@@ -108,6 +112,29 @@
                 <SUICard Elevation="3" Class="ultima-card--glass">
                     <SUICardContent>
                         <SUIStack Spacing="2">
+
+                            <SUIExpansionPanel Title="Mochila" StartIcon="inbox">
+                                <SUIStack Spacing="2">
+                                    <SUIButton SizeValue="SUISize.Small" StartIcon="plus" OnClick="ToggleCollectionAsync">
+                                        @(_collecting ? "Parar coleta" : "Coletar")
+                                    </SUIButton>
+                                    @if (_backpack.Count == 0)
+                                    {
+                                        <SUIText Typo="SUITypo.caption">Mochila vazia.</SUIText>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var item in _backpack.OrderBy(item => item.Key))
+                                        {
+                                            <SUIStack Row="true" Spacing="1" AlignItems="center">
+                                                <SUIStatusBadge ToneValue="SUITone.Neutral">@item.Value</SUIStatusBadge>
+                                                <SUIText>@item.Key</SUIText>
+                                            </SUIStack>
+                                        }
+                                    }
+                                    <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">Coleta salva neste navegador.</SUIText>
+                                </SUIStack>
+                            </SUIExpansionPanel>
 
                             <SUIExpansionPanel Title="Oficina do mundo" StartIcon="settings"
                                                Expanded="_workshopOpen" ExpandedChanged="OnWorkshopToggled">
@@ -372,7 +399,7 @@
                             <SUIExpansionPanel Title="Controles e ajuda">
                                 <SUIStack Spacing="2">
                                     <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
-                                        teclado: <kbd>WASD</kbd>/<kbd>↑↓←→</kbd> andar · <kbd>E</kbd> conversa · <kbd>Esc</kbd> fecha · mouse gira a câmera
+                                        teclado: <kbd>WASD</kbd>/<kbd>↑↓←→</kbd> andar · <kbd>Shift</kbd> correr · <kbd>E</kbd> conversa · <kbd>Esc</kbd> fecha · mouse gira a câmera
                                     </SUIText>
                                     <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
                                         controle: <kbd>LS</kbd> mover · <kbd>RS</kbd> câmera · botão <kbd>Ⓐ</kbd>/<kbd>✕</kbd> conversar · celular: analógicos na tela
@@ -462,6 +489,8 @@
     private bool _statusExpanded;
     private bool _panelOpen;
     private bool _menuOpen;
+    private bool _collecting;
+    private Dictionary<string, int> _backpack = [];
     private bool _devHud;
     private long _turnStartedMs;   // t50: base do tempo de resposta registrado por turno
     private readonly List<ChatMessage> _chat = [];
@@ -505,7 +534,21 @@
     }
 
     private void OnWorkshopToggled(bool open) => _workshopOpen = open;
-    private Task BuildModeAsync(string? mode, object? options = null) => JS.InvokeVoidAsync("game.build.mode", mode, options).AsTask();
+    private async Task BuildModeAsync(string? mode, object? options = null)
+    {
+        await JS.InvokeVoidAsync("game.build.mode", mode, options);
+        _collecting = mode == "collect";
+    }
+
+    private async Task ToggleCollectionAsync()
+    {
+        await BuildModeAsync(_collecting ? "off" : "collect");
+        if (_collecting)
+        {
+            _panelOpen = false;
+            Snackbar.Info("Clique ou toque num objeto ou trecho de solo próximo para coletar.");
+        }
+    }
     private Task RefreshBuildAssetsAsync() => JS.InvokeVoidAsync("game.workshop.refreshBuildOptions").AsTask();
     private void OnUploadScaleChanged(double value) => _uploadScale = value;
     private void OnBrushRadiusChanged(double value) { _brushRadius = value; _ = BuildModeAsync(null, new { r = value }); }
@@ -634,6 +677,8 @@
                 if (!_buildAssets.Contains(_buildAsset)) { _buildAsset = _buildAssets.FirstOrDefault() ?? string.Empty; }
                 StateHasChanged();
             }),
+            BackpackChanged = items => _ = InvokeAsync(() => { _backpack = items; StateHasChanged(); }),
+            BackpackStatus = message => _ = InvokeAsync(() => Snackbar.Info(message)),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
             Close = () => _ = InvokeAsync(CloseDialog),
             MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; RunNpcTick(); StateHasChanged(); }),
@@ -670,6 +715,7 @@
         {
             return;   // sem motor não há o que registrar — evita o spam de "cena ainda não criada"
         }
+        await JS.InvokeVoidAsync("game.backpack.init", _bridge);
         _ = Models.LoadAllAsync();   // modelos 3D (DLLs C#) chegam em paralelo e entram na cena
         await JS.InvokeVoidAsync("game.net.init", _bridge);
         await JS.InvokeVoidAsync("game.live.init", _bridge);
@@ -698,7 +744,7 @@
         }
         catch (JSException) { BuildId = "dev"; } // game.build não existe em todos os builds; o id é só do HUD de dev
         // Dica de controles como mensagem transitória (snackbar SUI), não bloco fixo na tela.
-        Snackbar.Info("WASD/setas andam · E conversa · Esc fecha · Painel abre a Oficina e as configurações");
+        Snackbar.Info("WASD/setas andam · Shift corre · E conversa · Esc fecha");
         StateHasChanged();
         _ = LoadRemoteContentAsync();
     }
@@ -822,6 +868,7 @@
         _dialogDraft = string.Empty;
         _speechError = string.Empty;
         _turnStartedMs = NowMs();   // t50: base do tempo de resposta do turno registrado
+        _ = JS.InvokeVoidAsync("game.characterDialogueLine", "Você", text.Length);
         Dispatch(new PlayerSpoke(NowMs(), text));
         // Produtores caros (WebLLM na GPU, API do jogo, fallback local) correm fora do
         // tick; a resposta vira evento e o cérebro a aplica em um tick futuro. Os
@@ -907,8 +954,11 @@
         StateHasChanged();
     }
 
-    private Task SpeakLineAsync(DialogLine line) =>
-        _speakEnabled ? JS.InvokeVoidAsync("game.voice.speak", line.Text, line.Speaker).AsTask() : Task.CompletedTask;
+    private async Task SpeakLineAsync(DialogLine line)
+    {
+        await JS.InvokeVoidAsync("game.characterDialogueLine", line.Speaker, line.Text.Length);
+        if (_speakEnabled) await JS.InvokeVoidAsync("game.voice.speak", line.Text, line.Speaker);
+    }
 
     private async Task OnSpeakToggled(bool enabled)
     {
@@ -968,7 +1018,7 @@
         await JS.InvokeVoidAsync("game.resetPlayer");
     }
 
-    private Task SetFrozen(bool frozen) => JS.InvokeVoidAsync("game.setFrozen", frozen).AsTask();
+    private Task SetFrozen(bool frozen) => JS.InvokeVoidAsync("game.setFrozen", frozen, _view?.Speaker).AsTask();
 
     public void Dispose()
     {
