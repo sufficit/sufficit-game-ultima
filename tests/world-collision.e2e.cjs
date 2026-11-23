@@ -4,6 +4,13 @@ const {chromium}=require('playwright-core');
 const assert=require('node:assert/strict');
 const site=process.env.ULTIMA_SITE || 'https://sufficit.github.io/sufficit-game-ultima/';
 const main=process.env.ULTIMA_MODE==='main';
+// ULTIMA_WALK_SCALE alonga as janelas de caminhada/assentamento (padrão 1 = comportamento
+// original). Runners com renderização por software (SwiftShader sem GPU) podem rodar a poucos
+// quadros por segundo; segurar a tecla por mais tempo percorre a mesma distância sem alterar
+// as condições de colisão. ULTIMA_VIEWPORT reduz o custo de raster (padrão 1200x720).
+const walkScale=Number(process.env.ULTIMA_WALK_SCALE)||1;
+const T300=Math.round(300*walkScale);
+const [vw,vh]=(process.env.ULTIMA_VIEWPORT||'1200x720').split('x').map(Number);
 const fixture={kind:'place',uid:'browser-tree',asset:'flora.pine',x:0,z:2,rot:0,scale:1};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function wait(callback,label) {
@@ -22,7 +29,7 @@ async function wait(callback,label) {
  const browser=await chromium.launch({executablePath:process.env.ULTIMA_CHROMIUM || undefined,
     args:(process.env.ULTIMA_CHROMIUM_ARGS || '').split(' ').filter(Boolean)});
  try{
-    const p=await browser.newPage({viewport:{width:1200,height:720}});
+    const p=await browser.newPage({viewport:{width:vw,height:vh}});
     const errors=[];
     p.on('pageerror',e=>errors.push(String(e)));
     const url=site+'?live=0&rede=0&api=http%3A%2F%2F127.0.0.1%3A19999'+(main?'&render=main&gpu=0':'');
@@ -50,16 +57,16 @@ async function wait(callback,label) {
         return {x:Number(match[1].replace(',','.')),z:Number(match[2].replace(',','.'))};
     };
     const apply=op=>p.evaluate(op=>game.applyWorldOp(op),op);
-    async function walk(keys,ms){
+    async function walk(keys,ms){const hold=Math.round(ms*walkScale);
         for(const key of keys) await p.keyboard.down(key);
-        await p.waitForTimeout(ms);
+        await p.waitForTimeout(hold);
         for(const key of keys) await p.keyboard.up(key);
-        await p.waitForTimeout(300);
+        await p.waitForTimeout(T300);
         if(errors.length) throw Error(errors.join('\n'));
         return pose();
     }
     await apply(fixture);
-    await p.waitForTimeout(300);
+    await p.waitForTimeout(T300);
     const blocked=await walk(['w'],1150);
     console.log(JSON.stringify({build,mode:main?'main':'worker',blocked}));
     assert.ok(blocked.z>1.28 && blocked.z<1.61,'o tronco deve parar o jogador em z≈1,47');
@@ -70,24 +77,24 @@ async function wait(callback,label) {
     assert.ok(slide.x>0.45 && slide.z>2, 'desliza pela lateral '+JSON.stringify(slide));
     await apply({kind:'remove',uid:fixture.uid});
     await p.evaluate(()=>game.resetPlayer());
-    await p.waitForTimeout(300);
+    await p.waitForTimeout(T300);
     const free=await walk(['w'],820);
     assert.ok(free.z>2.65, 'remoção libera o caminho');
     await p.evaluate(()=>game.resetPlayer());
     await apply({...fixture,uid:'browser-soft',asset:'flora.fern'});
-    await p.waitForTimeout(300);
+    await p.waitForTimeout(T300);
     const soft=await walk(['w'],850);
     assert.ok(soft.z>2.65,'samambaia permite passagem');
     await apply({kind:'remove',uid:'browser-soft'});
     await p.evaluate(()=>game.resetPlayer());
     await apply({...fixture,uid:'browser-stump',asset:'prop.stump'});
-    await p.waitForTimeout(300);
+    await p.waitForTimeout(T300);
     const stump=await walk(['w'],850);
     assert.ok(stump.z>0.9 && stump.z<1.72,'toco sólido '+JSON.stringify(stump));
     await apply({kind:'remove',uid:'browser-stump'});
     await p.evaluate(()=>game.resetPlayer());
     await apply({...fixture,uid:'browser-rock',asset:'rock.boulder2'});
-    await p.waitForTimeout(300);
+    await p.waitForTimeout(T300);
     const rock=await walk(['w'],850);
     assert.ok(rock.z>0.45 && rock.z<1.7,'pedra sólida '+JSON.stringify(rock));
     await apply({kind:'remove',uid:'browser-rock'});
@@ -104,7 +111,7 @@ async function wait(callback,label) {
             return {x:tree.position.x,z:tree.position.z};
         });
         assert.ok(tree,'tronco DLL');
-        await p.waitForTimeout(300);
+        await p.waitForTimeout(T300);
         nativeTree=await walk(['w'],480);
         assert.ok(Math.abs(nativeTree.x-tree.x)<0.1 && nativeTree.z<tree.z-0.38 && nativeTree.z>tree.z-0.95,'pinheiro do cenário bloqueia '+JSON.stringify({nativeTree,tree}));
     }
