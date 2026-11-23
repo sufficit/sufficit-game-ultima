@@ -66,6 +66,8 @@ Fonte técnica das frentes 1–11: análise do repositório
 
 ## Atividades (`activities/`)
 
+- [Texturas de grama e terra, luz, vento e chuva](activities/202611231639-grama-terra-e-clima.md)
+
 - [Oficina do mundo dentro do Painel do jogo](activities/202611231606-oficina-no-painel.md)
 
 - [Estilos da Sufficit.Blazor.UI nos menus](activities/202611231448-estilos-sufficit-blazor-ui-nos-menus.md)
