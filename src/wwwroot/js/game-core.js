@@ -341,6 +341,7 @@
     // e cache OPFS por chunk do TERRENO BASE. As ops sculpt/paint do servidor (journal)
     // são reaplicadas em memória a cada visita, depois do mapa chegar.
     const CHUNK = 32, CHUNK_SUB = 48;
+    const CHUNK_STEP = CHUNK / CHUNK_SUB;
     const CHUNK_VIEW = 2;                  // janela 5×5 ao redor do jogador (streaming F3)
     const chunkMap = new Map();            // "cx,cz" -> { mesh, cx, cz }
     const chunkCacheHits = new Map();      // "cx,cz" -> { positions, colors, normals }
@@ -365,22 +366,19 @@
     // Altura efetiva do mundo: gerador base + esculturas (em ordem de journal) e grutas
     // (o miolo do carve vira piso absoluto — o jogador anda até o fundo da gruta).
     function terrainHeight(x, z) {
-        let h = baseHeight(x, z);
+        let sculptHeight = 0;
         for (let i = 0; i < worldSculpts.length; i++) {
             const op = worldSculpts[i];
             const t = 1 - Math.hypot(x - op.x, z - op.z) / op.r;
-            if (t > 0) { h += op.dh * t * t * (3 - 2 * t); }
+            if (t > 0) { sculptHeight += op.dh * t * t * (3 - 2 * t); }
         }
-        for (let i = 0; i < worldCarves.length; i++) {
-            const op = worldCarves[i];
-            if (Math.hypot(x - op.x, z - op.z) < op.r && h > op.y0) {
-                // dentro da gruta e abaixo do entorno original: chão plano em y0
-                h = op.y0;
-                for (let j = 0; j < worldSculpts.length; j++) {
-                    const so = worldSculpts[j];
-                    const t = 1 - Math.hypot(x - so.x, z - so.z) / so.r;
-                    if (t > 0) { h += so.dh * t * t * (3 - 2 * t); }
-                }
+        let h = baseHeight(x, z) + sculptHeight;
+        for (const op of worldCarves) {
+            const floor = op.y0 + sculptHeight;
+            const inset = op.r - Math.hypot(x - op.x, z - op.z);
+            // O piso é plano no interior. A própria malha faz a parede junto à borda.
+            if (inset > 0 && h > Math.max(op.y0, floor)) {
+                h = lerp(h, floor, smoothstep(0, Math.min(1.2, op.r / 4), inset));
             }
         }
         return h;
@@ -412,10 +410,32 @@
         const snowLine = 8.5 + noise(x * 0.18 + 7.7, z * 0.18 - 3.3) * 1.6 - rocky * 1.2;
         const snowy = Math.max(0, Math.min(1, (y - snowLine) / 1.6));
         r = lerp(r, snow[0], snowy); g = lerp(g, snow[1], snowy); b = lerp(b, snow[2], snowy);
+        let exposedRock = 0;
+        for (const op of worldCarves) {
+            const inset = op.r - Math.hypot(x - op.x, z - op.z);
+            exposedRock = Math.max(exposedRock, smoothstep(-0.5, 0.35, inset + fine * 0.18 - 0.09));
+        }
+        const rockU = x * 1.15 + z * 0.36, rockV = z * 0.8 + y * 1.3;
+        let mineral;
+        if (exposedRock > 0) {
+            mineral = rockRelief(rockU, rockV);
+            const value = 0.36 + mineral * 0.20;
+            r = lerp(r, value * 1.07, exposedRock);
+            g = lerp(g, value * 1.03, exposedRock);
+            b = lerp(b, value * 0.92, exposedRock);
+        }
         for (let i = 0; i < worldPaints.length; i++) {
             const op = worldPaints[i];
             const w = brushWeight(x, z, op);
-            if (w > 0) { const c = PAINT_COLORS[op.mat]; r = lerp(r, c[0], w); g = lerp(g, c[1], w); b = lerp(b, c[2], w); }
+            if (w > 0) {
+                const c = PAINT_COLORS[op.mat];
+                // Pinturas de rocha do journal também recebem o relevo mineral.
+                if (op.mat === 'rock') { mineral ??= rockRelief(rockU, rockV); }
+                const relief = op.mat === 'rock' ? 1 + mineral * 0.36 : 1;
+                r = lerp(r, c[0] * relief, w);
+                g = lerp(g, c[1] * relief, w);
+                b = lerp(b, c[2] * relief, w);
+            }
         }
         return [r, g, b];
     }
@@ -457,19 +477,30 @@
     }
 
     const CHUNK_TEX = 128;   // 0,25 m por texel
+    const CARVE_TEX = 256;   // mais detalhe de perto, só nos chunks escavados
     const groundGrain = makeNoise(9090);
+    const rockNoise = makeNoise(577);
+
+    function rockRelief(u, v) {
+        const coarse = rockNoise(u * 0.8, v * 0.8);
+        const fine = rockNoise(u * 3.3 + 19, v * 2.6 - 7);
+        const strata = rockNoise(u * 0.46, (v + coarse * 0.38) * 3.8);
+        return coarse * 0.55 + fine * 0.25 + strata * 0.55;
+    }
 
     // A paleta e o grão são amostrados nas coordenadas do mundo, inclusive na borda.
-    function paintChunkTexture(tex, cx, cz) {
+    function paintChunkTexture(tex, cx, cz, size) {
         const ctx = tex.getContext();
-        const img = ctx.createImageData(CHUNK_TEX, CHUNK_TEX);
+        const img = ctx.createImageData(size, size);
         const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
-        for (let ty = 0; ty < CHUNK_TEX; ty++) for (let tx = 0; tx < CHUNK_TEX; tx++) {
-            const x = x0 + tx / (CHUNK_TEX - 1) * CHUNK;
-            const z = z0 + ty / (CHUNK_TEX - 1) * CHUNK;
+        for (let ty = 0; ty < size; ty++) for (let tx = 0; tx < size; tx++) {
+            const x = x0 + tx / (size - 1) * CHUNK;
+            const z = z0 + ty / (size - 1) * CHUNK;
             const c = terrainColorAt(x, terrainHeight(x, z), z);
-            const grain = 1 + groundGrain(x * 0.9, z * 0.9) * 0.14;
-            const i = (ty * CHUNK_TEX + tx) * 4;
+            const mottling = groundGrain(x * 0.94, z * 0.94);
+            const grit = groundGrain(x * 2.1 + 13, z * 2.1 - 17);
+            const grain = 1.07 + mottling * 0.25 + grit * 0.22;
+            const i = (ty * size + tx) * 4;
             img.data[i] = c[0] * grain * 255;
             img.data[i + 1] = c[1] * grain * 255;
             img.data[i + 2] = c[2] * grain * 255;
@@ -479,16 +510,24 @@
         tex.update(false);   // a primeira linha da imagem coincide com v=0 (menor Z)
     }
 
-    function chunkMaterial(cx, cz) {
-        const key = chunkKey(cx, cz);
-        const tex = new BABYLON.DynamicTexture('chunkTex-' + key, { width: CHUNK_TEX, height: CHUNK_TEX }, scene, true);
+    function updateChunkTexture(mat, cx, cz) {
+        const size = worldCarves.some(op => brushTouchesChunk({ cx, cz }, op)) ? CARVE_TEX : CHUNK_TEX;
+        const previous = mat.emissiveTexture;
+        if (previous && previous.getSize().width === size) {
+            paintChunkTexture(previous, cx, cz, size);
+            return;
+        }
+        const tex = new BABYLON.DynamicTexture('chunkTex-' + chunkKey(cx, cz), { width: size, height: size }, scene, true);
         tex.wrapU = tex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
-        paintChunkTexture(tex, cx, cz);
-
-        // Usa a paleta pronta no caminho emissivo, que funciona sem luzes da cena.
-        const mat = new BABYLON.StandardMaterial('groundMat-' + key, scene);
-        mat.disableLighting = true;
+        paintChunkTexture(tex, cx, cz, size);
         mat.emissiveTexture = tex;
+        if (previous) { previous.dispose(); }
+    }
+
+    function chunkMaterial(cx, cz) {
+        const mat = new BABYLON.StandardMaterial('groundMat-' + chunkKey(cx, cz), scene);
+        mat.disableLighting = true;
+        updateChunkTexture(mat, cx, cz);
         return mat;
     }
 
@@ -499,7 +538,7 @@
     function buildChunkMesh(cx, cz) {
         const n = CHUNK_SUB + 1;
         const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
-        const step = CHUNK / CHUNK_SUB;
+        const step = CHUNK_STEP;
         const positions = new Float32Array(n * n * 3);
         const normals = new Float32Array(n * n * 3);
         const uvs = new Float32Array(n * n * 2);
@@ -585,38 +624,40 @@
     // (A paleta e o grão do chão vivem na textura de cada chunk — paintChunkTexture.)
 
     // ---------- Aplicação de edições e objetos plantados (F4/F6) ----------
-    function applySurfaceEdit(op) {
+    function recordSurfaceEdit(op) {
         if (op.kind === 'sculpt') { worldSculpts.push(op); }
         else if (op.kind === 'paint') { worldPaints.push(op); }
         else if (op.kind === 'carve') { worldCarves.push(op); }
         else { return false; }
-        refreshChunksAround(op.x, op.z, op.r);
-        if (op.mat === 'water') { syncWaterDiscs(); }
-        if (op.kind === 'carve') { syncCarveMeshes(); }
         return true;
     }
 
-    function refreshChunksAround(x, z, r) {
+    function applySurfaceEdit(op) {
+        if (!recordSurfaceEdit(op)) { return false; }
         for (const ch of chunkMap.values()) {
-            const minX = ch.cx * CHUNK - CHUNK / 2, maxX = minX + CHUNK;
-            const minZ = ch.cz * CHUNK - CHUNK / 2, maxZ = minZ + CHUNK;
-            if (x + r < minX || x - r > maxX || z + r < minZ || z - r > maxZ) { continue; }
-            refreshChunkRegion(ch, x, z, r);
+            if (brushTouchesChunk(ch, op)) { refreshChunk(ch, op); }
         }
+        if (op.mat === 'water') { syncWaterDiscs(); }
+        if (op.kind === 'sculpt' || op.kind === 'carve') { syncCarveRoofs(); }
+        if (op.kind === 'carve') { syncCarveScenery(); }
+        return true;
     }
 
-    // Re-computa a região do pincel num chunk: altura, cor e normal analítica.
-    function refreshChunkRegion({ mesh, cx, cz }, x, z, r) {
+    function brushTouchesChunk({ cx, cz }, { x, z, r }) {
+        const reach = CHUNK / 2 + r + 2 * CHUNK_STEP;
+        return Math.abs(cx * CHUNK - x) <= reach && Math.abs(cz * CHUNK - z) <= reach;
+    }
+
+    // Recalcula a região editada e o anel usado pelas normais. No replay, refaz o chunk inteiro.
+    function refreshChunk({ mesh, cx, cz }, brush) {
         const pos = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
         const nor = mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind);
         if (!pos || !nor) { return; }
-        const step = CHUNK / CHUNK_SUB;
+        const e = CHUNK_STEP;
         for (let i = 0; i < pos.length; i += 3) {
             const px = pos[i], pz = pos[i + 2];
-            if (Math.hypot(px - x, pz - z) > r + step) { continue; }
-            const py = terrainHeight(px, pz);
-            pos[i + 1] = py;
-            const e = step;
+            if (brush && Math.hypot(px - brush.x, pz - brush.z) > brush.r + e) { continue; }
+            pos[i + 1] = terrainHeight(px, pz);
             const hx = terrainHeight(px + e, pz) - terrainHeight(px - e, pz);
             const hz = terrainHeight(px, pz + e) - terrainHeight(px, pz - e);
             const nl = Math.hypot(hx / (2 * e), 1, hz / (2 * e)) || 1;
@@ -624,7 +665,7 @@
         }
         mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, pos, true);
         mesh.updateVerticesData(BABYLON.VertexBuffer.NormalKind, nor);
-        paintChunkTexture(mesh.material.emissiveTexture, cx, cz);
+        updateChunkTexture(mesh.material, cx, cz);
     }
 
     // Água pintada (F7a): discos translúcidos sobre o terreno, reposicionados a cada
@@ -707,47 +748,65 @@
         }
     }
 
-    // Grutas (F5b base): paredão de rocha (cilindro do piso à superfície do entorno)
-    // e teto quando a gruta fica abaixo do terreno — malhas por op, ressincronizadas.
-    const carveMeshes = [];
-    function carveRockMaterial() {
-        const m = new BABYLON.StandardMaterial('carve-rock', scene);
-        m.diffuseColor = new BABYLON.Color3(0.34, 0.33, 0.32);
-        m.specularColor = new BABYLON.Color3(0.04, 0.04, 0.04);
-        return m;
-    }
-    function syncCarveMeshes() {
-        for (const m of carveMeshes.splice(0)) { m.dispose(); }
+    // A malha do terreno forma o poço. Só salas abaixo de todo o entorno recebem teto.
+    const carveRoofs = [];
+    let carveRock = null;
+    function syncCarveRoofs() {
+        for (const roof of carveRoofs.splice(0)) { roof.dispose(); }
         for (const op of worldCarves) {
-            const rim = terrainHeight(op.x + op.r + 1, op.z);   // entorno fora do carve
-            const wallH = Math.max(0.5, rim - op.y0);
-            const wall = BABYLON.MeshBuilder.CreateCylinder('carve-wall', { height: wallH, diameter: op.r * 2 + 0.6, tessellation: 20 }, scene);
-            wall.position.set(op.x, op.y0 + wallH / 2, op.z);
-            wall.material = carveRockMaterial();
-            wall.isPickable = false;
-            wall.receiveShadows = true;
-            carveMeshes.push(wall);
-            if (op.y1 < rim - 0.5) {
-                // sala subterrânea: teto de rocha (a entrada chega por passagem no nível y0)
-                const ceil = BABYLON.MeshBuilder.CreateCylinder('carve-ceil', { height: 0.5, diameter: op.r * 2 + 0.4, tessellation: 20 }, scene);
-                ceil.position.set(op.x, op.y1 + 0.25, op.z);
-                ceil.material = carveRockMaterial();
-                ceil.isPickable = false;
-                carveMeshes.push(ceil);
+            const segments = 24;
+            let rim = Infinity;
+            for (let i = 0; i < segments; i++) {
+                const a = i * 2 * Math.PI / segments;
+                rim = Math.min(rim, terrainHeight(op.x + Math.cos(a) * op.r, op.z + Math.sin(a) * op.r));
             }
+            if (op.y1 + 0.5 > rim) { continue; }
+            if (!carveRock) {
+                carveRock = new BABYLON.StandardMaterial('carve-rock', scene);
+                carveRock.disableLighting = true;
+                carveRock.emissiveTexture = modelTextures.rock || (modelTextures.rock = makeRockTexture());
+            }
+            const roof = BABYLON.MeshBuilder.CreateCylinder('carve-ceil', { height: 0.5, diameter: op.r * 2, tessellation: segments }, scene);
+            roof.position.set(op.x, op.y1 + 0.25, op.z);
+            roof.material = carveRock;
+            roof.isPickable = false;
+            carveRoofs.push(roof);
         }
     }
 
-    // Replay do boot: limpa e reaplica a lista completa (chamado quando o mapa chega).
+    const scatteredScenery = new Set();
+    function trackScenery(mesh) {
+        scatteredScenery.add(mesh);
+        mesh.onDisposeObservable.addOnce(() => scatteredScenery.delete(mesh));
+        updateSceneryVisibility(mesh);
+    }
+
+    function updateSceneryVisibility(mesh) {
+        const { x, z } = mesh.position;
+        mesh.setEnabled(!worldCarves.some(op => Math.hypot(x - op.x, z - op.z) < op.r));
+    }
+
+    function syncCarveScenery() {
+        for (const mesh of scatteredScenery) { updateSceneryVisibility(mesh); }
+    }
+
+    // Reaplica o journal e atualiza uma vez cada chunk tocado pelo estado anterior ou novo.
     function setWorldEdits(edits, revision) {
         if (revision !== undefined && revision === editsAppliedRev) { return; }
         if (revision !== undefined) { editsAppliedRev = revision; }
+        const dirty = [...worldSculpts, ...worldPaints, ...worldCarves];
         worldSculpts.length = 0;
         worldPaints.length = 0;
         worldCarves.length = 0;
-        for (const op of edits || []) { applySurfaceEdit(op); }
+        for (const op of edits || []) {
+            if (recordSurfaceEdit(op)) { dirty.push(op); }
+        }
+        for (const ch of chunkMap.values()) {
+            if (dirty.some(op => brushTouchesChunk(ch, op))) { refreshChunk(ch); }
+        }
         syncWaterDiscs();
-        syncCarveMeshes();
+        syncCarveRoofs();
+        syncCarveScenery();
     }
 
     const placements = new Map();       // uid -> InstancedMesh
@@ -899,17 +958,21 @@
         });
     }
 
-    // Rocha com variação de cor e salpicos minerais procedurais.
+    // Rocha compartilhada entre pedregulhos e tetos, com padrão repetível nas duas direções.
     function makeRockTexture() {
         return proceduralTexture('rock', 128, function (N) {
-            const img = new ImageData(N, N), rnd = makeNoise(577), hgt = new Float32Array(N * N);
-            for(let y=0;y<N;y++) for(let x=0;x<N;x++) {
-                const u=x/N*Math.PI*2,v=y/N*Math.PI*2;
-                const blotch=rnd(Math.cos(u)*5-3,Math.sin(v)*5+4), speck=rnd(Math.cos(u)*18+6,Math.sin(v)*18-7);
-                const val=0.58+blotch*0.24+(speck-0.5)*0.10,i=(y*N+x)*4;
-                hgt[y*N+x]=val; img.data[i]=Math.max(0,Math.min(255,val*118))|0;
-                img.data[i+1]=Math.max(0,Math.min(255,val*114))|0;
-                img.data[i+2]=Math.max(0,Math.min(255,val*108))|0; img.data[i+3]=255;
+            const img = new ImageData(N, N);
+            const hgt = new Float32Array(N * N);
+            for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+                const u = x / N * 2 * Math.PI, v = y / N * 2 * Math.PI;
+                const relief = rockRelief(Math.cos(u) * 5 + Math.sin(v) * 3, Math.sin(u) * 3 + Math.cos(v) * 5);
+                const value = 0.42 + relief * 0.25;
+                const i = y * N + x;
+                hgt[i] = value;
+                img.data[i * 4] = value * 268;
+                img.data[i * 4 + 1] = value * 255;
+                img.data[i * 4 + 2] = value * 233;
+                img.data[i * 4 + 3] = 255;
             }
             return { rgba: img.data, h: hgt };
         });
@@ -984,6 +1047,7 @@
                     inst.position.set(x, y - sink * sy, z);
                     inst.scaling.set(s, sy, s);
                     inst.rotation.y = Math.random() * Math.PI * 2;
+                    trackScenery(inst);
                 }
                 placed += 1;
                 n -= 1;
@@ -1006,6 +1070,10 @@
         }
         mat.diffuseColor = new BABYLON.Color3(def.color[0], def.color[1], def.color[2]);
         mat.emissiveColor = new BABYLON.Color3(def.emissive[0], def.emissive[1], def.emissive[2]);
+        if (def.texture === 'foliage' || def.texture === 'grass') {
+            // Preenchimento discreto para manter as lâminas e agulhas legíveis na sombra.
+            mat.emissiveColor.addInPlace(new BABYLON.Color3(0.035, 0.065, 0.025));
+        }
         mat.specularColor = new BABYLON.Color3(def.specular, def.specular, def.specular);
         return mat;
     }
@@ -1267,6 +1335,7 @@
                 inst.position.set(x, y + (opts.sink || 0) * s, z);
                 inst.rotation.y = Math.random() * Math.PI * 2;
                 inst.scaling.set(s, s * (0.85 + Math.random() * 0.5), s);
+                trackScenery(inst);
                 placed += 1;
                 n -= 1;
             }
@@ -1529,6 +1598,7 @@
                             inst.position.set(x, y + (opts.sink || 0) * s, z);
                             inst.rotation.y = rnd() * Math.PI * 2;
                             inst.scaling.set(s, s * (0.9 + rnd() * 0.3), s);
+                            trackScenery(inst);
                             placed += 1;
                             n -= 1;
                         }
@@ -2229,7 +2299,8 @@
                         const t = texture;
                         if (!t || !t.getContext) { return 'sem textura'; }
                         const c = t.getContext();
-                        const d = c.getImageData(64, 64, 1, 1).data;
+                        const center = Math.floor(t.getSize().width / 2);
+                        const d = c.getImageData(center, center, 1, 1).data;
                         return [d[0], d[1], d[2], d[3]];
                     } catch (e) { return 'erro: ' + (e && e.message); }
                 })(),
