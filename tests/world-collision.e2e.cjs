@@ -86,7 +86,9 @@ async function wait(callback,label) {
             }
             const first=marks[0],last=marks[marks.length-1];
             const dt=(last.t-first.t)/1000;
-            return {v:(last.s.z-first.s.z)/dt,z:last.s.z,dt};
+            // Regime: descarta a primeira metade (rampa de aceleração em quadros lentos)
+            const mid=marks[Math.floor(marks.length/2)],dt2=(last.t-mid.t)/1000;
+            return {v:(last.s.z-mid.s.z)/dt2,z:last.s.z,dt,frames:marks.length};
         } finally {
             for(const key of keys) await p.keyboard.up(key);
             if(sprint) await p.keyboard.up('Shift');
