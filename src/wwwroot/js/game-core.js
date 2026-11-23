@@ -489,20 +489,26 @@
         return [sr / N, sg / N, sb / N];
     }
 
-    function applyChunkTint(mat, avg) {
-        mat.diffuseColor = new BABYLON.Color3(
-            Math.max(0.05, Math.min(1, avg[0] * 1.15)),
-            Math.max(0.05, Math.min(1, avg[1] * 1.15)),
-            Math.max(0.05, Math.min(1, avg[2] * 1.15)));
+    function applyChunkTint(mat, avg, emissive) {
+        const g = emissive ? 2.1 : 1.15;   // unlit: sem luz multiplicando, tinta compensa
+        const c = emissive ? mat.emissiveColor || (mat.emissiveColor = new BABYLON.Color3(0, 0, 0)) : mat.diffuseColor || (mat.diffuseColor = new BABYLON.Color3(1, 1, 1));
+        c.r = Math.max(0.05, Math.min(1, avg[0] * g));
+        c.g = Math.max(0.05, Math.min(1, avg[1] * g));
+        c.b = Math.max(0.05, Math.min(1, avg[2] * g));
     }
 
     function chunkTexture(cx, cz) {
         const tex = new BABYLON.DynamicTexture('chunkTex-' + chunkKey(cx, cz), { width: CHUNK_TEX, height: CHUNK_TEX }, scene, true);
         const avg = paintChunkTexture(tex, cx, cz);
+        // F7g-3: cor ASSADA (unlit) — a iluminação dinâmica avalia ~0 na GPU afetada
+        // (AMD/Wayland com GPU process instável); emissivo renderiza perfeito (42k px
+        // verdes comprovados). Grão × tinta: grama, terra, rocha e neve legíveis.
         const m = new BABYLON.StandardMaterial('groundMat-' + chunkKey(cx, cz), scene);
-        m.diffuseTexture = tex;
-        applyChunkTint(m, avg);
-        m.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
+        m.disableLighting = true;
+        m.emissiveTexture = tex;         // grão branco (0,86–1,14)
+        applyChunkTint(m, avg, true);    // tinta multiplicando o emissivo
+        m.diffuseColor = new BABYLON.Color3(0, 0, 0);
+        m.specularColor = new BABYLON.Color3(0, 0, 0);
         return m;
     }
 
@@ -593,56 +599,9 @@
         }
     }
 
-    let diagTex = null;
-    function chunkCacheTexDebug() {
-        if (diagTex) { return diagTex; }
-        diagTex = new BABYLON.DynamicTexture('diag-grain', { width: 64, height: 64 }, scene, true);
-        var ctx = diagTex.getContext();
-        var img = ctx.createImageData(64, 64);
-        var rnd = makeNoise(31337);
-        for (var i = 0; i < 64 * 64; i++) {
-            var k = (0.82 + rnd(i % 64, (i / 64) | 0) * 0.36) * 255;
-            img.data[i * 4] = k; img.data[i * 4 + 1] = k; img.data[i * 4 + 2] = k; img.data[i * 4 + 3] = 255;
-        }
-        ctx.putImageData(img, 0, 0);
-        diagTex.update(true);
-        return diagTex;
-    }
-
     function buildTerrain() {
         ensureChunksAround(0, 0);
-        // DEBUG F7g-2 (remove depois): isolamento do culpado no material normal.
-        // (0,0) luz+textura SEM receber sombra | (0,1) luz+SEM textura COM sombra |
-        // (1,0) combo completo atual (controle que falha).
-        modelQueue.push({
-            timing: { id: 'diag-mat', queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
-            work: (function* () {
-                yield {
-                    label: 'diagnóstico material',
-                    run: function () {
-                        var mk = function (tint, tex, shadows) {
-                            var m = new BABYLON.StandardMaterial('diag-' + Math.random().toString(36).slice(2, 6), scene);
-                            m.diffuseColor = new BABYLON.Color3(tint[0], tint[1], tint[2]);
-                            m.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
-                            if (tex) { m.diffuseTexture = tex; }
-                            return { m: m, shadows: shadows };
-                        };
-                        // (0,0): textura de grão + tinta, SEM receiveShadows (verde oliva)
-                        var a = mk([0.35, 0.5, 0.2], chunkCacheTexDebug(), false);
-                        var ch00 = chunkMap.get('0,0');
-                        if (ch00) { ch00.mesh.material = a.m; ch00.mesh.receiveShadows = false; }
-                        // (0,1): tinta sólida COM receiveShadows (azul acinzentado)
-                        var b = mk([0.4, 0.42, 0.5], null, true);
-                        var ch01 = chunkMap.get('0,1');
-                        if (ch01) { ch01.mesh.material = b.m; }
-                        // (1,0): tinta vermelho-terráco SEM somra SEM textura (marcador)
-                        var c = mk([0.6, 0.25, 0.1], null, false);
-                        var ch10 = chunkMap.get('1,0');
-                        if (ch10) { ch10.mesh.material = c.m; ch10.mesh.receiveShadows = false; }
-                    }
-                };
-            })()
-        });
+
     }
 
     // (A paleta e o grão do chão vivem na textura de cada chunk — paintChunkTexture.)
