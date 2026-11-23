@@ -2030,7 +2030,20 @@
             // No worker o OffscreenCanvas não tem layout nem devicePixelRatio: o shell
             // mede (CSS × densidade) e o tamanho é aplicado daqui; sem isso o canvas
             // ficaria no 300×150 padrão esticado pela tela (regressão da migração).
-            engine = new BABYLON.Engine(host.canvas, true, { adaptToDeviceRatio: dom, stencil: false });
+            // F7d: WebGPU primeiro (quando o WebGL está bloqueado/ausente no driver,
+            // o WebGPU costela funcionar); fallback WebGL; falha final vira mensagem.
+            if (host.graphics !== 'webgl' && typeof navigator !== 'undefined' && navigator.gpu && BABYLON.WebGPUEngine) {
+                try {
+                    const gpu = new BABYLON.WebGPUEngine(host.canvas, { adaptToDeviceRatio: dom, stencil: false });
+                    await gpu.initAsync();
+                    engine = gpu;
+                } catch (e) {
+                    console.warn('[motor] WebGPU indisponível (' + (e && e.message) + '), tentando WebGL…');
+                }
+            }
+            if (!engine) {
+                engine = new BABYLON.Engine(host.canvas, true, { adaptToDeviceRatio: dom, stencil: false });
+            }
             if (!dom && host.size) { applySize(host.size.width, host.size.height, host.size.dpr); }
             buildScene(host.canvas);
             // Cena pronta: o shell só resolve o game.init DAQUI para frente — o C# passa

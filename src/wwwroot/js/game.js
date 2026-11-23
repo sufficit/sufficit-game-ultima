@@ -71,6 +71,18 @@
         if (window.game && game.workshop && game.workshop.worldOp) { game.workshop.worldOp(op); }
     }
 
+    // Motor 3D não subiu (sem WebGPU/WebGL): mensagem clara em vez de página morta.
+    function showEngineFailure(err) {
+        var div = document.createElement('div');
+        div.style.cssText = 'position:fixed;inset:0;z-index:99;background:#0d1422ee;color:#e8ecf3;' +
+            'display:flex;align-items:center;justify-content:center;font:15px/1.6 system-ui;padding:2rem;text-align:center';
+        div.innerHTML = '<div style="max-width:34rem"><h2 style="margin:0 0 .6rem">Motor 3D não conseguiu iniciar</h2>' +
+            '<p>Nem WebGPU nem WebGL estão disponíveis neste navegador/GPU — o Ultima precisa de um deles para renderizar o mundo.</p>' +
+            '<p style="opacity:.8">Verifique: <b>chrome://gpu</b> (procure “WebGL/WebGPU: …”); ative a <b>aceleração de hardware</b> nas configurações do navegador; atualize os drivers da placa de vídeo; teste outro navegador (Chrome/Edge/Firefox atuais).</p>' +
+            '<p style="opacity:.6;font-size:12px">' + String(err && err.message || err).replace(/[<>]/g, '') + '</p></div>';
+        document.body.appendChild(div);
+    }
+
     // Feedback do modo construção: cursor de mira sobre o canvas.
     function onBuildMode(mode) {
         var canvas = document.getElementById('game-canvas');
