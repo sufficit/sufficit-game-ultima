@@ -94,6 +94,9 @@ async function wait(callback,label) {
         await p.waitForTimeout(T300);
         if(errors.length) throw Error(errors.join('\n'));
         const samples=await renderer.evaluate(() => globalThis.stopMoveTrace());
+        if(process.env.ULTIMA_TRACE){ // diagnóstico: [delta de jogo, distância] por intervalo
+            console.log('TRACE',JSON.stringify(samples.map((s,i)=>[+s.g.toFixed(3),i?+Math.hypot(s.x-samples[i-1].x,s.z-samples[i-1].z).toFixed(3):null])));
+        }
         // Descarta a rampa de aceleração (primeiros 0,3 s de jogo): numerador e denominador
         // precisam ser PARES — só contam os passos após a rampa (tempo gC = tempo dos passos medidos).
         let g=0, gC=0, dist=0, n=0;
