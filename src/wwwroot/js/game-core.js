@@ -52,9 +52,9 @@
     let rainLevel = weatherMode === 'rain' ? 1 : 0;
     let rainParticles = null;
     let player = null;
-    let playerLegs = null;
-    let gaitPhase = 0;
-    let gaitWeight = 0;
+    let movementSpeed = 0;
+    let movementX = 0, movementZ = 0;
+    let dialoguePartner = null;
     let camera = null;
     const G = host.global;
     const dom = !!host.dom;
@@ -69,7 +69,9 @@
     const pageUrl = function (path) { return new URL(path, host.pageBase).href; };
     let near = false;
     let nearWanderer = false;
+    let guardianRoot = null;
     let wandererRoot = null;
+    let wanderT = Math.random() * Math.PI * 2;
     let frozen = false;
     let lastTick = 0;
     let actionWasDown = false;
@@ -83,6 +85,7 @@
     const editable = (el) => !!(el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)));
 
     function interact() {
+        if (!frozen && !near && !nearWanderer && nearbyObject) { playCharacterAction('inspect'); }
         if (dotnet) { dotnet.invokeMethodAsync('OnInteract'); }
     }
 
@@ -1145,7 +1148,7 @@
             dotnet.invokeMethodAsync('OnBackpackStatus', 'Esse recurso já foi coletado.');
             return;
         }
-        host.worldOp({ action: 'collect', resource });
+        host.worldOp({ action: 'collect', resource, point: { x: p.x, z: p.z } });
     }
 
     let collectionPointer = null;
@@ -1638,7 +1641,7 @@
     const modelStatus = { loaded: [], placeholders: [], errors: [], log: [], queue: 0, timings: [] };
     // Entidades (jogador, Guardiã, remotos) que esperam um modelo chegar do carregador C#.
     const modelAwaiters = new Map();   // id do modelo -> [{ make, apply, fallback }]
-    const characterSpawns = new Map(); // chave 'modelo#nome' -> { root, onModel, onFallback }
+    const characterRigs = new Map();
 
     // Instancia um modelo registrado como root único (TransformNode) com origem nos pés:
     // cada grupo vira clone visível filho do root. Se o modelo ainda não chegou, entra na
@@ -1648,52 +1651,65 @@
         const root = new BABYLON.TransformNode(name, scene);
         root.position.copyFrom(groundPos);
         root.rotation.y = rotationY || 0;
-        const entry = { root: root, onModel: null, onFallback: null };
-        characterSpawns.set(modelId + '#' + name, entry);
-        if (modelRegistry.has(modelId)) {
+        const rig = createCharacterRig(root, modelId === 'character.guardian');
+        const entry = { root, rig, onFallback: null };
+        root.onDisposeObservable.addOnce(() => {
+            characterRigs.delete(root);
+            disposeCharacterFallback(entry);
+            for (const material of rig.fallbackLegMaterials) { material.dispose(); }
+        });
+        if (modelRegistry.has(modelId) && !modelRegistry.get(modelId).placeholder) {
             attachCharacterModel(modelId, entry);
         } else {
             const fallback = makeFallback();   // malha centrada, y local já definido
-            fallback.parent = root;
+            fallback.parent = rig.legs.length ? rig.upper : root;
+            if (rig.legs.length) { fallback.position.y -= HIP_HEIGHT; }
             entry.onFallback = fallback;
-            if (name === 'player') { buildPlayerLegs(root); }
             if (sceneShadows) { sceneShadows.addShadowCaster(fallback); }
-            const list = modelAwaiters.get(modelId) || [];
-            list.push({ name: name, entry: entry, make: makeFallback });
-            modelAwaiters.set(modelId, list);
+            if (!modelRegistry.has(modelId)) {
+                const list = modelAwaiters.get(modelId) || [];
+                list.push({ entry });
+                modelAwaiters.set(modelId, list);
+            }
         }
         return root;
+    }
+
+    function disposeCharacterFallback(entry) {
+        if (!entry.onFallback) { return; }
+        sceneShadows?.removeShadowCaster(entry.onFallback);
+        entry.onFallback.dispose(false, true);
+        entry.onFallback = null;
     }
 
     // Troca o fallback JS pelas malhas do modelo C# (clones dos protótipos do descritor).
     function attachCharacterModel(modelId, entry) {
         const reg = modelRegistry.get(modelId);
-        if (!reg || !entry.root) { return; }
-        if (entry.onFallback) {
-            if (sceneShadows) { sceneShadows.removeShadowCaster(entry.onFallback); }
-            entry.onFallback.dispose(false, true);
-            entry.onFallback = null;
-        }
-        const localPlayer = entry.root.name === 'player';
-        if (localPlayer) {
-            if (!playerLegs) { buildPlayerLegs(entry.root); }
-            for (const leg of playerLegs) { leg.hip.setEnabled(!reg.placeholder); }
-        }
+        if (!reg || reg.placeholder || entry.root.isDisposed()) { return; }
+        disposeCharacterFallback(entry);
+        const { rig } = entry;
+        rig.face.setEnabled(true);
+        rig.eyes.setEnabled(true);
         for (const proto of reg.protos) {
-            if (localPlayer && proto.name === 'model-character.villager-legs') {
-                for (const leg of playerLegs) { leg.thigh.material = leg.shin.material = proto.material; }
+            const group = proto.name.slice(('model-' + modelId + '-').length);
+            if (rig.legs.length && group === 'legs') {
+                for (const leg of rig.legs) { leg.thigh.material = leg.shin.material = proto.material; }
                 continue;
             }
-            if (localPlayer && proto.name === 'model-character.villager-shoes') {
-                for (const leg of playerLegs) { leg.shoe.material = proto.material; }
+            if (rig.legs.length && group === 'shoes') {
+                for (const leg of rig.legs) { leg.shoe.material = proto.material; }
                 continue;
             }
             const clone = proto.clone(proto.name.replace('model-', 'char-') + '-' + entry.root.name);
             clone.isVisible = true;
-            clone.parent = entry.root;
+            clone.isPickable = false;
+            const pivot = rig.attachments[group] || entry.root;
+            clone.parent = pivot;
             clone.position.set(0, 0, 0);
-            if (sceneShadows && reg.desc && !reg.placeholder) { sceneShadows.addShadowCaster(clone); }
+            if (pivot !== entry.root) { clone.position.copyFrom(pivot.metadata.modelOffset); }
+            if (sceneShadows) { sceneShadows.addShadowCaster(clone); }
         }
+        for (const material of rig.fallbackLegMaterials.splice(0)) { material.dispose(); }
     }
 
     // ---------- Fila de entrada de modelos com orçamento por frame ----------
@@ -2333,28 +2349,20 @@
         // enquanto a DLL não chega, o protótipo JS serve de fallback. Origem do root = pés.
         player = spawnFromModel('character.villager', 'player',
             new BABYLON.Vector3(0, terrainHeight(0, 0) + 0.03, 0), 0,
-            () => { const m = buildHumanoid('player-js', { shirt:new BABYLON.Color3(0.20,0.50,0.92), pants:new BABYLON.Color3(0.20,0.22,0.28), skin:new BABYLON.Color3(0.90,0.72,0.58) }, false); m.position.y = PLAYER_HEIGHT / 2; return m; });
+            () => { const m = buildHumanoid('player-js', { shirt:new BABYLON.Color3(0.20,0.50,0.92), skin:new BABYLON.Color3(0.90,0.72,0.58) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
 
         // Guardiã: figura encapuzada dourada (1,7 m) com anel de destaque no chão —
         // modelo C# (character.guardian) carregado em runtime, fallback JS centrado.
-        const npc = spawnFromModel('character.guardian', 'npc',
+        guardianRoot = spawnFromModel('character.guardian', 'npc',
             new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.03, NPC_POSITION.z), 0,
             () => { const m = buildGuardian('npc-js'); m.position.y = 0.85; return m; });
 
         // Andarilho: segundo NPC (character.wanderer) na clareira inicial, circulando
         // devagar — o cérebro dele (WandererBrain) vive em C#; aqui é só o corpo.
         wandererRoot = spawnFromModel('character.wanderer', 'wanderer',
-            new BABYLON.Vector3(WANDERER_HOME.x, terrainHeight(WANDERER_HOME.x, WANDERER_HOME.z) + 0.03, WANDERER_HOME.z), 0,
-            () => { const m = buildHumanoid('wanderer-js', { shirt:new BABYLON.Color3(0.26,0.58,0.44), pants:new BABYLON.Color3(0.34,0.30,0.24), skin:new BABYLON.Color3(0.86,0.67,0.50) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
-        let wanderT = Math.random() * Math.PI * 2;
-        scene.registerBeforeRender(() => {
-            if (!wandererRoot || !engine) { return; }
-            wanderT += Math.min(0.05, engine.getDeltaTime() / 1000) * 0.22;
-            wandererRoot.position.x = WANDERER_HOME.x + Math.sin(wanderT) * 1.4;
-            wandererRoot.position.z = WANDERER_HOME.z + Math.cos(wanderT) * 1.4;
-            wandererRoot.position.y = terrainHeight(wandererRoot.position.x, wandererRoot.position.z) + 0.03;
-            wandererRoot.rotation.y = wanderT + Math.PI / 2;   // de frente para o caminhar
-        });
+            new BABYLON.Vector3(WANDERER_HOME.x + Math.sin(wanderT) * 1.4, terrainHeight(WANDERER_HOME.x, WANDERER_HOME.z) + FOOT_GAP,
+                WANDERER_HOME.z + Math.cos(wanderT) * 1.4), Math.PI / 2 + wanderT,
+            () => { const m = buildHumanoid('wanderer-js', { shirt:new BABYLON.Color3(0.26,0.58,0.44), skin:new BABYLON.Color3(0.86,0.67,0.50) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
 
         const marker = BABYLON.MeshBuilder.CreateTorus('npcMarker', { diameter: 1.5, thickness: 0.08, tessellation: 32 }, scene);
         marker.position = new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.06, NPC_POSITION.z);
@@ -2454,28 +2462,153 @@
         let iz = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
         ix += pad.x + moveStick.x;
         iz += pad.y + moveStick.y;
-        if (ix === 0 && iz === 0) { return 0; }
-
-        // Movimento relativo à câmera, com limites e velocidade normalizada.
-        const forward = camera.getForwardRay().direction;
-        const fx = forward.x, fz = forward.z;
-        const flen = Math.hypot(fx, fz) || 1;
-        const nx = fz / flen, nz = -fx / flen;
-        let dx = (fx / flen) * iz + nx * ix;
-        let dz = (fz / flen) * iz + nz * ix;
-        const len = Math.hypot(dx, dz) || 1;
         const magnitude = Math.min(1, Math.hypot(ix, iz));
-        const run = keys.ShiftLeft || keys.ShiftRight || magnitude > 0.92;
-        const speed = run ? RUN_SPEED : WALK_SPEED;
+        if (magnitude > 0) {
+            const { x: fx, z: fz } = camera.getForwardRay().direction;
+            const dx = fx * iz + fz * ix, dz = fz * iz - fx * ix;
+            const len = Math.hypot(dx, dz) || 1;
+            movementX = dx / len;
+            movementZ = dz / len;
+        }
+        const analogRun = Math.hypot(pad.x + moveStick.x, pad.y + moveStick.y) > 0.92;
+        const run = keys.ShiftLeft || keys.ShiftRight || analogRun;
+        const targetSpeed = (run ? RUN_SPEED : WALK_SPEED) * magnitude;
+        movementSpeed += Math.max(-26 * deltaSeconds, Math.min(22 * deltaSeconds, targetSpeed - movementSpeed));
+        if (movementSpeed <= 0) { return 0; }
         const { x, z } = player.position;
         const ground = terrainHeight(x, z);
         const stepping = player.position.y - FOOT_GAP > ground + 0.015;
-        const distance = (stepping ? Math.min(2.8, speed) : speed) * magnitude * deltaSeconds;
-        moveWithObstacles(player.position, dx / len * distance, dz / len * distance, ground);
+        const distance = (stepping ? Math.min(2.8, movementSpeed) : movementSpeed) * deltaSeconds;
+        moveWithObstacles(player.position, movementX * distance, movementZ * distance, ground);
         const actualX = player.position.x - x, actualZ = player.position.z - z;
         const travelled = Math.hypot(actualX, actualZ);
-        player.rotation.y = travelled > 0.001 ? Math.atan2(actualX, actualZ) : Math.atan2(dx, dz);
+        const yaw = travelled > 0.001 ? Math.atan2(actualX, actualZ) : Math.atan2(movementX, movementZ);
+        turnCharacter(player, yaw, deltaSeconds, 16);
         return travelled;
+    }
+
+    function turnCharacter(root, yaw, delta, rate) {
+        const difference = yaw - root.rotation.y;
+        root.rotation.y += Math.atan2(Math.sin(difference), Math.cos(difference)) * (1 - Math.exp(-rate * delta));
+    }
+
+    let faceInk;
+    function createCharacterRig(root, guardian) {
+        function joint(name, parent, x, y) {
+            const node = new BABYLON.TransformNode(root.name + '-' + name, scene);
+            node.parent = parent;
+            const offset = parent.metadata?.modelOffset;
+            node.position.set(x + (offset?.x ?? 0), y + (offset?.y ?? 0), 0);
+            node.metadata = { modelOffset: new BABYLON.Vector3(-x, -y, 0) };
+            return node;
+        }
+        const headRadius = guardian ? 1.7 * 0.075 : PLAYER_HEIGHT * 0.07;
+        const headBase = guardian ? 1.7 * 0.82 : PLAYER_HEIGHT - 2 * headRadius;
+        const upper = joint('upper-body', root, 0, guardian ? 1.7 * 0.52 : HIP_HEIGHT);
+        const head = joint('head-pivot', upper, 0, headBase);
+        const eyes = joint('eye-pivot', head, 0, headBase + 1.1 * headRadius);
+        eyes.setEnabled(false);
+        const armX = PLAYER_HEIGHT * (0.088 + 0.026 * 1.3);
+        const shoulders = guardian ? [] : [-1, 1].map(side =>
+            joint(side < 0 ? 'shoulder-left' : 'shoulder-right', upper, side * armX, PLAYER_HEIGHT * 0.80));
+        const face = new BABYLON.TransformNode(root.name + '-expression', scene);
+        face.parent = head;
+        face.setEnabled(false);
+        if (!faceInk) {
+            faceInk = new BABYLON.StandardMaterial('character-face-ink', scene);
+            faceInk.diffuseColor.set(0.10, 0.045, 0.028);
+            faceInk.emissiveColor.set(0.035, 0.014, 0.009);
+        }
+        function facialFeature(name, parent, x, y, z, width, height) {
+            const feature = BABYLON.MeshBuilder.CreateSphere(root.name + '-' + name, { diameter: 1, segments: 5 }, scene);
+            feature.parent = parent;
+            feature.position.set(x, y, z);
+            feature.scaling.set(width, height, 0.012);
+            feature.material = faceInk;
+            feature.isPickable = false;
+            return feature;
+        }
+        if (guardian) {
+            for (const side of [-1, 1]) {
+                facialFeature('eye-' + side, eyes, side * headRadius * 0.36, 0, headRadius * 0.94, 0.023, 0.018);
+            }
+        }
+        const brows = [-1, 1].map(side => facialFeature('brow-' + side, face,
+            side * headRadius * 0.36, headRadius * 1.34, headRadius * 0.9, 0.038, 0.009));
+        const mouth = facialFeature('mouth', face, 0, headRadius * 0.68, headRadius * 0.96, 0.048, 0.008);
+        const attachments = {
+            torso: upper, tunic: upper, neck: upper, head, hair: head, hood: head, skin: head, eyes,
+            'arm-left': shoulders[0], 'hand-left': shoulders[0], 'arm-right': shoulders[1], 'hand-right': shoulders[1]
+        };
+        const legs = guardian ? [] : buildCharacterLegs(root);
+        const rig = {
+            root, upper, head, eyes, shoulders, face, brows, mouth, attachments,
+            legs, fallbackLegMaterials: legs.length ? [legs[0].thigh.material, legs[0].shoe.material] : [],
+            clock: 0, gaitPhase: 0, gaitWeight: 0, speaking: 0, action: null
+        };
+        characterRigs.set(root, rig);
+        return rig;
+    }
+
+    const characterActions = {
+        inspect: { duration: 0.56, bend: 0.17, reach: 0.42 },
+        gather: { duration: 0.44, bend: 0.23, reach: 0.84 },
+        dig: { duration: 0.50, bend: 0.34, reach: 0.62 }
+    };
+
+    function playCharacterAction(name, point) {
+        const rig = characterRigs.get(player);
+        if (rig && characterActions[name] && !frozen) {
+            rig.action = { ...characterActions[name], elapsed: 0, point };
+        }
+    }
+
+    function updateCharacterPose(root, delta, distance) {
+        const rig = characterRigs.get(root);
+        if (!rig) { return; }
+        rig.clock += delta;
+        const speed = delta > 0 ? distance / delta : 0;
+        const run = smoothstep(WALK_SPEED, RUN_SPEED, speed);
+        rig.gaitWeight = lerp(rig.gaitWeight, Math.min(1, speed / 1.1), 1 - Math.exp(-13 * delta));
+        rig.gaitPhase = (rig.gaitPhase + distance * Math.PI * 2 / lerp(1.1, 2.35, smoothstep(1.4, RUN_SPEED, speed))) % (Math.PI * 2);
+        if (rig.legs.length) { updateCharacterLegs(rig, delta, distance, speed, terrainHeight(root.position.x, root.position.z)); }
+
+        const listening = frozen && (root === player || root === dialoguePartner);
+        rig.speaking = Math.max(0, rig.speaking - delta);
+        const speaking = rig.speaking > 0 && listening;
+        if (listening) {
+            const other = root === player ? dialoguePartner : player;
+            if (other) { turnCharacter(root, Math.atan2(other.position.x - root.position.x, other.position.z - root.position.z), delta, 7); }
+        }
+        let gesture = 0;
+        const action = rig.action;
+        if (action) {
+            if (action.point && speed < 0.4) {
+                turnCharacter(root, Math.atan2(action.point.x - root.position.x, action.point.z - root.position.z), delta, 13);
+            }
+            action.elapsed += delta;
+            gesture = Math.sin(Math.PI * Math.min(1, action.elapsed / action.duration));
+            if (action.elapsed >= action.duration) { rig.action = null; }
+        }
+        const breath = Math.sin(rig.clock * 2.9) * 0.012;
+        const swing = Math.cos(rig.gaitPhase) * rig.gaitWeight;
+        rig.upper.rotation.x = breath + 0.12 * run + gesture * (action?.bend ?? 0);
+        rig.upper.rotation.z = Math.sin(rig.gaitPhase) * 0.035 * rig.gaitWeight;
+        rig.head.rotation.x = -0.06 * run + gesture * 0.14 + (speaking ? Math.sin(rig.clock * 9) * 0.036 : 0);
+        rig.head.rotation.z = listening && !speaking ? 0.09 : 0;
+        const blink = (rig.clock + (root.name.length % 7) * 0.43) % 4.7;
+        rig.eyes.scaling.y = 1 - 0.94 * (1 - smoothstep(0.015, 0.085, Math.abs(blink - 0.09)));
+        rig.mouth.scaling.y = speaking ? 0.012 + Math.abs(Math.sin(rig.clock * 16)) * 0.021 : 0.008;
+        rig.mouth.scaling.x = listening ? 0.054 : 0.048;
+        rig.brows.forEach((brow, i) => {
+            brow.rotation.z = (i ? -1 : 1) * (0.26 * gesture - (listening ? 0.15 : 0));
+        });
+        if (rig.shoulders.length) {
+            const strideSwing = swing * lerp(0.34, 0.74, run);
+            rig.shoulders[0].rotation.x = strideSwing - gesture * 0.16;
+            rig.shoulders[1].rotation.x = -strideSwing - gesture * (action?.reach ?? 0)
+                - (speaking ? 0.24 + 0.10 * Math.sin(rig.clock * 4.5) : 0);
+        }
     }
 
     function checkNear() {
@@ -2495,32 +2628,32 @@
         }
     }
 
-    function buildPlayerLegs(root) {
-        const pants = new BABYLON.StandardMaterial('player-leg-pants', scene);
+    function buildCharacterLegs(root) {
+        const pants = new BABYLON.StandardMaterial(root.name + '-leg-pants', scene);
         pants.diffuseColor.set(0.20, 0.22, 0.28);
-        const shoes = new BABYLON.StandardMaterial('player-leg-shoes', scene);
+        const shoes = new BABYLON.StandardMaterial(root.name + '-leg-shoes', scene);
         shoes.diffuseColor.set(0.13, 0.10, 0.09);
         const radius = LEG_RADIUS;
-        playerLegs = [-1, 1].map(side => {
+        return [-1, 1].map(side => {
             const suffix = side < 0 ? 'left' : 'right';
-            const hip = new BABYLON.TransformNode('player-hip-' + suffix, scene);
+            const hip = new BABYLON.TransformNode(root.name + '-hip-' + suffix, scene);
             hip.parent = root;
             hip.position.set(side * LEG_SPACING, HIP_HEIGHT, 0);
-            const knee = new BABYLON.TransformNode('player-knee-' + suffix, scene);
+            const knee = new BABYLON.TransformNode(root.name + '-knee-' + suffix, scene);
             knee.parent = hip;
             knee.position.y = -LEG_SEGMENT;
-            const ankle = new BABYLON.TransformNode('player-ankle-' + suffix, scene);
+            const ankle = new BABYLON.TransformNode(root.name + '-ankle-' + suffix, scene);
             ankle.parent = knee;
             ankle.position.y = -LEG_SEGMENT;
 
             const options = { height: LEG_SEGMENT + 0.085, radius, subdivisions: 4 };
-            const thigh = BABYLON.MeshBuilder.CreateCapsule('player-thigh-' + suffix, options, scene);
-            const shin = BABYLON.MeshBuilder.CreateCapsule('player-shin-' + suffix, options, scene);
+            const thigh = BABYLON.MeshBuilder.CreateCapsule(root.name + '-thigh-' + suffix, options, scene);
+            const shin = BABYLON.MeshBuilder.CreateCapsule(root.name + '-shin-' + suffix, options, scene);
             thigh.parent = hip;
             shin.parent = knee;
             thigh.position.y = shin.position.y = -LEG_SEGMENT / 2;
             thigh.material = shin.material = pants;
-            const shoe = BABYLON.MeshBuilder.CreateSphere('player-shoe-' + suffix,
+            const shoe = BABYLON.MeshBuilder.CreateSphere(root.name + '-shoe-' + suffix,
                 { diameter: 2.5 * radius, segments: 8 }, scene);
             shoe.parent = ankle;
             shoe.position.z = SHOE_OFFSET;
@@ -2534,24 +2667,21 @@
         });
     }
 
-    function updatePlayerLegs(delta, distance, ground) {
-        const { x, z } = player.position;
-        const yaw = player.rotation.y;
-        const moving = distance > 0.0002;
-        gaitWeight = lerp(gaitWeight, moving ? 1 : 0, Math.min(1, delta * 13));
-        const speed = delta > 0 ? distance / delta : 0;
-        const stride = lerp(1.25, 2.45, smoothstep(2.6, RUN_SPEED, speed));
-        gaitPhase = (gaitPhase + distance * Math.PI * 2 / stride) % (Math.PI * 2);
+    function updateCharacterLegs(rig, delta, distance, speed, ground) {
+        const { root, gaitPhase, gaitWeight } = rig;
+        const { x, z } = root.position;
+        const yaw = root.rotation.y;
+        const run = smoothstep(WALK_SPEED, RUN_SPEED, speed);
         const sine = Math.sin(yaw), cosine = Math.cos(yaw);
-        const feet = (playerLegs || []).map(leg => {
+        const feet = rig.legs.map(leg => {
             const phase = gaitPhase + (leg.side < 0 ? 0 : Math.PI);
-            const forward = Math.cos(phase) * 0.24 * gaitWeight;
-            const lift = Math.max(0, -Math.sin(phase)) * 0.14 * gaitWeight;
+            const forward = Math.cos(phase) * lerp(0.18, 0.27, run) * gaitWeight;
+            const lift = Math.max(0, -Math.sin(phase)) * lerp(0.11, 0.17, run) * gaitWeight;
             const localX = leg.side * LEG_SPACING;
             const footX = x + localX * cosine + (forward + SHOE_OFFSET) * sine;
             const footZ = z - localX * sine + (forward + SHOE_OFFSET) * cosine;
             const floor = terrainHeight(footX, footZ);
-            const support = stepSurfaceAt(footX, footZ, floor);
+            const support = root === player ? stepSurfaceAt(footX, footZ, floor) : floor;
             return { leg, forward, ankleY: support + ANKLE_HEIGHT + SOLE_CLEARANCE + lift, support, onObstacle: support > floor };
         });
         const baseY = ground + FOOT_GAP;
@@ -2561,10 +2691,10 @@
             // Na borda, limita a elevação ao que a perna mais estendida alcança.
             const reachable = Math.min(...feet.map(({ ankleY, forward }) =>
                 ankleY + Math.sqrt(4 * LEG_SEGMENT ** 2 - forward ** 2) - HIP_HEIGHT));
-            const riseLimit = Math.max(baseY, player.position.y) + delta * 3;
+            const riseLimit = Math.max(baseY, root.position.y) + delta * 3;
             bodyY = Math.min(Math.max(baseY, top), reachable, riseLimit);
         }
-        player.position.y = bodyY;
+        root.position.y = bodyY;
 
         for (const { leg, forward, ankleY } of feet) {
             const drop = Math.max(0.16, bodyY + HIP_HEIGHT - ankleY);
@@ -2579,19 +2709,13 @@
         }
     }
 
-    // Humanoide de escala métrica: pernas, tronco, braços e cabeça em cores distintas.
-    function buildHumanoid(name, colors, withLegs = true) {
+    // Tronco provisório enquanto o pacote de malhas do personagem é carregado.
+    function buildHumanoid(name, colors) {
         const H=colors.height||PLAYER_HEIGHT, legH=H*0.44, torsoH=H*0.38, armH=H*0.36, headR=H*0.07;
-        const legR=H*0.040, torsoR=H*0.088, armR=H*0.026, feet=-H/2;
+        const torsoR=H*0.088, armR=H*0.026, feet=-H/2;
         const mat=(label,c)=>{const m=new BABYLON.StandardMaterial(name+'-'+label,scene);m.diffuseColor=c;m.specularColor=new BABYLON.Color3(0.08,0.08,0.08);return m;};
-        const pants=withLegs ? mat('pants',colors.pants) : null, shirt=mat('shirt',colors.shirt), skin=mat('skin',colors.skin), parts=[];
+        const shirt=mat('shirt',colors.shirt), skin=mat('skin',colors.skin), parts=[];
         for(const sx of [-1,1]){
-            if (withLegs) {
-                const leg = BABYLON.MeshBuilder.CreateCapsule(name + '-leg', { height:legH, radius:legR, subdivisions:4 }, scene);
-                leg.position.set(sx * torsoR * 0.5, feet + legH / 2, 0);
-                leg.material = pants;
-                parts.push(leg);
-            }
             const arm=BABYLON.MeshBuilder.CreateCapsule(name+'-arm',{height:armH,radius:armR,subdivisions:2},scene);
             arm.position.set(sx*(torsoR+armR*1.3),feet+legH+torsoH-H*0.20,0);arm.material=shirt;parts.push(arm);
         }
@@ -2600,15 +2724,8 @@
         const head=BABYLON.MeshBuilder.CreateSphere(name+'-head',{diameter:headR*2,segments:8},scene);
         head.position.y=H/2-headR;head.material=skin;parts.push(head);
         // v3: sapatos, mãos, cabelo e olhos para leitura de silhueta e rosto.
-        const shoeMat=withLegs ? mat('shoe',new BABYLON.Color3(0.13,0.10,0.09)) : null, hairMat=mat('hair',colors.hair||new BABYLON.Color3(0.20,0.13,0.08)), eyeMat=mat('eye',new BABYLON.Color3(0.05,0.05,0.06));
+        const hairMat=mat('hair',colors.hair||new BABYLON.Color3(0.20,0.13,0.08)), eyeMat=mat('eye',new BABYLON.Color3(0.05,0.05,0.06));
         for(const sx of [-1,1]){
-            if (withLegs) {
-                const shoe = BABYLON.MeshBuilder.CreateSphere(name + '-shoe', { diameter:legR * 2.5, segments:8 }, scene);
-                shoe.scaling.set(1, 0.55, 1.9);
-                shoe.position.set(sx * torsoR * 0.5, feet + legR * 0.55, legR * 0.9);
-                shoe.material = shoeMat;
-                parts.push(shoe);
-            }
             const hand=BABYLON.MeshBuilder.CreateSphere(name+'-hand',{diameter:armR*2.6,segments:8},scene);
             hand.position.set(sx*(torsoR+armR*1.3),feet+legH+torsoH-H*0.20-armH/2,0);hand.material=skin;parts.push(hand);
             const eye=BABYLON.MeshBuilder.CreateSphere(name+'-eye',{diameter:headR*0.22,segments:6},scene);
@@ -2650,7 +2767,7 @@
         const serial = remoteSerial++;
         const avatar = spawnFromModel('character.wanderer', 'remote-' + id,
             new BABYLON.Vector3((serial % 5 - 2) * 1.5, terrainHeight(0, -2) + 0.03, -2 - Math.floor(serial / 5) * 2), 0,
-            () => { const m = buildHumanoid('remote-js-' + id, { shirt:new BABYLON.Color3(0.66,0.30,0.82), pants:new BABYLON.Color3(0.24,0.18,0.30), skin:new BABYLON.Color3(0.88,0.70,0.56) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
+            () => { const m = buildHumanoid('remote-js-' + id, { shirt:new BABYLON.Color3(0.66,0.30,0.82), skin:new BABYLON.Color3(0.88,0.70,0.56) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
 
         const label = BABYLON.MeshBuilder.CreatePlane('remote-label-' + id, { width: 1.8, height: 0.36 }, scene);
         label.position = avatar.position.add(new BABYLON.Vector3(0, 1.925, 0));
@@ -2675,20 +2792,46 @@
 
     function updateRemote(id, x, z, ry) {
         const p = remotes.get(id);
-        if (!p) { return; }
-        p.avatar.position.x = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, x));
-        p.avatar.position.z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, z));
-        p.avatar.position.y = terrainHeight(p.avatar.position.x, p.avatar.position.z) + 0.03;
-        p.avatar.rotation.y = ry;
-        p.label.position.x = p.avatar.position.x;
-        p.label.position.z = p.avatar.position.z;
-        p.label.position.y = p.avatar.position.y + 1.925;
+        if (!p || ![x, z, ry].every(Number.isFinite)) { return; }
+        const firstPose = !p.target;
+        p.target = { x: clampWorld(x), z: clampWorld(z), yaw: ry };
+        const position = p.avatar.position;
+        if (firstPose || Math.hypot(p.target.x - position.x, p.target.z - position.z) > 5) {
+            position.x = p.target.x;
+            position.z = p.target.z;
+            p.avatar.rotation.y = ry;
+        }
+    }
+
+    function updateOtherCharacters(delta) {
+        let distance = 0;
+        if (dialoguePartner !== wandererRoot) {
+            const { x, z } = wandererRoot.position;
+            wanderT = (wanderT + delta * 0.65) % (2 * Math.PI);
+            wandererRoot.position.x = WANDERER_HOME.x + Math.sin(wanderT) * 1.4;
+            wandererRoot.position.z = WANDERER_HOME.z + Math.cos(wanderT) * 1.4;
+            turnCharacter(wandererRoot, wanderT + Math.PI / 2, delta, 7);
+            distance = Math.hypot(wandererRoot.position.x - x, wandererRoot.position.z - z);
+        }
+        updateCharacterPose(wandererRoot, delta, distance);
+        updateCharacterPose(guardianRoot, delta, 0);
+        for (const { avatar, label, target } of remotes.values()) {
+            const { x, z } = avatar.position;
+            if (target) {
+                const blend = 1 - Math.exp(-12 * delta);
+                avatar.position.x = lerp(x, target.x, blend);
+                avatar.position.z = lerp(z, target.z, blend);
+                turnCharacter(avatar, target.yaw, delta, 12);
+            }
+            updateCharacterPose(avatar, delta, Math.hypot(avatar.position.x - x, avatar.position.z - z));
+            label.position.set(avatar.position.x, avatar.position.y + 1.925, avatar.position.z);
+        }
     }
 
     function removeRemote(id) {
         const p = remotes.get(id);
         if (!p) { return; }
-        p.avatar.dispose(false, true); p.label.dispose(); p.texture.dispose(); p.labelMat.dispose();
+        p.avatar.dispose(); p.label.dispose(); p.texture.dispose(); p.labelMat.dispose();
         remotes.delete(id);
         if (dotnet) { dotnet.invokeMethodAsync('OnRemoteCount', remotes.size); }
     }
@@ -2838,6 +2981,7 @@
                 window.addEventListener('keydown', onKeyDown);
                 window.addEventListener('keyup', onKeyUp);
                 window.addEventListener('blur', () => {
+                    movementSpeed = 0;
                     for (const k of Object.keys(keys)) { keys[k] = false; }
                     moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 };
                 });
@@ -2886,9 +3030,10 @@
                 const travelled = movePlayer(delta, pad);
                 if (player) {
                     const { x, z } = player.position;
-                    updatePlayerLegs(delta, travelled, terrainHeight(x, z));
+                    updateCharacterPose(player, delta, travelled);
                     ensureChunksAround(x, z);
                 }
+                updateOtherCharacters(delta);
                 checkNear();
                 updateNearbyObject();
                 // Seguir mutando o vetor-alvo NO LUGAR: preserva alfa/beta/raio (a
@@ -2929,7 +3074,7 @@
         terrainClick(sx, sy) { terrainClickImpl(sx, sy); },
         terrainHover(point) { setCollectionPointer(point); },
         cancel() { dotnet.invokeMethodAsync('OnClose'); },
-        clear() { for (const k of Object.keys(keys)) { keys[k] = false; } moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 }; },
+        clear() { movementSpeed = 0; for (const k of Object.keys(keys)) { keys[k] = false; } moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 }; },
         resize(w, h, dpr) {
             if (!engine) { return; }
             if (dom) { engine.resize(); } else { applySize(w, h, dpr || (host.size && host.size.dpr) || 1); }
@@ -2954,16 +3099,25 @@
 
     // Mescla em G.game (assets.js/net.js/... podem ter registrado antes).
     const api = {
-        setFrozen(value) {
+        setFrozen(value, speaker) {
             frozen = !!value;
+            dialoguePartner = !frozen ? null : speaker === 'Andarilho' ? wandererRoot : guardianRoot;
+            movementSpeed = 0;
             if (frozen) { for (const k of Object.keys(keys)) { keys[k] = false; } }
         },
+        characterAction: playCharacterAction,
+        characterDialogueLine(speaker, length) {
+            const rig = characterRigs.get(speaker === 'Você' ? player : dialoguePartner);
+            if (rig) { rig.speaking = Math.max(0.65, Math.min(3.2, length * 0.038)); }
+        },
         resetPlayer() {
+            movementSpeed = 0;
             if (player) { player.position.x = 0; player.position.z = 0; player.rotation.y = 0; }
             if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 7.5; zoomTarget = null; }
         },
         teleportToGuardian() {
             if (!player || !camera) return false;
+            movementSpeed = 0;
             player.position.x = NPC_POSITION.x;
             player.position.z = NPC_POSITION.z + 2.0;
             player.position.y = terrainHeight(player.position.x, player.position.z) + 0.03;

@@ -43,7 +43,7 @@
         catch { await report('A mochila não conseguiu acessar o armazenamento deste navegador.'); }
     }
 
-    async function collect(entry) {
+    async function collect(entry, point) {
         try {
             const db = await open();
             // Cada passada da pá rende um recurso, inclusive quando já há um corte no local.
@@ -65,6 +65,7 @@
             }
             return;
         }
+        game.characterAction(entry.kind === 'soil' ? 'dig' : 'gather', point);
         channel?.postMessage('changed');
         await refresh();
         await report('+1 ' + entry.item);

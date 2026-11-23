@@ -115,8 +115,20 @@ async function until(check, label='A alteração esperada não apareceu') {
             await page.getByRole('button',{name:'Parar coleta',exact:true}).hover();
             await until(async()=>(await preview(target)).objects.length===0);
         }
+        await target.evaluate(()=>{
+            const scene=BABYLON.EngineStore.LastCreatedScene;
+            const arm=scene.getTransformNodeByName('player-shoulder-right');
+            globalThis.gatherMotion=false;
+            const observer=scene.onAfterRenderObservable.add(()=>{
+                if (arm.rotation.x < -0.40) {
+                    globalThis.gatherMotion=true;
+                    scene.onAfterRenderObservable.remove(observer);
+                }
+            });
+        });
         await click({name:mesh});
         await page.getByText('+1 Toco',{exact:true}).waitFor({timeout:10000});
+        await until(()=>target.evaluate(()=>globalThis.gatherMotion),'a coleta confirmada deve acionar o gesto');
         await until(async()=>await enabled(target)===false);
         await click({x:1,z:9});
         await page.getByText('Aproxime-se para coletar.',{exact:true}).waitFor({timeout:10000});

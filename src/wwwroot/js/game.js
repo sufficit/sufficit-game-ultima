@@ -77,7 +77,7 @@
     // Ops do mundo vindas do motor (cliques do modo construção): a oficina vive na main
     // thread e é ela quem aplica/valida no servidor — igual à ponte varyModel.
     function routeWorldOp(op) {
-        if (op.action === 'collect') { void game.backpack?.collect(op.resource); }
+        if (op.action === 'collect') { void game.backpack?.collect(op.resource, op.point); }
         else if (window.game && game.workshop && game.workshop.worldOp) { game.workshop.worldOp(op); }
     }
 
@@ -518,7 +518,9 @@
                     });
             return start.then(function () { return true; });
         },
-        setFrozen(v) { post('setFrozen', [!!v]); },
+        setFrozen(v, speaker) { post('setFrozen', [!!v, speaker]); },
+        characterAction(name, point) { post('characterAction', [name, point]); },
+        characterDialogueLine(speaker, length) { post('characterDialogueLine', [speaker, length]); },
         resetPlayer() { post('resetPlayer'); },
         teleportToGuardian() { return query('teleportToGuardian'); },
         addRemote(id, name) { post('addRemote', [id, name]); },

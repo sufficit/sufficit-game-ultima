@@ -14,7 +14,7 @@
    do jogo e nunca podem ser renderizados condicionalmente. *@
 <div class="game-shell ultima-theme">
     <main class="viewport">
-        <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D. WASD, setas, joystick ou controles de toque movem; E/A conversa."></canvas>
+        <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D. WASD ou setas andam, Shift corre, E conversa. O joystick também move."></canvas>
 
         @if (!string.IsNullOrEmpty(_announcement))
         {
@@ -386,7 +386,7 @@
                             <SUIExpansionPanel Title="Controles e ajuda">
                                 <SUIStack Spacing="2">
                                     <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
-                                        teclado: <kbd>WASD</kbd>/<kbd>↑↓←→</kbd> andar · <kbd>E</kbd> conversa · <kbd>Esc</kbd> fecha · mouse gira a câmera
+                                        teclado: <kbd>WASD</kbd>/<kbd>↑↓←→</kbd> andar · <kbd>Shift</kbd> correr · <kbd>E</kbd> conversa · <kbd>Esc</kbd> fecha · mouse gira a câmera
                                     </SUIText>
                                     <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
                                         controle: <kbd>LS</kbd> mover · <kbd>RS</kbd> câmera · botão <kbd>Ⓐ</kbd>/<kbd>✕</kbd> conversar · celular: analógicos na tela
@@ -726,7 +726,7 @@
         }
         catch (JSException) { BuildId = "dev"; } // game.build não existe em todos os builds; o id é só do HUD de dev
         // Dica de controles como mensagem transitória (snackbar SUI), não bloco fixo na tela.
-        Snackbar.Info("WASD/setas andam · E conversa · Esc fecha · Painel abre a Oficina e as configurações");
+        Snackbar.Info("WASD/setas andam · Shift corre · E conversa · Esc fecha");
         StateHasChanged();
         _ = LoadRemoteContentAsync();
     }
@@ -850,6 +850,7 @@
         _dialogDraft = string.Empty;
         _speechError = string.Empty;
         _turnStartedMs = NowMs();   // t50: base do tempo de resposta do turno registrado
+        _ = JS.InvokeVoidAsync("game.characterDialogueLine", "Você", text.Length);
         Dispatch(new PlayerSpoke(NowMs(), text));
         // Produtores caros (WebLLM na GPU, API do jogo, fallback local) correm fora do
         // tick; a resposta vira evento e o cérebro a aplica em um tick futuro. Os
@@ -935,8 +936,11 @@
         StateHasChanged();
     }
 
-    private Task SpeakLineAsync(DialogLine line) =>
-        _speakEnabled ? JS.InvokeVoidAsync("game.voice.speak", line.Text, line.Speaker).AsTask() : Task.CompletedTask;
+    private async Task SpeakLineAsync(DialogLine line)
+    {
+        await JS.InvokeVoidAsync("game.characterDialogueLine", line.Speaker, line.Text.Length);
+        if (_speakEnabled) await JS.InvokeVoidAsync("game.voice.speak", line.Text, line.Speaker);
+    }
 
     private async Task OnSpeakToggled(bool enabled)
     {
@@ -996,7 +1000,7 @@
         await JS.InvokeVoidAsync("game.resetPlayer");
     }
 
-    private Task SetFrozen(bool frozen) => JS.InvokeVoidAsync("game.setFrozen", frozen).AsTask();
+    private Task SetFrozen(bool frozen) => JS.InvokeVoidAsync("game.setFrozen", frozen, _view?.Speaker).AsTask();
 
     public void Dispose()
     {

@@ -18,6 +18,8 @@ public abstract class VillagerBase : ModelBase
         _shirt = shirt; _pants = pants; _skin = skin; _hair = hair;
     }
 
+    public override int Version => 2;
+
     protected override void Compose(ModelBuilder b)
     {
         const double H = 1.75;                      // PLAYER_HEIGHT do jogo
@@ -38,20 +40,22 @@ public abstract class VillagerBase : ModelBase
          .CapsuleOn("leg-l", "", 2 * legR, legH, x: -legX, subdivisions: 4)
          .CapsuleOn("leg-r", "", 2 * legR, legH, x: legX, subdivisions: 4);
 
-        // Braços: nascem exatamente no topo das pernas (ombros do protótipo).
         b.Group("torso", "shirt")
-         .CapsuleOn("torso", "leg-l", 2 * torsoR, torsoH, subdivisions: 5)
-         .CapsuleOn("arm-l", "leg-l", 2 * armR, armH, x: -armX, subdivisions: 2)
+         .CapsuleOn("torso", "leg-l", 2 * torsoR, torsoH, subdivisions: 5);
+        b.Group("arm-left", "shirt")
+         .CapsuleOn("arm-l", "leg-l", 2 * armR, armH, x: -armX, subdivisions: 2);
+        b.Group("arm-right", "shirt")
          .CapsuleOn("arm-r", "leg-l", 2 * armR, armH, x: armX, subdivisions: 2);
 
-        // Cabeça, pescoço e mãos: o pescoço se apoia no topo do tronco (no original
-        // nascia ~4 cm acima; agora encosta, diferença escondida pela cabeça); a cabeça
-        // se apoia no pescoço.
-        b.Group("skin", "skin")
-         .CylinderOn("neck", "torso", 0, 0.9 * headR, 0.9 * headR, 0.7 * headR, tessellation: 10)
-         .SphereAt("head", "neck", 2 * headR, H - 2 * headR, segments: 8)
-         .SphereAt("hand-l", "leg-l", 2.6 * armR, legH + torsoH - 0.20 * H - armH / 2 - 1.3 * armR, x: -armX, segments: 8)
-         .SphereAt("hand-r", "leg-l", 2.6 * armR, legH + torsoH - 0.20 * H - armH / 2 - 1.3 * armR, x: armX, segments: 8);
+        b.Group("neck", "skin")
+         .CylinderOn("neck", "torso", 0, 0.9 * headR, 0.9 * headR, 0.7 * headR, tessellation: 10);
+        b.Group("head", "skin")
+         .SphereAt("head", "neck", 2 * headR, H - 2 * headR, segments: 8);
+        const double handBase = legH + torsoH - 0.20 * H - armH / 2 - 1.3 * armR;
+        b.Group("hand-left", "skin")
+         .SphereAt("hand-l", "leg-l", 2.6 * armR, handBase, x: -armX, segments: 8);
+        b.Group("hand-right", "skin")
+         .SphereAt("hand-r", "leg-l", 2.6 * armR, handBase, x: armX, segments: 8);
 
         // Sapatos: esferas achatadas (55%) e alongadas (1,9) com a frente para +Z. A
         // escala é embutida nos vértices pelo renderizador, então a base usa o raio

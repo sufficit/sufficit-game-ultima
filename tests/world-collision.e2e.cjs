@@ -31,9 +31,10 @@ async function wait(callback,label) {
         return map?.chunks>=25 && glb?.loaded.some(id=>id.startsWith('flora.pine')) &&
             glb?.loaded.some(id=>id.startsWith('prop.stump')) &&
             glb?.loaded.some(id=>id.startsWith('prop.log')) &&
-            glb?.loaded.some(id=>id.startsWith('rock.boulder2')) && (await game.models.status()).queue===0;
+            glb?.loaded.some(id=>id.startsWith('rock.boulder2')) && (await game.models.status()).loaded.includes('character.villager v2');
     }),'mundo carregado');
     assert.equal(await p.evaluate(()=>game.mode),main?'main':'worker');
+    const renderer=main ? p : p.workers()[0];
     await p.getByRole('button',{name:'detalhes',exact:true}).click();
     await p.locator('#game-canvas').focus();
     const pose=async()=> {
@@ -47,14 +48,22 @@ async function wait(callback,label) {
         return {x:Number(match[1].replace(',','.')),z:Number(match[2].replace(',','.')),y:Number(match[3].replace(',','.'))};
     };
     const apply=op=>p.evaluate(op=>game.applyWorldOp(op),op);
-    async function walk(keys,ms){
+    async function walk(keys,ms,sprint=true){
+        if(sprint) await p.keyboard.down('Shift');
         for(const key of keys) await p.keyboard.down(key);
         await p.waitForTimeout(ms);
         for(const key of keys) await p.keyboard.up(key);
+        if(sprint) await p.keyboard.up('Shift');
         await p.waitForTimeout(300);
         if(errors.length) throw Error(errors.join('\n'));
         return pose();
     }
+    const walking=await walk(['w'],700,false);
+    await p.evaluate(()=>game.resetPlayer());
+    const running=await walk(['w'],700);
+    assert.ok(walking.z>1.5 && running.z>walking.z*1.45, 'Shift distingue caminhada e corrida');
+    console.log(JSON.stringify({walking,running}));
+    await p.evaluate(()=>game.resetPlayer());
     await apply(fixture);
     await p.waitForTimeout(300);
     const blocked=await walk(['w'],1150);
@@ -63,6 +72,8 @@ async function wait(callback,label) {
     await p.locator('.ultima-hint').getByText('para examinar',{exact:false}).waitFor();
     await p.keyboard.press('e');
     await p.getByText('Você examinou: Pinheiro',{exact:true}).waitFor();
+    await wait(()=>renderer.evaluate(()=>BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('player-upper-body').rotation.x>0.10),
+        'o jogador se inclina ao examinar');
     const slide=await walk(['w','d'],450);
     assert.ok(slide.x>0.45 && slide.z>2, 'desliza pela lateral '+JSON.stringify(slide));
     await apply({kind:'remove',uid:fixture.uid});
@@ -92,7 +103,6 @@ async function wait(callback,label) {
     await p.evaluate(()=>game.resetPlayer());
     await apply({...fixture,uid:'browser-log',asset:'prop.log',scale:0.56});
     await p.waitForTimeout(400);
-    const renderer=main ? p : p.workers()[0];
     // Registra cada quadro no renderizador para captar o apoio curto em corrida.
     await renderer.evaluate(()=>{
         const scene=BABYLON.EngineStore.LastCreatedScene;
@@ -187,7 +197,29 @@ async function wait(callback,label) {
     await p.waitForTimeout(500);
     await p.keyboard.press('e');
     await p.locator('.ultima-dialog').waitFor();
+    const conversation = await wait(()=>renderer.evaluate(()=>{
+        const s=BABYLON.EngineStore.LastCreatedScene;
+        const npc=s.getTransformNodeByName('npc');
+        const player=s.getTransformNodeByName('player');
+        const mouth=s.getMeshByName('npc-mouth');
+        const listening=s.getTransformNodeByName('player-head-pivot').rotation.z;
+        return mouth.scaling.y>0.016 && listening>0.06 && Math.cos(npc.rotation.y)>0.9 &&
+            Math.cos(player.rotation.y)<-0.9;
+    }),'os personagens se encaram, a Guardiã fala e o jogador escuta');
+    await p.keyboard.press('Escape');
+    await p.evaluate(()=>{
+        game.addRemote('gesture-test', 'Visitante');
+        game.updateRemote('gesture-test', 1, 8, 0);
+        game.updateRemote('gesture-test', 1, 10, 0);
+    });
+    await wait(()=>renderer.evaluate(()=>{
+        const s=BABYLON.EngineStore.LastCreatedScene;
+        const remote=s.getTransformNodeByName('remote-gesture-test');
+        const arm=s.getTransformNodeByName('remote-gesture-test-shoulder-right');
+        return remote?.position.z>8 && remote.position.z<9.999 && Math.abs(arm.rotation.x)>0.03;
+    }),'o remoto interpola a posição e move os braços');
+    await p.evaluate(()=>game.removeRemote('gesture-test'));
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({slide,free,soft,stump,rock,highLog,nativeTree,dialog:true}));
+    console.log(JSON.stringify({slide,free,soft,stump,rock,highLog,nativeTree,conversation,remoteMotion:true}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});
