@@ -63,6 +63,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 
 ## Atividades (`activities/`)
 
+- [Estilos da Sufficit.Blazor.UI nos menus](activities/202611231448-estilos-sufficit-blazor-ui-nos-menus.md)
+
 - [Correção do poço e acabamento do terreno](activities/202611231402-acabamento-do-terreno.md)
 
 - [Correção da renderização do terreno](activities/202611231348-renderizacao-do-terreno.md)
