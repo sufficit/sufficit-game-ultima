@@ -413,7 +413,10 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
             ok('desktop: toggle abre painel', !!panel);
             await page.screenshot({ path: `${SHOTS}/depois-desktop-panel.png` }).catch((e) => console.log('info  captura depois-desktop-panel falhou (sem bloquear): ' + (e && e.message || '').split('\n')[0]));
             const rel = errors.filter((e) => !/favicon|wllama|React DevTools|WebGPU|webkitExitFullscreen/i.test(e));
-            ok('desktop: console sem erros', rel.length === 0, rel.slice(0, 3).join(' | ').slice(0, 200));
+            // 409 em /v1/game/command = too_fast (anti-teleporte do servidor recusando a pose ap\u00f3s o teleporte do teste); o cliente trata por design (.catch), o Chromium ainda registra o 4xx
+            const tol = rel.filter((e) => /409.*\/v1\/game\/command/.test(e));
+            ok('desktop: console sem erros', rel.length - tol.length === 0,
+                rel.filter((e) => !tol.includes(e)).slice(0, 3).join(' | ').slice(0, 200) + (tol.length ? ` [tolerado: ${tol.length}x 409 too_fast anti-teleporte]` : ''));
             await ctx.close();
         }
     }
