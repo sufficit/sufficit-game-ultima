@@ -15,7 +15,9 @@
 
     const BABYLON_CDN = 'https://cdn.jsdelivr.net/npm/babylonjs@9.36.0/babylon.js';
     const BABYLON_SRI = 'sha384-QWFG07sio34fL3sNY9wd1SSoDvD7YVMX3067rJICw3vO2LQQY5m53yB70YlKXnRX';
-    const FORCE = new URLSearchParams(location.search).get('render');   // 'worker' | 'main' | null
+    const qs2 = new URLSearchParams(location.search);
+    const FORCE = qs2.get('render');   // 'worker' | 'main' | null
+    const GPU_OFF = qs2.get('gpu') === '0';   // pula WebGPU (canvas novo, direto WebGL)
 
     let dotnet = null;
     let dotnetModels = null;    // ponte de variação paramétrica (ModelsInterop.VaryModel)
@@ -33,6 +35,7 @@
 
     const GRAPHICS_PREF_KEY = 'ultima.graficos';
     function graphicsPref() {
+        if (GPU_OFF) { return 'webgl'; }   // gpu=0: sem tentativa WebGPU nesta carga
         try { return localStorage.getItem(GRAPHICS_PREF_KEY) === 'pbr' ? 'pbr' : 'padrao'; }
         catch (e) { return 'padrao'; }
     }
@@ -438,7 +441,9 @@
                         // O canvas já foi transferido: recarrega em modo main (uma vez por sessão).
                         if (!sessionStorage.getItem('ultima-worker-fallback')) {
                             sessionStorage.setItem('ultima-worker-fallback', '1');
-                            location.replace(location.pathname + '?render=main');
+                            // gpu=0: o canvas desta página pode ter ficado presa numa
+                            // tentativa WebGPU — a próxima carga vai direto pro WebGL.
+                            location.replace(location.pathname + '?render=main&gpu=0');
                             return new Promise(function () { /* página vai recarregar */ });
                         }
                         throw err;

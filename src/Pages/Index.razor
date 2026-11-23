@@ -633,13 +633,18 @@
         if (!firstRender || _bridge is null) return;
 
         _modelsRef = DotNetObjectReference.Create(new Ultima.Models.ModelsInterop(Models));
+        var motorOk = false;
         try
         {
-            await JS.InvokeVoidAsync("game.init", "game-canvas", _bridge, _modelsRef);
+            motorOk = await JS.InvokeAsync<bool>("game.init", "game-canvas", _bridge, _modelsRef);
         }
         catch (JSException ex)
         {
             _workshopStatus = "Motor 3D indisponível: " + ex.Message;   // UI viva; o shell mostra detalhes
+        }
+        if (!motorOk)
+        {
+            return;   // sem motor não há o que registrar — evita o spam de "cena ainda não criada"
         }
         _ = Models.LoadAllAsync();   // modelos 3D (DLLs C#) chegam em paralelo e entram na cena
         await JS.InvokeVoidAsync("game.net.init", _bridge);

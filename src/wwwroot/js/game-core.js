@@ -2030,18 +2030,22 @@
             // No worker o OffscreenCanvas não tem layout nem devicePixelRatio: o shell
             // mede (CSS × densidade) e o tamanho é aplicado daqui; sem isso o canvas
             // ficaria no 300×150 padrão esticado pela tela (regressão da migração).
-            // F7d: WebGPU primeiro (quando o WebGL está bloqueado/ausente no driver,
-            // o WebGPU costela funcionar); fallback WebGL; falha final vira mensagem.
+            // F7d-2: um canvas aceita UM tipo de contexto — se a tentativa WebGPU tocar o
+            // canvas e falhar, o WebGL nunca mais sobe nele ("experimental-webgl is not a
+            // valid enum"). Por isso: (1) sondamos o ADAPTADOR sem tocar o canvas e só
+            // criamos o motor WebGPU quando ele responde; (2) se mesmo assim o motor
+            // falhar, o canvas está queimado — erro fatal limpo e o shell recarrega em
+            // main com gpu=0 (canvas novo, direto WebGL).
+            let adapter = null;
             if (host.graphics !== 'webgl' && typeof navigator !== 'undefined' && navigator.gpu && BABYLON.WebGPUEngine) {
-                try {
-                    const gpu = new BABYLON.WebGPUEngine(host.canvas, { adaptToDeviceRatio: dom, stencil: false });
-                    await gpu.initAsync();
-                    engine = gpu;
-                } catch (e) {
-                    console.warn('[motor] WebGPU indisponível (' + (e && e.message) + '), tentando WebGL…');
-                }
+                try { adapter = await navigator.gpu.requestAdapter(); }
+                catch (e) { adapter = null; }
             }
-            if (!engine) {
+            if (adapter) {
+                const gpu = new BABYLON.WebGPUEngine(host.canvas, { adaptToDeviceRatio: dom, stencil: false });
+                await gpu.initAsync();   // falha aqui = canvas queimado: propaga pro fatal
+                engine = gpu;
+            } else {
                 engine = new BABYLON.Engine(host.canvas, true, { adaptToDeviceRatio: dom, stencil: false });
             }
             if (!dom && host.size) { applySize(host.size.width, host.size.height, host.size.dpr); }
