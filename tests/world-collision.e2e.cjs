@@ -70,35 +70,48 @@ async function wait(callback,label) {
         if(errors.length) throw Error(errors.join('\n'));
         return pose();
     }
-    // Mede velocidade real (Δposição/Δtempo de parede) segurando a tecla: sob renderização
-    // por software o delta por quadro é truncado em 0,05 s (game-core.js), então distâncias
-    // absolutas de janelas distintas não são comparáveis; a razão de velocidades preserva
-    // a mesma condição ("Shift distingue caminhada e corrida") em qualquer runner.
+    // Mede a velocidade em TEMPO DE JOGO (soma do delta truncado por quadro), não em tempo de parede:
+    // sob renderização por software o runner faz ~1 quadro/s e cada quadro avança no máximo 0,05 s
+    // (game-core.js), então a distância percorrida em tempo de parede depende do FPS da janela.
+    // A razão entre caminhada e corrida preserva a mesma condição em qualquer runner.
     async function speed(keys,ms,sprint=true){
+        const hold=Math.round(ms*walkScale);
+        await renderer.evaluate(() => {
+            const scene=BABYLON.EngineStore.LastCreatedScene, engine=BABYLON.EngineStore.LastCreatedEngine;
+            const player=scene.getTransformNodeByName('player');
+            const samples=[];
+            const observer=scene.onAfterRenderObservable.add(() => samples.push({x:player.position.x,z:player.position.z,
+                g:Math.min(0.05,engine.getDeltaTime()/1000)}));
+            globalThis.stopMoveTrace=() => { scene.onAfterRenderObservable.remove(observer); return samples; };
+        });
         if(sprint) await p.keyboard.down('Shift');
         for(const key of keys) await p.keyboard.down(key);
-        try{
-            const hold=Math.round(ms*walkScale);
-            const marks=[{t:Date.now(),s:await p.evaluate(()=>window.game.playerState())}];
-            while(Date.now()-marks[0].t<hold){
-                await p.waitForTimeout(Math.max(250,Math.round(hold/8)));
-                marks.push({t:Date.now(),s:await p.evaluate(()=>window.game.playerState())});
-            }
-            const first=marks[0],last=marks[marks.length-1];
-            const dt=(last.t-first.t)/1000;
-            // Regime: descarta a primeira metade (rampa de aceleração em quadros lentos)
-            const mid=marks[Math.floor(marks.length/2)],dt2=(last.t-mid.t)/1000;
-            return {v:(last.s.z-mid.s.z)/dt2,z:last.s.z,dt,frames:marks.length};
-        } finally {
+        try { await p.waitForTimeout(hold); }
+        finally {
             for(const key of keys) await p.keyboard.up(key);
             if(sprint) await p.keyboard.up('Shift');
         }
+        await p.waitForTimeout(T300);
+        if(errors.length) throw Error(errors.join('\n'));
+        const samples=await renderer.evaluate(() => globalThis.stopMoveTrace());
+        // Descarta a rampa de aceleração (primeiros 0,3 s de jogo) quando houver quadros suficientes.
+        let g=0, dist=0, distAll=0, n=0;
+        for(let i=1;i<samples.length;i++){
+            const d=Math.hypot(samples[i].x-samples[i-1].x, samples[i].z-samples[i-1].z);
+            distAll+=d;
+            if(g>0.3){ dist+=d; n++; }
+            g+=samples[i].g;
+        }
+        if(n<3){ dist=distAll; g=samples.slice(1).reduce((a,s)=>a+s.g,0); }
+        const last=samples[samples.length-1];
+        return {v:g>0?dist/g:0,z:last?.z,frames:samples.length};
     }
-    const walking=await speed(['w'],700,false);
+    const walking=await speed(['w'],900,false);
     await p.evaluate(()=>game.resetPlayer());
-    const running=await speed(['w'],700);
+    await p.waitForTimeout(T300);
+    const running=await speed(['w'],900);
     console.log(JSON.stringify({walking,running}));
-    assert.ok(walking.v>0.3 && running.v>walking.v*1.45, 'Shift distingue caminhada e corrida');
+    assert.ok(walking.v>2.2 && running.v>walking.v*1.45, 'Shift distingue caminhada e corrida');
     await p.evaluate(()=>game.resetPlayer());
     await apply(fixture);
     await p.waitForTimeout(T300);
