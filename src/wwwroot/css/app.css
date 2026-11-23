@@ -104,6 +104,7 @@ body[data-input="touch"] .hint-touch { display: inline; }
 @media (max-height: 480px) {
     .ultima-corner--oficina { bottom: .75rem; }
     .ultima-corner--oficina .ultima-workshop { position: absolute; inset: 0; }
+    .viewport:has(.ultima-corner--oficina) > .ultima-announce { z-index: 3; }
 }
 
 /* Alternador do painel do jogo: canto superior direito */

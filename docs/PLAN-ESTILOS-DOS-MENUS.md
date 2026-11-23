@@ -8,7 +8,10 @@ continuam acessíveis em telas baixas. Manter o tema do Ultima e os fluxos do jo
 1. [concluído] Reproduzir em produção e confirmar o bundle ausente.
 2. [concluído] Carregar o bundle e testar aparência, teclado e rolagem.
 3. [concluído] Validar o publish Release e os testes aplicáveis.
-4. [em andamento] Publicar na main, validar no GitHub Pages e converter o plano.
+4. [em andamento] Publicar na main e validar no GitHub Pages.
+   - A captura com o motor carregado revelou sobreposição entre o aviso de boas-vindas
+     e o título da Oficina em 740 × 360. A camada do aviso foi ajustada e conferida no candidato e no publish Release.
+5. [pendente] Converter o plano em atividade.
 
 Referências: captura do mantenedor, menu e tema existentes, estilos isolados e
 integração HTML do Showcase da Sufficit.Blazor.UI. A Oficina e o Painel continuam
