@@ -2,7 +2,7 @@
 const {chromium} = require('playwright-core');
 const assert = require('node:assert/strict');
 const main = process.env.ULTIMA_MODE === 'main';
-const fixture = {kind:'place', uid:'test-backpack-stump', asset:'prop.stump', x:0, z:2, rot:0, scale:1};
+const fixture = {kind:'place', uid:'test-backpack-stump', asset:'prop.stump', x:-0.85, z:2, rot:0, scale:1};
 const site = process.env.ULTIMA_SITE || 'https://sufficit.github.io/sufficit-game-ultima/';
 const touch = process.env.ULTIMA_TOUCH === '1';
 const deviceScaleFactor = Number(process.env.ULTIMA_DPR || 1);
@@ -40,6 +40,18 @@ async function lookIntoExcavation(target) {
         await new Promise(resolve=>s.onAfterRenderObservable.addOnce(()=>resolve()));
     });
 }
+async function preview(target) {
+    return target.evaluate(()=>{
+        const scene=BABYLON.EngineStore.LastCreatedScene;
+        const active = scene.meshes.filter(mesh=>mesh.isEnabled() && mesh.name.startsWith('collect-'));
+        const ring = active.find(mesh=>mesh.name==='collect-ring-1');
+        const center = ring?.getBoundingInfo().boundingBox.centerWorld;
+        return {
+            objects:active.filter(mesh=>mesh.name.startsWith('collect-preview:')).map(mesh=>mesh.parent.name),
+            ground:center ? {x:center.x,y:center.y,z:center.z} : null
+        };
+    });
+}
 async function records(page) {
     return page.evaluate(()=>new Promise((resolve,reject)=>{
         const db=indexedDB.open('ultima-backpack',1);
@@ -51,12 +63,12 @@ async function records(page) {
         };
     }));
 }
-async function until(check) {
+async function until(check, label='A alteração esperada não apareceu') {
     for (let i=0;i<100;i++) {
         if (await check()) return;
         await new Promise(resolve=>setTimeout(resolve,250));
     }
-    throw Error('A alteração esperada não apareceu');
+    throw Error(label);
 }
 (async()=>{
     const browser=await chromium.launch({executablePath:process.env.ULTIMA_CHROMIUM || undefined,
@@ -86,6 +98,23 @@ async function until(check) {
             else await page.mouse.click(screen.x,screen.y);
             return screen;
         };
+        const hover=async point=>{
+            const screen=await project(target,point);
+            await until(()=>page.evaluate(({x,y})=>document.elementFromPoint(x,y)?.id==='game-canvas',screen));
+            await page.mouse.move(screen.x,screen.y);
+        };
+        if (!touch) {
+            await hover({name:mesh});
+            await until(async()=>(await preview(target)).objects.includes(mesh));
+            assert.deepEqual(await preview(target),{objects:[mesh],ground:null});
+            await hover({x:1,z:9});
+            await until(async()=>(await preview(target)).objects.length===0);
+            assert.equal((await preview(target)).ground,null);
+            await hover({name:mesh});
+            await until(async()=>(await preview(target)).objects.includes(mesh));
+            await page.getByRole('button',{name:'Parar coleta',exact:true}).hover();
+            await until(async()=>(await preview(target)).objects.length===0);
+        }
         await click({name:mesh});
         await page.getByText('+1 Toco',{exact:true}).waitFor({timeout:10000});
         await until(async()=>await enabled(target)===false);
@@ -94,12 +123,21 @@ async function until(check) {
         await lookIntoExcavation(target);
         const soil={x:1.54,z:1.49};
         const before=(await project(target,soil)).alt;
+        async function assertGroundPreview(height) {
+            await hover(soil);
+            await until(async()=>{
+                const center=(await preview(target)).ground;
+                return center && Math.hypot(center.x-soil.x,center.z-soil.z)<0.1 && Math.abs(center.y-height)<0.1;
+            },'a prévia deve coincidir com o ponto de coleta');
+        }
+        if (!touch) await assertGroundPreview(before);
         for (let layer=1;layer<=3;layer++) {
             await click(soil);
             await until(async()=>(await records(page)).filter(r=>r.kind==='soil').length===layer);
             await until(async()=>before-(await project(target,soil)).alt>0.35*layer);
         }
         const after=(await project(target,soil)).alt;
+        if (!touch) await assertGroundPreview(after);
         const saved=await records(page);
         assert.equal(saved.filter(record=>record.item==='Toco').length,1);
         assert.equal(saved.filter(record=>record.kind==='soil').length,3);
@@ -107,6 +145,7 @@ async function until(check) {
             assert.ok(Math.hypot(cut.x-soil.x,cut.z-soil.z)<0.10,'o corte deve seguir o ponto clicado');
         }
         await page.getByRole('button',{name:'Parar coleta',exact:true}).click();
+        assert.deepEqual(await preview(target),{objects:[],ground:null});
         await bag(page);
         for (const item of new Set(saved.map(record=>record.item))) await page.getByText(item,{exact:true}).waitFor();
         const legacyPoint={x:-1,z:1};
@@ -135,6 +174,6 @@ async function until(check) {
         await page.getByText('Validação de duplicidade',{exact:true}).waitFor();
         assert.deepEqual(errors,[]);
         console.log({build, mode:main?'main':'worker', touch, deviceScaleFactor, items:saved.map(record=>record.item),
-            depth:before-after, reload:true, legacyDepth:legacyBefore-legacyAfter, atomicAcrossTabs:true});
+            depth:before-after, reload:true, legacyDepth:legacyBefore-legacyAfter, atomicAcrossTabs:true, hoverTested:!touch});
     } finally { await browser.close(); }
 })().catch(e=>{console.error(e);process.exitCode=1});

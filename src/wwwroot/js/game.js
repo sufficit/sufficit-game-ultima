@@ -105,9 +105,13 @@
     }
 
     // Feedback do modo construção: cursor de mira sobre o canvas.
+    let worldBuildMode = 'off';
+    let refreshWorldHover;
     function onBuildMode(mode) {
+        worldBuildMode = mode;
         var canvas = document.getElementById('game-canvas');
         if (canvas) { canvas.style.cursor = mode && mode !== 'off' ? 'crosshair' : ''; }
+        refreshWorldHover?.();
     }
 
     // ---------- Modo main: Babylon injetado com SRI, core direto ----------
@@ -326,6 +330,32 @@
         // à metade equivale a ≈7 entalhes. Um clique curto de um dedo (sem arrasto,
         // sem pinça) segue sendo candidata a edição do mundo no modo construção.
         const pointers = new Map();
+        let hoverPosition = null;
+        let hoverFrame = 0;
+        function pointOnCanvas(e) {
+            const rect = canvas.getBoundingClientRect();
+            // scene.pick aplica a escala do renderizador às coordenadas CSS.
+            return [e.clientX - rect.left, e.clientY - rect.top];
+        }
+        function clearHover() {
+            if (!hoverPosition) { return; }
+            hoverPosition = null;
+            if (worldBuildMode === 'collect') { deliver('terrainHover', [null]); }
+        }
+        refreshWorldHover = function () {
+            if (hoverFrame || !hoverPosition || worldBuildMode !== 'collect') { return; }
+            hoverFrame = requestAnimationFrame(function () {
+                hoverFrame = 0;
+                if (worldBuildMode === 'collect' && hoverPosition) { deliver('terrainHover', [hoverPosition]); }
+            });
+        };
+        canvas.addEventListener('pointermove', function (e) {
+            if (e.pointerType !== 'mouse') { return; }
+            hoverPosition = pointOnCanvas(e);
+            refreshWorldHover();
+        });
+        canvas.addEventListener('pointerleave', clearHover);
+        window.addEventListener('blur', clearHover);
         let lastX = 0, lastY = 0, pinchDist = 0, downAt = 0, downX = 0, downY = 0, pinched = false;
         canvas.addEventListener('pointerdown', function (e) {
             if (e.button !== 0) { return; }
@@ -344,9 +374,7 @@
             if (pointers.size < 2) { pinchDist = 0; }
             // Clique curto sem arrasto: candidata a edição do mundo (o core ignora fora do modo).
             if (e.type === 'pointerup' && pointers.size === 0 && !pinched && Date.now() - downAt < 500 && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
-                const rect = canvas.getBoundingClientRect();
-                // scene.pick aplica a escala do renderizador às coordenadas CSS.
-                deliver('terrainClick', [e.clientX - rect.left, e.clientY - rect.top]);
+                deliver('terrainClick', pointOnCanvas(e));
             }
         }
         window.addEventListener('pointerup', solta);

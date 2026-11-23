@@ -1116,12 +1116,20 @@
         }
     }
 
-    function collectAt(sx, sy) {
-        const hit = scene.pick(sx, sy, mesh => mesh.isEnabled() &&
+    function pickCollectionTarget(sx, sy) {
+        return scene.pick(sx, sy, mesh => mesh.isEnabled() && mesh.isVisible &&
             (gatherableMeshes.has(mesh) || mesh.name.startsWith('ground-')));
+    }
+
+    function withinCollectionReach(point) {
+        return BABYLON.Vector3.Distance(player.position.add(CAM_UP), point) <= COLLECT_REACH;
+    }
+
+    function collectAt(sx, sy) {
+        const hit = pickCollectionTarget(sx, sy);
         if (!hit?.hit || !hit.pickedPoint) { return; }
         const p = hit.pickedPoint;
-        if (BABYLON.Vector3.Distance(player.position.add(CAM_UP), p) > COLLECT_REACH) {
+        if (!withinCollectionReach(p)) {
             dotnet.invokeMethodAsync('OnBackpackStatus', 'Aproxime-se para coletar.');
             return;
         }
@@ -1138,6 +1146,151 @@
             return;
         }
         host.worldOp({ action: 'collect', resource });
+    }
+
+    let collectionPointer = null;
+    let nextPreviewAt = 0;
+    let previewResourceId = null;
+    let previewPoint = null;
+    const previewObjects = [];
+    const previewRings = [];
+    const previewMaterials = new Map();
+
+    function collectionGlow(opacityTexture, ground = false) {
+        const key = ground ? 'terrain' : opacityTexture;
+        if (previewMaterials.has(key)) { return previewMaterials.get(key); }
+        const material = new BABYLON.StandardMaterial('collect-glow', scene);
+        material.disableLighting = true;
+        material.emissiveColor.set(0.95, 0.75, 0.20);
+        material.alpha = ground ? 0.9 : 0.45;
+        material.opacityTexture = opacityTexture;
+        material.disableDepthWrite = true;
+        material.zOffset = -2;
+        material.zOffsetUnits = -2;
+        material.backFaceCulling = !ground;
+        previewMaterials.set(key, material);
+        return material;
+    }
+
+    function clearObjectPreview() {
+        for (const overlay of previewObjects) {
+            const material = overlay.material;
+            overlay.dispose();
+            if (material instanceof BABYLON.MultiMaterial) { material.dispose(); }
+        }
+        previewObjects.length = 0;
+        previewResourceId = null;
+    }
+
+    function highlightCollectionObject(id) {
+        if (previewResourceId === id && previewObjects.every(mesh => !mesh.isDisposed())) { return; }
+        clearObjectPreview();
+        previewResourceId = id;
+        const glowFor = original => collectionGlow(original?.opacityTexture ||
+            (original?.diffuseTexture?.hasAlpha ? original.diffuseTexture : null) ||
+            (original?.albedoTexture?.hasAlpha ? original.albedoTexture : null));
+        for (const [mesh, resource] of gatherableMeshes) {
+            if (resource.id !== id || !mesh.isEnabled() || !mesh.isVisible) { continue; }
+            // Um Mesh independente compartilha o geometry buffer, mas só ilumina
+            // a instância apontada, inclusive em árvores com várias partes.
+            const source = mesh.sourceMesh || mesh;
+            const overlay = source.clone('collect-preview:' + mesh.name, mesh, true);
+            overlay.position.setAll(0);
+            overlay.rotationQuaternion = null;
+            overlay.rotation.setAll(0);
+            overlay.scaling.setAll(1);
+            overlay.isVisible = true;
+            overlay.isPickable = false;
+            const original = mesh.material;
+            if (original instanceof BABYLON.MultiMaterial) {
+                const multi = new BABYLON.MultiMaterial('collect-glow-parts', scene);
+                multi.subMaterials = original.subMaterials.map(glowFor);
+                overlay.material = multi;
+            } else {
+                overlay.material = glowFor(original);
+            }
+            previewObjects.push(overlay);
+        }
+    }
+
+    function visibleGroundHeight(x, z) {
+        const cx = Math.floor(x / CHUNK + 0.5), cz = Math.floor(z / CHUNK + 0.5);
+        const chunk = chunkMap.get(chunkKey(cx, cz));
+        const vertices = chunk?.mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+        if (!vertices) { return terrainHeight(x, z); }
+        const gx = Math.max(0, Math.min(CHUNK_SUB, (x - (cx * CHUNK - CHUNK / 2)) / CHUNK_STEP));
+        const gz = Math.max(0, Math.min(CHUNK_SUB, (z - (cz * CHUNK - CHUNK / 2)) / CHUNK_STEP));
+        const i = Math.min(Math.floor(gx), CHUNK_SUB - 1);
+        const j = Math.min(Math.floor(gz), CHUNK_SUB - 1);
+        const u = gx - i, v = gz - j;
+        const stride = (CHUNK_SUB + 1) * 3;
+        const a = j * stride + i * 3 + 1;
+        const d = a + stride + 3;
+        // Mesma diagonal a–d de buildChunkMesh. O anel segue as faces que
+        // estão na tela, inclusive nas escavações profundas.
+        return u >= v
+            ? vertices[a] * (1 - u) + vertices[a + 3] * (u - v) + vertices[d] * v
+            : vertices[a] * (1 - v) + vertices[a + stride] * (v - u) + vertices[d] * u;
+    }
+
+    function highlightCollectionGround(point) {
+        if (previewPoint && BABYLON.Vector3.DistanceSquared(previewPoint, point) < 0.000025) { return; }
+        previewPoint = point;
+        function ringPath(radius) {
+            return Array.from({ length: 64 }, (_, i) => {
+                const angle = i * Math.PI / 32;
+                const x = point.x + radius * Math.cos(angle);
+                const z = point.z + radius * Math.sin(angle);
+                return new BABYLON.Vector3(x, visibleGroundHeight(x, z) + 0.025, z);
+            });
+        }
+        [SOIL_RADIUS, 0.10].forEach((radius, i) => {
+            const pathArray = [ringPath(radius - 0.035), ringPath(radius)];
+            if (!previewRings[i]) {
+                const ring = BABYLON.MeshBuilder.CreateRibbon('collect-ring-' + i,
+                    { pathArray, closePath: true, updatable: true }, scene);
+                ring.material = collectionGlow(null, true);
+                ring.isPickable = false;
+                ring.alwaysSelectAsActiveMesh = true;
+                previewRings[i] = ring;
+            } else {
+                BABYLON.MeshBuilder.CreateRibbon(null, { pathArray, closePath: true, instance: previewRings[i] }, scene);
+                previewRings[i].setEnabled(true);
+            }
+        });
+    }
+
+    function clearGroundPreview() {
+        if (!previewPoint) { return; }
+        previewPoint = null;
+        for (const ring of previewRings) { ring.setEnabled(false); }
+    }
+
+    function updateCollectionPreview(now) {
+        if (!collectionPointer || now < nextPreviewAt) { return; }
+        nextPreviewAt = now + 35;
+        const hit = pickCollectionTarget(...collectionPointer);
+        if (!hit?.pickedPoint || !withinCollectionReach(hit.pickedPoint)) {
+            clearGroundPreview();
+            clearObjectPreview();
+            return;
+        }
+        const object = gatherableMeshes.get(hit.pickedMesh);
+        if (object) {
+            clearGroundPreview();
+            highlightCollectionObject(object.id);
+        } else {
+            clearObjectPreview();
+            highlightCollectionGround(hit.pickedPoint);
+        }
+    }
+
+    function setCollectionPointer(point) {
+        collectionPointer = buildState.mode === 'collect' ? point : null;
+        if (!collectionPointer) {
+            clearGroundPreview();
+            clearObjectPreview();
+        }
     }
 
     // Reaplica o journal e atualiza uma vez cada chunk tocado pelo estado anterior ou novo.
@@ -2743,6 +2896,7 @@
                 // raio a partir da posição atual da câmera — a cada frame com o jogador
                 // em movimento o raio rangueava de volta ao inicial.
                 camera.target.set(player.position.x, player.position.y + PLAYER_HEIGHT / 2, player.position.z);
+                updateCollectionPreview(frameStart);
                 scene.render();
                 framePerf(performance.now() - frameStart);
                 tick(performance.now());
@@ -2773,6 +2927,7 @@
         camera(dx, dy, wheel, deltaMode) { camPending.dx += dx || 0; camPending.dy += dy || 0; camPending.wheel += (wheel || 0) * (deltaMode === 1 ? 40 : 1); },
         action() { interact(); },
         terrainClick(sx, sy) { terrainClickImpl(sx, sy); },
+        terrainHover(point) { setCollectionPointer(point); },
         cancel() { dotnet.invokeMethodAsync('OnClose'); },
         clear() { for (const k of Object.keys(keys)) { keys[k] = false; } moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 }; },
         resize(w, h, dpr) {
@@ -2893,6 +3048,7 @@
         build: {
             mode(m, opts) {
                 buildState.mode = m || 'off';
+                if (buildState.mode !== 'collect') { setCollectionPointer(null); }
                 buildState.p1 = null;
                 if (host.onBuildMode) { host.onBuildMode(buildState.mode); }
                 if (opts) {
