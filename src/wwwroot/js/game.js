@@ -459,6 +459,7 @@
         keyInput(code, down) { post('input.key', [code, down]); },
         heightAt(x, z) { return query('heightAt', [x, z]); },
         probeMesh(x, z) { return query('probeMesh', [x, z]); },
+        debugChunk(x, z) { return query('debugChunk', [x, z]); },
         models: {
             register(json, placeholder) { post('models.register', [json, placeholder]); return true; },
             loaderDone(log) { post('models.loaderDone', [log]); },
