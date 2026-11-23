@@ -420,7 +420,8 @@
         assetsReport() { return query('assetsReport'); },
         coreId() { return query('coreId'); },
         renderSize() { return query('renderSize'); },
-        cameraState() { return query('cameraState'); }
+        cameraState() { return query('cameraState'); },
+        playerState() { return query('playerState'); }
     });
     Object.defineProperty(window.game, 'mode', { get: function () { return mode; } });
 })();

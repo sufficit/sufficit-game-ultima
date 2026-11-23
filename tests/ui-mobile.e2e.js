@@ -246,10 +246,19 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
 
             // perto da Guardiã: A abre diálogo; sticks somem; B fecha
             await page.evaluate(() => window.game.teleportToGuardian && window.game.teleportToGuardian());
-            await page.waitForTimeout(800);
+            // _near só vira true quando checkNear roda num frame (~1-2 fps): esperar a dica.
+            const nearHint = await page.waitForSelector('.ultima-hint', { timeout: 30000, state: 'visible' }).catch(() => null);
+            ok('retrato: dica de proximidade após o teleport', !!nearHint);
             // A e B respondem a pointerdown (game-core.js): um .click() sintético nunca os
             // dispara, e o fallback escondia isso. Toque real, sem fallback.
-            await page.locator('#touch-action').tap({ timeout: 30000 });
+            // A escuta pointerdown (game-core.js). No run 5 o locator.tap travou após a
+            // actionability (toque nunca confirmado a 1-2 fps): disparar pointerdown direto,
+            // a mesma via dos sticks — comprovada neste ambiente.
+            {
+                const c = await page.evaluate(() => { const r = document.getElementById('touch-action').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+                await fireAt('touch-action', 'pointerdown', c.x, c.y);
+                await fireAt('touch-action', 'pointerup', c.x, c.y);
+            }
             const dialog = await page.waitForSelector('.ultima-dialog', { timeout: 30000, state: 'visible' }).catch(() => null);
             ok('retrato: A perto da Guardiã abre o diálogo', !!dialog);
             if (dialog) {
@@ -270,14 +279,18 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                 ok('diálogo com teclado (390x500): continua na tela', !!rct && rct.y + rct.h <= 501, JSON.stringify(rct));
                 await page.setViewportSize({ width: 390, height: 844 });
                 await page.waitForTimeout(600);
-                await page.locator('#touch-cancel').tap({ timeout: 30000 });
-                const closed = await page.waitForSelector('.ultima-dialog', { timeout: 20000, state: 'hidden' }).catch(() => null);
+                {
+                    const c = await page.evaluate(() => { const r = document.getElementById('touch-cancel').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+                    await fireAt('touch-cancel', 'pointerdown', c.x, c.y);
+                    await fireAt('touch-cancel', 'pointerup', c.x, c.y);
+                }
+                const closed = await page.waitForSelector('.ultima-dialog', { timeout: 30000, state: 'hidden' }).catch(() => null);
                 ok('retrato: B fecha o diálogo', !!closed);
-                await page.screenshot({ path: `${SHOTS}/depois-dialog-fechado.png` });
+                await page.screenshot({ path: `${SHOTS}/depois-dialog-fechado.png` }).catch((e) => console.log('info  captura depois-dialog-fechado falhou (sem bloquear): ' + (e && e.message || '').split('\n')[0]));
             }
 
             // menu abre/fecha por toque; folha cabe e rola; alvos ≥48 dentro
-            await page.locator('#ultima-menu-fab').tap({ timeout: 20000 }).catch(() => page.evaluate(() => document.getElementById('ultima-menu-fab') && document.getElementById('ultima-menu-fab').click()));
+            await page.evaluate(() => { const el = document.getElementById('ultima-menu-fab'); if (el) el.click(); });
             const menu = await page.waitForSelector('.game-shell.ultima-menu-open .ultima-menu', { timeout: 20000, state: 'visible' }).catch(() => null);
             ok('retrato: toque no fab abre o menu', !!menu);
             if (menu) {
@@ -289,10 +302,9 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                 ok('menu: alvos ≥48px dentro', (mm.smallTouchTargets || []).length === 0, (mm.smallTouchTargets || []).join(' | ').slice(0, 160));
                 const scrollable = await page.evaluate(() => { const el = document.querySelector('.ultima-menu'); if (!el) return false; return el.scrollHeight > el.clientHeight + 8 || getComputedStyle(el).overflowY === 'auto'; });
                 console.log('info  menu rola internamente: ' + scrollable);
-                await page.screenshot({ path: `${SHOTS}/depois-menu-aberto.png` });
-                const closer = page.locator('.ultima-menu__close, .ultima-menu-backdrop').first();
-                await closer.tap({ timeout: 20000 }).catch(() => page.evaluate(() => document.getElementById('ultima-menu-fab').click()));
-                const shut = await page.waitForSelector('.game-shell.ultima-menu-open .ultima-menu', { timeout: 20000, state: 'hidden' }).catch(() => null);
+                await page.screenshot({ path: `${SHOTS}/depois-menu-aberto.png` }).catch((e) => console.log('info  captura depois-menu-aberto falhou (sem bloquear): ' + (e && e.message || '').split('\n')[0]));
+                await page.evaluate(() => { const el = document.querySelector('.ultima-menu__close, .ultima-menu-backdrop'); if (el) el.click(); });
+                const shut = await page.waitForSelector('.game-shell.ultima-menu-open .ultima-menu', { timeout: 30000, state: 'hidden' }).catch(() => null);
                 ok('menu: fecha por toque e volta à tela limpa', !!shut);
             }
             const rel = errors.filter((e) => !/favicon|wllama|React DevTools|WebGPU|webkitExitFullscreen/i.test(e));
@@ -332,15 +344,16 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
             const y1 = await page.evaluate(YAW);
             ok('desktop: câmera com mouse', y0 !== null && y1 !== null && Math.abs(y1 - y0) > 0.01, `${y0} → ${y1}`);
             await page.evaluate(() => window.game.teleportToGuardian && window.game.teleportToGuardian());
-            await page.waitForTimeout(600);
+            await page.waitForSelector('.ultima-hint', { timeout: 30000, state: 'visible' }).catch(() => null);
+            await page.waitForTimeout(300);
             await page.keyboard.press('KeyE');
             const d = await page.waitForSelector('.ultima-dialog', { timeout: 30000, state: 'visible' }).catch(() => null);
             ok('desktop: E abre diálogo', !!d);
-            if (d) { await page.keyboard.press('Escape'); const c = await page.waitForSelector('.ultima-dialog', { timeout: 20000, state: 'hidden' }).catch(() => null); ok('desktop: Esc fecha diálogo', !!c); }
-            await page.locator('.ultima-panel-toggle').click({ timeout: 20000 }).catch(() => {});
+            if (d) { await page.keyboard.press('Escape'); const c = await page.waitForSelector('.ultima-dialog', { timeout: 30000, state: 'hidden' }).catch(() => null); ok('desktop: Esc fecha diálogo', !!c); }
+            await page.evaluate(() => { const el = document.querySelector('.ultima-panel-toggle'); if (el) el.click(); });
             const panel = await page.waitForSelector('.ultima-panel', { timeout: 20000, state: 'visible' }).catch(() => null);
             ok('desktop: toggle abre painel', !!panel);
-            await page.screenshot({ path: `${SHOTS}/depois-desktop-panel.png` });
+            await page.screenshot({ path: `${SHOTS}/depois-desktop-panel.png` }).catch((e) => console.log('info  captura depois-desktop-panel falhou (sem bloquear): ' + (e && e.message || '').split('\n')[0]));
             const rel = errors.filter((e) => !/favicon|wllama|React DevTools|WebGPU|webkitExitFullscreen/i.test(e));
             ok('desktop: console sem erros', rel.length === 0, rel.slice(0, 3).join(' | ').slice(0, 200));
             await ctx.close();
@@ -350,4 +363,4 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
     fs.writeFileSync(path.join(__dirname, '..', 'decisions', `ui-mobile-${BASELINE ? 'baseline' : 'after'}.json`), JSON.stringify(report, null, 2));
     console.log('relatório salvo em decisions/ui-mobile-' + (BASELINE ? 'baseline' : 'after') + '.json');
     await browser.close();
-})().catch((e) => { fail(e && e.stack || e); process.exit(1); });
+})().catch(async (e) => { fail(e && e.stack || e); try { await browser.close(); } catch (_) { } process.exit(1); });

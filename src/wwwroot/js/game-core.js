@@ -1773,6 +1773,7 @@
         assetsReport() { return assetsReal ? assetsReal.report() : null; },
         renderSize() { return engine ? { width: engine.getRenderWidth(), height: engine.getRenderHeight(), canvasW: host.canvas.width, canvasH: host.canvas.height, scaling: engine.getHardwareScalingLevel() } : null; },
         cameraState() { return camera ? { alpha: camera.alpha, beta: camera.beta, radius: camera.radius } : null; },
+        playerState() { return player ? { x: player.position.x, z: player.position.z, ry: player.rotation.y } : null; },
         coreId() { return CORE_ID; }
     };
     G.game = G.game || {};

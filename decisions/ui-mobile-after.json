@@ -1,0 +1,378 @@
+{
+  "mode": "full",
+  "site": "http://127.0.0.1:8092",
+  "at": "2026-11-23T00:06:22.602Z",
+  "views": {
+    "portrait": {
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "rects": {
+        "#ultima-menu-fab": {
+          "x": 333.2,
+          "y": 8.8,
+          "w": 48,
+          "h": 48
+        }
+      },
+      "touch": {
+        "#move-stick": {
+          "x": 14.4,
+          "y": 702.4,
+          "w": 124,
+          "h": 124
+        },
+        "#move-thumb": {
+          "x": 50.4,
+          "y": 738.4,
+          "w": 52,
+          "h": 52
+        },
+        "#look-stick": {
+          "x": 251.6,
+          "y": 702.4,
+          "w": 124,
+          "h": 124
+        },
+        "#look-thumb": {
+          "x": 287.6,
+          "y": 738.4,
+          "w": 52,
+          "h": 52
+        },
+        "#touch-action": {
+          "x": 307.6,
+          "y": 552.8,
+          "w": 68,
+          "h": 68
+        },
+        "#touch-cancel": {
+          "x": 319.6,
+          "y": 633.6,
+          "w": 56,
+          "h": 56
+        }
+      },
+      "page": {
+        "scrollW": 390,
+        "clientW": 390,
+        "scrollH": 844,
+        "clientH": 844
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 844
+      },
+      "meshes": 1,
+      "smallTouchTargets": [],
+      "overlaps": [],
+      "consoleErrors": [],
+      "camera": {
+        "alpha": -1.571,
+        "beta": 1.12,
+        "radius": 7.5
+      },
+      "render": {
+        "width": 390,
+        "height": 844,
+        "canvasW": 390,
+        "canvasH": 844
+      }
+    },
+    "portrait→landscape": {
+      "viewport": {
+        "w": 844,
+        "h": 390
+      },
+      "rects": {
+        "#ultima-menu-fab": {
+          "x": 787.2,
+          "y": 8.8,
+          "w": 48,
+          "h": 48
+        }
+      },
+      "touch": {
+        "#move-stick": {
+          "x": 14.4,
+          "y": 260.4,
+          "w": 112,
+          "h": 112
+        },
+        "#move-thumb": {
+          "x": 47.4,
+          "y": 293.4,
+          "w": 46,
+          "h": 46
+        },
+        "#look-stick": {
+          "x": 576,
+          "y": 260.4,
+          "w": 112,
+          "h": 112
+        },
+        "#look-thumb": {
+          "x": 609,
+          "y": 293.4,
+          "w": 46,
+          "h": 46
+        },
+        "#touch-action": {
+          "x": 765.6,
+          "y": 308.4,
+          "w": 64,
+          "h": 64
+        },
+        "#touch-cancel": {
+          "x": 700.8,
+          "y": 320.4,
+          "w": 52,
+          "h": 52
+        }
+      },
+      "page": {
+        "scrollW": 844,
+        "clientW": 844,
+        "scrollH": 390,
+        "clientH": 390
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "w": 844,
+        "h": 390
+      },
+      "meshes": 0,
+      "smallTouchTargets": [],
+      "overlaps": []
+    },
+    "landscape": {
+      "viewport": {
+        "w": 844,
+        "h": 390
+      },
+      "rects": {
+        "#ultima-menu-fab": {
+          "x": 787.2,
+          "y": 8.8,
+          "w": 48,
+          "h": 48
+        }
+      },
+      "touch": {
+        "#move-stick": {
+          "x": 14.4,
+          "y": 260.4,
+          "w": 112,
+          "h": 112
+        },
+        "#move-thumb": {
+          "x": 47.4,
+          "y": 293.4,
+          "w": 46,
+          "h": 46
+        },
+        "#look-stick": {
+          "x": 576,
+          "y": 260.4,
+          "w": 112,
+          "h": 112
+        },
+        "#look-thumb": {
+          "x": 609,
+          "y": 293.4,
+          "w": 46,
+          "h": 46
+        },
+        "#touch-action": {
+          "x": 765.6,
+          "y": 308.4,
+          "w": 64,
+          "h": 64
+        },
+        "#touch-cancel": {
+          "x": 700.8,
+          "y": 320.4,
+          "w": 52,
+          "h": 52
+        }
+      },
+      "page": {
+        "scrollW": 844,
+        "clientW": 844,
+        "scrollH": 390,
+        "clientH": 390
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "w": 844,
+        "h": 390
+      },
+      "meshes": 1,
+      "smallTouchTargets": [],
+      "overlaps": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (File not found)"
+      ],
+      "camera": {
+        "alpha": -1.571,
+        "beta": 1.12,
+        "radius": 7.5
+      },
+      "render": {
+        "width": 844,
+        "height": 390,
+        "canvasW": 844,
+        "canvasH": 390
+      }
+    },
+    "desktop": {
+      "viewport": {
+        "w": 1280,
+        "h": 720
+      },
+      "rects": {
+        ".ultima-status": {
+          "x": 12,
+          "y": 12,
+          "w": 300,
+          "h": 205.4
+        },
+        ".workshop-panel": {
+          "x": 11.2,
+          "y": 54.4,
+          "w": 300,
+          "h": 30.4
+        },
+        ".ultima-panel-toggle": {
+          "x": 1189.6,
+          "y": 12,
+          "w": 78.4,
+          "h": 28
+        },
+        "form.ultima-chat-compose": {
+          "x": 12,
+          "y": 666,
+          "w": 360,
+          "h": 41.2
+        }
+      },
+      "touch": {},
+      "page": {
+        "scrollW": 1280,
+        "clientW": 1280,
+        "scrollH": 720,
+        "clientH": 720
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "w": 1280,
+        "h": 720
+      },
+      "meshes": 0,
+      "smallTouchTargets": [
+        "#network-chat-input 286x36",
+        "button.sui-btn 67x41",
+        "button.sui-btn 67x28",
+        "button.sui-btn 78x28",
+        "summary 276x14",
+        "button.secondary 112x28",
+        "button.secondary 61x28",
+        "button.secondary 58x28",
+        "button.secondary 109x28",
+        "button.secondary 135x28",
+        "#workshop-prompt 185x21",
+        "button 50x21"
+      ],
+      "overlaps": [
+        ".ultima-status ∩ .workshop-panel 299x30"
+      ]
+    },
+    "tablet": {
+      "viewport": {
+        "w": 768,
+        "h": 1024
+      },
+      "rects": {
+        "#ultima-menu-fab": {
+          "x": 711.2,
+          "y": 8.8,
+          "w": 48,
+          "h": 48
+        }
+      },
+      "touch": {
+        "#move-stick": {
+          "x": 14.4,
+          "y": 882.4,
+          "w": 124,
+          "h": 124
+        },
+        "#move-thumb": {
+          "x": 50.4,
+          "y": 918.4,
+          "w": 52,
+          "h": 52
+        },
+        "#look-stick": {
+          "x": 480,
+          "y": 882.4,
+          "w": 124,
+          "h": 124
+        },
+        "#look-thumb": {
+          "x": 516,
+          "y": 918.4,
+          "w": 52,
+          "h": 52
+        },
+        "#touch-action": {
+          "x": 685.6,
+          "y": 938.4,
+          "w": 68,
+          "h": 68
+        },
+        "#touch-cancel": {
+          "x": 616.8,
+          "y": 950.4,
+          "w": 56,
+          "h": 56
+        }
+      },
+      "page": {
+        "scrollW": 768,
+        "clientW": 768,
+        "scrollH": 1024,
+        "clientH": 1024
+      },
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "w": 768,
+        "h": 1024
+      },
+      "meshes": 1,
+      "smallTouchTargets": [],
+      "overlaps": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (File not found)"
+      ],
+      "camera": {
+        "alpha": -1.571,
+        "beta": 1.12,
+        "radius": 7.5
+      },
+      "render": {
+        "width": 768,
+        "height": 1024,
+        "canvasW": 768,
+        "canvasH": 1024
+      }
+    }
+  }
+}

@@ -12,7 +12,7 @@
    Painéis flutuam sobre o canvas 3D; nada de barras fixas de texto.
    Os elementos com id (game-canvas, sticks, botões A/B) são lidos pelo JS
    do jogo e nunca podem ser renderizados condicionalmente. *@
-<div class="game-shell ultima-theme@(_menuOpen ? " ultima-menu-open" : "")@(_view is not null ? " ultima-dialog-open" : "")">
+<div class="game-shell ultima-theme@((_menuOpen ? " ultima-menu-open" : "") + (_view is not null ? " ultima-dialog-open" : ""))">
     <main class="viewport">
         <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D. WASD, setas, joystick ou controles de toque movem; E/A conversa."></canvas>
 
