@@ -223,8 +223,9 @@
         return lerp(h, 0.05, npcFlat * 0.9);
     }
 
+    const SLOPE_SAMPLE_RADIUS = 0.7;
     function slopeAt(x, z, surface = terrainHeight) {
-        const e = 0.7;
+        const e = SLOPE_SAMPLE_RADIUS;
         const dhx = Math.abs(surface(x + e, z) - surface(x - e, z));
         const dhz = Math.abs(surface(x, z + e) - surface(x, z - e));
         return Math.max(dhx, dhz) / (2 * e);
@@ -356,7 +357,7 @@
     // do MESMO gerador nas coordenadas de mundo — anel extra cobre as normais de borda)
     // e cache OPFS por chunk do TERRENO BASE. As ops sculpt/paint do servidor (journal)
     // são reaplicadas em memória a cada visita, depois do mapa chegar.
-    const CHUNK = 32, CHUNK_SUB = 48;
+    const CHUNK = 32, CHUNK_SUB = 64;
     const CHUNK_STEP = CHUNK / CHUNK_SUB;
     const CHUNK_VIEW = 2;                  // janela 5×5 ao redor do jogador (streaming F3)
     const chunkMap = new Map();            // "cx,cz" -> { mesh, cx, cz }
@@ -383,7 +384,7 @@
     const SOIL_DEPTH = 0.48;
     const SOIL_RADIUS = 1;
     const SOIL_BUCKET_SIZE = 2;
-    const SOIL_FLAT_RADIUS = CHUNK_STEP * Math.SQRT1_2 + 0.01;
+    const SOIL_FLAT_RADIUS = 0.48;
     const collectedIds = new Set();
     const soilBuckets = new Map();
     function surfaceResourceId(kind, op) { return kind + ':' + (op.rev ?? [op.x, op.z, op.r].join(',')); }
@@ -445,20 +446,16 @@
         let r = lerp(lerp(grassDark[0], grassLight[0], t), grassDry[0], Math.max(0, patch - 0.35) * 1.4);
         let g = lerp(lerp(grassDark[1], grassLight[1], t), grassDry[1], Math.max(0, patch - 0.35) * 1.4);
         let b = lerp(lerp(grassDark[2], grassLight[2], t), grassDry[2], Math.max(0, patch - 0.35) * 1.4);
-        const path = pathBlend(x, z);
-        const core = 1 - smoothstep(0.4, 2.6, Math.abs(x - pathOffset(z)));
+        const fringe = noise(x * 0.67 + 4.2, z * 0.67 - 3.1) * 0.55 + (fine - 0.5) * 0.35;
+        const distanceToPath = Math.abs(x - pathOffset(z)) + fringe;
+        const path = smoothstep(1.3, 3.6, distanceToPath);
+        const core = 1 - smoothstep(0.4, 2.6, distanceToPath);
         const dr = lerp(dirtLight[0], dirt[0], path), dg = lerp(dirtLight[1], dirt[1], path), db = lerp(dirtLight[2], dirt[2], path);
         r = lerp(dr, r, path); g = lerp(dg, g, path); b = lerp(db, b, path);
         r = lerp(r, dr * 1.08, (1 - path) * core * 0.5);
         g = lerp(g, dg * 1.08, (1 - path) * core * 0.5);
         b = lerp(b, db * 1.08, (1 - path) * core * 0.5);
-        const rocky = smoothstep(0.55, 1.10, slopeAt(x, z));
-        r = lerp(r, lerp(rock[0], rockLight[0], fine), rocky);
-        g = lerp(g, lerp(rock[1], rockLight[1], fine), rocky);
-        b = lerp(b, lerp(rock[2], rockLight[2], fine), rocky);
-        const snowLine = 8.5 + noise(x * 0.18 + 7.7, z * 0.18 - 3.3) * 1.6 - rocky * 1.2;
-        const snowy = Math.max(0, Math.min(1, (y - snowLine) / 1.6));
-        r = lerp(r, snow[0], snowy); g = lerp(g, snow[1], snowy); b = lerp(b, snow[2], snowy);
+        const rocky = smoothstep(0.44, 1.22, slopeAt(x, z) + fringe * 0.35);
         let exposedRock = 0;
         for (const op of worldCarves) {
             const inset = op.r - Math.hypot(x - op.x, z - op.z);
@@ -466,22 +463,26 @@
         }
         const rockU = x * 1.15 + z * 0.36, rockV = z * 0.8 + y * 1.3;
         let mineral;
-        if (exposedRock > 0) {
+        const mineralCover = 1 - (1 - exposedRock) * (1 - rocky);
+        if (mineralCover > 0) {
             mineral = rockRelief(rockU, rockV);
-            const value = 0.36 + mineral * 0.20;
-            r = lerp(r, value * 1.07, exposedRock);
-            g = lerp(g, value * 1.03, exposedRock);
-            b = lerp(b, value * 0.92, exposedRock);
+            const shade = 1 + mineral * 0.4;
+            r = lerp(r, lerp(rock[0], rockLight[0], fine) * shade, mineralCover);
+            g = lerp(g, lerp(rock[1], rockLight[1], fine) * shade, mineralCover);
+            b = lerp(b, lerp(rock[2], rockLight[2], fine) * shade, mineralCover);
         }
+        const snowLine = 8.5 + noise(x * 0.18 + 7.7, z * 0.18 - 3.3) * 1.6 - rocky * 1.2;
+        const snowy = smoothstep(snowLine, snowLine + 1.6, y);
+        r = lerp(r, snow[0], snowy); g = lerp(g, snow[1], snowy); b = lerp(b, snow[2], snowy);
         let material = path >= 0.5 ? 'grass' : 'dirt';
         if (rocky >= 0.5 || exposedRock >= 0.5) { material = 'rock'; }
         if (snowy >= 0.5) { material = 'snow'; }
-        const cover = (1 - rocky) * (1 - snowy) * (1 - exposedRock);
+        const cover = (1 - mineralCover) * (1 - snowy);
         let grassDetail = path * cover, dirtDetail = (1 - path) * cover;
         for (let i = 0; i < worldPaints.length; i++) {
             const op = worldPaints[i];
             if (op.mat === 'water' && collectedIds.has(surfaceResourceId('water', op))) { continue; }
-            const w = brushWeight(x, z, op);
+            const w = brushWeight(x + (op.mat === 'water' ? 0 : fringe * 0.32), z, op);
             if (w > 0) {
                 const c = PAINT_COLORS[op.mat];
                 if (w >= 0.5) { material = op.mat; }
@@ -495,14 +496,14 @@
                 b = lerp(b, c[2] * relief, w);
             }
         }
-        if (material === 'grass') {
-            const exposedSoil = Math.min(1, soilDepthAt(x, z) / SOIL_DEPTH) * 0.85;
+        if (grassDetail > 0 && soilBuckets.size) {
+            const exposedSoil = Math.min(1, soilDepthAt(x, z) / SOIL_DEPTH) * 0.85 * grassDetail;
             r = lerp(r, dirt[0], exposedSoil);
             g = lerp(g, dirt[1], exposedSoil);
             b = lerp(b, dirt[2], exposedSoil);
             grassDetail = lerp(grassDetail, 0, exposedSoil);
             dirtDetail = lerp(dirtDetail, 1, exposedSoil);
-            if (exposedSoil >= 0.5) { material = 'dirt'; }
+            if (material === 'grass' && exposedSoil >= 0.5) { material = 'dirt'; }
         }
         return [r, g, b, grassDetail, dirtDetail, material];
     }
@@ -543,9 +544,10 @@
         }).catch(function () { /* cache é otimização */ });
     }
 
-    const CHUNK_TEX = 128;   // 0,25 m por texel
-    const CARVE_TEX = 256;   // amostra mais fina da paleta em terreno escavado
+    const CHUNK_TEX = 128;   // 0,25 m por texel útil
     const DETAIL_TEX = 512;
+    const PALETTE_GUTTER = 4;
+    const DETAIL_GUTTER = PALETTE_GUTTER * DETAIL_TEX / CHUNK_TEX;
     const MATERIAL_TILE = DETAIL_TEX / 8;   // uma repetição a cada 4 m, alinhada entre chunks
     let groundMaterials = [];
     const groundGrain = makeNoise(9090);
@@ -568,9 +570,11 @@
                     resizeWidth: MATERIAL_TILE, resizeHeight: MATERIAL_TILE, resizeQuality: 'high'
                 });
             }));
-            const blend = engine.createCanvas(DETAIL_TEX, DETAIL_TEX).getContext('2d');
+            const size = DETAIL_TEX + 2 * DETAIL_GUTTER;
+            const blend = engine.createCanvas(size, size).getContext('2d');
             const patterns = tiles.map(tile => blend.createPattern(tile, 'repeat'));
-            const palette = engine.createCanvas(CHUNK_TEX, CHUNK_TEX).getContext('2d');
+            const paletteSize = CHUNK_TEX + 2 * PALETTE_GUTTER;
+            const palette = engine.createCanvas(paletteSize, paletteSize).getContext('2d');
             if (!palette || patterns.some(pattern => !pattern)) { throw new Error('canvas de composição indisponível'); }
             terrainBlend = blend;
             terrainPalette = palette;
@@ -596,15 +600,17 @@
     let terrainBlend = null, terrainPalette = null;
 
     // A resolução da imagem é independente da amostragem de paleta e relevo.
-    function paintChunkTexture(tex, cx, cz, samples) {
+    function paintChunkTexture(tex, cx, cz) {
         const ctx = tex.getContext();
+        // As bordas usam texels dos dois lados da divisa, na mesma grade mundial.
+        const samples = CHUNK_TEX + 2 * PALETTE_GUTTER;
         const img = ctx.createImageData(samples, samples);
         const masks = groundMaterials.map(() => ctx.createImageData(samples, samples));
         const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
         const detailed = masks.length > 0;
         for (let ty = 0; ty < samples; ty++) for (let tx = 0; tx < samples; tx++) {
-            const x = x0 + tx / (samples - 1) * CHUNK;
-            const z = z0 + ty / (samples - 1) * CHUNK;
+            const x = x0 + (tx - PALETTE_GUTTER + 0.5) * CHUNK / CHUNK_TEX;
+            const z = z0 + (ty - PALETTE_GUTTER + 0.5) * CHUNK / CHUNK_TEX;
             const [r, g, b, grass, dirt] = terrainColorAt(x, terrainHeight(x, z), z);
             const mottling = groundGrain(x * 0.94, z * 0.94);
             const grit = groundGrain(x * 2.1 + 13, z * 2.1 - 17);
@@ -622,16 +628,16 @@
         }
         if (detailed) {
             const palette = terrainPalette.canvas;
-            if (palette.width !== samples) { palette.width = palette.height = samples; }
+            const size = terrainBlend.canvas.width;
             terrainPalette.putImageData(img, 0, 0);
-            ctx.drawImage(palette, 0, 0, DETAIL_TEX, DETAIL_TEX);
+            ctx.drawImage(palette, 0, 0, size, size);
             for (let i = 0; i < masks.length; i++) {
                 terrainBlend.globalCompositeOperation = 'copy';
                 terrainBlend.fillStyle = groundMaterials[i];
-                terrainBlend.fillRect(0, 0, DETAIL_TEX, DETAIL_TEX);
+                terrainBlend.fillRect(0, 0, size, size);
                 terrainPalette.putImageData(masks[i], 0, 0);
                 terrainBlend.globalCompositeOperation = 'destination-in';
-                terrainBlend.drawImage(palette, 0, 0, DETAIL_TEX, DETAIL_TEX);
+                terrainBlend.drawImage(palette, 0, 0, size, size);
                 ctx.drawImage(terrainBlend.canvas, 0, 0);
             }
         } else {
@@ -641,17 +647,20 @@
     }
 
     function updateChunkTexture(mat, cx, cz) {
-        const samples = worldCarves.some(op => brushTouchesChunk({ cx, cz }, op)) ? CARVE_TEX : CHUNK_TEX;
-        const size = groundMaterials.length ? DETAIL_TEX : samples;
+        const center = groundMaterials.length ? DETAIL_TEX : CHUNK_TEX;
+        const gutter = groundMaterials.length ? DETAIL_GUTTER : PALETTE_GUTTER;
+        const size = center + 2 * gutter;
         const previous = mat.diffuseTexture;
         if (previous && previous.getSize().width === size) {
-            paintChunkTexture(previous, cx, cz, samples);
+            paintChunkTexture(previous, cx, cz);
             return;
         }
         const tex = new BABYLON.DynamicTexture('chunkTex-' + chunkKey(cx, cz), { width: size, height: size }, scene, true);
         tex.wrapU = tex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
+        tex.uScale = tex.vScale = center / size;
+        tex.uOffset = tex.vOffset = gutter / size;
         tex.anisotropicFilteringLevel = 8;
-        paintChunkTexture(tex, cx, cz, samples);
+        paintChunkTexture(tex, cx, cz);
         mat.diffuseTexture = tex;
         if (previous) { previous.dispose(); }
     }
@@ -706,8 +715,13 @@
         let k = 0;
         for (let j = 0; j < CHUNK_SUB; j++) for (let i = 0; i < CHUNK_SUB; i++) {
             const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
-            indices[k++] = d; indices[k++] = a; indices[k++] = b;
-            indices[k++] = c; indices[k++] = a; indices[k++] = d;
+            if ((i + j) % 2 === 0) {
+                indices[k++] = d; indices[k++] = a; indices[k++] = b;
+                indices[k++] = c; indices[k++] = a; indices[k++] = d;
+            } else {
+                indices[k++] = c; indices[k++] = a; indices[k++] = b;
+                indices[k++] = c; indices[k++] = b; indices[k++] = d;
+            }
         }
         const mesh = new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene);
         const vd = new BABYLON.VertexData();
@@ -787,7 +801,10 @@
     }
 
     function brushTouchesChunk({ cx, cz }, { x, z, r }) {
-        const reach = CHUNK / 2 + r + 2 * CHUNK_STEP;
+        // Uma edição fora da malha ainda pode alterar a faixa de filtragem
+        // e a amostragem de inclinação na textura vizinha.
+        const textureMargin = (PALETTE_GUTTER + 1) * CHUNK / CHUNK_TEX + SLOPE_SAMPLE_RADIUS;
+        const reach = CHUNK / 2 + r + textureMargin;
         return Math.abs(cx * CHUNK - x) <= reach && Math.abs(cz * CHUNK - z) <= reach;
     }
 
@@ -1229,8 +1246,12 @@
         const stride = (CHUNK_SUB + 1) * 3;
         const a = j * stride + i * 3 + 1;
         const d = a + stride + 3;
-        // Mesma diagonal a–d de buildChunkMesh. O anel segue as faces que
-        // estão na tela, inclusive nas escavações profundas.
+        // As duas diagonais de buildChunkMesh. O anel acompanha a malha visível.
+        if ((i + j) % 2 !== 0) {
+            return u + v <= 1
+                ? vertices[a] * (1 - u - v) + vertices[a + 3] * u + vertices[a + stride] * v
+                : vertices[d] * (u + v - 1) + vertices[a + 3] * (1 - v) + vertices[a + stride] * (1 - u);
+        }
         return u >= v
             ? vertices[a] * (1 - u) + vertices[a + 3] * (u - v) + vertices[d] * v
             : vertices[a] * (1 - v) + vertices[a + stride] * (v - u) + vertices[d] * u;
