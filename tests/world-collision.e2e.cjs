@@ -85,15 +85,18 @@ async function wait(callback,label) {
             globalThis.stopMoveTrace=() => { scene.onAfterRenderObservable.remove(observer); return samples; };
         });
         if(sprint) await p.keyboard.down('Shift');
+        let samples=null;
         for(const key of keys) await p.keyboard.down(key);
         try { await p.waitForTimeout(hold); }
         finally {
             for(const key of keys) await p.keyboard.up(key);
             if(sprint) await p.keyboard.up('Shift');
+            // Para o rastreio JUNTO com a solta da tecla: o assentamento (T300) desacelera
+            // o personagem (−26 m/s²) e contaminaria a velocidade de regime.
+            samples=await renderer.evaluate(() => globalThis.stopMoveTrace());
         }
         await p.waitForTimeout(T300);
         if(errors.length) throw Error(errors.join('\n'));
-        const samples=await renderer.evaluate(() => globalThis.stopMoveTrace());
         if(process.env.ULTIMA_TRACE){ // diagnóstico: [delta de jogo, distância] por intervalo
             console.log('TRACE',JSON.stringify(samples.map((s,i)=>[+s.g.toFixed(3),i?+Math.hypot(s.x-samples[i-1].x,s.z-samples[i-1].z).toFixed(3):null])));
         }
