@@ -134,7 +134,16 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
         page.on('pageerror', (e) => errors.push(String(e)));
         page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
         await page.goto(SITE + '/?render=main', { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await page.waitForFunction(() => window.game && document.getElementById('game-canvas'), null, { timeout: 45000 });
+        // Boot por polling (page.evaluate), nao waitForFunction: no headless com
+        // swiftshader o rAF engasga (FPS ~1-2) e a espera por animation frame
+        // estoura o timeout mesmo com o jogo pronto em ~5s (comprovado por sonda).
+        let booted = false;
+        for (let t = 0; t < 45; t++) {
+            booted = await page.evaluate(() => !!(window.game && document.getElementById('game-canvas'))).catch(() => false);
+            if (booted) break;
+            await page.waitForTimeout(1000);
+        }
+        if (!booted) throw new Error('boot: window.game/#game-canvas indisponiveis apos 45s');
         // Motor subir a cena: em headless o FPS é ~1-2, então espera a câmera responder
         // (cameraState) em vez de sono fixo — evita "cena ativa n/d" em qualquer viewport.
         for (let t = 0; t < 45; t++) {
