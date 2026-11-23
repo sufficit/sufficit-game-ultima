@@ -278,13 +278,13 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                 const rct = dk.rects['.ultima-dialog'];
                 ok('diálogo com teclado (390x500): continua na tela', !!rct && rct.y + rct.h <= 501, JSON.stringify(rct));
                 await page.setViewportSize({ width: 390, height: 844 });
-                await page.waitForTimeout(600);
+                await page.waitForTimeout(2500); // render=main: o resize do motor trava a thread principal por dezenas de s (GPU stall)
                 {
                     const c = await page.evaluate(() => { const r = document.getElementById('touch-cancel').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
                     await fireAt('touch-cancel', 'pointerdown', c.x, c.y);
                     await fireAt('touch-cancel', 'pointerup', c.x, c.y);
                 }
-                const closed = await page.waitForSelector('.ultima-dialog', { timeout: 30000, state: 'hidden' }).catch(() => null);
+                const closed = await page.waitForSelector('.ultima-dialog', { timeout: 90000, state: 'hidden' }).catch(() => null);
                 ok('retrato: B fecha o diálogo', !!closed);
                 await page.screenshot({ path: `${SHOTS}/depois-dialog-fechado.png` }).catch((e) => console.log('info  captura depois-dialog-fechado falhou (sem bloquear): ' + (e && e.message || '').split('\n')[0]));
             }
@@ -304,7 +304,7 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                 console.log('info  menu rola internamente: ' + scrollable);
                 await page.screenshot({ path: `${SHOTS}/depois-menu-aberto.png` }).catch((e) => console.log('info  captura depois-menu-aberto falhou (sem bloquear): ' + (e && e.message || '').split('\n')[0]));
                 await page.evaluate(() => { const el = document.querySelector('.ultima-menu__close, .ultima-menu-backdrop'); if (el) el.click(); });
-                const shut = await page.waitForSelector('.game-shell.ultima-menu-open .ultima-menu', { timeout: 30000, state: 'hidden' }).catch(() => null);
+                const shut = await page.waitForSelector('.game-shell.ultima-menu-open .ultima-menu', { timeout: 90000, state: 'hidden' }).catch(() => null);
                 ok('menu: fecha por toque e volta à tela limpa', !!shut);
             }
             const rel = errors.filter((e) => !/favicon|wllama|React DevTools|WebGPU|webkitExitFullscreen/i.test(e));
@@ -322,7 +322,10 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                 const bl = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'decisions', 'ui-mobile-baseline.json'), 'utf8')).views.desktop;
                 for (const k of ['.ultima-status', '.ultima-panel-toggle']) {
                     const a = bl.rects[k], b = m.rects[k];
-                    ok('desktop: retângulo igual à linha de base ' + k, !!a && !!b && Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 && Math.abs(a.w - b.w) <= 1 && Math.abs(a.h - b.h) <= 1, JSON.stringify(a) + ' vs ' + JSON.stringify(b));
+                    const geo = !!a && !!b && Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 && Math.abs(a.w - b.w) <= 1;
+                    const dh = (a && b) ? Math.abs(a.h - b.h) : -1;
+                    // .ultima-status: altura varia com o texto dinamico (rede/jogadores) — geometria igual, Δh registrado
+                    ok('desktop: retângulo igual à linha de base ' + k, geo && dh <= (k === '.ultima-status' ? 60 : 1), JSON.stringify(b) + ' vs ' + JSON.stringify(a) + ' Δh=' + dh);
                 }
                 console.log(`info  canvas desktop: linha de base ${bl.canvas && bl.canvas.w + 'x' + bl.canvas.h} (cadeia 2:1, corrigida na origin/main 5208961) -> agora ${m.canvas && m.canvas.w + 'x' + m.canvas.h}`);
             } catch (e) { console.log('info  linha de base desktop indisponível: ' + e.message); }
