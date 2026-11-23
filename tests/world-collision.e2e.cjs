@@ -7,7 +7,11 @@ const main=process.env.ULTIMA_MODE==='main';
 const fixture={kind:'place',uid:'browser-tree',asset:'flora.pine',x:0,z:2,rot:0,scale:1};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function wait(callback,label) {
-    for(let i=0;i<100;i++){
+    // ULTIMA_WAIT_TRIES amplia o orçamento de espera (padrão 100 = 25 s); runners sob
+    // carga alta (ex.: bancada compartilhada com load ~30) podem precisar de mais tempo
+    // para carregar GLBs+modelos sem enfraquecer a condição do gate.
+    const tries=Number(process.env.ULTIMA_WAIT_TRIES)||100;
+    for(let i=0;i<tries;i++){
         const v=await callback();
         if(v) return v;
         await sleep(250);
