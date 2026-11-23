@@ -246,7 +246,9 @@
 
                             <SUIExpansionPanel Title="Multiplayer e voz">
                                 <SUIStack Spacing="2">
-                                    <SUIStatusBadge ToneValue="@NetTone()">@NetLabel()</SUIStatusBadge>
+                                    <SUIStack Row="true" Spacing="1" Wrap="true">
+                                        <SUIStatusBadge ToneValue="@NetTone()">@_netStatus</SUIStatusBadge>
+                                    </SUIStack>
                                     <SUITextField TValue="string" Id="player-name" Label="Seu nome" MaxLength="40" Immediate="true"
                                                   Value="_playerName" ValueChanged="OnPlayerNameChanged" />
                                     <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="copy"
