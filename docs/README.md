@@ -63,6 +63,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 
 ## Atividades (`activities/`)
 
+- [Passo articulado sobre obstáculos baixos](activities/202611231701-passo-articulado-sobre-obstaculos.md)
+
 - [Colisão do jogador e inspeção de objetos](activities/202611231650-colisao-e-interacao-com-objetos.md)
 
 - [Texturas de grama e terra, luz, vento e chuva](activities/202611231639-grama-terra-e-clima.md)
