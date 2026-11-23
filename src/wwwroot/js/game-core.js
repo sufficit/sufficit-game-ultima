@@ -593,26 +593,52 @@
         }
     }
 
+    let diagTex = null;
+    function chunkCacheTexDebug() {
+        if (diagTex) { return diagTex; }
+        diagTex = new BABYLON.DynamicTexture('diag-grain', { width: 64, height: 64 }, scene, true);
+        var ctx = diagTex.getContext();
+        var img = ctx.createImageData(64, 64);
+        var rnd = makeNoise(31337);
+        for (var i = 0; i < 64 * 64; i++) {
+            var k = (0.82 + rnd(i % 64, (i / 64) | 0) * 0.36) * 255;
+            img.data[i * 4] = k; img.data[i * 4 + 1] = k; img.data[i * 4 + 2] = k; img.data[i * 4 + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+        diagTex.update(true);
+        return diagTex;
+    }
+
     function buildTerrain() {
         ensureChunksAround(0, 0);
-        // DEBUG F7g (remove depois): teste binário na GPU do usuário — verde emissivo
-        // sem luz/sombra/textura. (0,0) dupla-face + (0,1) culling normal.
+        // DEBUG F7g-2 (remove depois): isolamento do culpado no material normal.
+        // (0,0) luz+textura SEM receber sombra | (0,1) luz+SEM textura COM sombra |
+        // (1,0) combo completo atual (controle que falha).
         modelQueue.push({
-            timing: { id: 'diag-emissive', queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
+            timing: { id: 'diag-mat', queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
             work: (function* () {
                 yield {
-                    label: 'diagnóstico emissivo',
+                    label: 'diagnóstico material',
                     run: function () {
-                        for (var t = 0; t < 2; t++) {
-                            var ch = chunkMap.get(t === 0 ? '0,0' : '0,1');
-                            if (!ch) { continue; }
-                            var m = new BABYLON.StandardMaterial('diag-em-' + t, scene);
-                            m.emissiveColor = new BABYLON.Color3(0.1, 0.85, 0.15);
-                            m.diffuseColor = new BABYLON.Color3(0, 0, 0);
-                            m.disableLighting = true;
-                            if (t === 0) { m.backFaceCulling = false; }
-                            ch.mesh.material = m;
-                        }
+                        var mk = function (tint, tex, shadows) {
+                            var m = new BABYLON.StandardMaterial('diag-' + Math.random().toString(36).slice(2, 6), scene);
+                            m.diffuseColor = new BABYLON.Color3(tint[0], tint[1], tint[2]);
+                            m.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
+                            if (tex) { m.diffuseTexture = tex; }
+                            return { m: m, shadows: shadows };
+                        };
+                        // (0,0): textura de grão + tinta, SEM receiveShadows (verde oliva)
+                        var a = mk([0.35, 0.5, 0.2], chunkCacheTexDebug(), false);
+                        var ch00 = chunkMap.get('0,0');
+                        if (ch00) { ch00.mesh.material = a.m; ch00.mesh.receiveShadows = false; }
+                        // (0,1): tinta sólida COM receiveShadows (azul acinzentado)
+                        var b = mk([0.4, 0.42, 0.5], null, true);
+                        var ch01 = chunkMap.get('0,1');
+                        if (ch01) { ch01.mesh.material = b.m; }
+                        // (1,0): tinta vermelho-terráco SEM somra SEM textura (marcador)
+                        var c = mk([0.6, 0.25, 0.1], null, false);
+                        var ch10 = chunkMap.get('1,0');
+                        if (ch10) { ch10.mesh.material = c.m; ch10.mesh.receiveShadows = false; }
                     }
                 };
             })()
