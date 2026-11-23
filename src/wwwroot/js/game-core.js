@@ -534,17 +534,20 @@
             normals[vi * 3] = -hx / nl; normals[vi * 3 + 1] = step / nl; normals[vi * 3 + 2] = -hz / nl;
             uvs[vi * 2] = i / CHUNK_SUB; uvs[vi * 2 + 1] = j / CHUNK_SUB;
         }
+        // Winding na ordem EXATA do GroundBuilder do Babylon — o meu anterior vinha
+        // invertido (faces pra baixo) e o backface culling escondia o terreno inteiro.
         const indices = new Uint32Array(CHUNK_SUB * CHUNK_SUB * 6);
         let k = 0;
         for (let j = 0; j < CHUNK_SUB; j++) for (let i = 0; i < CHUNK_SUB; i++) {
             const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
-            indices[k++] = a; indices[k++] = c; indices[k++] = b;
-            indices[k++] = b; indices[k++] = c; indices[k++] = d;
+            indices[k++] = d; indices[k++] = b; indices[k++] = a;
+            indices[k++] = c; indices[k++] = d; indices[k++] = a;
         }
         const mesh = new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene);
         const vd = new BABYLON.VertexData();
         vd.positions = positions; vd.normals = normals; vd.uvs = uvs; vd.indices = indices;
         vd.applyToMesh(mesh, false);
+        mesh.refreshBoundingInfo();          // posições mundiais: bounding nasce certa
         saveChunk(cx, cz, positions, normals);
         return mesh;
     }
@@ -2232,6 +2235,12 @@
                 hasDiffuseTex: !!(ch.mesh.material && ch.mesh.material.diffuseTexture),
                 diffuseColor: ch.mesh.material ? ch.mesh.material.diffuseColor.toString() : null,
                 matCount: scene.materials.length,
+                subMeshes: ch.mesh.subMeshes ? ch.mesh.subMeshes.length : -1,
+                matIsReady: ch.mesh.material && ch.mesh.material.isReady ? ch.mesh.material.isReady(ch.mesh, true) : null,
+                activeMeshCount: scene.getActiveMeshes().length,
+                totalVertices: ch.mesh.getTotalVertices(),
+                indicesCount: ch.mesh.getTotalIndices ? ch.mesh.getTotalIndices() : null,
+                depthFunc: ch.mesh.material && ch.mesh.material.needDepthPrePass,
                 texCanvasSample: (function () {
                     try {
                         const t = ch.mesh.material && ch.mesh.material.diffuseTexture;
