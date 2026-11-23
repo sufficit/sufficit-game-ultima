@@ -9,8 +9,6 @@ Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
-- [Curvas nas bordas das escavações](PLAN-RELEVO-ESCAVADO-SEM-V.md)
-
 Prioritários:
 
 1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **concluído em 23/11/2026**
@@ -64,6 +62,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 `/mnt/sufficit/lineage-rust`). Cada plano cita os arquivos-fonte correspondentes.
 
 ## Atividades (`activities/`)
+
+- [Curvas nas bordas das escavações](activities/202611231851-relevo-escavado-sem-v.md)
 
 - [Emendas naturais no terreno](activities/202611231831-emendas-do-terreno.md)
 
