@@ -46,9 +46,13 @@
     async function collect(entry) {
         try {
             const db = await open();
+            // Cada passada da pá rende um recurso, inclusive quando já há um corte no local.
+            const record = entry.kind === 'soil' && !entry.id
+                ? { ...entry, id: 'dig:' + crypto.getRandomValues(new Uint32Array(4)).join('-') }
+                : entry;
             await new Promise((resolve, reject) => {
                 const tx = db.transaction(storeName, 'readwrite');
-                const add = tx.objectStore(storeName).add(entry);
+                const add = tx.objectStore(storeName).add(record);
                 tx.oncomplete = resolve;
                 tx.onabort = () => reject(add.error || tx.error);
             });

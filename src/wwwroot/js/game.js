@@ -345,8 +345,8 @@
             // Clique curto sem arrasto: candidata a edição do mundo (o core ignora fora do modo).
             if (e.type === 'pointerup' && pointers.size === 0 && !pinched && Date.now() - downAt < 500 && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
                 const rect = canvas.getBoundingClientRect();
-                const dpr = window.devicePixelRatio || 1;
-                deliver('terrainClick', [(e.clientX - rect.left) * dpr, (e.clientY - rect.top) * dpr]);
+                // scene.pick aplica a escala do renderizador às coordenadas CSS.
+                deliver('terrainClick', [e.clientX - rect.left, e.clientY - rect.top]);
             }
         }
         window.addEventListener('pointerup', solta);

@@ -377,15 +377,38 @@
     }
 
     const COLLECT_REACH = 3.5;
+    const SOIL_DEPTH = 0.48;
+    const SOIL_RADIUS = 1;
+    const SOIL_BUCKET_SIZE = 2;
+    const SOIL_FLAT_RADIUS = CHUNK_STEP * Math.SQRT1_2 + 0.01;
     const collectedIds = new Set();
-    const collectedSoil = new Map();
-    function soilCell(x, z) { return Math.floor(x / 2) + ',' + Math.floor(z / 2); }
+    const soilBuckets = new Map();
     function surfaceResourceId(kind, op) { return kind + ':' + (op.rev ?? [op.x, op.z, op.r].join(',')); }
 
-    function soilCutWeight(x, z) {
-        if (!collectedSoil.size) { return 0; }
-        const cut = collectedSoil.get(soilCell(x, z));
-        return cut ? 1 - smoothstep(CHUNK_STEP * Math.SQRT1_2 + 0.01, cut.r, Math.hypot(x - cut.x, z - cut.z)) : 0;
+    function soilBucketIndex(position) { return Math.floor(position / SOIL_BUCKET_SIZE); }
+
+    // O índice limita a consulta da altura a cortes próximos. O pincel conserva
+    // a coordenada em que a malha foi atingida, inclusive entre os quadrantes.
+    function indexSoilCut(cut) {
+        for (let cx = soilBucketIndex(cut.x - cut.r); cx <= soilBucketIndex(cut.x + cut.r); cx++) {
+            for (let cz = soilBucketIndex(cut.z - cut.r); cz <= soilBucketIndex(cut.z + cut.r); cz++) {
+                const key = cx + ',' + cz;
+                if (!soilBuckets.has(key)) { soilBuckets.set(key, []); }
+                soilBuckets.get(key).push(cut);
+            }
+        }
+    }
+
+    function soilDepthAt(x, z) {
+        if (!soilBuckets.size) { return 0; }
+        const cuts = soilBuckets.get(soilBucketIndex(x) + ',' + soilBucketIndex(z));
+        if (!cuts) { return 0; }
+        let depth = 0;
+        for (const cut of cuts) {
+            const weight = 1 - smoothstep(SOIL_FLAT_RADIUS, cut.r, Math.hypot(x - cut.x, z - cut.z));
+            depth += SOIL_DEPTH * weight;
+        }
+        return depth;
     }
 
     // Altura efetiva do mundo: terreno base, esculturas, grutas e coleta local.
@@ -405,7 +428,7 @@
                 h = lerp(h, floor, smoothstep(0, Math.min(1.2, op.r / 4), inset));
             }
         }
-        return h - 0.48 * soilCutWeight(x, z);
+        return h - soilDepthAt(x, z);
     }
 
     // Paleta do solo (mesma lógica do gerador original), agora pintável por material.
@@ -470,12 +493,13 @@
             }
         }
         if (material === 'grass') {
-            const exposedSoil = soilCutWeight(x, z) * 0.85;
+            const exposedSoil = Math.min(1, soilDepthAt(x, z) / SOIL_DEPTH) * 0.85;
             r = lerp(r, dirt[0], exposedSoil);
             g = lerp(g, dirt[1], exposedSoil);
             b = lerp(b, dirt[2], exposedSoil);
             grassDetail = lerp(grassDetail, 0, exposedSoil);
             dirtDetail = lerp(dirtDetail, 1, exposedSoil);
+            if (exposedSoil >= 0.5) { material = 'dirt'; }
         }
         return [r, g, b, grassDetail, dirtDetail, material];
     }
@@ -1077,8 +1101,8 @@
             if (collectedIds.has(entry.id)) { continue; }
             collectedIds.add(entry.id);
             if (entry.kind === 'soil') {
-                const cut = { x: entry.x, z: entry.z, r: 1 };
-                collectedSoil.set(soilCell(cut.x, cut.z), cut);
+                const cut = { x: entry.x, z: entry.z, r: SOIL_RADIUS };
+                indexSoilCut(cut);
                 newCuts.push(cut);
             } else if (entry.brush) {
                 newCuts.push(entry.brush);
@@ -1106,10 +1130,8 @@
         if (target) {
             resource = { id: target.id, item: target.item, kind: 'object', brush: target.brush };
         } else {
-            const x = Math.floor(p.x / 2) * 2 + 1;
-            const z = Math.floor(p.z / 2) * 2 + 1;
             const material = terrainColorAt(p.x, p.y, p.z)[5];
-            resource = { id: 'soil:' + soilCell(x, z), item: soilLabels[material], kind: 'soil', x, z };
+            resource = { item: soilLabels[material], kind: 'soil', x: p.x, z: p.z };
         }
         if (collectedIds.has(resource.id)) {
             dotnet.invokeMethodAsync('OnBackpackStatus', 'Esse recurso já foi coletado.');
@@ -2761,9 +2783,9 @@
     };
 
     // Tamanho de render no worker. Semântica do Babylon (AbstractEngine.resize/setSize):
-    // setSize grava o canvas em PIXELS direto; o fator de escala só converte CSS↔pixels
-    // no resize(). Logo: canvas = CSS × densidade, escala = 1/densidade — o mesmo buffer
-    // que o adaptToDeviceRatio produz na main thread (getRenderWidth volta em CSS).
+    // setSize recebe o tamanho do buffer em pixels. A escala 1/densidade permite
+    // ao Babylon converter as coordenadas CSS usadas na seleção para esse buffer,
+    // como no adaptToDeviceRatio da main thread.
     function applySize(width, height, dpr) {
         if (!engine) { return; }
         const ratio = Math.max(0.25, dpr || 1);
