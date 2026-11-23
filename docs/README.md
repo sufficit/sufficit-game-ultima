@@ -63,6 +63,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 
 ## Atividades (`activities/`)
 
+- [Correção da renderização do terreno](activities/202611231348-renderizacao-do-terreno.md)
+
 - [Conflitos de movimento no harness mobile](activities/202611231306-conflitos-do-harness-mobile.md)
 
 Documentos de atividade (`AAAAMMDDHHMM-slug.md`) registram frentes concluídas:
