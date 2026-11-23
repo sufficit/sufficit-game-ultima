@@ -74,6 +74,17 @@
         if (window.game && game.workshop && game.workshop.worldOp) { game.workshop.worldOp(op); }
     }
 
+    // Sonda de capacidade na thread principal: um canvas DESCARTÁVEL responde se o
+    // navegador cria contexto WebGL aqui (o worker/OffscreenCanvas pode falhar mesmo
+    // com a main OK — e vice-versa; sem WebGL na main e sem WebGPU, nem começa).
+    function webglCapableMainThread() {
+        try {
+            var c = document.createElement('canvas');
+            return !!(window.WebGLRenderingContext &&
+                (c.getContext('webgl2') || c.getContext('webgl')));
+        } catch (e) { return false; }
+    }
+
     // Motor 3D não subiu (sem WebGPU/WebGL): mensagem clara em vez de página morta.
     function showEngineFailure(err) {
         var div = document.createElement('div');
@@ -429,6 +440,15 @@
             if (!canvas) { return Promise.reject(new Error('canvas ' + canvasId + ' não encontrado')); }
             dotnet = dotnetRef;
             dotnetModels = modelsRef || null;
+            // Sem WebGL na main E sem sinal de WebGPU: nem tenta — o diagnóstico é da
+            // máquina (driver/aceleração), o overlay diz exatamente o que verificar.
+            const gpuSignal = typeof navigator !== 'undefined' && !!navigator.gpu;
+            if (!webglCapableMainThread() && !gpuSignal) {
+                var err = new Error('WebGL não disponível neste navegador (verifique chrome://gpu e a aceleração de hardware).');
+                console.error('[motor]', err.message);
+                showEngineFailure(err);
+                return Promise.resolve(false);
+            }
             const canWorker = !!canvas.transferControlToOffscreen && typeof Worker !== 'undefined';
             const start = (canWorker && FORCE !== 'main')
                 ? startWorker(canvas).then(function (ok) {
