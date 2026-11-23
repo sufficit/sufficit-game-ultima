@@ -94,17 +94,21 @@ async function wait(callback,label) {
         await p.waitForTimeout(T300);
         if(errors.length) throw Error(errors.join('\n'));
         const samples=await renderer.evaluate(() => globalThis.stopMoveTrace());
-        // Descarta a rampa de aceleração (primeiros 0,3 s de jogo) quando houver quadros suficientes.
-        let g=0, dist=0, distAll=0, n=0;
+        // Descarta a rampa de aceleração (primeiros 0,3 s de jogo): numerador e denominador
+        // precisam ser PARES — só contam os passos após a rampa (tempo gC = tempo dos passos medidos).
+        let g=0, gC=0, dist=0, n=0;
         for(let i=1;i<samples.length;i++){
             const d=Math.hypot(samples[i].x-samples[i-1].x, samples[i].z-samples[i-1].z);
-            distAll+=d;
-            if(g>0.3){ dist+=d; n++; }
+            if(g>0.3){ dist+=d; gC+=samples[i].g; n++; }
             g+=samples[i].g;
         }
-        if(n<3){ dist=distAll; g=samples.slice(1).reduce((a,s)=>a+s.g,0); }
         const last=samples[samples.length-1];
-        return {v:g>0?dist/g:0,z:last?.z,frames:samples.length};
+        if(n<3){ // poucos quadros: usa a janela inteira (pareada) como fallback
+            const gAll=samples.slice(1).reduce((a,s)=>a+s.g,0);
+            const dAll=samples.length>1?Math.hypot(last.x-samples[0].x,last.z-samples[0].z):0;
+            return {v:gAll>0?dAll/gAll:0,z:last?.z,frames:samples.length};
+        }
+        return {v:gC>0?dist/gC:0,z:last?.z,frames:samples.length};
     }
     const walking=await speed(['w'],1800,false);
     await p.evaluate(()=>game.resetPlayer());
