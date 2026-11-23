@@ -207,6 +207,10 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
             const { ctx, page, errors } = await openVP('portrait');
             // O arrasto tem que FICAR SEGURADO por vários frames: o core amostra o
             // stick por frame (headless ~1-2 fps); disparar tudo na mesma task não move nada.
+            const dlgGone = () => page.evaluate(() => {
+                const d = document.querySelector('.ultima-dialog');
+                return (!d || d.getBoundingClientRect().height === 0) ? true : null;
+            });
             const fireAt = (id, type, x, y) => page.evaluate(({ id, type, x, y }) => {
                 const el = document.getElementById(id);
                 el.dispatchEvent(new PointerEvent(type, {
