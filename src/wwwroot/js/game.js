@@ -78,7 +78,7 @@
     // thread e é ela quem aplica/valida no servidor — igual à ponte varyModel.
     function routeWorldOp(op) {
         if (op.action === 'collect') { void game.backpack?.collect(op.resource, op.point); }
-        else if (window.game && game.workshop && game.workshop.worldOp) { game.workshop.worldOp(op); }
+        else { postEventToDotnet('OnWorldCommand', [op]); }
     }
 
     // Sonda de capacidade na thread principal: um canvas DESCARTÁVEL responde se o

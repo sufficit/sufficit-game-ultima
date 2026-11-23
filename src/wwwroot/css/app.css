@@ -69,6 +69,7 @@ kbd {
     font-size: .82rem; line-height: 1.35; text-align: center;
     pointer-events: none; z-index: 5;
 }
+.ultima-update { top: .7rem; z-index: 99; width: min(34rem, 94vw); pointer-events: auto; }
 .ultima-announce { top: .7rem; color: var(--ultima-gold, #d9c37a); }
 .ultima-hint { top: .7rem; color: var(--ultima-gold, #d9c37a); }
 .ultima-announce + .ultima-hint { top: 3.2rem; }

@@ -17,4 +17,10 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 // Carregador de modelos 3D em runtime (pacotes C# listados em models/models.json).
 builder.Services.AddScoped<Ultima.Models.ModelLoader>();
 
+builder.Services.AddTransient<Ultima.Browser.Backpack>();
+builder.Services.AddTransient<Ultima.Browser.Workshop>();
+builder.Services.AddTransient<Ultima.Browser.GameUpdate>();
+builder.Services.AddTransient<Ultima.Browser.DialogLog>();
+builder.Services.AddTransient<Ultima.Browser.LiveGame>();
+
 await builder.Build().RunAsync();

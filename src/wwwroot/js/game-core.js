@@ -3266,7 +3266,7 @@
                 return true;
             },
             // Espalha um asset registrado em posições determinísticas por id (fase 4):
-            // usado pela oficina (workshop.js) para os assets do mundo compartilhado.
+            // usado pela oficina em C# para os assets do mundo compartilhado.
             scatter(id, opts) { return scatterSeeded(id, opts); }
         },
         perf: {
