@@ -106,10 +106,10 @@ async function wait(callback,label) {
         const last=samples[samples.length-1];
         return {v:g>0?dist/g:0,z:last?.z,frames:samples.length};
     }
-    const walking=await speed(['w'],900,false);
+    const walking=await speed(['w'],1800,false);
     await p.evaluate(()=>game.resetPlayer());
     await p.waitForTimeout(T300);
-    const running=await speed(['w'],900);
+    const running=await speed(['w'],1400);
     console.log(JSON.stringify({walking,running}));
     assert.ok(walking.v>2.2 && running.v>walking.v*1.45, 'Shift distingue caminhada e corrida');
     await p.evaluate(()=>game.resetPlayer());
