@@ -79,13 +79,31 @@ body[data-input="gamepad"] .hint-kb, body[data-input="touch"] .hint-kb { display
 body[data-input="gamepad"] .hint-pad { display: inline; }
 body[data-input="touch"] .hint-touch { display: inline; }
 
-/* Cartão de status compacto: canto superior esquerdo, recolhível por padrão */
-.ultima-status {
+/* Coluna do canto superior esquerdo: cartão de status e, logo abaixo, a Oficina do
+   mundo — empilhados no fluxo, então nunca um cobre o outro (antes os dois eram
+   posicionados de forma absoluta no mesmo ponto e o status interceptava os cliques
+   da Oficina). A coluna respeita a altura da janela; a Oficina rola por dentro. */
+.ultima-corner {
     position: absolute; top: .75rem; left: .75rem;
-    width: min(300px, calc(100vw - 6rem));
+    display: flex; flex-direction: column; gap: .75rem;
+    width: min(340px, calc(100vw - 8rem));
+    max-height: calc(100% - 1.5rem);
+    min-height: 0;
     z-index: 4;
 }
+.ultima-status { flex: none; width: 100%; max-width: 300px; }
 .ultima-status__more { margin-top: .35rem; }
+
+/* Oficina do mundo: cartão da UI (vidro) que ocupa o resto da coluna e rola por dentro */
+.ultima-workshop { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.ultima-workshop__card { min-height: 0; display: flex; flex-direction: column; }
+.ultima-workshop__body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+/* Telas baixas (celular deitado): com a Oficina aberta ela ocupa a coluna inteira, por
+   cima do cartão de status — senão sobravam poucos pixels de altura para o conteúdo. */
+@media (max-height: 480px) {
+    .ultima-corner--oficina .ultima-workshop { position: absolute; inset: 0; }
+}
 
 /* Alternador do painel do jogo: canto superior direito */
 .ultima-panel-toggle { position: absolute; top: .75rem; right: .75rem; z-index: 4; }
@@ -175,7 +193,8 @@ form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
 /* Mobile: só o essencial (sticks + botão A + status mínimo) */
 @media (max-width: 760px) {
     .ultima-chat-log, form.ultima-chat-compose { display: none; }
-    .ultima-status { width: min(240px, calc(100vw - 7.5rem)); }
+    .ultima-corner { width: calc(100vw - 8rem); }
+    .ultima-status { max-width: min(240px, 100%); }
     .ultima-panel { top: 3.3rem; max-height: calc(100% - 4.5rem); }
     .ultima-dialog { bottom: .6rem; }
     .ultima-dialog__line { font-size: .9rem; }

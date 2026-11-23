@@ -59,6 +59,7 @@
                     console.warn('[oficina] asset do mundo recusado, sigo sem ele:', asset.id, e);
                 }).then(refreshBuildOptions);
             }
+            await refreshBuildOptions();
         } catch (e) {
             // 404 = servidor ainda sem a rota de assets; offline = API fora. Silencioso:
             // o painel mostra o estado quando o jogador tenta usar a oficina.
@@ -95,22 +96,24 @@
         }
     }
 
-    // Upload de GLB do jogador (fase 4): lê o arquivo, envia os bytes com o token da
-    // sessão e planta no mundo compartilhado quando o servidor aceita.
-    async function upload(input) {
+    // Upload de GLB do jogador (fase 4): envia os bytes com o token da sessão e planta
+    // no mundo compartilhado quando o servidor aceita. Entrada usada pela interface: o
+    // Blazor lê o arquivo (InputFile atrás de um botão da UI) e entrega os bytes, o nome
+    // e a escala — o JS não lê mais controles do DOM.
+    async function uploadBytes(bytes, fileName, scale) {
         const l = live();
-        const file = input.files && input.files[0];
-        if (!file) { return; }
+        const buf = typeof bytes === 'string' ? Uint8Array.from(atob(bytes), (c) => c.charCodeAt(0)) : bytes;
+        if (!buf || !buf.byteLength) { return; }
         if (!l || !l.token()) { status('Conecte-se ao servidor do jogo para enviar.'); return; }
-        if (file.size > MAX_BYTES) { status('Máximo 2 MB por modelo.'); input.value = ''; return; }
-        status('Enviando ' + (file.size / 1024).toFixed(0) + ' KB…');
+        if (buf.byteLength > MAX_BYTES) { status('Máximo 2 MB por modelo.'); return; }
+        status('Enviando ' + (buf.byteLength / 1024).toFixed(0) + ' KB…');
         try {
-            const scale = Number(document.getElementById('workshop-scale') && document.getElementById('workshop-scale').value) || 1;
-            const name = file.name.replace(/\.glb$/i, '').slice(0, 40);
-            const res = await fetch(l.api() + '/v1/assets/upload?name=' + encodeURIComponent(name) + '&scale=' + scale, {
+            const k = Number(scale) || 1;
+            const name = String(fileName || 'modelo').replace(/\.glb$/i, '').slice(0, 40);
+            const res = await fetch(l.api() + '/v1/assets/upload?name=' + encodeURIComponent(name) + '&scale=' + k, {
                 method: 'POST',
                 headers: { 'Content-Type': 'model/gltf-binary', 'X-Game-Token': l.token() },
-                body: await file.arrayBuffer(),
+                body: buf,
                 cache: 'no-store'
             });
             const data = await res.json().catch(() => null);
@@ -126,6 +129,21 @@
         } catch (e) {
             status('Falha no envio: ' + ((e && e.message) || e));
         }
+    }
+
+    // Abre o seletor de arquivo de um InputFile escondido (o botão visível é um componente
+    // da UI Sufficit.Blazor.UI).
+    function pickFile(id) {
+        const el = document.getElementById(id);
+        if (el) { el.click(); }
+    }
+
+    // Entrada antiga por <input type=file> (mantida para quem ainda chamar por elemento).
+    async function upload(input) {
+        const file = input.files && input.files[0];
+        if (!file) { return; }
+        if (file.size > MAX_BYTES) { status('Máximo 2 MB por modelo.'); input.value = ''; return; }
+        await uploadBytes(new Uint8Array(await file.arrayBuffer()), file.name, 1);
         input.value = '';
     }
 
@@ -143,25 +161,28 @@
         }
     }
 
-    // Opções do seletor de construção: assets carregados no motor (locais + do servidor).
-    function refreshBuildOptions() {
-        const sel = document.getElementById('build-asset');
-        if (!sel) { return; }
+    // Modelos disponíveis para construir: assets carregados no motor (locais + do
+    // servidor). game.glb.status() é síncrono na main thread e uma Promise no worker —
+    // por isso o await (antes a leitura síncrona devolvia lista vazia no worker). A lista
+    // vai para o Blazor (OnBuildAssets), que renderiza o seletor.
+    async function refreshBuildOptions() {
         let ids = [];
         try {
-            const st = window.game.glb.status();
+            const st = await window.game.glb.status();
             ids = (st && st.instances ? Object.keys(st.instances) : []).filter(function (id) {
                 return id.indexOf('gen.') !== 0;
             }).sort();
         } catch (e) { ids = []; }
-        const current = sel.value;
-        sel.innerHTML = '';
-        for (const id of ids) {
-            const o = document.createElement('option');
-            o.value = id; o.textContent = id;
-            sel.appendChild(o);
-        }
-        if (ids.indexOf(current) >= 0) { sel.value = current; }
+        if (dotnet) { dotnet.invokeMethodAsync('OnBuildAssets', ids).catch(function () { /* UI ainda subindo */ }); }
+        return ids;
+    }
+
+    // A oficina inicia antes de o motor carregar o cenário: a primeira lista sai vazia.
+    // Repete por segundo até aparecer (limite de 30 tentativas); depois cada sincronização
+    // do catálogo atualiza a lista.
+    async function watchBuildOptions(attempt) {
+        const ids = await refreshBuildOptions();
+        if (!ids.length && attempt < 30) { setTimeout(function () { watchBuildOptions(attempt + 1); }, 1000); }
     }
 
     window.game = window.game || {};
@@ -169,12 +190,14 @@
         init(dotnetRef) {
             dotnet = dotnetRef;
             if (timer) { clearInterval(timer); }
-            refreshBuildOptions();
+            watchBuildOptions(0);
             sync();
             timer = setInterval(sync, SYNC_MS);
         },
         generate: generate,
         upload: upload,
+        uploadBytes: uploadBytes,
+        pickFile: pickFile,
         worldOp: worldOp,
         refreshBuildOptions: refreshBuildOptions,
         status: function () { return { known: Array.from(known) }; }

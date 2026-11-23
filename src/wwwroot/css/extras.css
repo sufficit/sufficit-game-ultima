@@ -17,9 +17,12 @@
 /* Cartões do jogo em vidro: mantêm a estrutura da SUI, ganham canto generoso */
 .ultima-theme .sui-card.ultima-card--glass { border-radius: var(--sui-radius-lg); }
 
-/* Campos de texto dentro dos painéis do jogo ocupam a largura disponível */
+/* Campos dentro dos painéis do jogo (Painel, diálogo e Oficina) ocupam a largura
+   disponível. Os controles da Oficina são todos componentes da SUI — não há mais
+   estilos próprios para botão, entrada, seletor ou arquivo. */
 .ultima-theme .ultima-panel .sui-field,
-.ultima-theme .ultima-dialog .sui-field { width: 100%; }
+.ultima-theme .ultima-dialog .sui-field,
+.ultima-theme .ultima-workshop .sui-field { width: 100%; }
 
 /* Lista de modelos da IA na CPU: botões SUI como itens de seleção à esquerda */
 .ultima-models { display: flex; flex-direction: column; gap: .3rem; }
@@ -79,30 +82,3 @@ body[data-input="touch"] .hint-touch { display: inline; }
 .ai-panel .ai-models button { text-align: left; font-size: .72rem; padding: .3rem .5rem; }
 .ai-panel .ai-models button[aria-pressed="true"] { outline: 1px solid #38d9a9; }
 .ai-panel[data-ai-state="loading"] progress { accent-color: #74c0fc; }
-
-/* Oficina do mundo (PLAN-PLAYER-ASSETS): variações, geração, upload e estilo */
-.workshop-panel {
-    position: absolute; top: 3.4rem; left: 0.7rem; width: min(300px, calc(100% - 1.4rem));
-    padding: 0.45rem 0.7rem; border-radius: 0.7rem; background: rgba(9, 13, 20, 0.86);
-    border: 1px solid #26304a; font-size: 0.75rem; z-index: 2;
-}
-.workshop-panel summary {
-    display: flex; justify-content: space-between; align-items: baseline; gap: .5rem;
-    cursor: pointer; color: #cfe3ff; list-style: revert;
-}
-.workshop-panel summary span { color: #9fe0b5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workshop-panel details[open] summary { margin-bottom: .3rem; }
-.ws-block { display: flex; flex-direction: column; gap: .25rem; padding: .4rem 0; border-top: 1px solid rgba(255,255,255,.09); }
-.ws-block strong { color: #cfe3ff; }
-.ws-block small { color: #9fb4d8; line-height: 1.25; }
-.ws-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
-.ws-actions button { padding: 0.3rem 0.55rem; font-size: 0.72rem; }
-.ws-row { display: flex; gap: .4rem; align-items: center; }
-.ws-row input[type="file"] { font-size: .68rem; padding: .25rem .4rem; }
-.ws-row input[type="number"] { width: 4.2rem; flex: none; text-align: center; }
-.ws-row input[type="range"] { flex: 1; padding: 0; border: none; background: none; accent-color: #38d9a9; }
-.ws-select { flex: 1; padding: 0.3rem 0.45rem; font-size: 0.75rem; }
-@media (pointer: coarse), (max-width: 760px) {
-    .workshop-panel { top: 3rem; }
-    .workshop-panel summary span { max-width: 9rem; }
-}
