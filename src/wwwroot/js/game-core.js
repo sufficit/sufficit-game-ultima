@@ -43,8 +43,9 @@
     let camera = null;
     const G = host.global;
     const dom = !!host.dom;
-    const CAM_POINTER_SENS = 0.008;   // rad/px do arrasto no modo worker (sem attachControl)
+    const CAM_POINTER_SENS = 0.01;    // rad/px do arrasto no worker — mesma medida do attachControl na main (200 px ≈ 2,0 rad)
     const camPending = { dx: 0, dy: 0, wheel: 0 };
+    let zoomTarget = null;   // raio escolhido na roda (null = usa o raio atual)
     const padState = { x: 0, y: 0, lookX: 0, lookY: 0 };
     // Eventos para fora (UI C#, rede) saem todos por aqui — idêntico nos dois modos.
     const dotnet = { invokeMethodAsync: function (name) { host.postEvent(name, Array.prototype.slice.call(arguments, 1)); } };
@@ -2007,17 +2008,35 @@
                 if (!frozen) {
                     camera.alpha -= (pad.lookX + lookStick.x) * delta * 2.2;
                     camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + (pad.lookY + lookStick.y) * delta * 1.7));
-                    if (!dom) {
-                        // Arrasto/roda do ponteiro chegaram pela ponte (sem attachControl).
-                        if (camPending.dx || camPending.dy) {
-                            camera.alpha -= camPending.dx * CAM_POINTER_SENS;
-                            camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + camPending.dy * CAM_POINTER_SENS));
-                            camPending.dx = 0; camPending.dy = 0;
-                        }
-                        if (camPending.wheel) {
-                            camera.radius = Math.max(camera.lowerRadiusLimit || 2.4, Math.min(camera.upperRadiusLimit || 40, camera.radius * (1 + camPending.wheel * 0.01)));
-                            camPending.wheel = 0;
-                        }
+                }
+                if (!dom) {
+                    // Ponteiro (arrasto/roda) chegou pela ponte — fora do travamento do
+                    // diálogo, como o attachControl na main thread.
+                    if (camPending.dx || camPending.dy) {
+                        camera.alpha -= camPending.dx * CAM_POINTER_SENS;
+                        camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + camPending.dy * CAM_POINTER_SENS));
+                        camPending.dx = 0; camPending.dy = 0;
+                    }
+                    if (camPending.wheel) {
+                        // Zoom equivalente ao attachControl com wheelDeltaPercentage:
+                        // no Babylon, um entalhe (deltaY 120) ≈ 10% do raio somando a
+                        // inércia (fator ~9× sobre 0,01·120·pct). Aplicamos o mesmo
+                        // resultado DIRETO no alvo e suavizamos a chegada — sem a cauda
+                        // de inércia acumulada, que continuava rodando sozinha.
+                        // Proporção medida no attachControl (Babylon 9.36, inércia somada):
+                        // um entalhe (120) afasta ≈12,1%; para perto, 7 entalhes ≈ −50%
+                        // (≈9,9% cada). Em escala logarítmica o delta parcial do
+                        // touchpad fica suave.
+                        const entalhes = -camPending.wheel / 120;
+                        if (zoomTarget === null) { zoomTarget = camera.radius; }
+                        zoomTarget *= entalhes > 0 ? Math.pow(0.9015, entalhes) : Math.pow(1.1212, -entalhes);
+                        zoomTarget = Math.max(camera.lowerRadiusLimit || 2.4, Math.min(camera.upperRadiusLimit || 40, zoomTarget));
+                        camPending.wheel = 0;
+                    }
+                    if (zoomTarget !== null) {
+                        // Chegada suave por tempo real (independente da taxa de quadros).
+                        camera.radius += (zoomTarget - camera.radius) * Math.min(1, Math.min(0.25, engine.getDeltaTime() / 1000) * 14);
+                        if (Math.abs(zoomTarget - camera.radius) < 1e-3) { camera.radius = zoomTarget; zoomTarget = null; }
                     }
                 }
                 movePlayer(delta, pad);
@@ -2026,7 +2045,11 @@
                     ensureChunksAround(player.position.x, player.position.z);
                 }
                 checkNear();
-                camera.setTarget(player.position.add(CAM_UP));
+                // Seguir mutando o vetor-alvo NO LUGAR: preserva alfa/beta/raio (a
+                // distância que o jogador escolheu na roda). O setTarget recalcula o
+                // raio a partir da posição atual da câmera — a cada frame com o jogador
+                // em movimento o raio rangueava de volta ao inicial.
+                camera.target.set(player.position.x, player.position.y + PLAYER_HEIGHT / 2, player.position.z);
                 scene.render();
                 framePerf(performance.now() - frameStart);
                 tick(performance.now());
@@ -2054,7 +2077,7 @@
         key(code, down) { if (gameCodes.includes(code)) { keys[code] = !!down; } },
         stick(which, x, y) { if (which === 'move') { moveStick = { x: x, y: y }; } else if (which === 'look') { lookStick = { x: x, y: y }; } },
         pad(x, y, lookX, lookY) { padState.x = x || 0; padState.y = y || 0; padState.lookX = lookX || 0; padState.lookY = lookY || 0; },
-        camera(dx, dy, wheel) { camPending.dx += dx || 0; camPending.dy += dy || 0; camPending.wheel += wheel || 0; },
+        camera(dx, dy, wheel, deltaMode) { camPending.dx += dx || 0; camPending.dy += dy || 0; camPending.wheel += (wheel || 0) * (deltaMode === 1 ? 40 : 1); },
         action() { interact(); },
         terrainClick(sx, sy) { terrainClickImpl(sx, sy); },
         cancel() { dotnet.invokeMethodAsync('OnClose'); },
@@ -2089,7 +2112,7 @@
         },
         resetPlayer() {
             if (player) { player.position.x = 0; player.position.z = 0; player.rotation.y = 0; }
-            if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 7.5; }
+            if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 7.5; zoomTarget = null; }
         },
         teleportToGuardian() {
             if (!player || !camera) return false;
@@ -2097,7 +2120,7 @@
             player.position.z = NPC_POSITION.z + 2.0;
             player.position.y = terrainHeight(player.position.x, player.position.z) + 0.03;
             player.rotation.y = Math.PI;
-            camera.setTarget(player.position.add(CAM_UP));
+            camera.target.set(player.position.x, player.position.y + PLAYER_HEIGHT / 2, player.position.z);
             checkNear();
             return true;
         },

@@ -270,25 +270,55 @@
 
         // Câmera no modo worker: arrasto e roda no canvas viram deltas (a attachControl
         // do Babylon pertence ao core na main). No modo main o core cuida disso sozinho.
-        let dragging = false, lastX = 0, lastY = 0, downAt = 0, downX = 0, downY = 0;
-        canvas.addEventListener('pointerdown', function (e) { dragging = true; lastX = e.clientX; lastY = e.clientY; downAt = Date.now(); downX = e.clientX; downY = e.clientY; });
-        window.addEventListener('pointerup', function (e) {
-            dragging = false;
+        // Um dedo/mouse arrasta e gira; dois dedos são pinça (zoom) e o giro fica
+        // suspenso. Convenção do attachControl do Babylon (pinchInwards): juntar os
+        // dedos aproxima. A pinça usa a mesma escala da roda: reduzir a distância
+        // à metade equivale a ≈7 entalhes. Um clique curto de um dedo (sem arrasto,
+        // sem pinça) segue sendo candidata a edição do mundo no modo construção.
+        const pointers = new Map();
+        let lastX = 0, lastY = 0, pinchDist = 0, downAt = 0, downX = 0, downY = 0, pinched = false;
+        canvas.addEventListener('pointerdown', function (e) {
+            pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (pointers.size === 2) {
+                const pts = Array.from(pointers.values());
+                pinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+                pinched = true;
+            } else {
+                lastX = e.clientX; lastY = e.clientY;
+                downAt = Date.now(); downX = e.clientX; downY = e.clientY; pinched = false;
+            }
+        });
+        function solta(e) {
+            pointers.delete(e.pointerId);
+            if (pointers.size < 2) { pinchDist = 0; }
             // Clique curto sem arrasto: candidata a edição do mundo (o core ignora fora do modo).
-            if (Date.now() - downAt < 500 && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
+            if (pointers.size === 0 && !pinched && Date.now() - downAt < 500 && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
                 const rect = canvas.getBoundingClientRect();
                 const dpr = window.devicePixelRatio || 1;
                 deliver('terrainClick', [(e.clientX - rect.left) * dpr, (e.clientY - rect.top) * dpr]);
             }
-        });
+        }
+        window.addEventListener('pointerup', solta);
+        window.addEventListener('pointercancel', solta);
         window.addEventListener('pointermove', function (e) {
-            if (!dragging) { return; }
+            if (!pointers.has(e.pointerId)) { return; }
+            if (pointers.size === 2) {
+                pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                const pts = Array.from(pointers.values());
+                const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+                if (pinchDist > 0 && d > 0) {
+                    deliver('camera', [0, 0, 120 * ((d - pinchDist) / pinchDist) * 10]);
+                }
+                pinchDist = d;
+                return;
+            }
             deliver('camera', [e.clientX - lastX, e.clientY - lastY, 0]);
             lastX = e.clientX; lastY = e.clientY;
         });
         canvas.addEventListener('wheel', function (e) {
             e.preventDefault();
-            deliver('camera', [0, 0, Math.sign(e.deltaY)]);
+            // deltaY completo (a magnitude importa no zoom) + deltaMode (linhas ×40).
+            deliver('camera', [0, 0, e.deltaY, e.deltaMode]);
         }, { passive: false });
 
         // Analógicos virtuais de toque continuam no DOM, entregando pela ponte.

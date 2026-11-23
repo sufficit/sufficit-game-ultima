@@ -21,10 +21,10 @@
             <div class="ultima-toast ultima-announce" role="note">@_announcement</div>
         }
 
-        @if (_near && _view is null)
+        @if ((_near || _nearWanderer) && _view is null)
         {
             <div class="ultima-toast ultima-hint" role="status">
-                Perto da Guardiã —
+                Perto @(_near ? "da Guardiã" : "do Andarilho") —
                 <span class="hint-kb">pressione <kbd>E</kbd></span>
                 <span class="hint-pad">pressione <kbd>A</kbd> no controle</span>
                 <span class="hint-touch">toque no botão <kbd>A</kbd></span>
@@ -367,6 +367,7 @@
     private DotNetObjectReference<Ultima.Models.ModelsInterop>? _modelsRef;
     private string _renderer = string.Empty;
     private bool _near;
+    private bool _nearWanderer;
     private DialogView? _view;
     private readonly NpcScheduler _npc = new();
     private double _posX, _posY, _posZ, _fps, _micLevel;
@@ -501,6 +502,7 @@
         {
             EngineReady = renderer => _ = InvokeAsync(() => { _renderer = renderer; StateHasChanged(); }),
             NearChanged = near => _ = InvokeAsync(() => { _near = near; StateHasChanged(); }),
+            WandererNearChanged = near => _ = InvokeAsync(() => { _nearWanderer = near; StateHasChanged(); }),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
             Close = () => _ = InvokeAsync(CloseDialog),
             MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; RunNpcTick(); StateHasChanged(); }),
@@ -589,9 +591,7 @@
 
     private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-    private bool PlayerNearWanderer() => _remoteCount > 0;
-
-    private WorldSnapshot Snapshot() => new(_posX, _posZ, _near, PlayerNearWanderer(), _view is not null, _aiState == "ready", NowMs());
+    private WorldSnapshot Snapshot() => new(_posX, _posZ, _near, _nearWanderer, _view is not null, _aiState == "ready", NowMs());
 
     private void Dispatch(GameEvent e)
     {
@@ -666,8 +666,12 @@
         _turnStartedMs = NowMs();   // t50: base do tempo de resposta do turno registrado
         Dispatch(new PlayerSpoke(NowMs(), text));
         // Produtores caros (WebLLM na GPU, API do jogo, fallback local) correm fora do
-        // tick; a resposta vira evento e o cérebro a aplica em um tick futuro.
-        var (reply, source) = await AskGuardianAsync(text);
+        // tick; a resposta vira evento e o cérebro a aplica em um tick futuro. Os
+        // produtores atuais têm a persona da Guardiã: o Andarilho responde com falas
+        // locais próprias até existir um produtor para ele.
+        var (reply, source) = _view.Speaker == "Andarilho"
+            ? ("Hm… sigo pensando nisso enquanto caminho. Sobre o jardim, pergunte à Guardiã; das trilhas, eu conto.", "falas locais do andarilho")
+            : await AskGuardianAsync(text);
         Dispatch(new ReplyArrived(NowMs(), reply, source));
     }
 
