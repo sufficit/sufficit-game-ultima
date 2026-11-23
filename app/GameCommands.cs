@@ -5,7 +5,8 @@ namespace Ultima.Server;
 sealed partial class GameWorld
 {
     static readonly string[] Actions =
-        ["move", "moveto", "look", "pose", "stop", "say", "interact", "dig", "queue", "cancel_order", "stop_job"];
+        ["move", "moveto", "look", "pose", "stop", "say", "interact", "dig", "queue", "cancel_order", "stop_job",
+         "sculpt", "paint", "place", "remove", "passage", "carve"];
 
     static bool CmdAllowed(Character ch, double now)
     {
@@ -135,7 +136,7 @@ sealed partial class GameWorld
                         return (409, new JsonObject { ["error"] = "job_exists", ["job"] = JobPublic(existing) });
                     var job = NewJob(ch, cx, cz, key, now);
                     _jobs.Add(job);
-                    MapSave();
+                    RecordJob(job);
                     var pub = JobPublic(job);
                     Emit(new JsonObject { ["type"] = "job_started", ["job"] = pub });
                     var res = Ok(ch);
@@ -198,7 +199,7 @@ sealed partial class GameWorld
                     if (job is not null)
                     {
                         _jobs.Remove(job);
-                        MapSave();
+                        RecordJobCancel(job);
                         Emit(new JsonObject
                         {
                             ["type"] = "job_cancelled", ["job"] = new JsonObject { ["id"] = job.Id, ["cell"] = job.Cell },
@@ -209,6 +210,12 @@ sealed partial class GameWorld
                     res["queue"] = new JsonArray();
                     return (200, res);
                 }
+                case "sculpt": return SculptCmd(ch, data, now);
+                case "paint": return PaintCmd(ch, data, now);
+                case "place": return PlaceCmd(ch, data, now);
+                case "remove": return RemoveCmd(ch, data, now);
+                case "passage": return PassageCmd(ch, data, now);
+                case "carve": return CarveCmd(ch, data, now);
                 default:
                     return (400, new JsonObject { ["error"] = "unknown_action", ["actions"] = J.StrArr(Actions) });
             }

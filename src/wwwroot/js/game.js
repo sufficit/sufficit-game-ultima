@@ -31,6 +31,12 @@
         catch (e) { return 'procedural'; }
     }
 
+    const GRAPHICS_PREF_KEY = 'ultima.graficos';
+    function graphicsPref() {
+        try { return localStorage.getItem(GRAPHICS_PREF_KEY) === 'pbr' ? 'pbr' : 'padrao'; }
+        catch (e) { return 'padrao'; }
+    }
+
     function buildStamp() {
         const meta = document.querySelector('meta[name="ultima-build"]');
         return (meta && meta.content) || 'dev';
@@ -59,6 +65,18 @@
         if (document.body) { document.body.dataset.input = kind; }
     }
 
+    // Ops do mundo vindas do motor (cliques do modo construção): a oficina vive na main
+    // thread e é ela quem aplica/valida no servidor — igual à ponte varyModel.
+    function routeWorldOp(op) {
+        if (window.game && game.workshop && game.workshop.worldOp) { game.workshop.worldOp(op); }
+    }
+
+    // Feedback do modo construção: cursor de mira sobre o canvas.
+    function onBuildMode(mode) {
+        var canvas = document.getElementById('game-canvas');
+        if (canvas) { canvas.style.cursor = mode && mode !== 'off' ? 'crosshair' : ''; }
+    }
+
     // ---------- Modo main: Babylon injetado com SRI, core direto ----------
     function loadBabylon() {
         if (window.BABYLON) { return Promise.resolve(); }
@@ -83,12 +101,15 @@
                     build: buildStamp(),
                     pageBase: location.href,
                     scenery: sceneryPref(),
+                    graphics: graphicsPref(),
                     global: window,
                     dom: true,
                     postEvent: postEventToDotnet,
                     sendPose: sendPose,
                     onInputMode: onInputMode,
                     varyModel: varyModelAsync,
+                    worldOp: routeWorldOp,
+                    onBuildMode: onBuildMode,
                     onCoreReady: function () { resolve(true); },
                     onCoreError: reject
                 });
@@ -105,9 +126,15 @@
 
     function startWorker(canvas) {
         const off = canvas.transferControlToOffscreen();
-        worker = new Worker('js/game-worker.js');
+        // Mesma versão dos scripts da página (?v=<build>): sem isso o cache HTTP
+        // (10 min) pode entregar um worker/motor antigos junto com o shell novo logo
+        // após uma publicação. O worker repassa a query aos próprios imports.
+        worker = new Worker('js/game-worker.js?v=' + encodeURIComponent(buildStamp()));
         return new Promise(function (resolve, reject) {
-            const fatal = setTimeout(function () { reject(new Error('worker não deu sinal de vida')); }, 20000);
+            // O "sinal de vida" só chega depois de baixar o Babylon (≈9 MB do CDN),
+            // aquecer o cache local e construir a cena: em rede lenta isso passa de
+            // 20 s. O prazo folgado evita recarregar o jogo no modo sem worker à toa.
+            const fatal = setTimeout(function () { reject(new Error('worker não deu sinal de vida')); }, 120000);
             worker.onmessage = function (e) { handleWorkerMessage(e.data, resolve, reject, fatal); };
             worker.onerror = function (e) {
                 clearTimeout(fatal);
@@ -142,6 +169,10 @@
         } else if (msg.type === 'result') {
             const r = calls.get(msg.id);
             if (r) { calls.delete(msg.id); r(msg.value); }
+        } else if (msg.type === 'worldOp') {
+            routeWorldOp(msg.op);
+        } else if (msg.type === 'buildMode') {
+            onBuildMode(msg.mode);
         } else if (msg.type === 'varyModel') {
             // Core pediu variação paramétrica: chama o C# e devolve o descritor JSON ao worker.
             varyModelAsync(msg.modelId, msg.seed, msg.detail).then(function (json) {
@@ -239,17 +270,55 @@
 
         // Câmera no modo worker: arrasto e roda no canvas viram deltas (a attachControl
         // do Babylon pertence ao core na main). No modo main o core cuida disso sozinho.
-        let dragging = false, lastX = 0, lastY = 0;
-        canvas.addEventListener('pointerdown', function (e) { dragging = true; lastX = e.clientX; lastY = e.clientY; });
-        window.addEventListener('pointerup', function () { dragging = false; });
+        // Um dedo/mouse arrasta e gira; dois dedos são pinça (zoom) e o giro fica
+        // suspenso. Convenção do attachControl do Babylon (pinchInwards): juntar os
+        // dedos aproxima. A pinça usa a mesma escala da roda: reduzir a distância
+        // à metade equivale a ≈7 entalhes. Um clique curto de um dedo (sem arrasto,
+        // sem pinça) segue sendo candidata a edição do mundo no modo construção.
+        const pointers = new Map();
+        let lastX = 0, lastY = 0, pinchDist = 0, downAt = 0, downX = 0, downY = 0, pinched = false;
+        canvas.addEventListener('pointerdown', function (e) {
+            pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (pointers.size === 2) {
+                const pts = Array.from(pointers.values());
+                pinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+                pinched = true;
+            } else {
+                lastX = e.clientX; lastY = e.clientY;
+                downAt = Date.now(); downX = e.clientX; downY = e.clientY; pinched = false;
+            }
+        });
+        function solta(e) {
+            pointers.delete(e.pointerId);
+            if (pointers.size < 2) { pinchDist = 0; }
+            // Clique curto sem arrasto: candidata a edição do mundo (o core ignora fora do modo).
+            if (pointers.size === 0 && !pinched && Date.now() - downAt < 500 && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) {
+                const rect = canvas.getBoundingClientRect();
+                const dpr = window.devicePixelRatio || 1;
+                deliver('terrainClick', [(e.clientX - rect.left) * dpr, (e.clientY - rect.top) * dpr]);
+            }
+        }
+        window.addEventListener('pointerup', solta);
+        window.addEventListener('pointercancel', solta);
         window.addEventListener('pointermove', function (e) {
-            if (!dragging) { return; }
+            if (!pointers.has(e.pointerId)) { return; }
+            if (pointers.size === 2) {
+                pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                const pts = Array.from(pointers.values());
+                const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+                if (pinchDist > 0 && d > 0) {
+                    deliver('camera', [0, 0, 120 * ((d - pinchDist) / pinchDist) * 10]);
+                }
+                pinchDist = d;
+                return;
+            }
             deliver('camera', [e.clientX - lastX, e.clientY - lastY, 0]);
             lastX = e.clientX; lastY = e.clientY;
         });
         canvas.addEventListener('wheel', function (e) {
             e.preventDefault();
-            deliver('camera', [0, 0, Math.sign(e.deltaY)]);
+            // deltaY completo (a magnitude importa no zoom) + deltaMode (linhas ×40).
+            deliver('camera', [0, 0, e.deltaY, e.deltaMode]);
         }, { passive: false });
 
         // Analógicos virtuais de toque continuam no DOM, entregando pela ponte.
@@ -390,6 +459,19 @@
         removeRemote(id) { post('removeRemote', [id]); },
         setMapTiles(tiles) { post('setMapTiles', [tiles]); },
         setMapJobs(jobs) { post('setMapJobs', [jobs]); },
+        setWorldEdits(edits, revision) { post('setWorldEdits', [edits, revision]); },
+        setPlacements(list) { post('setPlacements', [list]); },
+        applyWorldOp(op) { post('applyWorldOp', [op]); },
+        build: {
+            mode(m, opts) { return query('build.mode', [m, opts]); },
+            state() { return query('build.state'); }
+        },
+        // Clique no terreno pelo caminho interno (automação/teste do modo construção).
+        terrainClick(sx, sy) { post('input.terrainClick', [sx, sy]); },
+        camBias(dx, dy, wheel) { post('input.camera', [dx, dy, wheel]); },
+        keyInput(code, down) { post('input.key', [code, down]); },
+        heightAt(x, z) { return query('heightAt', [x, z]); },
+        probeMesh(x, z) { return query('probeMesh', [x, z]); },
         models: {
             register(json, placeholder) { post('models.register', [json, placeholder]); return true; },
             loaderDone(log) { post('models.loaderDone', [log]); },
@@ -411,6 +493,15 @@
             set(style) {
                 const value = style === 'lowpoly' ? 'lowpoly' : 'procedural';
                 try { localStorage.setItem(SCENERY_PREF_KEY, value); } catch (e) { /* sem storage */ }
+                return value;
+            }
+        },
+        graphics: {
+            // F7b: PBR+IBL (materiais glTF originais) ou padrão (StandardMaterial).
+            get() { return graphicsPref(); },
+            set(style) {
+                const value = style === 'pbr' ? 'pbr' : 'padrao';
+                try { localStorage.setItem(GRAPHICS_PREF_KEY, value); } catch (e) { /* sem storage */ }
                 return value;
             }
         },

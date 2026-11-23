@@ -56,10 +56,18 @@ Commit `07ff4f2` (5 arquivos, +1976/−1508):
   ("servidor · regras"); diálogo do Andarilho; OPFS na 2ª visita com 12 acertos
   (5 texturas + terreno + 6 GLB); fallback `?render=main` sem marca de worker,
   6/6 modelos (série temporal monotônica `0→4→5→6`) e diálogo completo.
-- Nota de instrumento: leituras únicas agrupadas num único `evaluate` multicall
-  apresentaram valores defasados de vez em quando (worker e main); as séries
-  temporais e os fluxos reais (diálogos, OPFS, contagens) são consistentes entre
-  si — o fantasma era do harness, não do jogo.
+- Nota de instrumento (corrigida em 22/11): esta validação leu, de vez em quando,
+  contagens incompletas (4 ou 5 modelos de 6, "0 instâncias"). A causa, descoberta
+  depois: nesta versão do playwright-core (1.64.1), `waitForFunction` com predicado
+  async **não espera** — resolve assim que a Promise resolve, mesmo devolvendo
+  `false`. As esperas desta suíte nunca esperaram o jogo carregar, e as leituras
+  logo a seguir pegavam a página ainda carregando. Não era do jogo. Revalidado com
+  espera real em 22/11 (build `39f48a5`, produção, ver
+  [202611222015-layout-altura-casca.md](202611222015-layout-altura-casca.md)):
+  6/6 modelos e ~450 instâncias confirmados antes de cada medição, diálogo da
+  Guardiã com resposta e origem, câmera por arrasto e cache local na 2ª visita
+  (15 acertos, nada regravado). O tamanho do buffer e a nitidez não dependiam da
+  espera: foram lidos segundos após a carga, com o buffer já definido.
 - `dotnet publish -c Release` sem erros; deploy do Pages concluído (push
   `07ff4f2`); produção https://sufficit.github.io/sufficit-game-ultima/:
   - modo worker (padrão): série temporal — **6/6 modelos, 6/6 GLB, 450/450

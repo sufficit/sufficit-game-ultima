@@ -2,9 +2,12 @@
 // veio transferido da main thread (OffscreenCanvas). A ponte de mensagens está
 // documentada no game.js (shell): init/call/input de lá para cá; ready/fatal/event/
 // pose/inputMode/result de cá para lá.
+// O shell cria este worker com ?v=<build>; os imports relativos herdam a query para
+// ficarem na MESMA versão dos scripts da página (e reaproveitar a entrada de cache).
+const V = location.search;
 importScripts('https://cdn.jsdelivr.net/npm/babylonjs@9.36.0/babylon.js');
-importScripts('assets.js');
-importScripts('game-core.js');
+importScripts('assets.js' + V);
+importScripts('game-core.js' + V);
 
 let core = null;
 
@@ -38,12 +41,15 @@ self.onmessage = function (e) {
                 build: msg.build,
                 pageBase: msg.pageBase,
                 scenery: msg.scenery,
+                graphics: msg.graphics,
                 size: msg.size || null,
                 global: self,
                 dom: false,
                 postEvent: function (name, args) { self.postMessage({ type: 'event', name: name, args: args }); },
                 sendPose: function (x, z, ry) { self.postMessage({ type: 'pose', x: x, z: z, ry: ry }); },
                 onInputMode: function (kind) { self.postMessage({ type: 'inputMode', kind: kind }); },
+                worldOp: function (op) { self.postMessage({ type: 'worldOp', op: op }); },
+                onBuildMode: function (mode) { self.postMessage({ type: 'buildMode', mode: mode }); },
                 varyModel: varyModelViaShell,
                 onCoreReady: function () { self.postMessage({ type: 'ready' }); },
                 onCoreError: function (message) { self.postMessage({ type: 'fatal', message: message }); }

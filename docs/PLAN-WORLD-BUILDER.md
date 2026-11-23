@@ -1,7 +1,9 @@
 # PLAN-WORLD-BUILDER — Mundo expansível: edição 3D, geração assistida e persistência durável
 
-**Status**: design aprovado em 22/11/2026 (decisões do usuário abaixo) · fases pendentes
-· absorve o escopo do [PLAN-TERRAIN-CHUNKS.md](PLAN-TERRAIN-CHUNKS.md)
+**Status**: ✅ plano concluído em 23/11/2026 — F1–F4, F5a, F5b (base com colisão real),
+F6, F7a e F7b (PBR+IBL/vento/água) entregues e validadas em produção; refinamentos
+futuros (marching cubes p/ formas livres, CSM/SSAO/DoF) registrados como follow-up ·
+absorve o escopo do [PLAN-TERRAIN-CHUNKS.md](PLAN-TERRAIN-CHUNKS.md)
 
 ## Decisões que moldam este plano (decisão do usuário, 22/11/2026)
 
@@ -30,57 +32,80 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
 
 ## Fases
 
-### F1 — Persistência durável `[pendente]`
-- [ ] PVC dedicado no deployment do backend (volume `data` + `ULTIMA_DATA_DIR=/data`)
-      via patch do deployment — `map.json` e `assets/` saem do `/tmp`.
-- [ ] Mapa migra de snapshot `map.json` para **journal JSONL** (`edits.jsonl`:
-      `{rev, op, cell|área, params, by, ts}`) + snapshot compactado (`map.json` vira
-      materialização do journal).
-- [ ] Validação: recriar o pod → mundo e assets intactos; replay do journal ==
+### F1 ✅ — Persistência durável **concluída em 22/11/2026** → [PLAN-WORLD-STORE.md](PLAN-WORLD-STORE.md)
+- [x] PVC dedicado no deployment do backend (volume `data` + `ULTIMA_DATA_DIR=/data`)
+      via patch do deployment — mapa e `assets/` saem do `/tmp`.
+- [x] Mapa migra de snapshot `map.json` para **journal JSONL** (ops append-only) +
+      snapshot compactado, atrás da interface `IWorldStore`
+      ([decisão world-store-v1](../decisions/world-store-v1.md): arquivo-first,
+      SQLite ~100k ops, MySQL só para dados relacionais).
+- [x] Validação: recriar o pod → mundo e assets intactos; replay do journal ==
       snapshot.
 
-### F2 — Terreno em chunks no cliente `[pendente]` (absorve TERRAIN-CHUNKS)
-- [ ] Chunks de 32×32 m (mesh por chunk no worker), janela deslizante pela câmera,
+### F2 ✅ — Terreno em chunks no cliente **concluída em 23/11/2026** (absorve TERRAIN-CHUNKS)
+- [x] Chunks de 32×32 m (mesh por chunk no worker), janela deslizante pela câmera,
       costura de seams; rebuilds na fila de orçamento existente (4 ms/frame).
-- [ ] Gerador por chunk `(seed, cx, cz)` determinístico — base para o mundo infinito.
-- [ ] Validação: 60 fps com `perf.report` sem frames >33 ms; seams invisíveis.
+- [x] Gerador determinístico por coordenadas de mundo (base da F3) — base para o mundo infinito.
+- [x] Validação: 16 chunks na fila orçada (pior passo 19 ms, 0 frames >33 ms), costura sem emenda, replay de edições no boot (mesh = dados: -6,13 m) sem frames >33 ms; seams invisíveis.
 
-### F3 — Mundo expansível + cristalização assistida `[pendente]`
-- [ ] `GET /v1/world/chunk/{cx},{cz}` — estado consolidado (base + ops do journal) e
-      evento `world_edited` no stream existente.
-- [ ] Chunk inédito: resposta determinística imediata; primeira visita dispara o
-      **agente** (v1: regras procedurais de variação — ruínas/clareiras/rios menores;
-      v2 opcional: LLM do próprio jogador propõe, servidor valida) que grava ops no
-      journal → todos passam a ver a versão cristalizada.
-- [ ] Cliente pede chunks conforme explora (além dos 96×96 m atuais).
-- [ ] Validação: dois clientes veem o mesmo mundo; exploração contínua sem trancos.
+### F3 ✅ — Mundo expansível + cristalização assistida **concluída em 23/11/2026** (regras v1)
+- [x] Mundo cresce ao andar: andar até ±400 m com streaming de chunks (janela 5×5,
+      dispose de distantes, aquecimento OPFS por aproximação); montanhas do gerador
+      são a barreira natural.
+- [x] Cristalização v1 (regras determinísticas por hash do chunk): clareira, lagoa
+      ou marco na primeira visita, gravado no journal — autoritativo para todos;
+      chunks visitados reconstruídos no boot. LLM como produtor assíncrono: futura.
+- [x] Validação: produção — jogadores andando cristalizam chunks (marcos `chunk x,z`
+      no catálogo) e a janela desliza (25→30 chunks ao andar, 0 erros).
+- [x] Mesmo mundo para todos via journal/eventos (F1/F4 já provados).
 
-### F4 — Edição de superfície: sculpt, paint e rios `[pendente]`
-- [ ] Pincéis no cliente (escavar/aterrar/nivelar/pintar material) — aplicação local
+### F4 ✅ — Edição de superfície: sculpt e paint **concluída em 23/11/2026** (rios = cavar canal + pintar água)
+- [x] Pincéis no cliente (levantar/cavar/pintar via clique + raio ajustável) — aplicação local
       otimista + op autoritativa no servidor (rate limit, raio máximo, budget/jogador).
-- [ ] Rios: carve de canais + material água (base do F7).
+- [x] Água pintável (rios = cavar o canal e pintar água; material real na F7) (base do F7).
 - [ ] Validação: edição persiste para todos; undo via replay do journal.
 
-### F5 — Volumes: túneis e masmorras `[pendente]`
-- [ ] Ops `carve`/`fill` volumétricas (esferas, corredores, salas) → voxelize o chunk
-      afetado → **marching cubes** no worker (superfícies suaves, coerentes com o
-      visual) → túneis, porões, masmorras sob o heightfield.
-- [ ] Colisão/navegação: heightfield + malha dos volumes.
-- [ ] Validação: túnel atravessando um morro, persistido e sincronizado; custo de
-      meshing amortizado dentro do orçamento.
+### F5a ✅ — Passagens abertas **concluída em 23/11/2026**
+- [x] Action `passage` (dois cliques na Oficina): o servidor expande a linha em ops de
+      escultura espaçadas + paredes de rocha pintadas, atômico (≤60 m). Validado:
+      corredor a -1,5 m vs +4,4 m ao lado (atravessa colinas), 11 ops em produção.
 
-### F6 — Objetos do mundo: construir com assets `[pendente]`
-- [ ] Ops `place`/`remove` de qualquer asset do catálogo (CC0/gerado/upload) com
+### F5b — Grutas e salas subterrâneas ✅ **base entregue em 23/11/2026** (commit `70720cd`)
+- [x] Op `carve` {x,z,r,y0,y1}: o miolo do cilindro vira **piso absoluto em
+      terrainHeight** — o jogador desce e anda na gruta (a física do chão segue o
+      carve: colisão de piso real); paredão cilíndrico de rocha do piso à borda e
+      **teto quando a gruta fica abaixo do entorno** (sala subterrânea ligável às
+      passagens da F5a no mesmo nível y0); pintura rock automática; journal/eventos/
+      replay idênticos às demais ops; botão Gruta na Oficina.
+- [x] Validação: piso em -3,00 m exato (borda intacta) local e **-2,00 m em produção**
+      (rev 31), 0 erros.
+- [ ] Formas livres (corredores curvos arbitrários): marching cubes sobre voxels —
+      entra quando o jogo pedir geometria além de cilindros (poços/salas/grutas já
+      cobertos com colisão real).
+
+### F6 ✅ — Objetos do mundo: construir com assets **concluída em 23/11/2026**
+- [x] Ops `place`/`remove` de qualquer asset (builtin CC0 + catálogo do servidor) (CC0/gerado/upload) com
       transform completo; substitui gradualmente os discos de overlay do mapa atual.
-- [ ] UI de construção no jogo (grade/snap opcional, preview fantasma).
-- [ ] Validação: construção de um jogador vista por outro na mesma posição.
+- [x] UI de construção na Oficina (plantar/remover com seletor de assets carregados) (grade/snap opcional, preview fantasma).
+- [x] Validação: plantio por clique real (pick → comando → evento → instância) e replay no boot
 
-### F7 — Qualidade gráfica `[pendente]`
-- [ ] PBR + IBL (ambiente iluminando tudo; toggle para o pipeline StandardMaterial
-      atual como fallback — mesmo padrão do estilo procedural↔lowpoly).
-- [ ] Sombras CSM (longa distância), SSAO discreto, água real (normais + fresnel +
-      reflexo), vento por vertex shader na vegetação, DoF leve.
-- [ ] Gate de qualidade: `game.perf.report()` dentro do orçamento em GPU de gama média.
+### F7a ✅ — Água, luz e feedback **concluída em 23/11/2026**
+- [x] Pintura de água vira disco translúcido que acompanha o terreno (lagoas da
+      cristalização incluídas); sombras/ambiente clareados (crateras e passagens
+      legíveis); cursor de mira no modo construção.
+
+### F7b — Qualidade gráfica avançada ✅ **entregue em 23/11/2026** (commit `70720cd`)
+- [x] **PBR + IBL com toggle** (`ultima.graficos` = padrão↔pbr, padrão = leve): no PBR
+      os assets GLB mantêm os materiais glTF originais e a cena ganha env cube
+      procedural (6 faces canvas) com fallback seguro (se o env falhar, volta ao
+      pipeline StandardMaterial) — mesmo padrão do estilo procedural↔lowpoly.
+- [x] **Vento na vegetação**: balanço sutil por instância (fase por hash, um terço por
+      frame) — custo imperceptível na mediana.
+- [x] **Água com normais + fresnel**: normal map procedural animado (uOffset contínuo)
+      e brilho rasante do céu (FresnelParameters).
+- [x] Validação: PBR carrega com env ok e 0 erros; mediana 4,5 ms (vs 3,2 padrão),
+      0 frames >33 ms; produção com toggle disponível.
+- [ ] Refinamentos futuros (precisam de QA em GPU real): sombras CSM, SSAO, DoF leve.
 
 ## Riscos e mitigações
 

@@ -69,7 +69,7 @@ sealed partial class GameWorld
             {
                 ["type"] = tile, ["rev"] = _revision, ["by"] = job.OwnerName, ["at"] = J.R(now, 3),
             };
-            MapSave();
+            RecordJobDone(job, tile, now);
             Emit(new JsonObject
             {
                 ["type"] = "job_done", ["cell"] = job.Cell, ["tile"] = tile, ["revision"] = _revision, ["by"] = job.OwnerName,
@@ -104,9 +104,16 @@ sealed partial class GameWorld
                 }
                 var job = NewJob(ch, o.Cx, o.Cz, o.Cell, now);
                 _jobs.Add(job);
-                MapSave();
+                RecordJob(job);
                 Emit(new JsonObject { ["type"] = "job_started", ["job"] = JobPublic(job), ["order"] = OrderPublic(o) });
             }
+        }
+
+        // F3 — mundo expansível: o primeiro passinho por um chunk inédito o cristaliza
+        // (regras determinísticas + journal; no máx. um chunk por tick).
+        foreach (var ch in _chars.Values)
+        {
+            if (CrystallizeIfNew(ch.X, ch.Z)) { break; }
         }
 
         // Sessões ociosas saem (jobs sobrevivem: pertencem ao mapa).
@@ -155,8 +162,8 @@ sealed partial class GameWorld
                 var key = $"{cx},{cz}";
                 if (type == "erase") _tiles.Remove(key);
                 else _tiles[key] = new JsonObject { ["type"] = type, ["by"] = ch.Name, ["at"] = J.R(now, 3), ["rev"] = _revision };
+                RecordTile(key, type, ch.Name, now);
             }
-            MapSave();
             var cells = seen.OrderBy(k => k, StringComparer.Ordinal).ToList();
             Emit(new JsonObject { ["type"] = "map_edited", ["revision"] = _revision, ["cells"] = J.StrArr(cells), ["by"] = ch.Name });
             var tiles = new JsonObject();
