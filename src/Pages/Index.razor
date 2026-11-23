@@ -1,6 +1,13 @@
 @page "/"
 @implements IDisposable
 @using Ultima.Npc
+@using Ultima.Browser
+@inject NavigationManager Navigation
+@inject Backpack BackpackState
+@inject Workshop WorkshopService
+@inject GameUpdate GameUpdates
+@inject DialogLog Dialogs
+@inject LiveGame Live
 @using Sufficit.Blazor.UI.Components
 @using Sufficit.Blazor.UI.Services
 @inject IJSRuntime JS
@@ -15,6 +22,21 @@
 <div class="game-shell ultima-theme@((_menuOpen ? " ultima-menu-open" : "") + (_view is not null ? " ultima-dialog-open" : ""))">
     <main class="viewport">
         <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D. WASD ou setas andam, Shift corre, E conversa. O joystick também move."></canvas>
+
+        @if (_newBuild is not null)
+        {
+            <aside class="ultima-toast ultima-update" role="alert">
+                <SUICard Elevation="3" Class="ultima-card--glass">
+                    <SUICardContent>
+                        <SUIText>Nova versão disponível (@_newBuild).</SUIText>
+                        <SUIStack Row="true" Spacing="2">
+                            <SUIButton SizeValue="SUISize.Small" OnClick="UpdateGameAsync">Atualizar agora</SUIButton>
+                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Text" OnClick="DismissUpdate">Depois</SUIButton>
+                        </SUIStack>
+                    </SUICardContent>
+                </SUICard>
+            </aside>
+        }
 
         @if (!string.IsNullOrEmpty(_announcement))
         {
@@ -83,7 +105,7 @@
                             @if (_devHud)
                             {
                                 <SUIText Typo="SUITypo.mono" Color="SUIColor.Secondary">FPS: @_fps.ToString("0") · @_contentSource · build @BuildId</SUIText>
-                                <SUIText Typo="SUITypo.mono" Color="SUIColor.Secondary">diálogos na fila: <span id="ultima-dialog-queue-count">0</span></SUIText>
+                                <SUIText Typo="SUITypo.mono" Color="SUIColor.Secondary">diálogos na fila: @_dialogQueueCount</SUIText>
                             }
                             <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Text" OnClick="ToggleStatus">Ocultar detalhes</SUIButton>
                         </SUIStack>
@@ -549,29 +571,28 @@
             Snackbar.Info("Clique ou toque num objeto ou trecho de solo próximo para coletar.");
         }
     }
-    private Task RefreshBuildAssetsAsync() => JS.InvokeVoidAsync("game.workshop.refreshBuildOptions").AsTask();
+    private Task RefreshBuildAssetsAsync() => WorkshopService.RefreshBuildAssetsAsync(_browserLifetime.Token);
     private void OnUploadScaleChanged(double value) => _uploadScale = value;
     private void OnBrushRadiusChanged(double value) { _brushRadius = value; _ = BuildModeAsync(null, new { r = value }); }
     private void OnPaintMaterialChanged(string? value) { _paintMaterial = value ?? "sand"; _ = BuildModeAsync(null, new { mat = _paintMaterial }); }
     private void OnBuildAssetChanged(string? value) => _buildAsset = value ?? string.Empty;
 
     // Abre o seletor de arquivo do InputFile escondido (o botão visível é da UI).
-    private Task PickWorkshopFileAsync() => JS.InvokeVoidAsync("game.workshop.pickFile", "workshop-file").AsTask();
+    private Task PickWorkshopFileAsync() => JS.InvokeVoidAsync("game.browser.pickFile", "workshop-file").AsTask();
 
-    // Arquivo escolhido: lê até 2 MB e entrega os bytes ao JavaScript, que faz o upload
-    // com o token da sessão.
+    // Arquivo escolhido: lê até 2 MB antes de enviar à Oficina.
     private async Task OnWorkshopFileInputChanged(InputFileChangeEventArgs e)
     {
         var file = e.File;
         _workshopFileName = file.Name;
-        const long maxBytes = 2 * 1024 * 1024;
+        const long maxBytes = Workshop.MaxUploadBytes;
         if (file.Size > maxBytes) { SetWorkshopStatus("Máximo 2 MB por modelo."); _workshopFileName = string.Empty; return; }
         try
         {
             await using var stream = file.OpenReadStream(maxBytes);
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer);
-            await JS.InvokeVoidAsync("game.workshop.uploadBytes", buffer.ToArray(), file.Name, _uploadScale);
+            await WorkshopService.UploadAsync(buffer.ToArray(), file.Name, _uploadScale, _browserLifetime.Token);
         }
         catch (Exception ex) { SetWorkshopStatus("Falha ao ler o arquivo: " + ex.Message); }
         _workshopFileName = string.Empty;
@@ -599,7 +620,7 @@
         var prompt = _promptDraft;
         SetWorkshopStatus("Gerando…");
         StateHasChanged();
-        try { SetWorkshopStatus(await JS.InvokeAsync<string>("game.workshop.generate", prompt)); }
+        try { SetWorkshopStatus(await WorkshopService.GenerateAsync(prompt, _browserLifetime.Token)); }
         catch (Exception ex) { SetWorkshopStatus("Falhou: " + ex.Message); }
         _promptDraft = string.Empty;
     }
@@ -643,7 +664,30 @@
     private string ActiveEngine() => _aiState == "ready" ? "webgpu" : _aiCpuState == "ready" ? "cpu-wllama" : "servidor (regras)";
 
     // --- Rótulos compactos da interface SUI ---
+    private readonly CancellationTokenSource _browserLifetime = new();
     private string BuildId = "dev";
+    private string? _newBuild;
+    private int _dialogQueueCount;
+    private void ShowDialogCount(int count) => _ = InvokeAsync(() => { _dialogQueueCount = count; StateHasChanged(); });
+    private Task UpdateGameAsync() => JS.InvokeVoidAsync("game.browser.reload").AsTask();
+    private void DismissUpdate() { GameUpdates.Dismiss(); _newBuild = null; }
+    private void ShowUpdate(string build) => _ = InvokeAsync(() =>
+    {
+        if (_newBuild == build) return;
+        _newBuild = build;
+        StateHasChanged();
+    });
+    private void ShowLiveStatus(string message) => _ = InvokeAsync(() => { _netStatus = message; StateHasChanged(); });
+    private void ShowLiveChat(string from, string message) => _ = InvokeAsync(() => { AddChat(from, message); StateHasChanged(); });
+    private void ShowBackpack(Dictionary<string, int> items) => _ = InvokeAsync(() => { _backpack = items; StateHasChanged(); });
+    private void ShowBackpackStatus(string text) => _ = InvokeAsync(() => Snackbar.Info(text));
+    private void ShowWorkshopStatus(string text) => _ = InvokeAsync(() => { SetWorkshopStatus(text); StateHasChanged(); });
+    private void ShowBuildAssets(string[] ids) => _ = InvokeAsync(() =>
+    {
+        _buildAssets = [.. ids];
+        if (!_buildAssets.Contains(_buildAsset)) _buildAsset = _buildAssets.FirstOrDefault() ?? string.Empty;
+        StateHasChanged();
+    });
     private string StatusTitle() => string.IsNullOrWhiteSpace(_playerName) ? "Ultima" : (_playerName.Length > 24 ? _playerName[..24] : _playerName);
     private string StatusSummary() => $"{ActiveEngine()} · {_remoteCount} jogador(es) remoto(s)";
     private string NetLabel()
@@ -671,14 +715,15 @@
             NearChanged = near => _ = InvokeAsync(() => { _near = near; StateHasChanged(); }),
             WandererNearChanged = near => _ = InvokeAsync(() => { _nearWanderer = near; StateHasChanged(); }),
             ObjectNear = label => _ = InvokeAsync(() => { _nearObject = label; StateHasChanged(); }),
-            BuildAssets = ids => _ = InvokeAsync(() =>
-            {
-                _buildAssets = [.. ids];
-                if (!_buildAssets.Contains(_buildAsset)) { _buildAsset = _buildAssets.FirstOrDefault() ?? string.Empty; }
-                StateHasChanged();
-            }),
-            BackpackChanged = items => _ = InvokeAsync(() => { _backpack = items; StateHasChanged(); }),
-            BackpackStatus = message => _ = InvokeAsync(() => Snackbar.Info(message)),
+            CollectResource = BackpackState.CollectAsync,
+            DialogTurn = Dialogs.RecordAsync,
+            DialogFlush = Dialogs.FlushAsync,
+            DialogDebug = Dialogs.Debug,
+            BackpackRefresh = BackpackState.SynchronizeAsync,
+            BackpackStatus = ShowBackpackStatus,
+            LivePose = Live.PoseAsync,
+            LiveChat = Live.SayAsync,
+            WorldCommand = operation => WorkshopService.EditAsync(operation, _browserLifetime.Token),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
             Close = () => _ = InvokeAsync(CloseDialog),
             MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; RunNpcTick(); StateHasChanged(); }),
@@ -691,9 +736,15 @@
             SpeechError = message => _ = InvokeAsync(() => { _speechError = message; StateHasChanged(); }),
             Dictation = listening => _ = InvokeAsync(() => { _dictating = listening; StateHasChanged(); }),
             AiState = (state, progress, detail) => _ = InvokeAsync(() => { _aiState = state; _aiProgress = progress; _aiDetail = detail; StateHasChanged(); }),
-            AiCpuState = (state, progress, detail) => _ = InvokeAsync(() => { _aiCpuState = state; _aiCpuProgress = progress; _aiCpuDetail = detail; StateHasChanged(); }),
-            WorkshopStatus = message => _ = InvokeAsync(() => { SetWorkshopStatus(message); StateHasChanged(); })
+            AiCpuState = (state, progress, detail) => _ = InvokeAsync(() => { _aiCpuState = state; _aiCpuProgress = progress; _aiCpuDetail = detail; StateHasChanged(); })
         };
+        Dialogs.Changed += ShowDialogCount;
+        Live.Status += ShowLiveStatus;
+        Live.Chat += ShowLiveChat;
+        BackpackState.Changed += ShowBackpack;
+        BackpackState.Status += ShowBackpackStatus;
+        WorkshopService.Status += ShowWorkshopStatus;
+        WorkshopService.BuildAssetsChanged += ShowBuildAssets;
         _bridge = DotNetObjectReference.Create(interop);
     }
 
@@ -701,6 +752,10 @@
     {
         if (!firstRender || _bridge is null) return;
 
+        await GameUpdates.InitializeAsync(_browserLifetime.Token);
+        BuildId = GameUpdates.Build.StartsWith("__", StringComparison.Ordinal) ? "dev"
+            : GameUpdates.Build[..Math.Min(10, GameUpdates.Build.Length)];
+        _ = GameUpdates.WatchAsync(ShowUpdate, _browserLifetime.Token);
         _modelsRef = DotNetObjectReference.Create(new Ultima.Models.ModelsInterop(Models));
         var motorOk = false;
         try
@@ -716,33 +771,34 @@
             return;   // sem motor não há o que registrar — evita o spam de "cena ainda não criada"
         }
         await JS.InvokeVoidAsync("game.backpack.init", _bridge);
+        await BackpackState.SynchronizeAsync();
         _ = Models.LoadAllAsync();   // modelos 3D (DLLs C#) chegam em paralelo e entram na cena
         await JS.InvokeVoidAsync("game.net.init", _bridge);
         await JS.InvokeVoidAsync("game.live.init", _bridge);
+        _ = Live.RunAsync(_browserLifetime.Token);
         await JS.InvokeVoidAsync("game.voice.init", _bridge);
         await JS.InvokeVoidAsync("game.ai.init", _bridge);
         await JS.InvokeVoidAsync("game.aiCpu.init", _bridge);
-        try { await JS.InvokeVoidAsync("game.workshop.init", _bridge); }
-        catch (JSException) { /* oficina é opcional: motor antigo não a expõe */ }
-        try { await JS.InvokeVoidAsync("game.dialogLog.init"); }
+        _ = WorkshopService.WatchAsync(_browserLifetime.Token);
+        try
+        {
+            await Dialogs.InitializeAsync(GameUpdates.Build, _browserLifetime.Token);
+            await JS.InvokeVoidAsync("game.dialogLog.init", _bridge);
+            _ = Dialogs.WatchAsync(_browserLifetime.Token);
+        }
         catch (JSException) { /* registro de conversas é opcional */ }
         // Cada módulo JS é opcional: um ausente não pode derrubar a interface
         // (a dica de controles e o conteúdo remoto precisam rodar mesmo assim).
         try { _speakEnabled = await JS.InvokeAsync<bool>("game.voice.getSpeakPref"); }
         catch (JSException) { _speakEnabled = false; }
-        try { _playerName = await JS.InvokeAsync<string?>("game.net.getName"); }
-        catch (JSException) { _playerName = null; }
+        try { _playerName = await JS.InvokeAsync<string?>("game.net.getName") ?? string.Empty; }
+        catch (JSException) { _playerName = string.Empty; }
         try { _sceneryStyle = await JS.InvokeAsync<string>("game.scenery.get") ?? "procedural"; }
         catch (JSException) { _sceneryStyle = "procedural"; }
         try { _gfxStyle = await JS.InvokeAsync<string>("getGfx") is "pbr" ? "pbr" : "padrao"; }
         catch (JSException) { _gfxStyle = "padrao"; }
         try { _weatherMode = await JS.InvokeAsync<string>("game.weather.get"); }
         catch (JSException) { _weatherMode = "clear"; }
-        try
-        {
-            BuildId = await JS.InvokeAsync<string>("game.build") is { Length: > 0 } b ? b[..Math.Min(10, b.Length)] : "dev";
-        }
-        catch (JSException) { BuildId = "dev"; } // game.build não existe em todos os builds; o id é só do HUD de dev
         // Dica de controles como mensagem transitória (snackbar SUI), não bloco fixo na tela.
         Snackbar.Info("WASD/setas andam · Shift corre · E conversa · Esc fecha");
         StateHasChanged();
@@ -835,8 +891,7 @@
                         var playerLine = index > 0 && dlg.Lines[index - 1].Speaker == "Você"
                             ? dlg.Lines[index - 1].Text : string.Empty;
                         var ms = _turnStartedMs > 0 ? (long)(NowMs() - _turnStartedMs) : 0;
-                        _ = JS.InvokeVoidAsync("game.dialogLog.turn",
-                            dlg.Speaker, playerLine, text, dlg.ReplySource, ms);
+                        _ = Dialogs.RecordAsync(dlg.Speaker, playerLine, text, dlg.ReplySource, ms);
                     }
                     catch (JSException) { /* registro é opcional: nunca atrapalha o diálogo */ }
                     break;
@@ -986,10 +1041,19 @@
         await JS.InvokeVoidAsync("game.net.setName", _playerName);
     }
 
+    private sealed record InviteInfo(string? Room);
+
     private async Task CopyInviteAsync()
     {
-        var result = await JS.InvokeAsync<string>("game.net.copyInvite");
-        _netStatus = result;
+        var info = await JS.InvokeAsync<InviteInfo?>("game.net.info");
+        var room = info?.Room ?? "jardim";
+        var link = Invite.Link(Navigation.Uri, room);
+        try
+        {
+            await JS.InvokeVoidAsync("game.browser.copy", link);
+            _netStatus = $"Convite copiado. Abra o link em outra aba ou dispositivo: {room}";
+        }
+        catch (JSException) { _netStatus = "Copie o link: " + link; }
     }
 
     private async Task SendChatAsync()
@@ -1022,6 +1086,15 @@
 
     public void Dispose()
     {
+        _browserLifetime.Cancel();
+        _browserLifetime.Dispose();
+        Dialogs.Changed -= ShowDialogCount;
+        Live.Status -= ShowLiveStatus;
+        Live.Chat -= ShowLiveChat;
+        BackpackState.Changed -= ShowBackpack;
+        BackpackState.Status -= ShowBackpackStatus;
+        WorkshopService.Status -= ShowWorkshopStatus;
+        WorkshopService.BuildAssetsChanged -= ShowBuildAssets;
         _bridge?.Dispose();
         _modelsRef?.Dispose();
     }

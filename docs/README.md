@@ -66,6 +66,8 @@ Fonte técnica das frentes 1–11: análise do repositório
 
 ## Atividades (`activities/`)
 
+- [Migração de serviços JavaScript para C#](activities/202611231825-migracao-js-para-csharp.md)
+
 - [Movimento e expressão dos personagens](activities/202611231810-expressao-dos-personagens.md)
 
 - [Destaque do alvo de coleta](activities/202611231755-mira-de-coleta.md)

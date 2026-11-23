@@ -1,11 +1,10 @@
-// Cada entrada do IndexedDB guarda o recurso e a marca de coleta na mesma transação.
+// Adaptador IndexedDB. A chave e o formato das entradas são mantidos entre versões.
 (function () {
     'use strict';
 
     const storeName = 'collected';
     let database;
     let bridge;
-    let appliedCount = -1;
     const channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('ultima-backpack') : null;
 
     function open() {
@@ -17,64 +16,38 @@
         }).catch(error => { database = null; throw error; });
     }
 
-    async function synchronize() {
+    async function read() {
         const db = await open();
-        const entries = await new Promise((resolve, reject) => {
+        return new Promise((resolve, reject) => {
             const request = db.transaction(storeName).objectStore(storeName).getAll();
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
         });
-        // Operações em outras abas só acrescentam entradas. Uma leitura atrasada
-        // nunca deve substituir um snapshot mais recente.
-        if (entries.length < appliedCount || !bridge) { return; }
-        appliedCount = entries.length;
-        const counts = Object.create(null);
-        for (const entry of entries) { counts[entry.item] = (counts[entry.item] || 0) + 1; }
-        game.setCollectedResources(entries);
-        await bridge.invokeMethodAsync('OnBackpackChanged', counts);
     }
 
-    function report(text) {
-        return bridge?.invokeMethodAsync('OnBackpackStatus', text).catch(() => {});
+    async function add(entry) {
+        const db = await open();
+        const result = await new Promise((resolve, reject) => {
+            const tx = db.transaction(storeName, 'readwrite');
+            const request = tx.objectStore(storeName).add(entry);
+            tx.oncomplete = () => resolve('added');
+            tx.onabort = () => {
+                const error = request.error || tx.error;
+                if (error?.name === 'ConstraintError') { resolve('duplicate'); }
+                else { reject(error); }
+            };
+        });
+        if (result === 'added') { channel?.postMessage('changed'); }
+        return result;
     }
 
-    async function refresh() {
-        try { await synchronize(); }
-        catch { await report('A mochila não conseguiu acessar o armazenamento deste navegador.'); }
-    }
+    function refresh() { bridge?.invokeMethodAsync('OnBackpackRefresh').catch(() => {}); }
 
-    async function collect(entry, point) {
-        try {
-            const db = await open();
-            // Cada passada da pá rende um recurso, inclusive quando já há um corte no local.
-            const record = entry.kind === 'soil' && !entry.id
-                ? { ...entry, id: 'dig:' + crypto.getRandomValues(new Uint32Array(4)).join('-') }
-                : entry;
-            await new Promise((resolve, reject) => {
-                const tx = db.transaction(storeName, 'readwrite');
-                const add = tx.objectStore(storeName).add(record);
-                tx.oncomplete = resolve;
-                tx.onabort = () => reject(add.error || tx.error);
-            });
-        } catch (error) {
-            if (error?.name === 'ConstraintError') {
-                await refresh();
-                await report('Esse recurso já foi coletado.');
-            } else {
-                await report('A coleta não pôde ser salva. O recurso continua no cenário.');
-            }
-            return;
-        }
-        game.characterAction(entry.kind === 'soil' ? 'dig' : 'gather', point);
-        channel?.postMessage('changed');
-        await refresh();
-        await report('+1 ' + entry.item);
-    }
-
-    if (channel) { channel.onmessage = () => { if (bridge) { void refresh(); } }; }
-    window.addEventListener('focus', () => { if (bridge) { void refresh(); } });
+    if (channel) { channel.onmessage = refresh; }
+    window.addEventListener('focus', refresh);
     window.game.backpack = {
-        init(dotnet) { bridge = dotnet; appliedCount = -1; return refresh(); },
-        collect
+        init(dotnet) { bridge = dotnet; },
+        collect(entry, point) { return bridge?.invokeMethodAsync('OnCollectResource', entry, point ?? null); },
+        read, add
     };
 })();

@@ -1,237 +1,52 @@
-// Ultima — cliente do servidor autoritativo (Marco 3, F4):
-// sessão via API, pose do jogador local, avatares remotos vindos do servidor
-// (incluindo personagens de agentes), chat global e mapa editável (tiles + jobs).
-// Independente do P2P (net.js): os dois convivem — P2P dá voz/áudio, a API dá o mundo.
+// Ponte entre a sessão HTTP em C# e as APIs do navegador e do motor.
 (function () {
     'use strict';
 
-    const FALLBACK_API = 'https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br';
-    const qs = new URLSearchParams(location.search);
-    const API = (qs.get('api') || window.ULTIMA_API || FALLBACK_API).replace(/\/+$/, '');
-    const enabled = qs.get('live') !== '0';
-    const POSE_MS = 400;          // cadência de pose para o servidor (2,5/s; limite: 80 cmd/10s)
-    const POSE_JUMPM = 2.0;       // moveu muito → envia na hora
-    const MAP_REFRESH_MS = 1000;  // debounce de /v1/game/map
-
-    let dotnet = null;
+    const fallbackApi = 'https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br';
+    const query = new URLSearchParams(location.search);
+    const api = (query.get('api') || window.ULTIMA_API || fallbackApi).replace(/\/+$/, '');
+    const enabled = query.get('live') !== '0';
     let token = null;
-    let resuming = false; // valida o token salvo antes de enviar comandos
-    let myId = null;
-    let since = 0;
-    let stopped = false;
-    let joined = false;
-    let lastPoseAt = 0;
-    let lastSent = null;          // {x, z, ry} último enviado
-    let lastMapAt = 0;
-    let mapTimer = 0;
-    let stats = { tiles: 0, jobs: 0 };
+    let bridge;
 
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-    async function call(method, path, body, timeoutMs, keepalive) {
-        const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), timeoutMs || 25000);
-        try {
-            const headers = {};
-            if (body !== undefined) { headers['Content-Type'] = 'application/json'; }
-            if (token) { headers['X-Game-Token'] = token; }
-            const res = await fetch(API + path, {
-                method: method,
-                headers: headers,
-                body: body === undefined ? undefined : JSON.stringify(body),
-                cache: 'no-store',
-                signal: ctl.signal,
-                keepalive: !!keepalive
-            });
-            const text = await res.text();
-            let data = null;
-            try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
-            if (!res.ok) {
-                const err = new Error('http ' + res.status);
-                err.status = res.status;
-                err.data = data;
-                throw err;
-            }
-            return data;
-        } finally {
-            clearTimeout(timer);
-        }
-    }
-
-    // ---------- mundo local (avatares + mapa) ----------
-    function paintCharacters(list) {
-        if (!window.game || !Array.isArray(list)) { return; }
-        for (const ch of list) {
-            if (!ch || ch.id === myId) { continue; }
-            game.addRemote(ch.id, ch.name);           // no-op se já existe (P2P ou servidor)
-            game.renameRemote(ch.id, ch.name);
-            game.updateRemote(ch.id, Number(ch.x) || 0, Number(ch.z) || 0, Number(ch.yaw) || 0);
-        }
-    }
-
-    function refreshMap() {
-        const now = Date.now();
-        if (now - lastMapAt < MAP_REFRESH_MS) {
-            clearTimeout(mapTimer);
-            mapTimer = setTimeout(refreshMap, MAP_REFRESH_MS - (now - lastMapAt) + 50);
-            return;
-        }
-        lastMapAt = now;
-        call('GET', '/v1/game/map', undefined, 10000).then((m) => {
-            if (!m || stopped) { return; }
-            stats.tiles = Object.keys(m.tiles || {}).length;
-            stats.jobs = (m.jobs || []).length;
-            if (window.game) {
-                if (game.setMapTiles) { game.setMapTiles(m.tiles || {}); }
-                if (game.setMapJobs) { game.setMapJobs(m.jobs || []); }
-                if (game.setWorldEdits) { game.setWorldEdits(m.edits || [], m.revision); }
-                if (game.setPlacements) { game.setPlacements(m.placements || []); }
-            }
-        }).catch(() => { /* mapa volta no próximo evento/snapshot */ });
-    }
-
-    function handleEvent(ev) {
-        if (!ev || stopped) { return; }
-        const kind = ev.type;
-        if (kind === 'snapshot') {
-            paintCharacters(ev.characters);
-            refreshMap();
-        } else if (kind === 'join') {
-            if (ev.character && ev.character.id !== myId && window.game) {
-                game.addRemote(ev.character.id, ev.character.name);
-            }
-        } else if (kind === 'leave') {
-            if (ev.character && window.game) { game.removeRemote(ev.character.id); }
-        } else if (kind === 'say') {
-            if (ev.from !== myId && dotnet) { dotnet.invokeMethodAsync('OnChat', ev.name || 'Jogador', ev.text || ''); }
-        } else if (kind === 'npc') {
-            if (dotnet && (!ev.to || ev.to === myId)) { dotnet.invokeMethodAsync('OnChat', ev.name || 'Guardiã', ev.text || ''); }
-        } else if (kind === 'job_started' || kind === 'job_done' || kind === 'job_cancelled') {
-            refreshMap();
-        } else if (kind === 'map_edited') {
-            refreshMap();
-        }
-    }
-
-    async function eventLoop() {
-        while (!stopped && token) {
-            try {
-                const res = await call('GET', '/v1/game/events?since=' + since + '&wait=15', undefined, 22000);
-                for (const ev of (res && res.events) || []) {
-                    handleEvent(ev);
-                    since = Math.max(since, ev.seq || 0);
-                }
-            } catch (e) {
-                if (e && e.status === 401) { await rejoin(); continue; }
-                await sleep(3000);
-            }
-        }
-    }
-
-    // ---------- sessão ----------
-    async function resume() {
-        if (!token) { return false; }
-        try {
-            const st = await call('GET', '/v1/game/state', undefined, 8000);
-            if (!st || !st.me) { return false; }
-            myId = st.me.id;
-            since = st.eventsFrom || 0;
-            paintCharacters(st.characters);
-            stats.tiles = Object.keys((st.map && st.map.tiles) || {}).length;
-            stats.jobs = ((st.map && st.map.jobs) || []).length;
-            if (window.game) {
-                if (game.setMapTiles) { game.setMapTiles((st.map && st.map.tiles) || {}); }
-                if (game.setMapJobs) { game.setMapJobs((st.map && st.map.jobs) || []); }
-                if (game.setWorldEdits) { game.setWorldEdits((st.map && st.map.edits) || [], st.map && st.map.revision); }
-                if (game.setPlacements) { game.setPlacements((st.map && st.map.placements) || []); }
-            }
-            return true;
-        } catch (e) {
-            token = null;
-            try { sessionStorage.removeItem('ultima-live-token'); } catch (e2) { /* sem storage */ }
-            return false;
-        }
-    }
-
-    async function join() {
-        let name = null;
-        try { name = (window.game && game.net && game.net.getName) ? game.net.getName() : null; } catch (e) { /* net.js ausente */ }
-        for (let attempt = 0; attempt < 5 && !stopped; attempt++) {
-            try {
-                const res = await call('POST', '/v1/game/sessions', { name: name || 'Jogador' }, 10000);
-                token = res.token;
-                myId = res.character && res.character.id;
-                since = res.eventsFrom || 0;
-                joined = true;
-                try { sessionStorage.setItem('ultima-live-token', token); } catch (e) { /* sem storage */ }
-                paintCharacters(null);
-                refreshMap();
-                eventLoop();
-                return true;
-            } catch (e) {
-                await sleep(1500 * (attempt + 1));
-            }
-        }
-        if (dotnet) { dotnet.invokeMethodAsync('OnNetStatus', 'Servidor do jogo inacessível', 0); }
-        return false;
-    }
-
-    async function rejoin() {
-        token = null;
-        myId = null;
-        joined = false;
-        try { sessionStorage.removeItem('ultima-live-token'); } catch (e) { /* sem storage */ }
-        await join();
-    }
-
-    // ---------- comandos do jogador local ----------
-    function pose(x, z, ry) {
-        if (!token || resuming || stopped || !Number.isFinite(x) || !Number.isFinite(z)) { return; }
-        const now = Date.now();
-        const bigMove = !lastSent || Math.abs(x - lastSent.x) + Math.abs(z - lastSent.z) > POSE_JUMPM;
-        if (now - lastPoseAt < POSE_MS && lastSent && !bigMove) { return; }
-        lastPoseAt = now;
-        lastSent = { x: x, z: z, ry: ry };
-        call('POST', '/v1/game/command', { action: 'pose', x: x, z: z, yaw: ry }, 8000).catch((e) => {
-            if (e && e.status === 401) { rejoin(); }
-        });
-    }
-
-    function sendChat(text) {
-        const clean = String(text || '').slice(0, 300);
-        if (!clean || !token || resuming || stopped) { return; }
-        call('POST', '/v1/game/command', { action: 'say', text: clean }, 10000).catch((e) => {
-            if (e && e.status === 401) { rejoin(); }
-        });
-    }
-
-    function info() {
-        return { api: API, enabled: enabled, connected: joined && !!token, id: myId, since: since, stats: stats };
-    }
+    window.addEventListener('pagehide', () => {
+        if (!token) { return; }
+        fetch(api + '/v1/game/leave', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Game-Token': token },
+            body: '{}', keepalive: true
+        }).catch(() => {});
+    });
 
     window.game.live = {
-        init(dotnetRef) {
-            dotnet = dotnetRef;
-            if (!enabled) { return; }
-            stopped = false;
-            try { token = sessionStorage.getItem('ultima-live-token'); } catch (e) { token = null; }
-            resuming = !!token;
-            resume().then((ok) => { resuming = false; if (!ok && !stopped) { join(); } });
-            window.addEventListener('pagehide', () => {
-                if (!token) { return; }
-                stopped = true;
-                // keepalive: o navegador pode fechar antes da resposta.
-                call('POST', '/v1/game/leave', {}, 3000, true).catch(() => { /* saída silenciosa */ });
-            });
+        init(dotnet) { bridge = dotnet; },
+        context() {
+            let stored = null;
+            try { stored = sessionStorage.getItem('ultima-live-token'); } catch { /* opcional */ }
+            return { api, enabled, token: stored };
         },
-        pose: pose,
-        sendChat: sendChat,
-        info: info,
-        debug: info,
-        // Expostos para a oficina do mundo (workshop.js): chamadas autenticadas à API,
-        // endereço base e token da sessão atual (uploads precisam dos dois).
-        call: call,
-        api: function () { return API; },
-        token: function () { return token; }
+        setSession(value) {
+            token = value;
+            try {
+                if (token) { sessionStorage.setItem('ultima-live-token', token); }
+                else { sessionStorage.removeItem('ultima-live-token'); }
+            } catch { /* opcional */ }
+        },
+        api() { return api; },
+        token() { return token; },
+        pose(x, z, yaw) { if (token) { bridge?.invokeMethodAsync('OnLivePose', x, z, yaw).catch(() => {}); } },
+        sendChat(text) { if (token) { bridge?.invokeMethodAsync('OnLiveChat', text).catch(() => {}); } },
+        paintCharacters(characters) {
+            for (const ch of characters) {
+                game.addRemote(ch.id, ch.name);
+                game.renameRemote(ch.id, ch.name);
+                game.updateRemote(ch.id, ch.x, ch.z, ch.yaw);
+            }
+        },
+        paintMap(map) {
+            game.setMapTiles(map?.tiles || {});
+            game.setMapJobs(map?.jobs || []);
+            game.setWorldEdits(map?.edits || [], map?.revision ?? undefined);
+            game.setPlacements(map?.placements || []);
+        }
     };
 })();
