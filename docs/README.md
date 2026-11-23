@@ -54,9 +54,12 @@ Futuros (bom ter na manga):
 9. [PLAN-UI-DECLARATIVE.md](PLAN-UI-DECLARATIVE.md) —
    janelas do jogo declaradas em JSON, renderizadas por componentes Razor.
 10. [PLAN-ANIMATION-NOTIFIES.md](PLAN-ANIMATION-NOTIFIES.md) —
-   eventos de gameplay amarrados a pontos da timeline das animações.
+    eventos de gameplay amarrados a pontos da timeline das animações.
+11. [PLAN-MOB-BRAIN.md](PLAN-MOB-BRAIN.md) — IA determinística de criaturas
+    (MobBrain): percepção, perseguição, ataque e retorno decididos sobre
+    snapshot; proposta inicial, sem implementação.
 
-Fonte técnica das frentes 1–10: análise do repositório
+Fonte técnica das frentes 1–11: análise do repositório
 [w3nder/lineage-rust](https://github.com/w3nder/lineage-rust)
 (cliente Lineage II C4 em wgpu, web WASM + WebGPU; clone local de referência em
 `/mnt/sufficit/lineage-rust`). Cada plano cita os arquivos-fonte correspondentes.
