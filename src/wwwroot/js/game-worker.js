@@ -41,6 +41,7 @@ self.onmessage = function (e) {
                 build: msg.build,
                 pageBase: msg.pageBase,
                 scenery: msg.scenery,
+                graphics: msg.graphics,
                 size: msg.size || null,
                 global: self,
                 dom: false,

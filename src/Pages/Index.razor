@@ -74,6 +74,7 @@
                         <button type="button" class="secondary" onclick="game.build.mode('raise')">⛰ Levantar</button>
                         <button type="button" class="secondary" onclick="game.build.mode('dig')">🕳 Cavar</button>
                         <button type="button" class="secondary" onclick="game.build.mode('passage')" title="Dois cliques: início e fim">⛏ Passagem</button>
+                        <button type="button" class="secondary" onclick="game.build.mode('cave')" title="Cava uma gruta com paredão de rocha">🕳 Gruta</button>
                         <button type="button" class="secondary" onclick="game.build.mode('paint')">🎨 Pintar</button>
                         <button type="button" class="secondary" onclick="game.build.mode('off')">Sair do modo</button>
                     </div>
@@ -101,6 +102,14 @@
                         <button type="button" class="secondary" onclick="game.build.mode('remove')">🗑 Remover</button>
                         <button type="button" class="secondary" onclick="game.build.mode('off')">Sair do modo</button>
                     </div>
+                </section>
+                <section class="ws-block">
+                    <strong>Gráficos</strong>
+                    <div class="ws-actions">
+                        <button type="button" class="secondary" onclick="setGfx('padrao')" id="gfx-padrao">Padrão (leve)</button>
+                        <button type="button" class="secondary" onclick="setGfx('pbr')" id="gfx-pbr">PBR + IBL</button>
+                    </div>
+                    <small id="gfx-note"></small>
                 </section>
                 <section class="ws-block">
                     <strong>Estilo do mundo</strong>
@@ -430,6 +439,8 @@
     }
 
     private Task ReloadPage() => JS.InvokeVoidAsync("location.reload").AsTask();
+
+    private async Task SetGfxAsync(string style) => await JS.InvokeVoidAsync("setGfx", style);
     private Task EnableAiAsync() => JS.InvokeVoidAsync("game.ai.load").AsTask();
     private Task DisableAiAsync() => JS.InvokeVoidAsync("game.ai.disable").AsTask();
     private Task RetryAiAsync() => JS.InvokeVoidAsync("game.ai.retry").AsTask();

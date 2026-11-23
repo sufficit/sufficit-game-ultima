@@ -216,6 +216,37 @@ sealed partial class GameWorld
     }
 
     /// <summary>
+    /// Gruta (F5b base): carve cilíndrico {x,z,r,y0,y1} — remove o terreno do nível
+    /// absoluto y0 até y1 e o cliente constrói piso caminhável em y0, paredão de rocha
+    /// e, quando y1 fica abaixo do entorno, teto (sala subterrânea ligável a passagens).
+    /// </summary>
+    (int, JsonObject) CarveCmd(Character ch, JsonObject data, double now)
+    {
+        if (!Brush(data, out var x, out var z, out var r)) return (400, J.Err("x_z_r_invalid"));
+        var y0 = 0.0;
+        if (!J.TryFloat(data["y0"], out y0) || y0 < -50 || y0 > 200) return (400, J.Err("y0_invalid"));
+        var depth = 3.0;
+        if (data.ContainsKey("depth") && !J.TryFloat(data["depth"], out depth)) return (400, J.Err("depth_invalid"));
+        depth = Math.Clamp(depth, 1.5, 12);
+        var y1 = y0 + depth;   // v1: gruta aberta (teto acima do entorno na vizinhança)
+        if (_edits.Count >= MaxSurfaceEdits - 10) return (507, J.Err("too_many_surface_edits"));
+        var op = new JsonObject
+        {
+            ["kind"] = "carve", ["x"] = J.R(x, 3), ["z"] = J.R(z, 3), ["r"] = J.R(r, 2),
+            ["y0"] = J.R(y0, 3), ["y1"] = J.R(y1, 3),
+            ["by"] = ch.Name, ["at"] = J.R(now, 3), ["cid"] = J.Str(data["cid"]),
+        };
+        RecordSurfaceEdit("carve", op);
+        var rock = new JsonObject
+        {
+            ["kind"] = "paint", ["x"] = J.R(x, 3), ["z"] = J.R(z, 3), ["r"] = J.R(r, 2), ["mat"] = "rock",
+            ["by"] = ch.Name, ["at"] = J.R(now, 3), ["cid"] = J.Str(data["cid"]),
+        };
+        RecordSurfaceEdit("paint", rock);
+        return (200, new JsonObject { ["ok"] = true, ["revision"] = _revision });
+    }
+
+    /// <summary>
     /// Passagem (F5a): cava um corredor entre dois pontos numa única ação atômica —
     /// o servidor expande a linha em ops de escultura espaçadas de 0,8·r (mais barato
     /// para o cliente e o journal do que N comandos).

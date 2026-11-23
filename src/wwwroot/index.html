@@ -16,6 +16,22 @@
     <!-- Babylon.js não vem mais como tag: no modo worker ele roda só no worker
          (importScripts); no fallback o shell injeta o CDN com o mesmo SRI. -->
     <script src="js/update.js"></script>
+    <script>
+        // F7b: preferência de gráficos (padrao | pbr) — aplicada no boot, como o estilo do mundo.
+        window.setGfx = function (style) {
+            var v = style === 'pbr' ? 'pbr' : 'padrao';
+            try { localStorage.setItem('ultima.graficos', v); } catch (e) { }
+            var note = document.getElementById('gfx-note');
+            var atual = '';
+            try { atual = localStorage.getItem('ultima.graficos') || 'padrao'; } catch (e) { atual = 'padrao'; }
+            var btnP = document.getElementById('gfx-padrao'), btnB = document.getElementById('gfx-pbr');
+            if (btnP) { btnP.classList.toggle('ok-chip', atual === 'padrao'); }
+            if (btnB) { btnB.classList.toggle('ok-chip', atual === 'pbr'); }
+            if (note) { note.textContent = atual !== v ? 'Recarregue para aplicar (' + v + ').' : 'Ativo: ' + v + '.'; }
+            return v;
+        };
+        window.addEventListener('DOMContentLoaded', function () { if (window.setGfx) { setGfx((function () { try { return localStorage.getItem('ultima.graficos') || 'padrao'; } catch (e) { return 'padrao'; } })()); } });
+    </script>
     <script src="js/assets.js?v=__BUILD__"></script>
     <script src="js/game-core.js?v=__BUILD__"></script>
     <script src="js/game.js?v=__BUILD__"></script>

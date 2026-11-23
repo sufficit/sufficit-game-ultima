@@ -31,6 +31,12 @@
         catch (e) { return 'procedural'; }
     }
 
+    const GRAPHICS_PREF_KEY = 'ultima.graficos';
+    function graphicsPref() {
+        try { return localStorage.getItem(GRAPHICS_PREF_KEY) === 'pbr' ? 'pbr' : 'padrao'; }
+        catch (e) { return 'padrao'; }
+    }
+
     function buildStamp() {
         const meta = document.querySelector('meta[name="ultima-build"]');
         return (meta && meta.content) || 'dev';
@@ -95,6 +101,7 @@
                     build: buildStamp(),
                     pageBase: location.href,
                     scenery: sceneryPref(),
+                    graphics: graphicsPref(),
                     global: window,
                     dom: true,
                     postEvent: postEventToDotnet,
@@ -443,6 +450,15 @@
             set(style) {
                 const value = style === 'lowpoly' ? 'lowpoly' : 'procedural';
                 try { localStorage.setItem(SCENERY_PREF_KEY, value); } catch (e) { /* sem storage */ }
+                return value;
+            }
+        },
+        graphics: {
+            // F7b: PBR+IBL (materiais glTF originais) ou padrão (StandardMaterial).
+            get() { return graphicsPref(); },
+            set(style) {
+                const value = style === 'pbr' ? 'pbr' : 'padrao';
+                try { localStorage.setItem(GRAPHICS_PREF_KEY, value); } catch (e) { /* sem storage */ }
                 return value;
             }
         },

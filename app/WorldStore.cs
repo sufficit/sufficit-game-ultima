@@ -183,6 +183,7 @@ sealed class JournalWorldStore : IWorldStore
                 break;
             case "sculpt":
             case "paint":
+            case "carve":   // base F5b: o cliente aplica (piso absoluto + malhas de rocha)
                 st.SurfaceEdits.Add((JsonObject)o.DeepClone());
                 if (J.TryInt(o["rev"], out var revE) && revE > st.Revision) st.Revision = (int)Math.Min(int.MaxValue, revE);
                 break;

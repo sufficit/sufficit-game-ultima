@@ -30,6 +30,9 @@
     // 'lowpoly' (GLBs CC0 alternativos substituem árvores/pedras/grama). Vem do host no
     // boot (a preferência mora no localStorage da página); a troca pede recarga.
     const sceneryStyle = host.scenery === 'lowpoly' ? 'lowpoly' : 'procedural';
+    // F7b: 'padrao' (StandardMaterial convertido, iluminação atual) ou 'pbr' (materiais
+    // glTF originais + IBL de um env procedural). Padrão = padrao; troca pede recarga.
+    const graphicsStyle = host.graphics === 'pbr' ? 'pbr' : 'padrao';
     // id do modelo procedural -> id do asset GLB que o substitui no estilo lowpoly
     const SCENERY_ALT = { 'tree.pine': 'flora.pine', 'rock.boulder': 'rock.boulder2', 'scenery.grass': 'scenery.grass2' };
 
@@ -347,6 +350,7 @@
     // espalhamento e chunks passam a respeitar as edições automaticamente.
     const worldSculpts = [];
     const worldPaints = [];
+    const worldCarves = [];   // F5b base: grutas {x,z,r,y0,y1} — piso absoluto + rocha
     const PAINT_COLORS = {
         grass: [0.30, 0.46, 0.16], dirt: [0.47, 0.36, 0.23], sand: [0.78, 0.70, 0.50],
         rock: [0.46, 0.45, 0.44], snow: [0.93, 0.95, 0.97], water: [0.16, 0.42, 0.62],
@@ -357,13 +361,26 @@
         return t <= 0 ? 0 : t * t * (3 - 2 * t);   // falloff suave na borda do pincel
     }
 
-    // Altura efetiva do mundo: gerador base + esculturas (em ordem de journal).
+    // Altura efetiva do mundo: gerador base + esculturas (em ordem de journal) e grutas
+    // (o miolo do carve vira piso absoluto — o jogador anda até o fundo da gruta).
     function terrainHeight(x, z) {
         let h = baseHeight(x, z);
         for (let i = 0; i < worldSculpts.length; i++) {
             const op = worldSculpts[i];
             const t = 1 - Math.hypot(x - op.x, z - op.z) / op.r;
             if (t > 0) { h += op.dh * t * t * (3 - 2 * t); }
+        }
+        for (let i = 0; i < worldCarves.length; i++) {
+            const op = worldCarves[i];
+            if (Math.hypot(x - op.x, z - op.z) < op.r && h > op.y0) {
+                // dentro da gruta e abaixo do entorno original: chão plano em y0
+                h = op.y0;
+                for (let j = 0; j < worldSculpts.length; j++) {
+                    const so = worldSculpts[j];
+                    const t = 1 - Math.hypot(x - so.x, z - so.z) / so.r;
+                    if (t > 0) { h += so.dh * t * t * (3 - 2 * t); }
+                }
+            }
         }
         return h;
     }
@@ -533,9 +550,11 @@
     function applySurfaceEdit(op) {
         if (op.kind === 'sculpt') { worldSculpts.push(op); }
         else if (op.kind === 'paint') { worldPaints.push(op); }
+        else if (op.kind === 'carve') { worldCarves.push(op); }
         else { return false; }
         refreshChunksAround(op.x, op.z, op.r);
         if (op.mat === 'water') { syncWaterDiscs(); }
+        if (op.kind === 'carve') { syncCarveMeshes(); }
         return true;
     }
 
@@ -577,6 +596,28 @@
     // Água pintada (F7a): discos translúcidos sobre o terreno, reposicionados a cada
     // rebuild (escavações posteriores afundam o disco junto).
     const waterDiscs = new Map();
+    let waterTex = null;
+    function waterNormalTexture() {
+        if (waterTex) { return waterTex; }
+        const N = 128;
+        waterTex = new BABYLON.DynamicTexture('waterNrm', { width: N, height: N }, scene, true);
+        const ctx = waterTex.getContext();
+        const img = ctx.createImageData(N, N);
+        const rnd = makeNoise(4242);
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+            const u = x / N * Math.PI * 2, v = y / N * Math.PI * 2;
+            const dx = (rnd(Math.cos(u) * 4 + 1, Math.sin(v) * 4) - 0.5) * 0.9;
+            const dy = (rnd(Math.cos(v) * 4 - 2, Math.sin(u) * 4 + 7) - 0.5) * 0.9;
+            const inv = 1 / Math.hypot(dx, dy, 3), i = (y * N + x) * 4;
+            img.data[i] = ((-dx * inv) * 0.5 + 0.5) * 255;
+            img.data[i + 1] = ((-dy * inv) * 0.5 + 0.5) * 255;
+            img.data[i + 2] = ((3 * inv) * 0.5 + 0.5) * 255;
+            img.data[i + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+        waterTex.update(true);
+        return waterTex;
+    }
     function syncWaterDiscs() {
         for (const d of waterDiscs.values()) { d.dispose(); }
         waterDiscs.clear();
@@ -589,9 +630,77 @@
             m.diffuseColor = new BABYLON.Color3(0.10, 0.34, 0.55);
             m.specularColor = new BABYLON.Color3(0.7, 0.7, 0.7);
             m.alpha = 0.74;
+            // F7b: normal de ondulação procedural animada + fresnel (brilho rasante do céu)
+            m.bumpTexture = waterNormalTexture();
+            m.bumpTexture.level = 0.6;
+            m.emissiveColor = new BABYLON.Color3(0.02, 0.05, 0.08);
+            m.emissiveFresnelParameters = new BABYLON.FresnelParameters();
+            m.emissiveFresnelParameters.bias = 0.15;
+            m.emissiveFresnelParameters.power = 2.2;
+            m.emissiveFresnelParameters.leftColor = new BABYLON.Color3(0.0, 0.03, 0.06);
+            m.emissiveFresnelParameters.rightColor = new BABYLON.Color3(0.45, 0.62, 0.78);
             disc.material = m;
             disc.position.set(op.x, terrainHeight(op.x, op.z) + 0.12, op.z);
             waterDiscs.set(disc, disc);
+        }
+    }
+
+    // Vento (F7b-2): instâncias de vegetação balançam — fase por hash do nome, custo
+    // amortizado (um terço das instâncias por frame).
+    const windInstances = [];
+    const WIND_IDS = ['scenery.bush', 'flora.fern', 'flora.flowers', 'scenery.grass2'];
+    function collectWindInstances() {
+        windInstances.length = 0;
+        for (const [id, g] of glbRegistry) {
+            if (!WIND_IDS.includes(id)) { continue; }
+            for (const inst of g.proto.instances) { windInstances.push(inst); }
+        }
+    }
+    let windCursor = 0, windFrames = 0;
+    function windTick() {
+        windFrames++;
+        if (windFrames % 360 === 1) { collectWindInstances(); }   // repõe a cada ~6 s
+        if (windInstances.length === 0) { return; }
+        const t = performance.now() * 0.001;
+        const third = Math.ceil(windInstances.length / 3);
+        for (let n = 0; n < third; n++) {
+            const inst = windInstances[windCursor];
+            windCursor = (windCursor + 1) % windInstances.length;
+            if (!inst || inst.isDisposed()) { continue; }
+            let h = 0;
+            for (const c of inst.name) { h = (h * 31 + c.charCodeAt(0)) | 0; }
+            inst.rotation.z = Math.sin(t * 1.4 + (h & 31) * 0.7) * 0.035;
+        }
+    }
+
+    // Grutas (F5b base): paredão de rocha (cilindro do piso à superfície do entorno)
+    // e teto quando a gruta fica abaixo do terreno — malhas por op, ressincronizadas.
+    const carveMeshes = [];
+    function carveRockMaterial() {
+        const m = new BABYLON.StandardMaterial('carve-rock', scene);
+        m.diffuseColor = new BABYLON.Color3(0.34, 0.33, 0.32);
+        m.specularColor = new BABYLON.Color3(0.04, 0.04, 0.04);
+        return m;
+    }
+    function syncCarveMeshes() {
+        for (const m of carveMeshes.splice(0)) { m.dispose(); }
+        for (const op of worldCarves) {
+            const rim = terrainHeight(op.x + op.r + 1, op.z);   // entorno fora do carve
+            const wallH = Math.max(0.5, rim - op.y0);
+            const wall = BABYLON.MeshBuilder.CreateCylinder('carve-wall', { height: wallH, diameter: op.r * 2 + 0.6, tessellation: 20 }, scene);
+            wall.position.set(op.x, op.y0 + wallH / 2, op.z);
+            wall.material = carveRockMaterial();
+            wall.isPickable = false;
+            wall.receiveShadows = true;
+            carveMeshes.push(wall);
+            if (op.y1 < rim - 0.5) {
+                // sala subterrânea: teto de rocha (a entrada chega por passagem no nível y0)
+                const ceil = BABYLON.MeshBuilder.CreateCylinder('carve-ceil', { height: 0.5, diameter: op.r * 2 + 0.4, tessellation: 20 }, scene);
+                ceil.position.set(op.x, op.y1 + 0.25, op.z);
+                ceil.material = carveRockMaterial();
+                ceil.isPickable = false;
+                carveMeshes.push(ceil);
+            }
         }
     }
 
@@ -601,8 +710,10 @@
         if (revision !== undefined) { editsAppliedRev = revision; }
         worldSculpts.length = 0;
         worldPaints.length = 0;
+        worldCarves.length = 0;
         for (const op of edits || []) { applySurfaceEdit(op); }
         syncWaterDiscs();
+        syncCarveMeshes();
     }
 
     const placements = new Map();       // uid -> InstancedMesh
@@ -681,6 +792,8 @@
             host.worldOp({ action: 'sculpt', x: r3(p.x), z: r3(p.z), r: buildState.r, dh: r3(buildState.mode === 'raise' ? buildState.dh : -buildState.dh), cid: cid });
         } else if (buildState.mode === 'paint') {
             host.worldOp({ action: 'paint', x: r3(p.x), z: r3(p.z), r: buildState.r, mat: buildState.mat, cid: cid });
+        } else if (buildState.mode === 'cave') {
+            host.worldOp({ action: 'carve', x: r3(p.x), z: r3(p.z), r: Math.min(6, buildState.r + 1), y0: r3(p.y - 3), depth: 3, cid: cid });
         } else if (buildState.mode === 'place') {
             if (!buildState.asset) { return; }
             host.worldOp({ action: 'place', asset: buildState.asset, x: r3(p.x), y: r3(p.y), z: r3(p.z), rot: 0, scale: 1, cid: cid });
@@ -1257,7 +1370,7 @@
         if (!meshes.length) { throw new Error('nenhuma malha utilizável no GLB'); }
         for (const m of meshes) {
             m.setParent(null);   // preserva a transformada mundial nos valores locais
-            m.material = glbMaterialToStandard(m.material);
+            if (graphicsStyle !== 'pbr' || !envOk) { m.material = glbMaterialToStandard(m.material); }
         }
         const merged = meshes.length === 1 ? meshes[0] : BABYLON.Mesh.MergeMeshes(meshes, true, true, undefined, false, true);
         if (!merged) { throw new Error('falha ao mesclar malhas'); }
@@ -1411,6 +1524,34 @@
         return true;
     }
 
+    let envOk = false;
+    function setupProceduralEnv() {
+        try {
+            const faces = {};
+            const mk = function (top, mid, bottom) {
+                const c = document.createElement ? document.createElement('canvas') : new OffscreenCanvas(64, 64);
+                c.width = c.height = 64;
+                const ctx = c.getContext('2d');
+                const g = ctx.createLinearGradient(0, 0, 0, 64);
+                g.addColorStop(0, top); g.addColorStop(0.55, mid); g.addColorStop(1, bottom);
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, 64, 64);
+                return c.toDataURL ? c.toDataURL('image/png') : '';
+            };
+            const sky = mk('#4d7dc4', '#9fc0e0', '#d3e2ee');
+            const ground = mk('#8a9a7a', '#5c6e4a', '#3f4d33');
+            faces.px = sky; faces.nx = sky; faces.pz = sky; faces.nz = sky;
+            faces.py = sky; faces.ny = ground;
+            const tex = new BABYLON.CubeTexture('', scene, faces, false);
+            tex.name = 'env-procedural';
+            scene.environmentTexture = tex;
+            scene.environmentIntensity = 0.9;
+            envOk = true;
+        } catch (e) {
+            console.warn('[graficos] env procedural indisponível, PBR sem IBL:', e && e.message);
+        }
+    }
+
     function buildScene(canvas) {
         scene = new BABYLON.Scene(engine);
         const horizon = new BABYLON.Color3(0.72, 0.80, 0.88);
@@ -1448,7 +1589,12 @@
         shadows.darkness = 0.45;   // crateras continuam legíveis (F7a)
 
         skyDome();
+        if (graphicsStyle === 'pbr') { setupProceduralEnv(); }
         buildTerrain();   // grade de chunks na fila com orçamento por frame
+        scene.registerBeforeRender(function () {
+            if (waterTex) { waterTex.uOffset += engine.getDeltaTime() * 0.00003; }
+            windTick();
+        });
 
         // Árvores: chegam como modelos C# carregados em runtime (game.models.register).
         sceneShadows = shadows;
