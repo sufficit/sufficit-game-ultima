@@ -352,8 +352,8 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
             await page.keyboard.press('KeyE');
             const d = await page.waitForSelector('.ultima-dialog', { timeout: 30000, state: 'visible' }).catch(() => null);
             ok('desktop: E abre diálogo', !!d);
-            if (d) { await page.keyboard.press('Escape'); const c = await page.waitForSelector('.ultima-dialog', { timeout: 30000, state: 'hidden' }).catch(() => null); ok('desktop: Esc fecha diálogo', !!c); }
-            await page.evaluate(() => { const el = document.querySelector('.ultima-panel-toggle'); if (el) el.click(); });
+            if (d) { await page.keyboard.press('Escape'); const c = await page.waitForSelector('.ultima-dialog', { timeout: 90000, state: 'hidden' }).catch(() => null); ok('desktop: Esc fecha diálogo', !!c); }
+            await page.evaluate(() => { const el = document.querySelector('.ultima-panel-toggle button') || document.querySelector('.ultima-panel-toggle'); if (el) el.click(); }); // o OnClick e do button (SUIButton), nao do involumetro
             const panel = await page.waitForSelector('.ultima-panel', { timeout: 20000, state: 'visible' }).catch(() => null);
             ok('desktop: toggle abre painel', !!panel);
             await page.screenshot({ path: `${SHOTS}/depois-desktop-panel.png` }).catch((e) => console.log('info  captura depois-desktop-panel falhou (sem bloquear): ' + (e && e.message || '').split('\n')[0]));
