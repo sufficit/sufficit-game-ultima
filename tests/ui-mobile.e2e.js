@@ -200,7 +200,7 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                     clientX: x, clientY: y, buttons: 1,
                 }));
             }, { id, type, x, y });
-            const dragStick = async (id, dx, dy, steps, holdMs) => {
+            const stickDown = async (id, dx, dy, steps) => {
                 const c = await page.evaluate((id) => {
                     const el = document.getElementById(id);
                     const r = el.getBoundingClientRect();
@@ -209,11 +209,13 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
                 await fireAt(id, 'pointerdown', c.cx, c.cy);
                 for (let i = 1; i <= steps; i++) {
                     await fireAt(id, 'pointermove', c.cx + (dx * i) / steps, c.cy + (dy * i) / steps);
-                    await page.waitForTimeout(250);
+                    await page.waitForTimeout(200);
                 }
-                await page.waitForTimeout(holdMs || 1200);   // seguro: frames amostram o vetor
-                await fireAt(id, 'pointerup', c.cx + dx, c.cy + dy);
-                await fireAt(id, 'lostpointercapture', c.cx + dx, c.cy + dy);
+                return { cx: c.cx + dx, cy: c.cy + dy };
+            };
+            const stickUp = async (end) => {
+                await fireAt(end.id, 'pointerup', end.cx, end.cy);
+                await fireAt(end.id, 'lostpointercapture', end.cx, end.cy);
             };
 
             const p0 = await page.evaluate(PLAYER);
