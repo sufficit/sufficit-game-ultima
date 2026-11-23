@@ -66,6 +66,12 @@ Fonte técnica das frentes 1–11: análise do repositório
 
 ## Atividades (`activities/`)
 
+- [Correção do poço e acabamento do terreno](activities/202611231402-acabamento-do-terreno.md)
+
+- [Correção da renderização do terreno](activities/202611231348-renderizacao-do-terreno.md)
+
+- [Conflitos de movimento no harness mobile](activities/202611231306-conflitos-do-harness-mobile.md)
+
 Documentos de atividade (`AAAAMMDDHHMM-slug.md`) registram frentes concluídas:
 investigação, alterações e validação com evidências. São gravadas quando o
 escopo inteiro de um plano é concluído.
