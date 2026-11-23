@@ -28,7 +28,8 @@ const ok = (label, cond, extra) => console.log((cond ? 'ok  ' : 'FALHOU ') + lab
     const badResponses = [];
     page.on('pageerror', e => errors.push(String(e)));
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-    page.on('response', r => { if (r.status() >= 400) badResponses.push(r.status() + ' ' + r.request().method() + ' ' + r.url()); });
+    // Resposta >= 400: status, método, caminho (sem a base da API) e presença do token de sessão.
+    page.on('response', r => { if (r.status() >= 400) { const h = r.request().headers(); badResponses.push({ s: r.status(), m: r.request().method(), u: r.url().replace(API, ''), tok: h['x-game-token'] ? String(h['x-game-token']).slice(0, 6) + '…' : 'sem' }); } });
 
     // Mesma receita do fluxo validado localmente via MCP: worker (sem render=main),
     // teleporte pela URL + chamada ao atalho do core, dev=1.
