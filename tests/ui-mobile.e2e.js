@@ -76,7 +76,7 @@ function MEASURE(args) {
     const rects = names.map((n) => ({ n, r: rect(n) })).filter((o) => o.r);
     for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
         // polegar vive DENTRO do próprio stick: pares pai→filho não são sobreposição
-        const elI = document.querySelector(names[i]), elJ = document.querySelector(names[j]);
+        const elI = document.querySelector(rects[i].n), elJ = document.querySelector(rects[j].n);
         if ((elI && elJ && (elI.contains(elJ) || elJ.contains(elI)))) continue;
         const a = rects[i].r, b = rects[j].r;
         const ix = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
@@ -135,7 +135,14 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
         page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
         await page.goto(SITE + '/?render=main', { waitUntil: 'domcontentloaded', timeout: 45000 });
         await page.waitForFunction(() => window.game && document.getElementById('game-canvas'), null, { timeout: 45000 });
-        await page.waitForTimeout(BASELINE ? 1500 : 2500); // motor subir a cena
+        // Motor subir a cena: em headless o FPS é ~1-2, então espera a câmera responder
+        // (cameraState) em vez de sono fixo — evita "cena ativa n/d" em qualquer viewport.
+        for (let t = 0; t < 45; t++) {
+            const c = await page.evaluate(() => (window.game.cameraState ? window.game.cameraState() : null)).catch(() => null);
+            if (c && isFinite(c.alpha)) break;
+            await page.waitForTimeout(1000);
+        }
+        await page.waitForTimeout(400);
         return { ctx, page, errors };
     }
 
@@ -147,7 +154,8 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
         m.camera = await page.evaluate(CAMERA); m.render = await page.evaluate(RENDER); m.meshes = m.camera ? 1 : 0;
         console.log(`info  ${name}: render ${m.render ? m.render.width + 'x' + m.render.height + ' (buffer ' + m.render.canvasW + 'x' + m.render.canvasH + ')' : 'n/d'}`);
         report.views[name] = m;
-        await page.screenshot({ path: `${SHOTS}/${BASELINE ? 'antes' : 'depois'}-${name}.png` });
+        try { await page.screenshot({ path: `${SHOTS}/${BASELINE ? 'antes' : 'depois'}-${name}.png`, timeout: 15000 }); }
+        catch (e) { console.log('info  captura ' + name + ' falhou (sem bloquear): ' + String(e).split('\n')[0].slice(0, 120)); }
         const summary = {
             viewport: `${m.viewport.w}x${m.viewport.h}`, canvas: m.canvas ? `${m.canvas.w}x${m.canvas.h}` : null,
             meshes: m.meshes, noScroll: m.page.scrollW <= m.page.clientW && m.page.scrollH <= m.page.clientH,
