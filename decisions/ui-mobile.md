@@ -47,3 +47,12 @@ Data: 2026-11-22 · Escopo: jogável no celular (retrato e paisagem), menus ocul
 ## Concorrência
 - Sub-sessão t50: arquivos dela (dialog-log.js, tests/dialog-log.e2e.js, app/) não alterados; regra read-before-write respeitada; nenhum checkout/restore/reset/stash/clean.
 - Memória cgroup 2 GB (1,36 GB em uso às 23:20): um build e um navegador por vez; servidores antigos de /tmp/ultima-mobile* derrubados antes de servir o novo.
+
+## Run 11 — harness completo no build mesclado publicado (36b0037)
+- 23/11 14:45–14:54 UTC, job 0885-a126, EXIT=0 (536 s): **36 ok / 0 falhas** (8 info). Console limpo nos 4 viewports; canvas==viewport; B fecha diálogo; menu abre pelo fab e fecha por toque; Esc fecha em desktop; WASD/câmera/E ok; desktop igual à linha de base (Δh=28 só no cartão de status). Relatório: decisions/ui-mobile-after.json.
+- Run 10 (publish+harness no mesmo job) foi cortado pelo teto de 600 s da ferramenta a ~3 checks do fim com 33 ok / 0 falhas — publish Release do 36b0037 concluído e íntegro na 8092; o run 11 cobriu a suíte integral sobre esse build.
+- smallTargets no retrato: apenas `button.sui-snackbar__close` 44x44 (componente SUI, fora do HUD do jogo; aceito).
+
+## Origem avançou de novo — merge F7d-3 + F7e (3fa0bcc)
+- origin/main 17b5451 → de2e4ea: F7d-3 (sonda WebGL na thread principal) e F7e (qualidade adaptativa, renderizador de software). Auto-merge 'ort' sem conflitos em src/wwwroot/js/game.js e game-core.js.
+- O build servido na 8092 ainda é do 36b0037: antes de publicar na main será preciso republish Release de 3fa0bcc + revalidação do harness (run 12) nesse build, e dialog-log.e2e.js verde.

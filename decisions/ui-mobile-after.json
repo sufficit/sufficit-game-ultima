@@ -1,7 +1,7 @@
 {
   "mode": "full",
   "site": "http://127.0.0.1:8092",
-  "at": "2026-11-23T14:10:21.556Z",
+  "at": "2026-11-23T14:45:40.783Z",
   "views": {
     "portrait": {
       "viewport": {
@@ -244,11 +244,17 @@
           "w": 300,
           "h": 233.4
         },
-        ".workshop-panel": {
-          "x": 11.2,
-          "y": 54.4,
-          "w": 300,
-          "h": 30.4
+        ".ultima-corner": {
+          "x": 12,
+          "y": 12,
+          "w": 340,
+          "h": 308.4
+        },
+        ".ultima-workshop": {
+          "x": 12,
+          "y": 257.4,
+          "w": 340,
+          "h": 63
         },
         ".ultima-panel-toggle": {
           "x": 1189.6,
@@ -281,19 +287,11 @@
         "#network-chat-input 286x36",
         "button.sui-btn 67x41",
         "button.sui-btn 67x28",
+        "button.sui-expansion__header 160x29",
         "button.sui-btn 78x28",
-        "summary 276x14",
-        "button.secondary 112x28",
-        "button.secondary 61x28",
-        "button.secondary 58x28",
-        "button.secondary 109x28",
-        "button.secondary 135x28",
-        "#workshop-prompt 185x21",
-        "button 50x21"
+        "button.sui-snackbar__close 20x20"
       ],
-      "overlaps": [
-        ".ultima-status ∩ .workshop-panel 299x30"
-      ]
+      "overlaps": []
     },
     "tablet": {
       "viewport": {
@@ -384,9 +382,9 @@
       "rects": {
         ".ultima-dialog": {
           "x": 8,
-          "y": 557.3,
+          "y": 558.8,
           "w": 374,
-          "h": 278
+          "h": 275.6
         },
         "#ultima-menu-fab": {
           "x": 333.2,
@@ -442,9 +440,9 @@
       "rects": {
         ".ultima-dialog": {
           "x": 8,
-          "y": 213.3,
+          "y": 214.8,
           "w": 374,
-          "h": 278
+          "h": 275.6
         },
         "#ultima-menu-fab": {
           "x": 333.2,
@@ -501,14 +499,20 @@
         ".ultima-status": {
           "x": 24.2,
           "y": 81,
-          "w": 341.6,
-          "h": 207.4
+          "w": 240,
+          "h": 253.4
         },
-        ".workshop-panel": {
+        ".ultima-corner": {
           "x": 24.2,
-          "y": 298.8,
+          "y": 81,
           "w": 341.6,
-          "h": 64.4
+          "h": 347.4
+        },
+        ".ultima-workshop": {
+          "x": 24.2,
+          "y": 346.4,
+          "w": 341.6,
+          "h": 82
         },
         ".ultima-menu": {
           "x": 8.8,
@@ -582,8 +586,9 @@
       "meshes": 0,
       "smallTouchTargets": [],
       "overlaps": [
-        ".ultima-status ∩ .ultima-menu-backdrop 342x207",
-        ".workshop-panel ∩ .ultima-menu-backdrop 342x64",
+        ".ultima-status ∩ .ultima-menu-backdrop 240x253",
+        ".ultima-corner ∩ .ultima-menu-backdrop 342x347",
+        ".ultima-workshop ∩ .ultima-menu-backdrop 342x82",
         ".ultima-menu ∩ #ultima-menu-fab 48x48",
         ".ultima-menu ∩ .ultima-menu-backdrop 372x826",
         ".ultima-menu ∩ #move-stick 124x124",
