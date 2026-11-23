@@ -19,7 +19,10 @@
     const PLAYER_HEIGHT = 1.75;
     const FOOT_GAP = 0.03;
     const HIP_HEIGHT = PLAYER_HEIGHT * 0.44;
-    const ANKLE_HEIGHT = 0.045;
+    const LEG_RADIUS = PLAYER_HEIGHT * 0.039;
+    const SHOE_OFFSET = 0.9 * LEG_RADIUS;
+    const ANKLE_HEIGHT = LEG_RADIUS * 1.25 * 0.55;
+    const SOLE_CLEARANCE = 0.004;
     const LEG_SEGMENT = (HIP_HEIGHT - ANKLE_HEIGHT + 0.004) / 2;
     const KNEE_HEIGHT = HIP_HEIGHT - LEG_SEGMENT;
     const LEG_SPACING = PLAYER_HEIGHT * 0.044;
@@ -929,7 +932,9 @@
                 radius
             });
         }
-        obstacles.set(mesh, { circles, minY, maxY, label });
+        mesh.computeWorldMatrix(true);
+        const { minimumWorld, maximumWorld } = mesh.getBoundingInfo().boundingBox;
+        obstacles.set(mesh, { circles, minY, maxY, minimumWorld, maximumWorld, label });
         mesh.onDisposeObservable.addOnce(() => obstacles.delete(mesh));
     }
 
@@ -949,18 +954,17 @@
         return rise > 0 && rise <= KNEE_HEIGHT && obstacle.minY <= ground + 0.10;
     }
 
-    function stepSurfaceAt(x, z, ground, padding) {
+    const supportRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, -1, 0), KNEE_HEIGHT + 0.01);
+
+    function stepSurfaceAt(x, z, ground) {
         let top = ground;
+        supportRay.origin.set(x, ground + supportRay.length, z);
         for (const [mesh, obstacle] of obstacles) {
-            if (!mesh.isEnabled() || !canStepOn(obstacle, ground)) { continue; }
-            for (const circle of obstacle.circles) {
-                const reach = circle.radius + padding;
-                const ox = x - circle.x, oz = z - circle.z;
-                if (Math.abs(ox) >= reach || Math.abs(oz) >= reach) { continue; }
-                const edge = Math.max(0, circle.radius - 0.045);
-                const support = 1 - smoothstep(edge, reach, Math.hypot(ox, oz));
-                top = Math.max(top, lerp(ground, obstacle.maxY, support));
-            }
+            const { minimumWorld: min, maximumWorld: max } = obstacle;
+            if (x < min.x || x > max.x || z < min.z || z > max.z) { continue; }
+            if (!canStepOn(obstacle, ground) || !mesh.isEnabled()) { continue; }
+            const hit = supportRay.intersectsMesh(mesh);
+            if (hit.pickedPoint) { top = Math.max(top, hit.pickedPoint.y); }
         }
         return top;
     }
@@ -2321,7 +2325,7 @@
         pants.diffuseColor.set(0.20, 0.22, 0.28);
         const shoes = new BABYLON.StandardMaterial('player-leg-shoes', scene);
         shoes.diffuseColor.set(0.13, 0.10, 0.09);
-        const radius = PLAYER_HEIGHT * 0.039;
+        const radius = LEG_RADIUS;
         playerLegs = [-1, 1].map(side => {
             const suffix = side < 0 ? 'left' : 'right';
             const hip = new BABYLON.TransformNode('player-hip-' + suffix, scene);
@@ -2344,7 +2348,7 @@
             const shoe = BABYLON.MeshBuilder.CreateSphere('player-shoe-' + suffix,
                 { diameter: 2.5 * radius, segments: 8 }, scene);
             shoe.parent = ankle;
-            shoe.position.z = 0.9 * radius;
+            shoe.position.z = SHOE_OFFSET;
             shoe.scaling.set(1, 0.55, 1.9);
             shoe.material = shoes;
             for (const mesh of [thigh, shin, shoe]) {
@@ -2355,8 +2359,8 @@
         });
     }
 
-    function updatePlayerLegs(delta, distance) {
-        const { x, y, z } = player.position;
+    function updatePlayerLegs(delta, distance, ground) {
+        const { x, z } = player.position;
         const yaw = player.rotation.y;
         const moving = distance > 0.0002;
         gaitWeight = lerp(gaitWeight, moving ? 1 : 0, Math.min(1, delta * 13));
@@ -2364,16 +2368,31 @@
         const stride = lerp(1.25, 2.45, smoothstep(2.6, RUN_SPEED, speed));
         gaitPhase = (gaitPhase + distance * Math.PI * 2 / stride) % (Math.PI * 2);
         const sine = Math.sin(yaw), cosine = Math.cos(yaw);
-        for (const leg of playerLegs || []) {
+        const feet = (playerLegs || []).map(leg => {
             const phase = gaitPhase + (leg.side < 0 ? 0 : Math.PI);
             const forward = Math.cos(phase) * 0.24 * gaitWeight;
             const lift = Math.max(0, -Math.sin(phase)) * 0.14 * gaitWeight;
             const localX = leg.side * LEG_SPACING;
-            const footX = x + localX * cosine + forward * sine;
-            const footZ = z - localX * sine + forward * cosine;
+            const footX = x + localX * cosine + (forward + SHOE_OFFSET) * sine;
+            const footZ = z - localX * sine + (forward + SHOE_OFFSET) * cosine;
             const floor = terrainHeight(footX, footZ);
-            const support = stepSurfaceAt(footX, footZ, floor, 0.16);
-            const drop = Math.max(0.16, y + HIP_HEIGHT - (support + FOOT_GAP + ANKLE_HEIGHT + lift));
+            const support = stepSurfaceAt(footX, footZ, floor);
+            return { leg, forward, ankleY: support + ANKLE_HEIGHT + SOLE_CLEARANCE + lift, support, onObstacle: support > floor };
+        });
+        const baseY = ground + FOOT_GAP;
+        let bodyY = baseY;
+        if (feet.some(foot => foot.onObstacle)) {
+            const top = Math.max(...feet.map(foot => foot.support)) + FOOT_GAP;
+            // Na borda, limita a elevação ao que a perna mais estendida alcança.
+            const reachable = Math.min(...feet.map(({ ankleY, forward }) =>
+                ankleY + Math.sqrt(4 * LEG_SEGMENT ** 2 - forward ** 2) - HIP_HEIGHT));
+            const riseLimit = Math.max(baseY, player.position.y) + delta * 3;
+            bodyY = Math.min(Math.max(baseY, top), reachable, riseLimit);
+        }
+        player.position.y = bodyY;
+
+        for (const { leg, forward, ankleY } of feet) {
+            const drop = Math.max(0.16, bodyY + HIP_HEIGHT - ankleY);
 
             // Dois segmentos de mesmo comprimento. A perna fica no plano de
             // avanço e o sapato compensa as duas rotações para pousar nivelado.
@@ -2692,8 +2711,7 @@
                 const travelled = movePlayer(delta, pad);
                 if (player) {
                     const { x, z } = player.position;
-                    player.position.y = stepSurfaceAt(x, z, terrainHeight(x, z), PLAYER_RADIUS) + FOOT_GAP;
-                    updatePlayerLegs(delta, travelled);
+                    updatePlayerLegs(delta, travelled, terrainHeight(x, z));
                     ensureChunksAround(x, z);
                 }
                 checkNear();

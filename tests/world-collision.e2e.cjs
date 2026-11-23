@@ -92,32 +92,32 @@ async function wait(callback,label) {
     await p.evaluate(()=>game.resetPlayer());
     await apply({...fixture,uid:'browser-log',asset:'prop.log',scale:0.56});
     await p.waitForTimeout(400);
-    const samples=[];
+    const renderer=main ? p : p.workers()[0];
+    // Registra cada quadro no renderizador para captar o apoio curto em corrida.
+    await renderer.evaluate(()=>{
+        const scene=BABYLON.EngineStore.LastCreatedScene;
+        const player=scene.getTransformNodeByName('player');
+        const knees=['left','right'].map(side=>scene.getTransformNodeByName('player-knee-'+side));
+        const ankles=['left','right'].map(side=>scene.getTransformNodeByName('player-ankle-'+side));
+        const samples=[];
+        const observer=scene.onAfterRenderObservable.add(()=>{
+            const {y,z}=player.position;
+            samples.push({y,z,bend:Math.max(...knees.map(knee=>knee.rotation.x)),
+                feetDifference:Math.abs(ankles[0].getAbsolutePosition().y-ankles[1].getAbsolutePosition().y)});
+        });
+        globalThis.stopStepTrace=()=>{
+            scene.onAfterRenderObservable.remove(observer);
+            return samples;
+        };
+    });
     await p.keyboard.down('w');
     try {
-        const until=Date.now()+1250;
-        while (Date.now()<until) {
-            const position=await pose();
-            if (main) {
-                const joints=await p.evaluate(()=>{
-                    const scene=BABYLON.EngineStore.LastCreatedScene;
-                    const knees=['left','right'].map(side=>scene.getTransformNodeByName('player-knee-'+side));
-                    const ankles=['left','right'].map(side=>scene.getTransformNodeByName('player-ankle-'+side));
-                    if (knees.some(n=>!n) || ankles.some(n=>!n)) return null;
-                    return {
-                        bend:Math.max(...knees.map(n=>n.rotation.x)),
-                        feetDifference:Math.abs(ankles[0].getAbsolutePosition().y-ankles[1].getAbsolutePosition().y),
-                    };
-                });
-                Object.assign(position,joints);
-            }
-            samples.push(position);
-            await p.waitForTimeout(35);
-        }
+        await p.waitForTimeout(1050);
     } finally {
         await p.keyboard.up('w');
     }
     await p.waitForTimeout(300);
+    const samples=await renderer.evaluate(()=>globalThis.stopStepTrace());
     const pastLog=await pose();
     const step={
         peak:Math.max(...samples.map(sample=>sample.y)),
@@ -126,8 +126,37 @@ async function wait(callback,label) {
         end:pastLog,
     };
     console.log(JSON.stringify({step}));
-    assert.ok(step.peak>0.23 && pastLog.z>3.2 && pastLog.y<0.19,'sobe e volta ao chão');
-    if(main) assert.ok(step.flex>0.55 && step.feetDifference>0.10,'joelho flexiona e os pés alternam apoio');
+    assert.ok(step.peak>0.17 && pastLog.z>3.2 && pastLog.y<0.19,'sobe e volta ao chão');
+    assert.ok(step.flex>0.55 && step.feetDifference>0.10,'joelho flexiona e os pés alternam apoio');
+    {
+        const contact = await renderer.evaluate(async () => {
+            const scene = BABYLON.EngineStore.LastCreatedScene;
+            const player = scene.getTransformNodeByName('player');
+            const log = scene.getMeshByName('place-browser-log');
+            const shoes = ['left', 'right'].map(side => scene.getMeshByName('player-shoe-' + side));
+            const down = new BABYLON.Vector3(0, -1, 0);
+            const samples = [];
+            player.rotation.y = 0;
+            for (const z of [1.7, 1.8, 1.9, 2, 2.1, 2.2, 2.3]) {
+                player.position.set(0, player.position.y, z);
+                await new Promise(resolve => scene.onAfterRenderObservable.addOnce(() =>
+                    scene.onAfterRenderObservable.addOnce(() => resolve())));
+                const feet = shoes.map(shoe => {
+                    const { centerWorld, minimumWorld } = shoe.getBoundingInfo().boundingBox;
+                    const ray = new BABYLON.Ray(new BABYLON.Vector3(centerWorld.x, 3, centerWorld.z), down);
+                    const bark = ray.intersectsMesh(log).pickedPoint;
+                    const floor = scene.pickWithRay(ray, mesh => mesh.name.startsWith('ground-')).pickedPoint;
+                    return { supportedByLog: !!bark, gap: minimumWorld.y - Math.max(floor.y, bark?.y ?? floor.y) };
+                });
+                samples.push({ z, feet });
+            }
+            return samples;
+        });
+        console.log(JSON.stringify({contact}));
+        assert.ok(contact.some(sample => sample.feet.every(foot => foot.supportedByLog)), 'os pés chegam ao topo do tronco');
+        assert.ok(contact.every(sample => sample.feet.every(foot => Math.abs(foot.gap)<0.04)),
+            'cada sola deve ficar a menos de 4 cm do tronco ou do chão, mesmo nas bordas');
+    }
     await apply({kind:'remove',uid:'browser-log'});
     await p.evaluate(()=>game.resetPlayer());
     await apply({...fixture,uid:'browser-high-log',asset:'prop.log',scale:0.95});

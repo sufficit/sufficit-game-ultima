@@ -9,6 +9,8 @@ Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
+- [Apoio dos pés em troncos baixos](PLAN-APOIO-NOS-TRONCOS.md)
+
 Prioritários:
 
 1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **concluído em 23/11/2026**
