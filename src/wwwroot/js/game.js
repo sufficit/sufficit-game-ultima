@@ -65,6 +65,12 @@
         if (window.game && game.workshop && game.workshop.worldOp) { game.workshop.worldOp(op); }
     }
 
+    // Feedback do modo construção: cursor de mira sobre o canvas.
+    function onBuildMode(mode) {
+        var canvas = document.getElementById('game-canvas');
+        if (canvas) { canvas.style.cursor = mode && mode !== 'off' ? 'crosshair' : ''; }
+    }
+
     // ---------- Modo main: Babylon injetado com SRI, core direto ----------
     function loadBabylon() {
         if (window.BABYLON) { return Promise.resolve(); }
@@ -96,6 +102,7 @@
                     onInputMode: onInputMode,
                     varyModel: varyModelAsync,
                     worldOp: routeWorldOp,
+                    onBuildMode: onBuildMode,
                     onCoreReady: function () { resolve(true); },
                     onCoreError: reject
                 });
@@ -157,6 +164,8 @@
             if (r) { calls.delete(msg.id); r(msg.value); }
         } else if (msg.type === 'worldOp') {
             routeWorldOp(msg.op);
+        } else if (msg.type === 'buildMode') {
+            onBuildMode(msg.mode);
         } else if (msg.type === 'varyModel') {
             // Core pediu variação paramétrica: chama o C# e devolve o descritor JSON ao worker.
             varyModelAsync(msg.modelId, msg.seed, msg.detail).then(function (json) {

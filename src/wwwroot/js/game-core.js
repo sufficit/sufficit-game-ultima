@@ -8,7 +8,8 @@
     ROOT.UltimaCore = {
         create: function (host) {
 
-    const WORLD_HALF = 48;
+    const WORLD_HALF = 400;   // F3: mundo expansível (montanhas do gerador são a barreira natural)
+    const SCATTER_HALF = 52;   // raio do espalhamento inicial (vale central)
     const NPC_POSITION = { x: 0, z: -14 };      // Guardiã
     const WANDERER_HOME = { x: 5.0, z: 0.0 };    // Andarilho: circula pela clareira inicial
     // Escala realista: personagem com ~1,75 m; os olhos ficam a ~1,62 m do chão.
@@ -336,7 +337,7 @@
     // e cache OPFS por chunk do TERRENO BASE. As ops sculpt/paint do servidor (journal)
     // são reaplicadas em memória a cada visita, depois do mapa chegar.
     const CHUNK = 32, CHUNK_SUB = 48;
-    const CHUNK_MIN = -2, CHUNK_MAX = 1;   // grade 4×4 cobre -64..64 (mundo 104 m + margem)
+    const CHUNK_VIEW = 2;                  // janela 5×5 ao redor do jogador (streaming F3)
     const chunkMap = new Map();            // "cx,cz" -> { mesh, cx, cz }
     const chunkCacheHits = new Map();      // "cx,cz" -> { positions, colors, normals }
     let editsAppliedRev = -1;              // revisão do servidor já refletida no terreno
@@ -403,12 +404,16 @@
 
     function chunkKey(cx, cz) { return cx + ',' + cz; }
 
-    async function warmChunks() {
+    // Aquecimento por aproximação: a janela de streaming enfileira o chunk ~32 m
+    // antes de o jogador chegar — o OPFS lê nesse intervalo (com teto de memória).
+    function prefetchChunkCache(cx, cz) {
         if (!(G.game && G.game.assets && G.game.assets.report().opfs)) { return; }
-        for (let cx = CHUNK_MIN; cx <= CHUNK_MAX; cx++) for (let cz = CHUNK_MIN; cz <= CHUNK_MAX; cz++) {
-            try {
-                const key = await game.assets.digest(['chunk-v1', host.build, cx, cz]);
-                const hit = await game.assets.load(key);
+        if (chunkCacheHits.has(chunkKey(cx, cz))) { return; }
+        if (chunkCacheHits.size > 64) {
+            chunkCacheHits.delete(chunkCacheHits.keys().next().value);   // mais antigo fora
+        }
+        game.assets.digest(['chunk-v1', host.build, cx, cz]).then(function (key) {
+            return game.assets.load(key).then(function (hit) {
                 if (hit && hit.parts && hit.parts.length === 3) {
                     chunkCacheHits.set(chunkKey(cx, cz), {
                         positions: new Float32Array(hit.parts[0]),
@@ -416,8 +421,8 @@
                         normals: new Float32Array(hit.parts[2]),
                     });
                 }
-            } catch (e) { /* cache é otimização */ }
-        }
+            });
+        }).catch(function () { /* cache é otimização */ });
     }
 
     // O cache é do TERRENO BASE: nunca grava depois que edições são conhecidas.
@@ -469,30 +474,49 @@
         saveChunk(cx, cz, positions, colors, normals);
     }
 
-    // Terreno inteiro = grade de chunks na fila com orçamento por frame (um por passo).
-    function buildTerrain() {
-        for (let cx = CHUNK_MIN; cx <= CHUNK_MAX; cx++) for (let cz = CHUNK_MIN; cz <= CHUNK_MAX; cz++) {
-            const ccx = cx, ccz = cz;
-            const label = 'chunk ' + chunkKey(cx, cz);
-            modelQueue.push({
-                timing: { id: label, queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
-                work: (function* () {
-                    yield {
-                        label: label,
-                        run: function () {
-                            const mesh = BABYLON.MeshBuilder.CreateGround('ground-' + chunkKey(ccx, ccz), { width: CHUNK, height: CHUNK, subdivisions: CHUNK_SUB }, scene);
-                            fillChunk(mesh, ccx, ccz);
-                            mesh.material = groundMaterial();
-                            mesh.receiveShadows = true;
-                            mesh.isPickable = true;
-                            chunkMap.set(chunkKey(ccx, ccz), { mesh: mesh, cx: ccx, cz: ccz });
-                        }
-                    };
-                })()
-            });
-        }
+    // Terreno em streaming (F3): janela de chunks ao redor do jogador na fila orçada;
+    // chunks distantes são descartados (o cache OPFS devolve os conhecidos na volta).
+    let lastEnsureKey = '';
+    function enqueueChunkBuild(cx, cz) {
+        prefetchChunkCache(cx, cz);
+        const label = 'chunk ' + chunkKey(cx, cz);
+        modelQueue.push({
+            timing: { id: label, queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
+            work: (function* () {
+                yield {
+                    label: label,
+                    run: function () {
+                        const mesh = BABYLON.MeshBuilder.CreateGround('ground-' + chunkKey(cx, cz), { width: CHUNK, height: CHUNK, subdivisions: CHUNK_SUB }, scene);
+                        fillChunk(mesh, cx, cz);
+                        mesh.material = groundMaterial();
+                        mesh.receiveShadows = true;
+                        mesh.isPickable = true;
+                        chunkMap.set(chunkKey(cx, cz), { mesh: mesh, cx: cx, cz: cz });
+                    }
+                };
+            })()
+        });
         modelStatus.queue = modelQueue.length;
     }
+
+    function ensureChunksAround(px, pz) {
+        if (!scene) { return; }
+        const ccx = Math.floor(px / CHUNK), ccz = Math.floor(pz / CHUNK);
+        const key = ccx + ',' + ccz;
+        if (key === lastEnsureKey) { return; }
+        lastEnsureKey = key;
+        for (let dx = -CHUNK_VIEW; dx <= CHUNK_VIEW; dx++) for (let dz = -CHUNK_VIEW; dz <= CHUNK_VIEW; dz++) {
+            if (!chunkMap.has(chunkKey(ccx + dx, ccz + dz))) { enqueueChunkBuild(ccx + dx, ccz + dz); }
+        }
+        for (const [k, ch] of Array.from(chunkMap)) {
+            if (Math.abs(ch.cx - ccx) > CHUNK_VIEW + 1 || Math.abs(ch.cz - ccz) > CHUNK_VIEW + 1) {
+                ch.mesh.dispose();
+                chunkMap.delete(k);
+            }
+        }
+    }
+
+    function buildTerrain() { ensureChunksAround(0, 0); }
 
     // Material do chão (granulação em ladrilhos de ~3 m) compartilhado por todos os chunks.
     function groundMaterial() {
@@ -511,6 +535,7 @@
         else if (op.kind === 'paint') { worldPaints.push(op); }
         else { return false; }
         refreshChunksAround(op.x, op.z, op.r);
+        if (op.mat === 'water') { syncWaterDiscs(); }
         return true;
     }
 
@@ -549,6 +574,27 @@
         mesh.updateVerticesData(BABYLON.VertexBuffer.NormalKind, nor);
     }
 
+    // Água pintada (F7a): discos translúcidos sobre o terreno, reposicionados a cada
+    // rebuild (escavações posteriores afundam o disco junto).
+    const waterDiscs = new Map();
+    function syncWaterDiscs() {
+        for (const d of waterDiscs.values()) { d.dispose(); }
+        waterDiscs.clear();
+        for (const op of worldPaints) {
+            if (op.mat !== 'water') { continue; }
+            const disc = BABYLON.MeshBuilder.CreateDisc('water', { radius: op.r, tessellation: 24 }, scene);
+            disc.rotation.x = Math.PI / 2;
+            disc.isPickable = false;
+            const m = new BABYLON.StandardMaterial('waterMat-' + waterDiscs.size, scene);
+            m.diffuseColor = new BABYLON.Color3(0.10, 0.34, 0.55);
+            m.specularColor = new BABYLON.Color3(0.7, 0.7, 0.7);
+            m.alpha = 0.74;
+            disc.material = m;
+            disc.position.set(op.x, terrainHeight(op.x, op.z) + 0.12, op.z);
+            waterDiscs.set(disc, disc);
+        }
+    }
+
     // Replay do boot: limpa e reaplica a lista completa (chamado quando o mapa chega).
     function setWorldEdits(edits, revision) {
         if (revision !== undefined && revision === editsAppliedRev) { return; }
@@ -556,6 +602,7 @@
         worldSculpts.length = 0;
         worldPaints.length = 0;
         for (const op of edits || []) { applySurfaceEdit(op); }
+        syncWaterDiscs();
     }
 
     const placements = new Map();       // uid -> InstancedMesh
@@ -606,7 +653,7 @@
     }
 
     // ---------- Modo construção: cliques no terreno viram ops (F4/F6) ----------
-    const buildState = { mode: 'off', asset: '', r: 5, dh: 1.2, mat: 'sand' };
+    const buildState = { mode: 'off', asset: '', r: 5, dh: 1.2, mat: 'sand', p1: null };
 
     function terrainClickImpl(sx, sy) {
         if (buildState.mode === 'off' || !scene || typeof host.worldOp !== 'function') { return; }
@@ -621,7 +668,16 @@
         if (!pick || !pick.hit) { return; }
         const p = pick.pickedPoint;
         const r3 = function (v) { return Math.round(v * 1000) / 1000; };
-        if (buildState.mode === 'raise' || buildState.mode === 'dig') {
+        if (buildState.mode === 'passage') {
+            if (!buildState.p1) {
+                buildState.p1 = { x: r3(p.x), z: r3(p.z) };
+                if (host.onBuildMode) { host.onBuildMode('passage-b'); }   // segundo clique
+                return;
+            }
+            host.worldOp({ action: 'passage', x1: buildState.p1.x, z1: buildState.p1.z, x2: r3(p.x), z2: r3(p.z), r: buildState.r, dh: -1.5, cid: cid });
+            buildState.p1 = null;
+            if (host.onBuildMode) { host.onBuildMode('passage'); }
+        } else if (buildState.mode === 'raise' || buildState.mode === 'dig') {
             host.worldOp({ action: 'sculpt', x: r3(p.x), z: r3(p.z), r: buildState.r, dh: r3(buildState.mode === 'raise' ? buildState.dh : -buildState.dh), cid: cid });
         } else if (buildState.mode === 'paint') {
             host.worldOp({ action: 'paint', x: r3(p.x), z: r3(p.z), r: buildState.r, mat: buildState.mat, cid: cid });
@@ -765,7 +821,7 @@
         return function (n) {
             while (placed < count && tries < 2400 && n > 0) {
                 tries += 1;
-                const x = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
+                const x = (Math.random() * 2 - 1) * SCATTER_HALF;
                 const z = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
                 const r = Math.hypot(x, z);
                 if (r < 6.5) { continue; }                                                     // clareira inicial
@@ -1050,8 +1106,8 @@
         return function (n) {
             while (placed < count && tries < count * 40 && n > 0) {
                 tries += 1;
-                const x = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
-                const z = (Math.random() * 2 - 1) * (WORLD_HALF + 4);
+                const x = (Math.random() * 2 - 1) * SCATTER_HALF;
+                const z = (Math.random() * 2 - 1) * SCATTER_HALF;
                 const r = Math.hypot(x, z);
                 if (r < (opts.minR || 5)) { continue; }
                 if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 4.5) { continue; }
@@ -1312,8 +1368,8 @@
                         let n = MODEL_SCATTER_BATCH;
                         while (placed < count && tries < count * 40 && n > 0) {
                             tries += 1;
-                            const x = (rnd() * 2 - 1) * (WORLD_HALF + 4);
-                            const z = (rnd() * 2 - 1) * (WORLD_HALF + 4);
+                            const x = (rnd() * 2 - 1) * SCATTER_HALF;
+                            const z = (rnd() * 2 - 1) * SCATTER_HALF;
                             const r = Math.hypot(x, z);
                             if (r < (opts.minR || 5)) { continue; }
                             if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 4.5) { continue; }
@@ -1362,7 +1418,7 @@
         scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
         scene.fogColor = horizon;
         scene.fogDensity = 0.0105;
-        scene.ambientColor = new BABYLON.Color3(0.26, 0.30, 0.34);
+        scene.ambientColor = new BABYLON.Color3(0.34, 0.38, 0.42);
 
         // Tone mapping ACES: realça luz e sombra sem estourar os claros.
         const proc = scene.imageProcessingConfiguration;
@@ -1389,7 +1445,7 @@
         shadows.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM;
         shadows.bias = 0.0006;
         shadows.normalBias = 0.02;
-        shadows.darkness = 0.3;
+        shadows.darkness = 0.45;   // crateras continuam legíveis (F7a)
 
         skyDome();
         buildTerrain();   // grade de chunks na fila com orçamento por frame
@@ -1773,7 +1829,7 @@
         try {
             if (G.game && G.game.assets) {
                 await G.game.assets.init(host.build);
-                await Promise.all([warmTextures(), warmChunks()]);
+                await warmTextures();   // chunks: aquecimento por aproximação (prefetchChunkCache)
             }
             // No worker o OffscreenCanvas não tem layout nem devicePixelRatio: o shell
             // mede (CSS × densidade) e o tamanho é aplicado daqui; sem isso o canvas
@@ -1819,7 +1875,10 @@
                     }
                 }
                 movePlayer(delta, pad);
-                if (player) { player.position.y = terrainHeight(player.position.x, player.position.z) + 0.03; }
+                if (player) {
+                    player.position.y = terrainHeight(player.position.x, player.position.z) + 0.03;
+                    ensureChunksAround(player.position.x, player.position.z);
+                }
                 checkNear();
                 camera.setTarget(player.position.add(CAM_UP));
                 scene.render();
@@ -1924,6 +1983,8 @@
         build: {
             mode(m, opts) {
                 buildState.mode = m || 'off';
+                buildState.p1 = null;
+                if (host.onBuildMode) { host.onBuildMode(buildState.mode); }
                 if (opts) {
                     if (opts.asset) { buildState.asset = String(opts.asset); }
                     if (opts.r) { buildState.r = Math.min(8, Math.max(0.5, Number(opts.r) || 5)); }
@@ -1932,7 +1993,7 @@
                 }
                 return buildState.mode;
             },
-            state() { return JSON.parse(JSON.stringify(buildState)); }
+            state() { var st = JSON.parse(JSON.stringify(buildState)); st.chunks = chunkMap.size; return st; }
         },
         models: {
             // Chamado pelo ModelLoader (C#) com o descritor JSON de cada modelo. O trabalho

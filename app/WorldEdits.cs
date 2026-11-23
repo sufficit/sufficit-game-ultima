@@ -138,6 +138,130 @@ sealed partial class GameWorld
         return (200, new JsonObject { ["ok"] = true, ["uid"] = p.Uid, ["revision"] = _revision });
     }
 
+    // ---------- F3: cristalização assistida (agente v1, regras) ----------
+    // Um chunk inédito visitado por um jogador é enriquecido UMA vez com feições
+    // determinísticas (hash das coordenadas) e cristalizado no journal — daí em diante
+    // é autoritativo para todos. v1 são regras leves; o LLM (quando disponível) entra
+    // como produtor assíncrono sugerindo feições, nunca no caminho crítico do tick.
+
+    /// <summary>RNG determinístico mínimo (mulberry32) — mesmo algoritmo do cliente.</summary>
+    static double ChunkRnd(uint seed)
+    {
+        seed += 0x6D2B79F5;
+        var t = seed;
+        t = unchecked((t ^ (t >> 15)) * (t | 1));
+        t ^= t + unchecked((t ^ (t >> 7)) * (t | 61));
+        return ((t ^ (t >> 14)) & 0xFFFFFF) / 16777216.0;
+    }
+
+    /// <summary>Chama-se dentro do lock do tick; devolve true quando cristalizou um chunk.</summary>
+    public bool CrystallizeIfNew(double x, double z)
+    {
+        var cx = (long)Math.Floor(x / 32);
+        var cz = (long)Math.Floor(z / 32);
+        if (Math.Abs(cx) > 12 || Math.Abs(cz) > 12) return false;   // ±384 m
+        var key = cx + "," + cz;
+        if (!_visitedChunks.Add(key)) return false;
+        var seed = (uint)(HashCode.Combine(cx, cz) & 0x7FFFFFFF);
+        var rnd = new Func<double>(() => ChunkRnd(seed++));
+        var by = "Guardiã";
+        var now = J.Now;
+        double Px() => cx * 32 - 16 + rnd() * 32;
+        double Pz() => cz * 32 - 16 + rnd() * 32;
+        var roll = rnd();
+        if (roll < 0.35)
+        {
+            // Clareira: mancha de material mais claro no meio da vegetação.
+            var mat = rnd() < 0.5 ? "sand" : rnd() < 0.5 ? "grass" : "dirt";
+            RecordSurfaceEdit("paint", new JsonObject
+            {
+                ["kind"] = "paint", ["x"] = J.R(Px(), 3), ["z"] = J.R(Pz(), 3), ["r"] = J.R(4 + rnd() * 3, 2),
+                ["mat"] = mat, ["by"] = by, ["at"] = J.R(now, 3), ["chk"] = key,
+            });
+        }
+        else if (roll < 0.6)
+        {
+            // Lagoa: água pintada numa depressão suave.
+            var lx = Px(); var lz = Pz();
+            RecordSurfaceEdit("sculpt", new JsonObject
+            {
+                ["kind"] = "sculpt", ["x"] = J.R(lx, 3), ["z"] = J.R(lz, 3), ["r"] = J.R(3 + rnd() * 2, 2),
+                ["dh"] = -1.2, ["by"] = by, ["at"] = J.R(now, 3), ["chk"] = key,
+            });
+            RecordSurfaceEdit("paint", new JsonObject
+            {
+                ["kind"] = "paint", ["x"] = J.R(lx, 3), ["z"] = J.R(lz, 3), ["r"] = J.R(2.5 + rnd() * 2, 2),
+                ["mat"] = "water", ["by"] = by, ["at"] = J.R(now, 3), ["chk"] = key,
+            });
+        }
+        else if (roll < 0.9)
+        {
+            // Marco: um asset builtin marca o lugar (pedra/registro/samambaia).
+            var asset = BuiltinAssets[(int)(rnd() * BuiltinAssets.Length)];
+            var p = new Placement
+            {
+                Uid = "k" + J.Hex(4), AssetId = asset, X = J.R(Px(), 3), Z = J.R(Pz(), 3),
+                Rot = J.R(rnd() * Math.PI * 2, 3), Scale = J.R(0.8 + rnd() * 0.8, 3), By = "chunk " + key, At = now,
+            };
+            _placements.Add(p);
+            _revision++;
+            var op = p.ToJson();
+            op["kind"] = "place";
+            op["rev"] = _revision;
+            _store.Append("place", op);
+            Emit(new JsonObject { ["type"] = "world_edited", ["revision"] = _revision, ["op"] = op.DeepClone() });
+        }
+        // 10%: o lugar fica como o gerador deixou — nem todo chunk precisa de feição.
+        return true;
+    }
+
+    /// <summary>
+    /// Passagem (F5a): cava um corredor entre dois pontos numa única ação atômica —
+    /// o servidor expande a linha em ops de escultura espaçadas de 0,8·r (mais barato
+    /// para o cliente e o journal do que N comandos).
+    /// </summary>
+    (int, JsonObject) PassageCmd(Character ch, JsonObject data, double now)
+    {
+        if (!J.TryFloat(data["x1"], out var x1) || !J.TryFloat(data["z1"], out var z1) ||
+            !J.TryFloat(data["x2"], out var x2) || !J.TryFloat(data["z2"], out var z2))
+            return (400, J.Err("x1_z1_x2_z2_required"));
+        var len = Math.Sqrt((x2 - x1) * (x2 - x1) + (z2 - z1) * (z2 - z1));
+        if (len is < 1 or > 60) return (400, J.Err("length_1_to_60"));
+        var r = 4.0;
+        if (data.ContainsKey("r") && !J.TryFloat(data["r"], out r)) return (400, J.Err("x_z_r_invalid"));
+        r = Math.Clamp(r, 1, 8);
+        var dh = -1.5;
+        if (data.ContainsKey("dh") && !J.TryFloat(data["dh"], out dh)) return (400, J.Err("dh_required"));
+        dh = Math.Clamp(dh, -2, 2);
+        if (Math.Abs(dh) < 1e-4) return (400, J.Err("dh_required"));
+        if (_edits.Count >= MaxSurfaceEdits - 70) return (507, J.Err("too_many_surface_edits"));
+        // Ops ao longo da linha + paredes de rocha nas laterais para ler como passagem.
+        var step = r * 0.8;
+        var n = (int)Math.Ceiling(len / step) + 1;
+        for (var i = 0; i <= n; i++)
+        {
+            var t = n == 0 ? 0 : (double)i / n;
+            var x = x1 + (x2 - x1) * t;
+            var z = z1 + (z2 - z1) * t;
+            var op = new JsonObject
+            {
+                ["kind"] = "sculpt", ["x"] = J.R(x, 3), ["z"] = J.R(z, 3), ["r"] = J.R(r, 2), ["dh"] = J.R(dh, 3),
+                ["by"] = ch.Name, ["at"] = J.R(now, 3), ["cid"] = J.Str(data["cid"]),
+            };
+            RecordSurfaceEdit("sculpt", op);
+            if (i % 2 == 0)
+            {
+                var wall = new JsonObject
+                {
+                    ["kind"] = "paint", ["x"] = J.R(x, 3), ["z"] = J.R(z, 3), ["r"] = J.R(r * 1.4, 2), ["mat"] = "rock",
+                    ["by"] = ch.Name, ["at"] = J.R(now, 3), ["cid"] = J.Str(data["cid"]),
+                };
+                RecordSurfaceEdit("paint", wall);
+            }
+        }
+        return (200, new JsonObject { ["ok"] = true, ["revision"] = _revision, ["ops"] = n + 1 });
+    }
+
     /// <summary>Remove um objeto plantado (uid).</summary>
     (int, JsonObject) RemoveCmd(Character ch, JsonObject data, double now)
     {

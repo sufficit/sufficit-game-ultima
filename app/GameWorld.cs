@@ -53,6 +53,7 @@ sealed partial class GameWorld
     List<Job> _jobs = [];
     List<JsonObject> _edits = [];        // ops sculpt/paint (F4) — replay no cliente
     List<Placement> _placements = [];    // objetos plantados (F6)
+    readonly HashSet<string> _visitedChunks = new(StringComparer.Ordinal);   // F3: cristalização
     TaskCompletionSource _changed = NewSignal();
     readonly double _start = J.Now;
     readonly IWorldStore _store;
@@ -82,6 +83,17 @@ sealed partial class GameWorld
         _jobs = st.Jobs;
         _edits = st.SurfaceEdits;
         _placements = st.Placements;
+        // F3: chunks já cristalizados voltam marcados (ops carregam a tag "chk").
+        foreach (var e in _edits)
+        {
+            var chk = J.Str(e["chk"]);
+            if (chk.Length > 0) _visitedChunks.Add(chk);
+        }
+        foreach (var pl in _placements)
+        {
+            var chk = J.Str(pl.By);
+            if (chk.StartsWith("chunk ", StringComparison.Ordinal)) _visitedChunks.Add(chk[6..]);
+        }
     }
 
     // Ops do journal — quem muta o mundo registra a op correspondente (dentro do _lock).
@@ -191,10 +203,15 @@ sealed partial class GameWorld
 
     static double Dist(Character c, double x, double z) => Math.Sqrt((c.X - x) * (c.X - x) + (c.Z - z) * (c.Z - z));
 
-    static (double, double) ClampWorld(double x, double z) =>
-        (Math.Clamp(x, -WorldHalf, WorldHalf), Math.Clamp(z, -WorldHalf, WorldHalf));
+    // F3 — mundo expansível: andar até ±WalkBound (o gerador do cliente dá montanhas
+    // naturais além do vale); tiles de overlay ficam no núcleo jogável (±MapBound).
+    const double WalkBound = 400;
+    const long MapCells = 96;   // ±384 m em células de 4 m
 
-    static bool OutOfWorld(long cx, long cz) => Math.Abs(cx) > WorldHalf / CellSize || Math.Abs(cz) > WorldHalf / CellSize;
+    static (double, double) ClampWorld(double x, double z) =>
+        (Math.Clamp(x, -WalkBound, WalkBound), Math.Clamp(z, -WalkBound, WalkBound));
+
+    static bool OutOfWorld(long cx, long cz) => Math.Abs(cx) > MapCells || Math.Abs(cz) > MapCells;
 
     List<string> NearbyTokens(Character ch, double radius) =>
         _chars.Values.Where(c => Dist(c, ch.X, ch.Z) <= radius).Select(c => c.Token).ToList();

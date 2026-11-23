@@ -109,6 +109,13 @@ sealed partial class GameWorld
             }
         }
 
+        // F3 — mundo expansível: o primeiro passinho por um chunk inédito o cristaliza
+        // (regras determinísticas + journal; no máx. um chunk por tick).
+        foreach (var ch in _chars.Values)
+        {
+            if (CrystallizeIfNew(ch.X, ch.Z)) { break; }
+        }
+
         // Sessões ociosas saem (jobs sobrevivem: pertencem ao mapa).
         foreach (var ch in _chars.Values.Where(c => now - c.Last > SessionIdle).ToList())
         {
