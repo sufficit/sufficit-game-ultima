@@ -11,8 +11,6 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 
 Prioritários:
 
-- [Malha do terreno em C# WebAssembly](PLAN-TERRENO-CSHARP-WASM.md) — validação no GitHub Pages em andamento.
-
 1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **concluído em 23/11/2026**
    (commit `70720cd`): persistência durável (journal+PVC), terreno em chunks com
    streaming, mundo que cresce ao andar com cristalização assistida, esculpir/pintar,
@@ -64,6 +62,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 `/mnt/sufficit/lineage-rust`). Cada plano cita os arquivos-fonte correspondentes.
 
 ## Atividades (`activities/`)
+
+- [Terreno em C# WebAssembly](activities/202611231906-terreno-csharp-wasm.md)
 
 - [Curvas nas bordas das escavações](activities/202611231851-relevo-escavado-sem-v.md)
 
