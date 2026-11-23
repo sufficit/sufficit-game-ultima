@@ -9,8 +9,6 @@ Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
-- [Precisão dos cliques e escavação em camadas](PLAN-PRECISAO-E-CAMADAS-DA-COLETA.md)
-
 Prioritários:
 
 1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **concluído em 23/11/2026**
@@ -64,6 +62,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 `/mnt/sufficit/lineage-rust`). Cada plano cita os arquivos-fonte correspondentes.
 
 ## Atividades (`activities/`)
+
+- [Precisão dos cliques e escavação em camadas](activities/202611231736-precisao-e-camadas-da-coleta.md)
 
 - [Apoio dos pés em troncos baixos](activities/202611231730-apoio-nos-troncos.md)
 
