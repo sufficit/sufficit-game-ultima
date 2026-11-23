@@ -138,12 +138,17 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
         // swiftshader o rAF engasga (FPS ~1-2) e a espera por animation frame
         // estoura o timeout mesmo com o jogo pronto em ~5s (comprovado por sonda).
         let booted = false;
-        for (let t = 0; t < 45; t++) {
-            booted = await page.evaluate(() => !!(window.game && document.getElementById('game-canvas'))).catch(() => false);
-            if (booted) break;
-            await page.waitForTimeout(1000);
+        // Ate 3 rodadas com reload: o runtime WASM pode estagnar >45s por contencao de
+        // CPU na maquina compartilhada; sondas mostram o mesmo build bootando em 5-8s.
+        for (let round = 1; round <= 3 && !booted; round++) {
+            if (round > 1) await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+            for (let t = 0; t < 45; t++) {
+                booted = await page.evaluate(() => !!(window.game && document.getElementById('game-canvas'))).catch(() => false);
+                if (booted) break;
+                await page.waitForTimeout(1000);
+            }
         }
-        if (!booted) throw new Error('boot: window.game/#game-canvas indisponiveis apos 45s');
+        if (!booted) throw new Error('boot: window.game/#game-canvas indisponiveis apos 3x45s; console: ' + errors.slice(0, 4).join(' | ').slice(0, 400));
         // Motor subir a cena: em headless o FPS é ~1-2, então espera a câmera responder
         // (cameraState) em vez de sono fixo — evita "cena ativa n/d" em qualquer viewport.
         for (let t = 0; t < 45; t++) {
