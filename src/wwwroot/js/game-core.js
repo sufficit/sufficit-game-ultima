@@ -1631,7 +1631,16 @@
         sun.diffuse = new BABYLON.Color3(1.0, 0.95, 0.85);        // sol da tarde
         sun.specular = new BABYLON.Color3(1.0, 0.97, 0.9);
 
-        const shadows = new BABYLON.ShadowGenerator(2048, sun);
+        // Qualidade adaptativa (F7e): renderizador de software (SwiftShader/llvmpipe,
+        // típico de GPU bloqueada) não aguenta MSAA 4x + bloom + sharpen + sombras 2048
+        // — sem isso, 2-7 fps. Detecta e degrada com dignidade.
+        let softwareRenderer = false;
+        try {
+            const glInfo = engine.getGlInfo && engine.getGlInfo();
+            const r = (glInfo && (glInfo.renderer || glInfo.vendor)) || '';
+            softwareRenderer = /swiftshader|llvmpipe|softpipe|software/i.test(r);
+        } catch (e) { /* info indisponível */ }
+        const shadows = new BABYLON.ShadowGenerator(softwareRenderer ? 1024 : 2048, sun);
         shadows.usePercentageCloserFiltering = true;       // sombra de bordas suaves (WebGL2)
         shadows.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM;
         shadows.bias = 0.0006;
@@ -1698,11 +1707,15 @@
         // v3: pós-processamento (MSAA 4x, bloom discreto, nitidez) com recuo gracioso.
         try {
             const pipeline = new BABYLON.DefaultRenderingPipeline('pipe', true, scene, [camera]);
-            pipeline.samples = 4;
-            pipeline.fxaaEnabled = false;
-            pipeline.bloomEnabled = true;
-            pipeline.bloomThreshold = 0.85; pipeline.bloomWeight = 0.22; pipeline.bloomKernel = 48; pipeline.bloomScale = 0.5;
-            pipeline.sharpenEnabled = true; pipeline.sharpen.edgeAmount = 0.22;
+            if (softwareRenderer) {
+                pipeline.samples = 1;                 // software: efeitos fora, frames de volta
+            } else {
+                pipeline.samples = 4;
+                pipeline.fxaaEnabled = false;
+                pipeline.bloomEnabled = true;
+                pipeline.bloomThreshold = 0.85; pipeline.bloomWeight = 0.22; pipeline.bloomKernel = 48; pipeline.bloomScale = 0.5;
+                pipeline.sharpenEnabled = true; pipeline.sharpen.edgeAmount = 0.22;
+            }
         } catch (e) { console.warn('Pós-processamento indisponível:', e); }
 
         // v3: poeira/pólen em suspensão ao redor do jogador (textura de disco suave desenhada em canvas).
