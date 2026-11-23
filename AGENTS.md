@@ -42,5 +42,12 @@ Jogo open source em C# / Blazor WebAssembly com mundo 3D em Babylon.js
   sem registrar a nova.
 - `app/` (API Python opcional) é fallback-friendly: o jogo nunca pode depender
   dela para iniciar.
+- **Interface do jogo = Sufficit.Blazor.UI.** Painéis, botões, campos, seletores e
+  interruptores usam os componentes da biblioteca (versão fixada no `.csproj`), nunca
+  HTML cru estilizado à mão; o estado dos controles mora no Blazor e chega ao motor por
+  JS interop (o JavaScript não lê nem altera o DOM dos controles). Padrão de referência:
+  a Oficina do mundo e o Painel do jogo em `src/Pages/Index.razor`; motivação e limites
+  em `docs/activities/202611230037-menus-sufficit-blazor-ui.md`. O parâmetro `Subtitle`
+  dos painéis de expansão cola título e subtítulo nesta versão: não usar.
 - Aproximação técnica do Ultima sempre publicável sem confirmação extra
   (decisão do mantenedor), desde que validada no site de produção.

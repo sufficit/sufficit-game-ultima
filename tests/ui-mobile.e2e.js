@@ -23,7 +23,7 @@ const VIEWPORTS = {
     tablet: { width: 768, height: 1024, mobile: true }, // smoke (fica >760px → desktop)
 };
 const HUD = [
-    '.ultima-status', '.workshop-panel', '.ultima-panel-toggle', '.ultima-panel',
+    '.ultima-status', '.ultima-corner', '.ultima-workshop', '.ultima-panel-toggle', '.ultima-panel',
     '.ultima-chat-log', 'form.ultima-chat-compose', '.ultima-dialog', '.ultima-menu',
     '#ultima-menu-fab', '.ultima-menu-backdrop',
 ];
@@ -184,7 +184,7 @@ const measure = (page) => page.evaluate(MEASURE, { sel: HUD, touchSel: TOUCH });
             ok(`${name}: sem sobreposição de HUD`, m.overlaps.length === 0, m.overlaps.slice(0, 3).join(' | '));
         }
         if (!BASELINE && name === 'portrait') {
-            const clean = !m.rects['.ultima-status'] && !m.rects['.workshop-panel'] && !m.rects['.ultima-panel'] && !m.rects['.ultima-chat-log'] && !!m.rects['#ultima-menu-fab'];
+            const clean = !m.rects['.ultima-status'] && !m.rects['.ultima-corner'] && !m.rects['.ultima-panel'] && !m.rects['.ultima-chat-log'] && !!m.rects['#ultima-menu-fab'];
             ok('retrato: menus ocultos por padrão (só fab + controles)', clean, Object.keys(m.rects).join(','));
             const st = m.touch['#move-stick'], lk = m.touch['#look-stick'], a = m.touch['#touch-action'], b = m.touch['#touch-cancel'];
             ok('retrato: sticks ≥112 e A ≥68/B ≥56', !!st && st.w >= 112 && st.h >= 112 && !!lk && lk.w >= 112 && !!a && a.w >= 68 && !!b && b.w >= 56, JSON.stringify(m.touch));

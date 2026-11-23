@@ -82,13 +82,31 @@ body[data-input="gamepad"] .hint-kb, body[data-input="touch"] .hint-kb { display
 body[data-input="gamepad"] .hint-pad { display: inline; }
 body[data-input="touch"] .hint-touch { display: inline; }
 
-/* Cartão de status compacto: canto superior esquerdo, recolhível por padrão */
-.ultima-status {
+/* Coluna do canto superior esquerdo: cartão de status e, logo abaixo, a Oficina do
+   mundo — empilhados no fluxo, então nunca um cobre o outro (antes os dois eram
+   posicionados de forma absoluta no mesmo ponto e o status interceptava os cliques
+   da Oficina). A coluna respeita a altura da janela; a Oficina rola por dentro. */
+.ultima-corner {
     position: absolute; top: .75rem; left: .75rem;
-    width: min(300px, calc(100vw - 6rem));
+    display: flex; flex-direction: column; gap: .75rem;
+    width: min(340px, calc(100vw - 8rem));
+    max-height: calc(100% - 1.5rem);
+    min-height: 0;
     z-index: 4;
 }
+.ultima-status { flex: none; width: 100%; max-width: 300px; }
 .ultima-status__more { margin-top: .35rem; }
+
+/* Oficina do mundo: cartão da UI (vidro) que ocupa o resto da coluna e rola por dentro */
+.ultima-workshop { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.ultima-workshop__card { min-height: 0; display: flex; flex-direction: column; }
+.ultima-workshop__body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+/* Telas baixas (celular deitado): com a Oficina aberta ela ocupa a coluna inteira, por
+   cima do cartão de status — senão sobravam poucos pixels de altura para o conteúdo. */
+@media (max-height: 480px) {
+    .ultima-corner--oficina .ultima-workshop { position: absolute; inset: 0; }
+}
 
 /* Alternador do painel do jogo: canto superior direito */
 .ultima-panel-toggle { position: absolute; top: .75rem; right: .75rem; z-index: 4; }
@@ -205,7 +223,7 @@ form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
         z-index: 8; touch-action: manipulation; -webkit-user-select: none; user-select: none;
     }
     /* Tela limpa por padrão no celular: status, oficina, painel e chat ficam atrás do menu */
-    .ultima-status, .workshop-panel, .ultima-panel, .ultima-panel-toggle,
+    .ultima-status, .ultima-corner, .ultima-panel, .ultima-panel-toggle,
     .ultima-chat-log, form.ultima-chat-compose { display: none; }
     /* Ao abrir o menu no celular, tudo dele vira uma folha sobre o mundo */
     .ultima-menu-backdrop {
@@ -238,21 +256,20 @@ form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
     }
     /* Dentro da folha, os blocos deixam de flutuar */
     .game-shell.ultima-menu-open .ultima-status,
-    .game-shell.ultima-menu-open .workshop-panel,
+    .game-shell.ultima-menu-open .ultima-corner,
     .game-shell.ultima-menu-open .ultima-panel-toggle,
     .game-shell.ultima-menu-open .ultima-panel {
         position: static; width: auto; max-height: none; overflow: visible; z-index: auto;
     }
     .game-shell.ultima-menu-open .ultima-panel-toggle { display: none; } /* o próprio fab fecha a folha */
     .game-shell.ultima-menu-open .ultima-panel { display: block; }
-    .game-shell.ultima-menu-open .ultima-status,
-    .game-shell.ultima-menu-open .workshop-panel { display: block; }
+    .game-shell.ultima-menu-open .ultima-status { display: block; }
+    .game-shell.ultima-menu-open .ultima-corner { display: flex; }
     /* alvos confortáveis dentro da folha */
     .game-shell.ultima-menu-open .ultima-menu button { min-height: 48px; min-width: 48px; } /* run 7: botão-ícone ↻ tinha 27px de largura */
     .game-shell.ultima-menu-open .ultima-menu input,
     .game-shell.ultima-menu-open .ultima-menu select { min-height: 48px; } /* campos da Oficina: alvo de 48px (run 6: 21px) */
     .game-shell.ultima-menu-open .ultima-menu summary { min-height: 48px; display: flex; align-items: center; } /* painel do jogo sempre disponível na folha */
-    .game-shell.ultima-menu-open .workshop-panel { top: auto; }
 
     /* Controles de toque: fora da folga dos cantos, acima da safe-area */
     .touch-controls {
@@ -297,6 +314,15 @@ form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
     #touch-cancel { width: 52px; height: 52px; }
     .ultima-dialog { max-height: calc(100% - 4.2rem); }
     .ultima-dialog__line { font-size: .88rem; }
+}
+
+/* Telas estreitas (origin/main, menus SUI): coluna e painéis mais finos */
+@media (max-width: 760px) {
+    .ultima-corner { width: calc(100vw - 8rem); }
+    .ultima-status { max-width: min(240px, 100%); }
+    .ultima-panel { top: 3.3rem; max-height: calc(100% - 4.5rem); }
+    .ultima-dialog { bottom: .6rem; }
+    .ultima-dialog__line { font-size: .9rem; }
 }
 
 /* Erro fatal do Blazor */

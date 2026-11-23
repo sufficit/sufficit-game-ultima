@@ -247,10 +247,10 @@
         const texture = new BABYLON.DynamicTexture('skyTex', { width: 64, height: 512 }, scene, false);
         const ctx = texture.getContext();
         const grad = ctx.createLinearGradient(0, 0, 0, 512);
-        grad.addColorStop(0, '#4d7dc4');
-        grad.addColorStop(0.52, '#9fc0e0');
-        grad.addColorStop(0.75, '#d3e2ee');
-        grad.addColorStop(1, '#eef1f2');
+        grad.addColorStop(0, '#31619e');
+        grad.addColorStop(0.45, '#7aa3cc');
+        grad.addColorStop(0.72, '#b6c9dc');
+        grad.addColorStop(1, '#d5dfe8');
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, 64, 512);
         // Nuvens translúcidas distribuídas na faixa do horizonte.
@@ -321,8 +321,8 @@
                     const u = x / N * Math.PI * 2, v = y / N * Math.PI * 2;
                     const c1 = rnd(Math.cos(u) * 3 + 10, Math.sin(u) * 3 + Math.cos(v) * 3);
                     const c2 = rnd(Math.cos(u * 3) * 4 - 7, Math.sin(v * 3) * 4 + Math.sin(u * 3) * 4);
-                    const grain = (Math.random() - 0.5) * 0.22;
-                    const val = 0.84 + c1 * 0.10 + c2 * 0.07 + grain;
+                    const grain = (Math.random() - 0.5) * 0.26;
+                    const val = 0.78 + c1 * 0.12 + c2 * 0.10 + grain;
                     const k = Math.max(0, Math.min(255, val * 255)) | 0;
                     const i = (y * N + x) * 4;
                     img.data[i] = k; img.data[i + 1] = k; img.data[i + 2] = Math.min(255, k + 2); img.data[i + 3] = 255;
@@ -388,7 +388,7 @@
 
     // Paleta do solo (mesma lógica do gerador original), agora pintável por material.
     function terrainColorAt(x, y, z) {
-        const grassDark = [0.16, 0.34, 0.13], grassLight = [0.38, 0.52, 0.20], grassDry = [0.55, 0.55, 0.26];
+        const grassDark = [0.10, 0.27, 0.09], grassLight = [0.25, 0.44, 0.13], grassDry = [0.44, 0.42, 0.18];
         const dirt = [0.47, 0.36, 0.23], dirtLight = [0.58, 0.47, 0.32];
         const rock = [0.42, 0.41, 0.40], rockLight = [0.55, 0.54, 0.52], snow = [0.93, 0.95, 0.97];
         const patch = noise(x * 0.11 + 100, z * 0.11 - 60);
@@ -430,13 +430,12 @@
         if (chunkCacheHits.size > 64) {
             chunkCacheHits.delete(chunkCacheHits.keys().next().value);   // mais antigo fora
         }
-        game.assets.digest(['chunk-v1', host.build, cx, cz]).then(function (key) {
+        game.assets.digest(['chunk-v2', host.build, cx, cz]).then(function (key) {
             return game.assets.load(key).then(function (hit) {
-                if (hit && hit.parts && hit.parts.length === 3) {
+                if (hit && hit.parts && hit.parts.length === 2) {
                     chunkCacheHits.set(chunkKey(cx, cz), {
                         positions: new Float32Array(hit.parts[0]),
-                        colors: new Float32Array(hit.parts[1]),
-                        normals: new Float32Array(hit.parts[2]),
+                        normals: new Float32Array(hit.parts[1]),
                     });
                 }
             });
@@ -457,43 +456,97 @@
         }).catch(function () { /* cache é otimização */ });
     }
 
-    // Preenche um chunk: alturas do gerador, cores da paleta e normais analíticas com
-    // anel extra — vértices de borda usam vizinhos reais, então chunks costuram sem emenda.
-    function fillChunk(mesh, cx, cz) {
-        const n = CHUNK_SUB + 1;
-        const hit = chunkCacheHits.get(chunkKey(cx, cz));
-        if (hit && hit.positions.length === n * n * 3 && hit.colors.length === n * n * 4 && hit.normals.length === n * n * 3) {
-            mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, hit.positions);
-            mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind, hit.colors);
-            mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind, hit.normals);
-            return;
+    // Preenche um chunk: alturas/normais do gerador (analíticas, anel extra para as
+    // bordas) e a PALETA PINTADA NUMA TEXTURA PRÓPRIA — o pipeline de vertex color não
+    // renderiza neste motor (worker e main), e a textura é o caminho garantido (o mesmo
+    // das vegetações). O grão do solo vai assado na própria textura.
+    const CHUNK_TEX = 128;   // 0,25 m por texel
+    // Defesa em profundidade (F7c): a textura é um GRÃO em torno do branco e a COR vive
+    // no diffuseColor do material (a média da paleta do chunk). Se qualquer um dos dois
+    // caminhos falhar na GPU, o outro carrega a cor sozinho — multiplicação segura.
+    function paintChunkTexture(tex, cx, cz) {
+        const ctx = tex.getContext();
+        const img = ctx.createImageData(CHUNK_TEX, CHUNK_TEX);
+        const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
+        const rnd = makeNoise(9090);
+        const data = img.data;
+        let sr = 0, sg = 0, sb = 0;
+        const N = CHUNK_TEX * CHUNK_TEX;
+        for (let ty = 0; ty < CHUNK_TEX; ty++) for (let tx = 0; tx < CHUNK_TEX; tx++) {
+            const x = x0 + (tx + 0.5) / CHUNK_TEX * CHUNK;
+            const z = z0 + (ty + 0.5) / CHUNK_TEX * CHUNK;
+            const c = terrainColorAt(x, terrainHeight(x, z), z);
+            sr += c[0]; sg += c[1]; sb += c[2];
+            // grão em torno do BRANCO (periódico em X: sem emenda visível)
+            const u = tx / CHUNK_TEX * Math.PI * 2;
+            const g = 0.86 + rnd(Math.cos(u) * 6 + 3, ty * 0.3 + Math.sin(u) * 6) * 0.28;
+            const k = Math.max(0, Math.min(255, g * 255)) | 0;
+            const i = (ty * CHUNK_TEX + tx) * 4;
+            data[i] = k; data[i + 1] = k; data[i + 2] = k; data[i + 3] = 255;
         }
-        const positions = new Float32Array(n * n * 3);
-        const colors = new Float32Array(n * n * 4);
-        const normals = new Float32Array(n * n * 3);
+        ctx.putImageData(img, 0, 0);
+        tex.update(true);
+        return [sr / N, sg / N, sb / N];
+    }
+
+    function applyChunkTint(mat, avg) {
+        mat.diffuseColor = new BABYLON.Color3(
+            Math.max(0.05, Math.min(1, avg[0] * 1.15)),
+            Math.max(0.05, Math.min(1, avg[1] * 1.15)),
+            Math.max(0.05, Math.min(1, avg[2] * 1.15)));
+    }
+
+    function chunkTexture(cx, cz) {
+        const tex = new BABYLON.DynamicTexture('chunkTex-' + chunkKey(cx, cz), { width: CHUNK_TEX, height: CHUNK_TEX }, scene, true);
+        const avg = paintChunkTexture(tex, cx, cz);
+        const m = new BABYLON.StandardMaterial('groundMat-' + chunkKey(cx, cz), scene);
+        m.diffuseTexture = tex;
+        applyChunkTint(m, avg);
+        m.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
+        return m;
+    }
+
+    // Geometria do chunk construída NA MÃO (VertexData): posições mundiais, normais
+    // analíticas com anel extra (costura sem emenda entre chunks), UVs explícitos e
+    // índices de grade — sem depender de CreateGround nem de estado residual dele.
+    // (F7c-3: CreateGround+sobrescrita não desenhava em GPUs reais.)
+    function buildChunkMesh(cx, cz) {
+        const n = CHUNK_SUB + 1;
         const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
         const step = CHUNK / CHUNK_SUB;
-        const w = n + 2;                            // grade com anel extra para normais
+        const positions = new Float32Array(n * n * 3);
+        const normals = new Float32Array(n * n * 3);
+        const uvs = new Float32Array(n * n * 2);
+        const w = n + 2;                            // grade com anel extra p/ normais de borda
         const hgt = new Float32Array(w * w);
         for (let j = -1; j <= n; j++) for (let i = -1; i <= n; i++) {
             hgt[(j + 1) * w + (i + 1)] = terrainHeight(x0 + i * step, z0 + j * step);
         }
         for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
             const vi = j * n + i;
-            const x = x0 + i * step, z = z0 + j * step;
             const h = hgt[(j + 1) * w + (i + 1)];
-            positions[vi * 3] = x; positions[vi * 3 + 1] = h; positions[vi * 3 + 2] = z;
+            positions[vi * 3] = x0 + i * step;
+            positions[vi * 3 + 1] = h;
+            positions[vi * 3 + 2] = z0 + j * step;
             const hx = hgt[(j + 1) * w + (i + 2)] - hgt[(j + 1) * w + i];
             const hz = hgt[(j + 2) * w + (i + 1)] - hgt[j * w + (i + 1)];
             const nl = Math.hypot(hx, step, hz) || 1;   // normal do heightfield
             normals[vi * 3] = -hx / nl; normals[vi * 3 + 1] = step / nl; normals[vi * 3 + 2] = -hz / nl;
-            const c = terrainColorAt(x, h, z);
-            colors[vi * 4] = c[0]; colors[vi * 4 + 1] = c[1]; colors[vi * 4 + 2] = c[2]; colors[vi * 4 + 3] = 1;
+            uvs[vi * 2] = i / CHUNK_SUB; uvs[vi * 2 + 1] = j / CHUNK_SUB;
         }
-        mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
-        mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind, colors);
-        mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
-        saveChunk(cx, cz, positions, colors, normals);
+        const indices = new Uint32Array(CHUNK_SUB * CHUNK_SUB * 6);
+        let k = 0;
+        for (let j = 0; j < CHUNK_SUB; j++) for (let i = 0; i < CHUNK_SUB; i++) {
+            const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
+            indices[k++] = a; indices[k++] = c; indices[k++] = b;
+            indices[k++] = b; indices[k++] = c; indices[k++] = d;
+        }
+        const mesh = new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene);
+        const vd = new BABYLON.VertexData();
+        vd.positions = positions; vd.normals = normals; vd.uvs = uvs; vd.indices = indices;
+        vd.applyToMesh(mesh, false);
+        saveChunk(cx, cz, positions, normals);
+        return mesh;
     }
 
     // Terreno em streaming (F3): janela de chunks ao redor do jogador na fila orçada;
@@ -508,9 +561,8 @@
                 yield {
                     label: label,
                     run: function () {
-                        const mesh = BABYLON.MeshBuilder.CreateGround('ground-' + chunkKey(cx, cz), { width: CHUNK, height: CHUNK, subdivisions: CHUNK_SUB }, scene);
-                        fillChunk(mesh, cx, cz);
-                        mesh.material = groundMaterial();
+                        const mesh = buildChunkMesh(cx, cz);
+                        mesh.material = chunkTexture(cx, cz);   // cor: diffuseColor+tinta; grão na textura
                         mesh.receiveShadows = true;
                         mesh.isPickable = true;
                         chunkMap.set(chunkKey(cx, cz), { mesh: mesh, cx: cx, cz: cz });
@@ -540,16 +592,7 @@
 
     function buildTerrain() { ensureChunksAround(0, 0); }
 
-    // Material do chão (granulação em ladrilhos de ~3 m) compartilhado por todos os chunks.
-    function groundMaterial() {
-        const groundMat = new BABYLON.StandardMaterial('groundMat', scene);
-        groundMat.diffuseColor = new BABYLON.Color3(1, 1, 1);
-        groundMat.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
-        const detail = makeDetailTexture();
-        detail.uScale = CHUNK / 3; detail.vScale = CHUNK / 3;   // um ladrilho a cada ~3 m
-        groundMat.diffuseTexture = detail;
-        return groundMat;
-    }
+    // (A paleta e o grão do chão vivem na textura de cada chunk — paintChunkTexture.)
 
     // ---------- Aplicação de edições e objetos plantados (F4/F6) ----------
     function applySurfaceEdit(op) {
@@ -575,18 +618,14 @@
     // Re-computa a região do pincel num chunk: altura, cor e normal analítica.
     function refreshChunkRegion(mesh, x, z, r) {
         const pos = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-        const col = mesh.getVerticesData(BABYLON.VertexBuffer.ColorKind);
         const nor = mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind);
-        if (!pos || !col || !nor) { return; }
+        if (!pos || !nor) { return; }
         const step = CHUNK / CHUNK_SUB;
         for (let i = 0; i < pos.length; i += 3) {
             const px = pos[i], pz = pos[i + 2];
             if (Math.hypot(px - x, pz - z) > r + step) { continue; }
             const py = terrainHeight(px, pz);
             pos[i + 1] = py;
-            const c = terrainColorAt(px, py, pz);
-            const ci = (i / 3) * 4;
-            col[ci] = c[0]; col[ci + 1] = c[1]; col[ci + 2] = c[2]; col[ci + 3] = 1;
             const e = step;
             const hx = terrainHeight(px + e, pz) - terrainHeight(px - e, pz);
             const hz = terrainHeight(px, pz + e) - terrainHeight(px, pz - e);
@@ -594,8 +633,14 @@
             nor[i] = -hx / (2 * e) / nl; nor[i + 1] = 1 / nl; nor[i + 2] = -hz / (2 * e) / nl;
         }
         mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, pos);
-        mesh.updateVerticesData(BABYLON.VertexBuffer.ColorKind, col);
         mesh.updateVerticesData(BABYLON.VertexBuffer.NormalKind, nor);
+        // grão repintado e tinta média atualizada (a cor vive no diffuseColor)
+        const mat = mesh.material;
+        if (mat && mat.diffuseTexture && mat.diffuseTexture.getContext) {
+            const ch = mesh.name.slice('ground-'.length).split(',');
+            const avg = paintChunkTexture(mat.diffuseTexture, Number(ch[0]), Number(ch[1]));
+            applyChunkTint(mat, avg);
+        }
     }
 
     // Água pintada (F7a): discos translúcidos sobre o terreno, reposicionados a cada
@@ -1550,7 +1595,7 @@
             const tex = new BABYLON.CubeTexture('', scene, faces, false);
             tex.name = 'env-procedural';
             scene.environmentTexture = tex;
-            scene.environmentIntensity = 0.9;
+            scene.environmentIntensity = 0.65;
             envOk = true;
         } catch (e) {
             console.warn('[graficos] env procedural indisponível, PBR sem IBL:', e && e.message);
@@ -1559,30 +1604,30 @@
 
     function buildScene(canvas) {
         scene = new BABYLON.Scene(engine);
-        const horizon = new BABYLON.Color3(0.72, 0.80, 0.88);
+        const horizon = new BABYLON.Color3(0.60, 0.69, 0.78);   // mais escuro que o céu baixo
         scene.clearColor = new BABYLON.Color4(horizon.r, horizon.g, horizon.b, 1);
         scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
         scene.fogColor = horizon;
-        scene.fogDensity = 0.0105;
-        scene.ambientColor = new BABYLON.Color3(0.34, 0.38, 0.42);
+        scene.fogDensity = 0.0072;   // menos névoa: o vale lê como terreno, não céu
+        scene.ambientColor = new BABYLON.Color3(0.18, 0.20, 0.22);
 
         // Tone mapping ACES: realça luz e sombra sem estourar os claros.
         const proc = scene.imageProcessingConfiguration;
         proc.toneMappingEnabled = true;
         proc.toneMappingType = BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
-        proc.exposure = 1.25;
-        proc.contrast = 1.1;
+        proc.exposure = 0.95;   // exposto demais lavava o terreno p/ branco (F7c)
+        proc.contrast = 1.16;
         proc.vignetteEnabled = true;
         proc.vignetteWeight = 0.8;
 
         const hemi = new BABYLON.HemisphericLight('hemi', new BABYLON.Vector3(0.2, 1, 0.1), scene);
-        hemi.intensity = 0.85;
+        hemi.intensity = 0.5;
         hemi.diffuse = new BABYLON.Color3(0.65, 0.72, 0.85);      // luz fria do céu
         hemi.groundColor = new BABYLON.Color3(0.38, 0.42, 0.30);  // ricochete do chão
 
         const sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-0.7, -0.8, -0.3).normalize(), scene);
         sun.position = new BABYLON.Vector3(60, 70, 25);
-        sun.intensity = 1.6;
+        sun.intensity = 0.95;
         sun.diffuse = new BABYLON.Color3(1.0, 0.95, 0.85);        // sol da tarde
         sun.specular = new BABYLON.Color3(1.0, 0.97, 0.9);
 
@@ -1591,7 +1636,7 @@
         shadows.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM;
         shadows.bias = 0.0006;
         shadows.normalBias = 0.02;
-        shadows.darkness = 0.45;   // crateras continuam legíveis (F7a)
+        shadows.darkness = 0.5;
 
         skyDome();
         if (graphicsStyle === 'pbr') { setupProceduralEnv(); }
@@ -1985,7 +2030,24 @@
             // No worker o OffscreenCanvas não tem layout nem devicePixelRatio: o shell
             // mede (CSS × densidade) e o tamanho é aplicado daqui; sem isso o canvas
             // ficaria no 300×150 padrão esticado pela tela (regressão da migração).
-            engine = new BABYLON.Engine(host.canvas, true, { adaptToDeviceRatio: dom, stencil: false });
+            // F7d-2: um canvas aceita UM tipo de contexto — se a tentativa WebGPU tocar o
+            // canvas e falhar, o WebGL nunca mais sobe nele ("experimental-webgl is not a
+            // valid enum"). Por isso: (1) sondamos o ADAPTADOR sem tocar o canvas e só
+            // criamos o motor WebGPU quando ele responde; (2) se mesmo assim o motor
+            // falhar, o canvas está queimado — erro fatal limpo e o shell recarrega em
+            // main com gpu=0 (canvas novo, direto WebGL).
+            let adapter = null;
+            if (host.graphics !== 'webgl' && typeof navigator !== 'undefined' && navigator.gpu && BABYLON.WebGPUEngine) {
+                try { adapter = await navigator.gpu.requestAdapter(); }
+                catch (e) { adapter = null; }
+            }
+            if (adapter) {
+                const gpu = new BABYLON.WebGPUEngine(host.canvas, { adaptToDeviceRatio: dom, stencil: false });
+                await gpu.initAsync();   // falha aqui = canvas queimado: propaga pro fatal
+                engine = gpu;
+            } else {
+                engine = new BABYLON.Engine(host.canvas, true, { adaptToDeviceRatio: dom, stencil: false });
+            }
             if (!dom && host.size) { applySize(host.size.width, host.size.height, host.size.dpr); }
             buildScene(host.canvas);
             // Cena pronta: o shell só resolve o game.init DAQUI para frente — o C# passa
@@ -2140,6 +2202,39 @@
         applyWorldOp(op) { return applyWorldOp(op); },
         // Sonda de altura (debug/validação): altura efetiva com as edições aplicadas.
         heightAt(x, z) { return Math.round(terrainHeight(x, z) * 100) / 100; },
+        // Sonda de render: estado do material/vertex colors de um chunk (debug F7c).
+        debugChunk(x, z) {
+            const ccx = Math.floor(x / CHUNK), ccz = Math.floor(z / CHUNK);
+            const ch = chunkMap.get(chunkKey(ccx, ccz));
+            if (!ch) { return { chunk: 'ausente' }; }
+            const col = ch.mesh.getVerticesData(BABYLON.VertexBuffer.ColorKind);
+            const pos = ch.mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+            return {
+                chunk: chunkKey(ccx, ccz),
+                useVertexColors: ch.mesh.useVertexColors,
+                hasVertexAlpha: ch.mesh.hasVertexAlpha,
+                colorLen: col ? col.length : 0,
+                colorSample: col ? [col[0], col[1], col[2], col[3]].map(function (v) { return Math.round(v * 100) / 100; }) : null,
+                matName: ch.mesh.material ? ch.mesh.material.name : null,
+                hasDiffuseTex: !!(ch.mesh.material && ch.mesh.material.diffuseTexture),
+                diffuseColor: ch.mesh.material ? ch.mesh.material.diffuseColor.toString() : null,
+                matCount: scene.materials.length,
+                texCanvasSample: (function () {
+                    try {
+                        const t = ch.mesh.material && ch.mesh.material.diffuseTexture;
+                        if (!t || !t.getContext) { return 'sem textura'; }
+                        const c = t.getContext();
+                        const d = c.getImageData(64, 64, 1, 1).data;
+                        return [d[0], d[1], d[2], d[3]];
+                    } catch (e) { return 'erro: ' + (e && e.message); }
+                })(),
+                texSize: (function () {
+                    const t = ch.mesh.material && ch.mesh.material.diffuseTexture;
+                    return t && t.getSize ? t.getSize().width : null;
+                })(),
+                verts: pos ? pos.length / 3 : 0,
+            };
+        },
         // Sonda do MESH: y do vértice mais próximo de (x,z) nos chunks em cena.
         probeMesh(x, z) {
             let best = null;

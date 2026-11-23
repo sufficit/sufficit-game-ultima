@@ -15,7 +15,9 @@
 
     const BABYLON_CDN = 'https://cdn.jsdelivr.net/npm/babylonjs@9.36.0/babylon.js';
     const BABYLON_SRI = 'sha384-QWFG07sio34fL3sNY9wd1SSoDvD7YVMX3067rJICw3vO2LQQY5m53yB70YlKXnRX';
-    const FORCE = new URLSearchParams(location.search).get('render');   // 'worker' | 'main' | null
+    const qs2 = new URLSearchParams(location.search);
+    const FORCE = qs2.get('render');   // 'worker' | 'main' | null
+    const GPU_OFF = qs2.get('gpu') === '0';   // pula WebGPU (canvas novo, direto WebGL)
 
     let dotnet = null;
     let dotnetModels = null;    // ponte de variação paramétrica (ModelsInterop.VaryModel)
@@ -33,6 +35,7 @@
 
     const GRAPHICS_PREF_KEY = 'ultima.graficos';
     function graphicsPref() {
+        if (GPU_OFF) { return 'webgl'; }   // gpu=0: sem tentativa WebGPU nesta carga
         try { return localStorage.getItem(GRAPHICS_PREF_KEY) === 'pbr' ? 'pbr' : 'padrao'; }
         catch (e) { return 'padrao'; }
     }
@@ -69,6 +72,18 @@
     // thread e é ela quem aplica/valida no servidor — igual à ponte varyModel.
     function routeWorldOp(op) {
         if (window.game && game.workshop && game.workshop.worldOp) { game.workshop.worldOp(op); }
+    }
+
+    // Motor 3D não subiu (sem WebGPU/WebGL): mensagem clara em vez de página morta.
+    function showEngineFailure(err) {
+        var div = document.createElement('div');
+        div.style.cssText = 'position:fixed;inset:0;z-index:99;background:#0d1422ee;color:#e8ecf3;' +
+            'display:flex;align-items:center;justify-content:center;font:15px/1.6 system-ui;padding:2rem;text-align:center';
+        div.innerHTML = '<div style="max-width:34rem"><h2 style="margin:0 0 .6rem">Motor 3D não conseguiu iniciar</h2>' +
+            '<p>Nem WebGPU nem WebGL estão disponíveis neste navegador/GPU — o Ultima precisa de um deles para renderizar o mundo.</p>' +
+            '<p style="opacity:.8">Verifique: <b>chrome://gpu</b> (procure “WebGL/WebGPU: …”); ative a <b>aceleração de hardware</b> nas configurações do navegador; atualize os drivers da placa de vídeo; teste outro navegador (Chrome/Edge/Firefox atuais).</p>' +
+            '<p style="opacity:.6;font-size:12px">' + String(err && err.message || err).replace(/[<>]/g, '') + '</p></div>';
+        document.body.appendChild(div);
     }
 
     // Feedback do modo construção: cursor de mira sobre o canvas.
@@ -439,7 +454,9 @@
                         // O canvas já foi transferido: recarrega em modo main (uma vez por sessão).
                         if (!sessionStorage.getItem('ultima-worker-fallback')) {
                             sessionStorage.setItem('ultima-worker-fallback', '1');
-                            location.replace(location.pathname + '?render=main');
+                            // gpu=0: o canvas desta página pode ter ficado presa numa
+                            // tentativa WebGPU — a próxima carga vai direto pro WebGL.
+                            location.replace(location.pathname + '?render=main&gpu=0');
                             return new Promise(function () { /* página vai recarregar */ });
                         }
                         throw err;
@@ -472,6 +489,7 @@
         keyInput(code, down) { post('input.key', [code, down]); },
         heightAt(x, z) { return query('heightAt', [x, z]); },
         probeMesh(x, z) { return query('probeMesh', [x, z]); },
+        debugChunk(x, z) { return query('debugChunk', [x, z]); },
         models: {
             register(json, placeholder) { post('models.register', [json, placeholder]); return true; },
             loaderDone(log) { post('models.loaderDone', [log]); },

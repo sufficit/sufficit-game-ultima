@@ -64,6 +64,8 @@
                 <strong>Menu</strong>
                 <button type="button" class="ultima-menu__close" aria-label="Fechar menu" @onclick="ToggleMenu">✕</button>
             </div>
+
+        <div class="ultima-corner@(_workshopOpen ? " ultima-corner--oficina" : null)">
         <aside class="ultima-status" aria-label="Status do jogo">
             <SUICard Elevation="2" Class="ultima-card--glass">
                 <SUICardHeader Title="@StatusTitle()" Description="@StatusSummary()">
@@ -94,6 +96,154 @@
                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Soft" OnClick="ToggleStatus" Class="ultima-status__more">detalhes</SUIButton>
             }
         </aside>
+            <aside class="ultima-workshop" aria-label="Oficina do mundo">
+                <SUICard Elevation="3" Class="ultima-card--glass ultima-workshop__card">
+                    <SUICardContent Class="ultima-workshop__body">
+                        <SUIExpansionPanel Title="Oficina do mundo" StartIcon="settings"
+                                           Expanded="_workshopOpen" ExpandedChanged="OnWorkshopToggled">
+                            <SUIStack Spacing="1">
+
+                                @if (!string.IsNullOrEmpty(_workshopStatus))
+                                {
+                                    <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary" role="status" aria-live="polite">@_workshopStatus</SUIText>
+                                }
+
+                                <SUIExpansionPanel Title="Variações do cenário" StartIcon="tune">
+                                    <SUIStack Spacing="2">
+                                        <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
+                                            Árvores, pedras e grama se remodelam na hora, pelo mesmo motor paramétrico do mundo.
+                                        </SUIText>
+                                        <SUIStack Row="true" Spacing="1" Wrap="true">
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="@(() => VaryAsync("tree.pine", null))">Árvores novas</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="@(() => VaryAsync("tree.pine", 1.6))">Densas</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="@(() => VaryAsync("tree.pine", 0.6))">Jovens</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="@(() => VaryAsync("rock.boulder", null))">Pedras novas</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="@(() => VaryAsync("scenery.grass", 1.4))">Grama exuberante</SUIButton>
+                                        </SUIStack>
+                                    </SUIStack>
+                                </SUIExpansionPanel>
+
+                                <SUIExpansionPanel Title="Criar modelo" StartIcon="science">
+                                    <SUIStack Spacing="2">
+                                        <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
+                                            Descreva e o servidor gera um GLB (SHA-256 verificado) plantado no mundo compartilhado.
+                                        </SUIText>
+                                        <SUIStack Row="true" Spacing="1" Wrap="true" AlignItems="end">
+                                            <SUITextField TValue="string" Id="workshop-prompt" Label="O que criar" Placeholder="ex.: cristal encantado azul"
+                                                          MaxLength="120" Immediate="true" @bind-Value="_promptDraft" />
+                                            <SUIButton SizeValue="SUISize.Small" StartIcon="plus" OnClick="GenerateAsync">Gerar</SUIButton>
+                                        </SUIStack>
+                                    </SUIStack>
+                                </SUIExpansionPanel>
+
+                                <SUIExpansionPanel Title="Enviar modelo" StartIcon="upload">
+                                    <SUIStack Spacing="2">
+                                        <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
+                                            Até 2 MB e 30 mil triângulos; validado no servidor e publicado para todos os jogadores.
+                                        </SUIText>
+                                        @* Botão da UI + InputFile padrão do Blazor escondido (a versão fixada da Sufficit.Blazor.UI
+                                           ainda não tem componente de arquivo; quando subir, vira <SUIFileUpload>). *@
+                                        <InputFile Id="workshop-file" class="sr-only" tabindex="-1" aria-hidden="true"
+                                                   Accept=".glb,model/gltf-binary" OnChange="OnWorkshopFileInputChanged" />
+                                        <SUIStack Row="true" Spacing="1" AlignItems="center" Wrap="true">
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="upload"
+                                                       OnClick="PickWorkshopFileAsync">Escolher .glb</SUIButton>
+                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary" role="status">
+                                                @(string.IsNullOrEmpty(_workshopFileName) ? "Nenhum arquivo escolhido." : "Enviando " + _workshopFileName + "…")
+                                            </SUIText>
+                                        </SUIStack>
+                                        <SUINumericField TValue="double" Id="workshop-scale" Label="Tamanho em metros" HelperText="Maior dimensão do modelo."
+                                                         Min="0.05" Max="12" Step="0.05" Value="_uploadScale" ValueChanged="OnUploadScaleChanged" />
+                                    </SUIStack>
+                                </SUIExpansionPanel>
+
+                                <SUIExpansionPanel Title="Esculpir o terreno" StartIcon="edit">
+                                    <SUIStack Spacing="2">
+                                        <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
+                                            Clique no terreno para aplicar. Cada pincelada fica no mundo de todos.
+                                        </SUIText>
+                                        <SUINumericField TValue="double" Id="build-radius" Label="Raio do pincel em metros"
+                                                         Min="2" Max="8" Step="0.5" Value="_brushRadius" ValueChanged="OnBrushRadiusChanged" />
+                                        <SUIStack Row="true" Spacing="1" Wrap="true">
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="plus" OnClick="@(() => BuildModeAsync("raise"))">Levantar</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="delete" OnClick="@(() => BuildModeAsync("dig"))">Cavar</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="arrow-right" Title="Dois cliques: início e fim" OnClick="@(() => BuildModeAsync("passage"))">Passagem</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="inbox" Title="Cava uma gruta com paredão de rocha" OnClick="@(() => BuildModeAsync("cave"))">Gruta</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="palette" OnClick="@(() => BuildModeAsync("paint"))">Pintar</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="close" OnClick="@(() => BuildModeAsync("off"))">Sair do modo</SUIButton>
+                                        </SUIStack>
+                                        <SUISelect TValue="string" Id="paint-mat" Label="Material da pintura" Value="_paintMaterial" ValueChanged="OnPaintMaterialChanged">
+                                            <SUISelectItem Value='@("sand")'>areia</SUISelectItem>
+                                            <SUISelectItem Value='@("grass")'>grama</SUISelectItem>
+                                            <SUISelectItem Value='@("dirt")'>terra</SUISelectItem>
+                                            <SUISelectItem Value='@("rock")'>rocha</SUISelectItem>
+                                            <SUISelectItem Value='@("snow")'>neve</SUISelectItem>
+                                            <SUISelectItem Value='@("water")'>água</SUISelectItem>
+                                        </SUISelect>
+                                    </SUIStack>
+                                </SUIExpansionPanel>
+
+                                <SUIExpansionPanel Title="Construir" StartIcon="plus">
+                                    <SUIStack Spacing="2">
+                                        <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
+                                            Plante modelos no terreno; a posição fica salva para todos os jogadores.
+                                        </SUIText>
+                                        <SUIStack Row="true" Spacing="1" Wrap="true" AlignItems="end">
+                                            <SUISelect TValue="string" Id="build-asset" Label="Modelo" Value="_buildAsset" ValueChanged="OnBuildAssetChanged"
+                                                       Placeholder="Nenhum modelo carregado" Disabled="@(_buildAssets.Count == 0)"
+                                                       HelperText="@(_buildAssets.Count == 0 ? "Os modelos carregados no mundo aparecem aqui." : null)">
+                                                @foreach (var id in _buildAssets)
+                                                {
+                                                    <SUISelectItem Value='@id'>@id</SUISelectItem>
+                                                }
+                                            </SUISelect>
+                                            <SUIIconButton Icon="refresh" Title="Recarregar a lista de modelos" OnClick="RefreshBuildAssetsAsync" />
+                                        </SUIStack>
+                                        <SUIStack Row="true" Spacing="1" Wrap="true">
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="plus" OnClick="@(() => BuildModeAsync("place", new { asset = _buildAsset }))">Plantar</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="trash" OnClick="@(() => BuildModeAsync("remove"))">Remover</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="close" OnClick="@(() => BuildModeAsync("off"))">Sair do modo</SUIButton>
+                                        </SUIStack>
+                                    </SUIStack>
+                                </SUIExpansionPanel>
+
+                                <SUIExpansionPanel Title="Gráficos" StartIcon="settings">
+                                    <SUIStack Spacing="2">
+                                        <SUIStack Row="true" Spacing="1" Wrap="true">
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="@(_gfxStyle == "padrao" ? SUIVariant.Soft : SUIVariant.Outlined)"
+                                                       aria-pressed="@(_gfxStyle == "padrao" ? "true" : "false")" OnClick="@(() => SetGfxAsync("padrao"))">Padrão (leve)</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="@(_gfxStyle == "pbr" ? SUIVariant.Soft : SUIVariant.Outlined)"
+                                                       aria-pressed="@(_gfxStyle == "pbr" ? "true" : "false")" OnClick="@(() => SetGfxAsync("pbr"))">PBR + IBL</SUIButton>
+                                        </SUIStack>
+                                        <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@(_gfxDirty ? "Recarregue para aplicar." : "Ativo: " + (_gfxStyle == "pbr" ? "PBR + IBL" : "padrão") + ".")</SUIText>
+                                        @if (_gfxDirty)
+                                        {
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="restart" OnClick="ReloadPage">Recarregar para aplicar</SUIButton>
+                                        }
+                                    </SUIStack>
+                                </SUIExpansionPanel>
+
+                                <SUIExpansionPanel Title="Estilo do mundo" StartIcon="palette">
+                                    <SUIStack Spacing="2">
+                                        <SUIStack Row="true" Spacing="1" Wrap="true">
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="@(_sceneryStyle == "procedural" ? SUIVariant.Soft : SUIVariant.Outlined)"
+                                                       aria-pressed="@(_sceneryStyle == "procedural" ? "true" : "false")" OnClick="@(() => SetSceneryAsync("procedural"))">Procedural (padrão)</SUIButton>
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="@(_sceneryStyle == "lowpoly" ? SUIVariant.Soft : SUIVariant.Outlined)"
+                                                       aria-pressed="@(_sceneryStyle == "lowpoly" ? "true" : "false")" OnClick="@(() => SetSceneryAsync("lowpoly"))">Low-poly CC0</SUIButton>
+                                        </SUIStack>
+                                        @if (_sceneryDirty)
+                                        {
+                                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="restart" OnClick="ReloadPage">Recarregar para aplicar</SUIButton>
+                                        }
+                                    </SUIStack>
+                                </SUIExpansionPanel>
+
+                            </SUIStack>
+                        </SUIExpansionPanel>
+                    </SUICardContent>
+                </SUICard>
+            </aside>
+        </div>
 
         <div class="ultima-panel-toggle">
             <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Soft" StartIcon="menu" OnClick="TogglePanel"
@@ -107,8 +257,11 @@
                     <SUICardContent>
                         <SUIStack Spacing="2">
 
-                            <SUIExpansionPanel Title="Multiplayer e voz" Subtitle="@NetLabel()">
+                            <SUIExpansionPanel Title="Multiplayer e voz">
                                 <SUIStack Spacing="2">
+                                    <SUIStack Row="true" Spacing="1" Wrap="true">
+                                        <SUIStatusBadge ToneValue="@NetTone()">@_netStatus</SUIStatusBadge>
+                                    </SUIStack>
                                     <SUITextField TValue="string" Id="player-name" Label="Seu nome" MaxLength="40" Immediate="true"
                                                   Value="_playerName" ValueChanged="OnPlayerNameChanged" />
                                     <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="copy"
@@ -121,7 +274,7 @@
                                 </SUIStack>
                             </SUIExpansionPanel>
 
-                            <SUIExpansionPanel Title="IA da Guardiã (GPU)" Subtitle="@AiShortLabel(_aiState)">
+                            <SUIExpansionPanel Title="IA da Guardiã (GPU)">
                                 <SUIStack Spacing="2">
                                     @switch (_aiState)
                                     {
@@ -163,7 +316,7 @@
                                 </SUIStack>
                             </SUIExpansionPanel>
 
-                            <SUIExpansionPanel Title="IA na CPU (sem placa de vídeo)" Subtitle="@AiShortLabel(_aiCpuState)">
+                            <SUIExpansionPanel Title="IA na CPU (sem placa de vídeo)">
                                 <SUIStack Spacing="2">
                                     <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">Motor ativo: @ActiveEngine()</SUIText>
                                     @if (_aiCpuState != "ready")
@@ -237,98 +390,6 @@
             </aside>
         }
 
-        <aside class="workshop-panel" aria-label="Oficina do mundo">
-            <details>
-                <summary><strong>Oficina do mundo</strong><span>@_workshopStatus</span></summary>
-                <section class="ws-block">
-                    <strong>Variações do cenário</strong>
-                    <small>O mundo se remodela na hora — mesmo motor paramétrico das árvores, pedras e grama.</small>
-                    <div class="ws-actions">
-                        <button type="button" class="secondary" @onclick='() => VaryAsync("tree.pine", null)'>🌲 Árvores novas</button>
-                        <button type="button" class="secondary" @onclick='() => VaryAsync("tree.pine", 1.6)'>Densas</button>
-                        <button type="button" class="secondary" @onclick='() => VaryAsync("tree.pine", 0.6)'>Jovens</button>
-                        <button type="button" class="secondary" @onclick='() => VaryAsync("rock.boulder", null)'>🪨 Pedras novas</button>
-                        <button type="button" class="secondary" @onclick='() => VaryAsync("scenery.grass", 1.4)'>🌱 Grama exuberante</button>
-                    </div>
-                </section>
-                <section class="ws-block">
-                    <strong>Criar modelo</strong>
-                    <small>Descreva e o servidor gera um GLB (SHA-256 verificado) plantado no mundo compartilhado.</small>
-                    <div class="ws-row">
-                        <input id="workshop-prompt" @bind="_promptDraft" @bind:event="oninput" maxlength="120" placeholder="ex.: cristal encantado azul" autocomplete="off" />
-                        <button type="button" @onclick="GenerateAsync">Gerar</button>
-                    </div>
-                </section>
-                <section class="ws-block">
-                    <strong>Enviar modelo (.glb)</strong>
-                    <small>Até 2 MB e 30 mil triângulos; validado no servidor e publicado para todos os jogadores.</small>
-                    <div class="ws-row">
-                        <input type="file" accept=".glb,model/gltf-binary" onchange="game.workshop.upload(this)" />
-                        <input id="workshop-scale" type="number" min="0.05" max="12" step="0.05" value="1" title="Tamanho em metros (maior dimensão)" aria-label="Tamanho em metros" />
-                    </div>
-                </section>
-                <section class="ws-block">
-                    <strong>Esculpir o terreno</strong>
-                    <small>Clique no terreno para aplicar. Cada pincelada fica no mundo de todos.</small>
-                    <div class="ws-row">
-                        <label class="sr-only" for="build-radius">Raio do pincel</label>
-                        <input id="build-radius" type="range" min="2" max="8" step="0.5" value="5" oninput="game.build.mode(null,{r:this.value}); document.getElementById('build-radius-val').textContent = this.value + ' m'" title="Raio do pincel (m)" />
-                        <span id="build-radius-val">5 m</span>
-                    </div>
-                    <div class="ws-actions">
-                        <button type="button" class="secondary" onclick="game.build.mode('raise')">⛰ Levantar</button>
-                        <button type="button" class="secondary" onclick="game.build.mode('dig')">🕳 Cavar</button>
-                        <button type="button" class="secondary" onclick="game.build.mode('passage')" title="Dois cliques: início e fim">⛏ Passagem</button>
-                        <button type="button" class="secondary" onclick="game.build.mode('cave')" title="Cava uma gruta com paredão de rocha">🕳 Gruta</button>
-                        <button type="button" class="secondary" onclick="game.build.mode('paint')">🎨 Pintar</button>
-                        <button type="button" class="secondary" onclick="game.build.mode('off')">Sair do modo</button>
-                    </div>
-                    <div class="ws-row">
-                        <label class="sr-only" for="paint-mat">Material da pintura</label>
-                        <select id="paint-mat" class="ws-select" onchange="game.build.mode(null,{mat:this.value})">
-                            <option value="sand">areia</option>
-                            <option value="grass">grama</option>
-                            <option value="dirt">terra</option>
-                            <option value="rock">rocha</option>
-                            <option value="snow">neve</option>
-                            <option value="water">água</option>
-                        </select>
-                    </div>
-                </section>
-                <section class="ws-block">
-                    <strong>Construir</strong>
-                    <small>Plante modelos no terreno; a posição fica salva para todos os jogadores.</small>
-                    <div class="ws-row">
-                        <select id="build-asset" class="ws-select"></select>
-                        <button type="button" class="secondary" onclick="game.workshop.refreshBuildOptions()" title="Recarregar lista">↻</button>
-                    </div>
-                    <div class="ws-actions">
-                        <button type="button" class="secondary" onclick="game.build.mode('place', { asset: document.getElementById('build-asset').value })">🌱 Plantar</button>
-                        <button type="button" class="secondary" onclick="game.build.mode('remove')">🗑 Remover</button>
-                        <button type="button" class="secondary" onclick="game.build.mode('off')">Sair do modo</button>
-                    </div>
-                </section>
-                <section class="ws-block">
-                    <strong>Gráficos</strong>
-                    <div class="ws-actions">
-                        <button type="button" class="secondary" onclick="setGfx('padrao')" id="gfx-padrao">Padrão (leve)</button>
-                        <button type="button" class="secondary" onclick="setGfx('pbr')" id="gfx-pbr">PBR + IBL</button>
-                    </div>
-                    <small id="gfx-note"></small>
-                </section>
-                <section class="ws-block">
-                    <strong>Estilo do mundo</strong>
-                    <div class="ws-actions">
-                        <button type="button" class='chip @(_sceneryStyle == "procedural" ? "ok-chip" : null)' aria-pressed='@(_sceneryStyle == "procedural")' @onclick='() => SetSceneryAsync("procedural")'>Procedural (padrão)</button>
-                        <button type="button" class='chip @(_sceneryStyle == "lowpoly" ? "ok-chip" : null)' aria-pressed='@(_sceneryStyle == "lowpoly")' @onclick='() => SetSceneryAsync("lowpoly")'>Low-poly CC0</button>
-                        @if (_sceneryDirty)
-                        {
-                            <button type="button" class="secondary" @onclick="ReloadPage">Recarregar para aplicar</button>
-                        }
-                    </div>
-                </section>
-            </details>
-        </aside>
 
         </div><!-- /.ultima-menu -->
 
@@ -418,24 +479,74 @@
     private string _aiCpuDetail = string.Empty;
 
     // --- Oficina do mundo (PLAN-PLAYER-ASSETS): variações, geração, upload, estilo ---
-    private string _workshopStatus = "abrir para remodelar";
+    // O estado dos controles mora aqui e é enviado ao motor por JS interop; o JavaScript
+    // não manipula mais o DOM dos controles (componentes da Sufficit.Blazor.UI).
+    private bool _workshopOpen;
+    private string _workshopStatus = string.Empty;
     private string _promptDraft = string.Empty;
     private string _sceneryStyle = "procedural";
     private bool _sceneryDirty;
+    private string _workshopFileName = string.Empty;
+    private double _uploadScale = 1;
+    private double _brushRadius = 5;
+    private string _paintMaterial = "sand";
+    private List<string> _buildAssets = [];
+    private string _buildAsset = string.Empty;
+    private string _gfxStyle = "padrao";
+    private bool _gfxDirty;
+
+    // Resultado de uma operação da oficina: linha de status dentro dela e, quando ela
+    // está fechada (ex.: recusa de uma edição feita direto no mundo), aviso transitório
+    // pelo Snackbar da UI.
+    private void SetWorkshopStatus(string message)
+    {
+        _workshopStatus = message;
+        if (!_workshopOpen && !string.IsNullOrWhiteSpace(message)) { Snackbar.Info(message); }
+    }
+
+    private void OnWorkshopToggled(bool open) => _workshopOpen = open;
+    private Task BuildModeAsync(string? mode, object? options = null) => JS.InvokeVoidAsync("game.build.mode", mode, options).AsTask();
+    private Task RefreshBuildAssetsAsync() => JS.InvokeVoidAsync("game.workshop.refreshBuildOptions").AsTask();
+    private void OnUploadScaleChanged(double value) => _uploadScale = value;
+    private void OnBrushRadiusChanged(double value) { _brushRadius = value; _ = BuildModeAsync(null, new { r = value }); }
+    private void OnPaintMaterialChanged(string? value) { _paintMaterial = value ?? "sand"; _ = BuildModeAsync(null, new { mat = _paintMaterial }); }
+    private void OnBuildAssetChanged(string? value) => _buildAsset = value ?? string.Empty;
+
+    // Abre o seletor de arquivo do InputFile escondido (o botão visível é da UI).
+    private Task PickWorkshopFileAsync() => JS.InvokeVoidAsync("game.workshop.pickFile", "workshop-file").AsTask();
+
+    // Arquivo escolhido: lê até 2 MB e entrega os bytes ao JavaScript, que faz o upload
+    // com o token da sessão.
+    private async Task OnWorkshopFileInputChanged(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        _workshopFileName = file.Name;
+        const long maxBytes = 2 * 1024 * 1024;
+        if (file.Size > maxBytes) { SetWorkshopStatus("Máximo 2 MB por modelo."); _workshopFileName = string.Empty; return; }
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            await JS.InvokeVoidAsync("game.workshop.uploadBytes", buffer.ToArray(), file.Name, _uploadScale);
+        }
+        catch (Exception ex) { SetWorkshopStatus("Falha ao ler o arquivo: " + ex.Message); }
+        _workshopFileName = string.Empty;
+    }
 
     private async Task VaryAsync(string id, double? detail)
     {
-        _workshopStatus = "Remodelando…";
+        SetWorkshopStatus("Remodelando…");
         StateHasChanged();
         try
         {
             var seed = Random.Shared.Next();
             var ok = await JS.InvokeAsync<bool>("game.models.vary", id, new { seed, detail = detail ?? 1.0 });
-            _workshopStatus = ok ? "✓ cenário atualizado" : "Não foi possível trocar (modelo DLL ausente)";
+            SetWorkshopStatus(ok ? "✓ cenário atualizado" : "Não foi possível trocar (modelo DLL ausente)");
         }
         catch (Exception ex)
         {
-            _workshopStatus = "Falhou: " + ex.Message;
+            SetWorkshopStatus("Falhou: " + ex.Message);
         }
     }
 
@@ -443,10 +554,10 @@
     {
         if (string.IsNullOrWhiteSpace(_promptDraft)) { return; }
         var prompt = _promptDraft;
-        _workshopStatus = "Gerando…";
+        SetWorkshopStatus("Gerando…");
         StateHasChanged();
-        try { _workshopStatus = await JS.InvokeAsync<string>("game.workshop.generate", prompt); }
-        catch (Exception ex) { _workshopStatus = "Falhou: " + ex.Message; }
+        try { SetWorkshopStatus(await JS.InvokeAsync<string>("game.workshop.generate", prompt)); }
+        catch (Exception ex) { SetWorkshopStatus("Falhou: " + ex.Message); }
         _promptDraft = string.Empty;
     }
 
@@ -458,7 +569,11 @@
 
     private Task ReloadPage() => JS.InvokeVoidAsync("location.reload").AsTask();
 
-    private async Task SetGfxAsync(string style) => await JS.InvokeVoidAsync("setGfx", style);
+    private async Task SetGfxAsync(string style)
+    {
+        _gfxStyle = await JS.InvokeAsync<string>("setGfx", style);
+        _gfxDirty = true;
+    }
     private Task EnableAiAsync() => JS.InvokeVoidAsync("game.ai.load").AsTask();
     private Task DisableAiAsync() => JS.InvokeVoidAsync("game.ai.disable").AsTask();
     private Task RetryAiAsync() => JS.InvokeVoidAsync("game.ai.retry").AsTask();
@@ -492,20 +607,6 @@
         : _netStatus.Contains("Conectando", StringComparison.OrdinalIgnoreCase) ? Sufficit.Blazor.UI.Components.SUITone.Info
         : _netStatus.Contains("falha", StringComparison.OrdinalIgnoreCase) || _netStatus.Contains("erro", StringComparison.OrdinalIgnoreCase) ? Sufficit.Blazor.UI.Components.SUITone.Danger
         : Sufficit.Blazor.UI.Components.SUITone.Neutral;
-    private static string AiShortLabel(string state) => state switch
-    {
-        "ready" => "pronta",
-        "thinking" => "pensando…",
-        "model" => "escolhendo modelo…",
-        "downloading" => "baixando…",
-        "loading" => "carregando…",
-        "compiling" => "compilando…",
-        "stalled" => "travou",
-        "error" => "erro",
-        "checking" => "verificando…",
-        "unsupported" => "sem WebGPU",
-        _ => "desligada",
-    };
     private void ToggleStatus() => _statusExpanded = !_statusExpanded;
     private void TogglePanel() => _panelOpen = !_panelOpen;
     private void ToggleMenu() => _menuOpen = !_menuOpen;
@@ -521,6 +622,12 @@
             EngineReady = renderer => _ = InvokeAsync(() => { _renderer = renderer; StateHasChanged(); }),
             NearChanged = near => _ = InvokeAsync(() => { _near = near; StateHasChanged(); }),
             WandererNearChanged = near => _ = InvokeAsync(() => { _nearWanderer = near; StateHasChanged(); }),
+            BuildAssets = ids => _ = InvokeAsync(() =>
+            {
+                _buildAssets = [.. ids];
+                if (!_buildAssets.Contains(_buildAsset)) { _buildAsset = _buildAssets.FirstOrDefault() ?? string.Empty; }
+                StateHasChanged();
+            }),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
             Close = () => _ = InvokeAsync(CloseDialog),
             MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; RunNpcTick(); StateHasChanged(); }),
@@ -534,7 +641,7 @@
             Dictation = listening => _ = InvokeAsync(() => { _dictating = listening; StateHasChanged(); }),
             AiState = (state, progress, detail) => _ = InvokeAsync(() => { _aiState = state; _aiProgress = progress; _aiDetail = detail; StateHasChanged(); }),
             AiCpuState = (state, progress, detail) => _ = InvokeAsync(() => { _aiCpuState = state; _aiCpuProgress = progress; _aiCpuDetail = detail; StateHasChanged(); }),
-            WorkshopStatus = message => _ = InvokeAsync(() => { _workshopStatus = message; StateHasChanged(); })
+            WorkshopStatus = message => _ = InvokeAsync(() => { SetWorkshopStatus(message); StateHasChanged(); })
         };
         _bridge = DotNetObjectReference.Create(interop);
     }
@@ -544,7 +651,19 @@
         if (!firstRender || _bridge is null) return;
 
         _modelsRef = DotNetObjectReference.Create(new Ultima.Models.ModelsInterop(Models));
-        await JS.InvokeVoidAsync("game.init", "game-canvas", _bridge, _modelsRef);
+        var motorOk = false;
+        try
+        {
+            motorOk = await JS.InvokeAsync<bool>("game.init", "game-canvas", _bridge, _modelsRef);
+        }
+        catch (JSException ex)
+        {
+            _workshopStatus = "Motor 3D indisponível: " + ex.Message;   // UI viva; o shell mostra detalhes
+        }
+        if (!motorOk)
+        {
+            return;   // sem motor não há o que registrar — evita o spam de "cena ainda não criada"
+        }
         _ = Models.LoadAllAsync();   // modelos 3D (DLLs C#) chegam em paralelo e entram na cena
         await JS.InvokeVoidAsync("game.net.init", _bridge);
         await JS.InvokeVoidAsync("game.live.init", _bridge);
@@ -563,6 +682,8 @@
         catch (JSException) { _playerName = null; }
         try { _sceneryStyle = await JS.InvokeAsync<string>("game.scenery.get") ?? "procedural"; }
         catch (JSException) { _sceneryStyle = "procedural"; }
+        try { _gfxStyle = await JS.InvokeAsync<string>("getGfx") is "pbr" ? "pbr" : "padrao"; }
+        catch (JSException) { _gfxStyle = "padrao"; }
         try
         {
             BuildId = await JS.InvokeAsync<string>("game.build") is { Length: > 0 } b ? b[..Math.Min(10, b.Length)] : "dev";
