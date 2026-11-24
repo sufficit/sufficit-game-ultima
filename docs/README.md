@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Equilíbrio do jogador ao parar](activities/202611241654-equilibrio-ao-parar.md)
+
 - [Relógio GMT, céu de Greenwich e perfis de clima](activities/202611241645-relogio-ceu-clima.md)
 
 - [Estabilidade da postura em repouso](activities/202611241631-postura-em-repouso.md)
