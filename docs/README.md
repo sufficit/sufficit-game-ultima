@@ -12,14 +12,15 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 Prioritários:
 
 - [Execução dos planos do Ultima](PLAN-EXECUCAO-DO-BACKLOG.md)
+- [Persistência do mundo](PLAN-WORLD-STORE.md) — atualização pendente no Sufficit Run.
 
 1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **base entregue em 23/11/2026**
    (commit `70720cd`): persistência durável (journal+PVC), terreno em chunks com
    streaming, mundo que cresce ao andar com cristalização assistida, esculpir/pintar,
    passagens, **grutas com piso caminhável e colisão real (F5b)**, construção com
    assets e gráficos com **PBR+IBL opcional, vento e água com normais/fresnel (F7b)**
-   — tudo validado em produção (pod deletado, mundo intacto). Ainda em aberto: escavações volumétricas
-   livres e publicação do backend com undo. Decisões:
+   — base validada em produção. Corredores volumétricos e undo foram validados
+   com backend de teste e aguardam o Sufficit Run. Decisões:
    [world-builder-v5](../decisions/world-builder-v5.md) e
    [world-store-v1](../decisions/world-store-v1.md).
 2. ✅ [PLAN-WORKER-OFFSCREEN-CANVAS.md](PLAN-WORKER-OFFSCREEN-CANVAS.md) —
@@ -52,6 +53,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 `/mnt/sufficit/lineage-rust`). Cada plano cita os arquivos-fonte correspondentes.
 
 ## Atividades (`activities/`)
+
+- [Oficina, corredores e perfil Cinemático](activities/202611232159-oficina-volumes-e-graficos.md)
 
 - [Multidões esqueléticas](activities/202611232144-multidoes-esqueleticas.md)
 

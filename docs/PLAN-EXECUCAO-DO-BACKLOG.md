@@ -19,8 +19,8 @@ Reaproveitar entregas comprovadas e preservar os critérios pendentes de cada fr
    localmente. Os corredores volumétricos passaram em dois navegadores com API
    local, o replay preservou o corredor após reiniciar e o undo convergiu.
    A publicação da API depende do Sufficit Run.
-6. [em andamento] Validar o conjunto no GitHub Pages, atualizar o índice e
-   converter os planos que tiverem todos os critérios comprovados.
+6. [concluído] Validar a entrega estática no GitHub Pages e converter os
+   planos comprovados. [Evidências](activities/202611232159-oficina-volumes-e-graficos.md).
 
 Validação por entrega: publish Release, testes relevantes do repositório,
 ensaio de navegador no build publicado e conferência do diff antes do commit.
@@ -29,11 +29,13 @@ O ensaio local reutilizou a câmera orbital e verificou recuo de 7,50 m para
 1,25 m diante de pinheiros, recuperação do zoom, arrasto, roda e descarte do
 chunk de origem nos dois renderizadores. A emenda e a mochila passaram.
 
-Próxima ação. Confirmar os volumes no build do GitHub Pages usando dados de
-teste. O perfil Cinemático e a proposta por diálogo passaram no build
-`105c2a7`. O publicador `workspace_app_publish` não foi exposto
-à sessão. O CLI respondeu que o shell não recebeu a ligação ao publicador;
-o endpoint atual do Run segue saudável com o volume existente.
+Pendência. Publicar as alterações da API no Sufficit Run e verificar
+undo, corredor e catálogo no ambiente autoritativo. O publicador
+`workspace_app_publish` não foi exposto à sessão; o CLI respondeu
+que o shell não recebeu a ligação ao publicador. O deployment
+existente está saudável, o PVC `world-data` segue vinculado e o mapa
+ainda não anuncia `volumeTunnels`. O GitHub Pages serve o cliente validado
+no build `4646276`.
 
 Referências da interface. O diálogo existente define a posição e a hierarquia
 de fala e ações. O Painel do jogo define o ponto de acesso do Diário e os

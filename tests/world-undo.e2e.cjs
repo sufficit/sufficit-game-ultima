@@ -18,12 +18,28 @@ async function waitFor(check, message) {
         executablePath: process.env.ULTIMA_CHROMIUM,
         args: (process.env.ULTIMA_CHROMIUM_ARGS || '').split(' ').filter(Boolean)
     });
+    const pages = [];
     try {
         const url = new URL(site);
-        url.search = new URLSearchParams({ rede: '0', api });
+        const proxy = url.protocol === 'https:' ? new URL('__world-test-api__/', url) : null;
+        url.search = new URLSearchParams({ rede: '0', api: proxy?.href ?? api });
         const owner = await browser.newPage({ viewport: { width: 1200, height: 720 } });
         const witness = await browser.newPage({ viewport: { width: 1200, height: 720 } });
-        await Promise.all([owner, witness].map(page => page.goto(url.href)));
+        pages.push(owner, witness);
+        await Promise.all([owner, witness].map(async page => {
+            if (proxy) {
+                // O Chromium exige permissão de rede local para HTTPS → loopback.
+                // Só no ensaio, o Playwright encaminha a rota ao servidor descartável.
+                await page.route(proxy.href + '**', async route => {
+                    const request = new URL(route.request().url());
+                    const path = request.pathname.slice(proxy.pathname.length);
+                    await route.fulfill({ response: await route.fetch({ url: api + '/' + path + request.search }) });
+                });
+            }
+            await page.goto(url.href);
+            if (process.env.ULTIMA_BUILD)
+                assert.equal(await page.locator('meta[name=ultima-build]').getAttribute('content'), process.env.ULTIMA_BUILD);
+        }));
         const errors = [];
         for (const page of [owner, witness]) page.on('pageerror', error => errors.push(error.message));
         await Promise.all([owner, witness].map(async page => {
@@ -100,6 +116,7 @@ async function waitFor(check, message) {
         assert.deepEqual(errors, []);
         console.log('OK: pincel, corredor curvo e undo renderizados nos dois clientes');
     } finally {
+        await Promise.all(pages.map(page => page.unrouteAll({ behavior: "ignoreErrors" })));
         await browser.close();
     }
 })().catch(error => { console.error(error); process.exitCode = 1; });
