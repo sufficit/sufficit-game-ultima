@@ -25,7 +25,9 @@ async function bag(page) {
     await page.getByText('Mochila',{exact:true}).click();
 }
 async function ready(page) {
-    await page.goto(url);
+    // domcontentloaded: na bancada (render por software) o evento load demora além
+    // dos 30 s padrão do Playwright; o ready() abaixo já espera o jogo de verdade.
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
     await until(()=>page.evaluate(async()=>{
         if (!window.game?.glb?.status || !game?.build?.state) return false;
         const map=await game.build.state(), glb=await game.glb.status();
