@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Contato corporal e tropeço](activities/202611241236-contato-de-personagens.md)
+
 - [Alinhamento da marcha ao mudar de direção](activities/202611241221-alinhamento-da-marcha.md)
 
 - [Progressão da passada e coordenação dos braços](activities/202611241150-progressao-da-passada.md)
