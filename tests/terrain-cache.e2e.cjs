@@ -8,7 +8,9 @@ site.search = new URLSearchParams({
 });
 
 async function waitFor(check, description) {
-    for (let attempt = 0; attempt < 120; attempt++) {
+    // ULTIMA_WAIT_TRIES amplia a janela (padrão 120 = 30 s) para bancadas lentas.
+    const tries = Number(process.env.ULTIMA_WAIT_TRIES) || 120;
+    for (let attempt = 0; attempt < tries; attempt++) {
         const result = await check();
         if (result) return result;
         await new Promise(resolve => setTimeout(resolve, 250));

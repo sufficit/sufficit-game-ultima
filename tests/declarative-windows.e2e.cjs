@@ -61,7 +61,9 @@ const site = process.env.ULTIMA_SITE || 'https://sufficit.github.io/sufficit-gam
         await variation.click();
         await variation.waitFor({ state: 'hidden' });
         let applied = false;
-        for (let attempt = 0; attempt < 100 && !applied; attempt++) {
+        // ULTIMA_WAIT_TRIES amplia a janela (padrão 100 = 25 s): reconstruir o modelo em C#
+        // sem AOT demora mais numa bancada com renderização por software.
+        for (let attempt = 0; attempt < (Number(process.env.ULTIMA_WAIT_TRIES) || 100) && !applied; attempt++) {
             applied = await page.evaluate(async previous => (await game.models.status()).timings
                 .filter(item => item.id === 'tree.pine').length > previous, beforeProposals);
             if (!applied) await page.waitForTimeout(250);

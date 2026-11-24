@@ -148,7 +148,7 @@ async function until(check, label='A alteração esperada não apareceu', timeou
         await until(()=>page.evaluate(()=>window.gatherSounds === 1), 'a marca de som da coleta não tocou');
         await until(async()=>await enabled(target)===false);
         await click({x:1,z:9});
-        await page.getByText('Aproxime-se para coletar.',{exact:true}).waitFor({timeout:10000});
+        await until(() => page.getByText('Aproxime-se para coletar.',{exact:true}).isVisible(), 'a dica de distância não apareceu', 60000);
         await lookIntoExcavation(target);
         const soil={x:1.54,z:1.49};
         const before=(await project(target,soil)).alt;

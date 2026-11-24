@@ -5,7 +5,10 @@ const main = process.env.ULTIMA_MODE === 'main';
 const site = process.env.ULTIMA_SITE || 'https://sufficit.github.io/sufficit-game-ultima/';
 
 async function waitFor(check, message) {
-    for (let retry = 0; retry < 100; retry++) {
+    // ULTIMA_WAIT_TRIES amplia a janela (padrão 100 = 25 s); bancadas com renderização por
+    // software levam mais de 100 s até a fila de modelos zerar.
+    const tries = Number(process.env.ULTIMA_WAIT_TRIES) || 100;
+    for (let retry = 0; retry < tries; retry++) {
         const value = await check();
         if (value) return value;
         await new Promise(resolve => setTimeout(resolve, 250));
