@@ -68,7 +68,8 @@ e volta à velocidade de regime quando alinha. A passada local também
 usa uma oscilação lateral menor do tronco. Nas inversões fechadas, o
 quadril gira sobre o próprio eixo. O tronco acompanha a rotação com uma
 pequena defasagem, enquanto os pés alternam o apoio perto do corpo.
-A passada volta a avançar depois que o giro se completa.
+A primeira passada começa enquanto o quadril termina de se alinhar.
+O pé que pousa no fim do giro dá continuidade à marcha.
 
 O Andarilho e os avatares remotos continuam com o solucionador sagital.
 O solucionador local usa a altura de apoio e uma sola nivelada durante

@@ -76,39 +76,52 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
             _directionX = dx / length;
             _directionZ = dz / length;
         }
-        var running = sprint || double.Hypot(analogX, analogZ) > 0.92;
-        var targetSpeed = (running ? RunSpeed : WalkSpeed) * magnitude;
-        _speed += Math.Clamp(targetSpeed - _speed, -26 * delta, 22 * delta);
         if (PivotProgress >= 1) PivotProgress = -1;
         if (PivotProgress < 0 && magnitude > 0)
         {
             var turn = Math.IEEERemainder(Math.Atan2(_directionX, _directionZ) - facing, Math.Tau);
             if (Math.Abs(turn) >= PivotThreshold)
+            {
                 (PivotProgress, PivotStart, PivotTurn) = (0, facing, turn);
+                _speed = 0;
+            }
         }
-        if (PivotProgress >= 0)
+
+        var running = sprint || double.Hypot(analogX, analogZ) > 0.92;
+        var targetSpeed = (running ? RunSpeed : WalkSpeed) * magnitude;
+        var pivoting = PivotProgress >= 0;
+        var yaw = double.NaN;
+        if (pivoting)
         {
-            _speed = 0;
             PivotProgress = Math.Min(1, PivotProgress + delta / PivotDuration);
-            return (x, z, PivotYaw(PivotStart, PivotTurn, PivotProgress), 0);
+            yaw = PivotYaw(PivotStart, PivotTurn, PivotProgress);
+            // Só transfere peso na direção em que o quadril já pode sustentar a passada.
+            var desired = Math.Atan2(_directionX, _directionZ);
+            var intention = Math.Max(0, Math.Cos(desired - (PivotStart + PivotTurn)));
+            targetSpeed *= TurnTravelScale(desired - yaw) * intention;
         }
-        if (_speed <= 0) return (x, z, double.NaN, 0);
+        _speed += Math.Clamp(targetSpeed - _speed, -26 * delta, 22 * delta);
+        var speed = pivoting ? Math.Min(_speed, targetSpeed) : _speed;
+        if (speed <= 0) return (x, z, yaw, 0);
 
         var ground = hasTunnels ? volumes.Floor(x, z, y, kneeHeight) : surface.Height(x, z);
         var stepping = y - footGap > ground + 0.015;
-        var distance = (stepping ? Math.Min(2.8, _speed) : _speed) * delta;
+        var distance = (stepping ? Math.Min(2.8, speed) : speed) * delta;
         var (nextX, nextZ) = ResolveMove(x, y, z, _directionX * distance, _directionZ * distance,
             ground, volumes, hasTunnels);
         var actualX = nextX - x;
         var actualZ = nextZ - z;
         var travelled = double.Hypot(actualX, actualZ);
-        var yaw = travelled > 0.001 ? Math.Atan2(actualX, actualZ) : Math.Atan2(_directionX, _directionZ);
-        var scale = TurnTravelScale(yaw - facing);
-        if (scale < 0.999 && travelled > 0)
+        if (!pivoting)
         {
-            // Mede a direção percorrível antes de virar. Revalida o trecho reduzido com os colisores.
-            (nextX, nextZ) = ResolveMove(x, y, z, actualX * scale, actualZ * scale, ground, volumes, hasTunnels);
-            travelled = double.Hypot(nextX - x, nextZ - z);
+            yaw = travelled > 0.001 ? Math.Atan2(actualX, actualZ) : Math.Atan2(_directionX, _directionZ);
+            var scale = TurnTravelScale(yaw - facing);
+            if (scale < 0.999 && travelled > 0)
+            {
+                // Revalida a direção percorrível depois de reduzir o trecho na curva.
+                (nextX, nextZ) = ResolveMove(x, y, z, actualX * scale, actualZ * scale, ground, volumes, hasTunnels);
+                travelled = double.Hypot(nextX - x, nextZ - z);
+            }
         }
         if (characters is not null)
         {

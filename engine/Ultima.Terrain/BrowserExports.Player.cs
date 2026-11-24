@@ -204,8 +204,8 @@ internal static partial class BrowserExports
         var pivot = isPlayer ? _movement.PivotProgress : -1;
         if (isPlayer)
         {
-            distance = PlayerFeet.Begin(x, z, yaw, distance);
-            if (pivot >= 0) distance = 0;
+            var strideDistance = PlayerFeet.Begin(x, z, yaw, distance);
+            if (pivot < 0) distance = strideDistance;
         }
         PlayerPose.Animate(result, phase, weight, clock, distance, delta, nameLength, listening,
             speech > 0 && listening, progress, bend, reach, strideLength, playerGait: isPlayer);
@@ -222,7 +222,11 @@ internal static partial class BrowserExports
         if (isPlayer)
         {
             if (pivot >= 0)
-                PlayerFeet.ApplyPivot(feet, contact, _spacing, _shoeOffset, _movement.PivotStart, _movement.PivotTurn, pivot);
+            {
+                PlayerFeet.ApplyPivot(feet, contact, _spacing, _shoeOffset, _movement.PivotStart, _movement.PivotTurn, pivot,
+                    delta > 0 ? distance / delta : 0);
+                if (pivot >= 1) result[0] = PlayerFeet.PivotExitPhase;
+            }
             else if (PlayerFeet.Apply(feet, contact, result[0], _spacing, _shoeOffset, delta))
                 _movement.Trip(0.7);
             PlayerPose.Brace(result, _movement.Recover(delta));

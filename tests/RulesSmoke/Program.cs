@@ -298,6 +298,29 @@ Check("mudança de rumo modera avanço lateral e inversão",
     Math.Abs(PlayerMovement.TurnTravelScale(Math.PI / 4) - 0.25) < 1e-12
     && PlayerMovement.TurnTravelScale(Math.PI / 2) < 1e-12
     && PlayerMovement.TurnTravelScale(Math.PI) == 0);
+var pivotSurface = new TerrainSurface();
+var pivotVolumes = new TerrainVolumes(pivotSurface);
+var pivotMovement = new PlayerMovement(1.75, .41, .03);
+double PivotBeforeAlignment(bool obstructed)
+{
+    pivotMovement.Stop();
+    pivotMovement.SetColliders(obstructed ? [0, -.6, .28, 0, 5, 0] : []);
+    var z = 0d;
+    var yaw = 0d;
+    for (var step = 0; step < 60; step++)
+    {
+        var pose = pivotMovement.Advance(0, .03, z, yaw, 0, 1, 0, -1, 0, 0, false, .01,
+            pivotSurface, pivotVolumes, false);
+        if (Math.Abs(pose.Yaw) >= Math.PI * .96) break;
+        (z, yaw) = (pose.Z, pose.Yaw);
+    }
+    return -z;
+}
+var pivotAdvance = PivotBeforeAlignment(false);
+var pivotObstructed = PivotBeforeAlignment(true);
+Check("a primeira passada começa durante o giro e respeita o colisor",
+    pivotAdvance > .10 && pivotObstructed is > .05 and < .075);
+
 var movement = new PlayerMovement(1.75, 0.41, 0.03);
 movement.SetColliders([0, 2, 0.28, 0, 5, 0]);
 var blocked = movement.Sweep(0, 0.03, 0, 0, 5, 0);

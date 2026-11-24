@@ -282,12 +282,29 @@ async function wait(callback,label) {
             .map(foot=>foot.kneeSwivel*Math.sign(foot.toeSide)));
         const kneeAlignment=Math.max(0,...swivels);
         const startYaw = samples[0].yaw;
+        function turnAngle(sample) {
+            return Math.abs(Math.atan2(Math.sin(sample.yaw - startYaw), Math.cos(sample.yaw - startYaw)));
+        }
         const middleTurn = samples.filter(sample => {
-            const angle = Math.acos(Math.max(-1, Math.min(1, Math.cos(sample.yaw - startYaw))));
+            const angle = turnAngle(sample);
             return angle > Math.PI * .31 && angle < Math.PI * .81;
         });
-        const firstTurning = middleTurn[0];
-        const pivotDrift = Math.max(0, ...middleTurn.map(sample =>
+        let overlapFrames = 0, overlapDistance = 0;
+        for (let i = 1; i < samples.length; i++) {
+            const previous = samples[i - 1], current = samples[i];
+            const angle = turnAngle(current);
+            if (angle <= Math.PI / 2 || angle >= Math.PI * .96 ||
+                Math.abs(current.yaw - previous.yaw) < .005) continue;
+            const advance = (previous.x - current.x) * Math.sin(startYaw) +
+                (previous.z - current.z) * Math.cos(startYaw);
+            if (advance > 0.001) {
+                overlapFrames++;
+                overlapDistance += advance;
+            }
+        }
+        const turningBeforeAdvance = middleTurn.filter(sample => turnAngle(sample) <= Math.PI / 2);
+        const firstTurning = turningBeforeAdvance[0];
+        const pivotDrift = Math.max(0, ...turningBeforeAdvance.map(sample =>
             Math.hypot(sample.x - firstTurning.x, sample.z - firstTurning.z)));
         const pivotReach = Math.max(0, ...middleTurn.flatMap(sample => sample.feet.map(foot =>
             Math.hypot(foot.x - sample.x, foot.z - sample.z))));
@@ -296,7 +313,7 @@ async function wait(callback,label) {
         const closestGap=Math.min(...samples.map(({yaw,feet:[left,right]})=>
             (right.x-left.x)*Math.cos(yaw)-(right.z-left.z)*Math.sin(yaw)));
         return {v:gC>0?dist/gC:0,x:last?.x,z:last?.z,frames:samples.length,plantedFrames,maxSlide,
-            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide,swingSamples,swingRetreat,swingRetreatAfterTakeoff,maxSideSpeed,maxBackSpeed,closestGap,kneeAlignment,pivotDrift,pivotReach,pivotWidth,pivotFrames:middleTurn.length,torsoLag:Math.max(0,...middleTurn.map(sample=>Math.abs(sample.torsoYaw)))};
+            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide,swingSamples,swingRetreat,swingRetreatAfterTakeoff,maxSideSpeed,maxBackSpeed,closestGap,kneeAlignment,pivotDrift,pivotReach,pivotWidth,pivotFrames:middleTurn.length,overlapFrames,overlapDistance,torsoLag:Math.max(0,...middleTurn.map(sample=>Math.abs(sample.torsoYaw)))};
     }
     await p.evaluate(()=>{
         game.addRemote('pose-arm','Contato em repouso');
@@ -478,13 +495,15 @@ async function wait(callback,label) {
     await p.waitForTimeout(T300);
     const reversing=await speed(['w'],1500,false,'s');
     console.log(JSON.stringify({reversing}));
+    assert.ok(reversing.overlapFrames >= 2 && reversing.overlapDistance > 0.045,
+        'o jogador começa a avançar enquanto ainda está girando: '+JSON.stringify(reversing));
     assert.ok(reversing.pivotFrames >= 3 && reversing.pivotDrift < 0.015 &&
         reversing.pivotReach < 0.23 && reversing.pivotWidth < 0.30,
-        'a inversão mantém o eixo e os pés próximos do quadril: '+JSON.stringify(reversing));
+        'o início da inversão mantém o eixo e a base fica compacta: '+JSON.stringify(reversing));
     assert.ok(turning.kneeAlignment>0.2 && reversing.torsoLag>0.12 && reversing.torsoLag<0.28,
         'na curva, o joelho acompanha a sola. Na inversão, o quadril conduz o tronco: '+JSON.stringify(reversing));
     assert.ok(reversing.closestGap>=0.14,'os sapatos não devem cruzar sob o corpo: '+JSON.stringify(reversing));
-    assert.ok(reversing.maxBackSpeed<0.1,'jogador deve girar antes de seguir na direção oposta');
+    assert.ok(reversing.maxBackSpeed<0.1,'o jogador avança no sentido para o qual o quadril está orientado');
     assert.ok(reversing.turningFrames>=2 && reversing.turnSlide<0.012,
         'pé de apoio deve ficar no mesmo lugar durante a inversão: '+JSON.stringify(reversing));
     assert.ok(reversing.stopFrames>=2 && reversing.stopSlide<0.012,
