@@ -74,14 +74,18 @@ async function testSynchronization(browser) {
         assert.equal(requests, 1);
 
         await page.clock.fastForward('00:59:00');
+        await page.waitForFunction(() => document.getElementById('world-time-gmt')?.textContent.includes('12:59'));
         assert.equal(requests, 1, 'não consulta novamente antes de completar uma hora');
+        const failed = page.waitForResponse(response => response.url().endsWith('/v1/worlds/ultima/time') &&
+            response.status() === 503);
         await page.clock.fastForward('00:02:00');
+        await failed;
         await page.waitForFunction(() => document.getElementById('world-time-gmt')?.textContent.includes('13:01'));
         assert.equal(requests, 2);
         assert.ok((await page.evaluate(() => game.skyStatus()))?.[1] > .8,
             'na falha, o céu mantém a calibração anterior');
 
-        await page.clock.fastForward('01:00:00');
+        await page.clock.fastForward('01:01:00');
         await waitForWorld(page, async () => (await game.skyStatus())?.[1] < 0, 'o céu aplica a amostra seguinte');
         await page.clock.fastForward('00:00:10');
         await page.waitForFunction(() => document.getElementById('world-time-gmt')?.textContent.includes('00:30'));

@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Sincronização horária do relógio GMT](activities/202611241733-sincronizacao-horaria.md)
+
 - [Integração da virada à primeira passada](activities/202611241724-giro-e-passada-integrados.md)
 
 - [Inversão do jogador no próprio eixo](activities/202611241713-giro-no-proprio-eixo.md)
