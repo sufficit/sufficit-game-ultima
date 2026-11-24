@@ -40,3 +40,5 @@ public sealed record NpcDecision(IReadOnlyList<NpcCommand> Commands, DialogView?
 {
     public static readonly NpcDecision Empty = new([], null);
 }
+
+public sealed record ResolveAnimationMark(string Name, string Payload, System.Text.Json.JsonElement Target) : NpcCommand;

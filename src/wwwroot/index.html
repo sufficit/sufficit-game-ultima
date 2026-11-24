@@ -16,19 +16,8 @@
     <link rel="stylesheet" href="css/extras.css?v=__BUILD__" />
     <!-- Babylon.js não vem mais como tag: no modo worker ele roda só no worker
          (importScripts); no fallback o shell injeta o CDN com o mesmo SRI. -->
-    <script>
-        // F7b: preferência de gráficos (padrao | pbr), aplicada no boot do motor como o
-        // estilo do mundo. Só persiste e devolve o valor: o estado dos botões é do Blazor.
-        window.setGfx = function (style) {
-            var v = style === 'pbr' ? 'pbr' : 'padrao';
-            try { localStorage.setItem('ultima.graficos', v); } catch (e) { }
-            return v;
-        };
-        window.getGfx = function () {
-            try { return localStorage.getItem('ultima.graficos') === 'pbr' ? 'pbr' : 'padrao'; } catch (e) { return 'padrao'; }
-        };
-    </script>
     <script src="js/assets.js?v=__BUILD__"></script>
+    <script src="js/game-crowd.js?v=__BUILD__"></script>
     <script src="js/game-core.js?v=__BUILD__"></script>
     <script src="js/game.js?v=__BUILD__"></script>
     <script src="js/backpack.js?v=__BUILD__"></script>

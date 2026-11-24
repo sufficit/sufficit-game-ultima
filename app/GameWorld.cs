@@ -22,6 +22,7 @@ sealed class Job
 sealed class Character
 {
     public string Id = "", Name = "", Token = "";
+    public readonly string EditOwner = J.Hex(16);
     public double X, Z = 8, Yaw, Last, Since;
     public double? LastPose;
     public Move? Move;
@@ -184,6 +185,7 @@ sealed partial class GameWorld
         ["jobs"] = J.Arr(_jobs.Select(j => (JsonNode?)JobPublic(j))),
         // Edição de mundo (F4/F6): ops de pincel para o replay do terreno e objetos plantados.
         ["edits"] = J.Arr(_edits.Select(e => (JsonNode?)e.DeepClone())),
+        ["volumeTunnels"] = true,
         ["placements"] = J.Arr(_placements.Select(p => (JsonNode?)p.ToJson())),
     };
 

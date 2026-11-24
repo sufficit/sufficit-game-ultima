@@ -206,6 +206,51 @@ Check("a malha refina apenas perto da escavação", MemoryMarshal.Cast<byte, int
 surface.SetEdits([0, 0, 0, 2, 1]);
 Check("escultura preserva as marcas da mochila", Math.Abs(surface.Height(0, 0) - 0.09) < 1e-10);
 
+var heightfield = new TerrainSurface();
+var volumes = new TerrainVolumes(heightfield);
+volumes.Set([2, 3, 13, -2, 2, 16, -2, 0, 20, -2.1, 3]);
+var groundY = heightfield.Height(16, 0);
+var lowerFloor = volumes.Floor(16, 0, -3.27, 0.4);
+Check("corredor mantém piso subterrâneo e superfície na mesma coordenada", lowerFloor < -3 &&
+    Math.Abs(volumes.Floor(16, 0, groundY, 0.4) - groundY) < 0.003);
+Check("campo do corredor liberta a passagem e preserva o teto",
+    !volumes.Blocks(16, -2, 0, 0.1) && volumes.Blocks(16, 0.1, 0, 0)
+    && volumes.Blocks(16, -2, 5, 0));
+var leftTunnel = TerrainVolumeMesh.Build(heightfield, volumes, volumes.InChunk(0, 0), 0, 0);
+var rightTunnel = TerrainVolumeMesh.Build(heightfield, volumes, volumes.InChunk(1, 0), 1, 0);
+Check("corredor cruza chunks usando o mesmo contorno voxelizado",
+    TunnelEdge(leftTunnel).SetEquals(TunnelEdge(rightTunnel)) && TunnelEdge(leftTunnel).Count > 10);
+Check("mesher mantém faces subterrâneas", MemoryMarshal.Cast<byte, int>(leftTunnel.AsSpan())[1] > 18000);
+
+static HashSet<(float Y, float Z)> TunnelEdge(byte[] mesh)
+{
+    var count = MemoryMarshal.Cast<byte, int>(mesh.AsSpan())[0];
+    var positions = MemoryMarshal.Cast<byte, float>(mesh.AsSpan())[3..];
+    var edge = new HashSet<(float Y, float Z)>();
+    for (var vertex = 0; vertex < count; vertex++)
+    {
+        var p = vertex * 3;
+        if (positions[p] == 16 && positions[p + 1] < -1) edge.Add((positions[p + 1], positions[p + 2]));
+    }
+    return edge;
+}
+
+var marks = new double[] { 0.50, 0.62 };
+Check("timeline emite impacto e áudio no cruzamento",
+    Ultima.AnimationTimeline.Crossed(0.49, 0.63, false, marks).SequenceEqual(new[] { 0, 1 }));
+Check("timeline mantém pausa e não repete uma marca de fronteira",
+    Ultima.AnimationTimeline.Crossed(0.50, 0.50, false, marks).Length == 0 &&
+    Ultima.AnimationTimeline.Crossed(0.50, 0.62, false, marks).SequenceEqual(new[] { 1 }));
+Check("timeline recomeça o ciclo em ordem",
+    Ultima.AnimationTimeline.Crossed(0.51, 1.51, true, marks).SequenceEqual(new[] { 1, 0 }));
+Check("troca de ação descarta as marcas do clipe anterior",
+    Ultima.AnimationTimeline.Crossed(0, 0.2, false, marks).Length == 0 &&
+    Ultima.AnimationTimeline.Crossed(0.7, 1.8, false, marks).Length == 0);
+var animated = new NpcScheduler();
+animated.Submit(new AnimationMarked(3010, "hit", "collect", default));
+Check("agendador entrega impacto mesmo fora de diálogo",
+    animated.Tick(Snap()).Single().Commands.Single() is ResolveAnimationMark { Name: "hit", Payload: "collect" });
+
 Console.WriteLine(failures == 0 ? "\nTODOS OS TESTES PASSARAM" : $"\n{failures} FALHA(S)");
 return failures == 0 ? 0 : 1;
 

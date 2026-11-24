@@ -34,10 +34,12 @@
     }
 
     const GRAPHICS_PREF_KEY = 'ultima.graficos';
+    function graphicsStyle(value) {
+        return value === 'pbr' || value === 'cinema' ? value : 'padrao';
+    }
     function graphicsPref() {
-        if (GPU_OFF) { return 'webgl'; }   // gpu=0: sem tentativa WebGPU nesta carga
-        try { return localStorage.getItem(GRAPHICS_PREF_KEY) === 'pbr' ? 'pbr' : 'padrao'; }
-        catch (e) { return 'padrao'; }
+        try { return graphicsStyle(qs2.get('gfx') || localStorage.getItem(GRAPHICS_PREF_KEY)); }
+        catch (e) { return graphicsStyle(qs2.get('gfx')); }
     }
 
     const WEATHER_PREF_KEY = 'ultima.clima';
@@ -139,6 +141,7 @@
                     pageBase: location.href,
                     scenery: sceneryPref(),
                     graphics: graphicsPref(),
+                    gpuOff: GPU_OFF,
                     weather: weatherPref(),
                     global: window,
                     dom: true,
@@ -179,7 +182,7 @@
                 reject(new Error('worker: ' + (e && e.message || 'erro')));
             };
             worker.postMessage(
-                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), weather: weatherPref() },
+                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref() },
                 [off]);
         });
     }
@@ -306,7 +309,7 @@
             actionWasDown = action; cancelWasDown = cancel;
         })();
 
-        setupWorldPointer(canvas, true);
+        setupWorldPointer(canvas);
 
         // Analógicos virtuais de toque continuam no DOM, entregando pela ponte.
         setupVirtualStick('move-stick', 'move-thumb', function (x, y) { deliver('stick', ['move', x, y]); });
@@ -334,9 +337,34 @@
         window.addEventListener('orientationchange', function () { setTimeout(resize, 250); });
     }
 
-    function setupWorldPointer(canvas, forwardCamera) {
-        // O clique no mundo usa a mesma ponte nos dois renderizadores. Os deltas
-        // da câmera são encaminhados ao worker; na main o Babylon cuida deles.
+    let animationAudio = null;
+    function unlockAnimationAudio() {
+        if (worldBuildMode !== 'collect' || !window.AudioContext) { return; }
+        try {
+            animationAudio ||= new AudioContext();
+            if (animationAudio.state === 'suspended') { animationAudio.resume().catch(() => {}); }
+        } catch { /* o efeito sonoro é opcional */ }
+    }
+
+    function animationSound(kind) {
+        if (animationAudio?.state !== 'running' || !['dig', 'gather'].includes(kind)) { return; }
+        const hit = kind === 'dig';
+        const length = Math.floor(animationAudio.sampleRate * (hit ? 0.10 : 0.07));
+        const buffer = animationAudio.createBuffer(1, length, animationAudio.sampleRate);
+        const data = buffer.getChannelData(0);
+        let previous = 0;
+        for (let i = 0; i < length; i++) {
+            previous += (Math.random() * 2 - 1 - previous) * (hit ? 0.28 : 0.68);
+            data[i] = previous * Math.pow(1 - i / length, 2) * 0.22;
+        }
+        const source = animationAudio.createBufferSource();
+        source.buffer = buffer;
+        source.connect(animationAudio.destination);
+        source.start();
+    }
+
+    function setupWorldPointer(canvas) {
+        // Clique e câmera usam a mesma ponte nos dois renderizadores.
         // Um dedo/mouse arrasta e gira; dois dedos são pinça (zoom) e o giro fica
         // suspenso. Convenção do attachControl do Babylon (pinchInwards): juntar os
         // dedos aproxima. A pinça usa a mesma escala da roda: reduzir a distância
@@ -372,6 +400,7 @@
         let lastX = 0, lastY = 0, pinchDist = 0, downAt = 0, downX = 0, downY = 0, pinched = false;
         canvas.addEventListener('pointerdown', function (e) {
             if (e.button !== 0) { return; }
+            unlockAnimationAudio();
             pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
             if (pointers.size === 2) {
                 const pts = Array.from(pointers.values());
@@ -392,7 +421,6 @@
         }
         window.addEventListener('pointerup', solta);
         window.addEventListener('pointercancel', solta);
-        if (!forwardCamera) { return; }
         window.addEventListener('pointermove', function (e) {
             if (!pointers.has(e.pointerId)) { return; }
             if (pointers.size === 2) {
@@ -525,16 +553,19 @@
                         throw err;
                     })
                 : startMain(canvas).then(function (ok) {
-                        setupWorldPointer(canvas, false);
+                        setupWorldPointer(canvas);
                         watchSizeMain(canvas);
                         return ok;
                     });
             return start.then(function () { return true; });
         },
         setFrozen(v, speaker) { post('setFrozen', [!!v, speaker]); },
+        animationSound,
         characterAction(name, point) { post('characterAction', [name, point]); },
         characterDialogueLine(speaker, length) { post('characterDialogueLine', [speaker, length]); },
         resetPlayer() { post('resetPlayer'); },
+        crowdStatus() { return query('crowdStatus'); },
+        graphicsStatus() { return query('graphicsStatus'); },
         teleportToGuardian() { return query('teleportToGuardian'); },
         addRemote(id, name) { post('addRemote', [id, name]); },
         renameRemote(id, name) { post('renameRemote', [id, name]); },
@@ -585,7 +616,7 @@
             // F7b: PBR+IBL (materiais glTF originais) ou padrão (StandardMaterial).
             get() { return graphicsPref(); },
             set(style) {
-                const value = style === 'pbr' ? 'pbr' : 'padrao';
+                const value = graphicsStyle(style);
                 try { localStorage.setItem(GRAPHICS_PREF_KEY, value); } catch (e) { /* sem storage */ }
                 return value;
             }

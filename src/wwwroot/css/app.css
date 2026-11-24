@@ -150,6 +150,19 @@ form.ultima-dialog__compose {
 }
 form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
 
+.ultima-window--contrast {
+    --ultima-glass: var(--sui-surface, #111a14);
+    --ultima-glass-border: var(--sui-text-primary, #e9f1e7);
+}
+.ultima-window__list {
+    margin: 0;
+    padding-inline-start: 1.25rem;
+    max-height: min(40vh, 20rem);
+    overflow: auto;
+    overflow-wrap: anywhere;
+}
+.ultima-window__list > li + li { margin-top: .5rem; }
+
 /* Controles de toque: analógicos + botões A/B (ids lidos pelo game.js) */
 .touch-controls { display: none; }
 @media (pointer: coarse), (max-width: 760px) {

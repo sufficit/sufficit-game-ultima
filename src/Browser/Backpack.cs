@@ -51,8 +51,6 @@ public sealed class Backpack(IJSRuntime js)
             return;
         }
 
-        if (result == "added")
-            await js.InvokeVoidAsync("game.characterAction", soil ? "dig" : "gather", point);
         await SynchronizeAsync();
         Status?.Invoke(result == "added" ? $"+1 {resource.Item}" : "Esse recurso já foi coletado.");
     }

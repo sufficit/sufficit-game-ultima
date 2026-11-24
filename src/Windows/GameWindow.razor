@@ -1,0 +1,25 @@
+@using Sufficit.Blazor.UI.Components
+
+<section class="ultima-dialog ultima-window @(Contrast ? "ultima-window--contrast" : "")" role="dialog" aria-modal="false"
+         aria-label="@(Label ?? Layout.Title)">
+    <SUICard Elevation="3" Class="ultima-card--glass">
+        <SUICardContent>
+            <SUIStack Spacing="2">
+                @foreach (var control in Layout.Controls)
+                {
+                    <WindowControl Control="control" State="State" OnAction="OnAction" OnEdit="OnEdit" />
+                }
+            </SUIStack>
+        </SUICardContent>
+    </SUICard>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public GameLayout Layout { get; set; } = default!;
+    [Parameter, EditorRequired] public WindowState State { get; set; } = default!;
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool Contrast { get; set; }
+    [Parameter] public EventCallback<string> OnAction { get; set; }
+    [Parameter] public EventCallback<(string Key, string Value)> OnEdit { get; set; }
+
+}

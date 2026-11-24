@@ -152,7 +152,7 @@ internal static class TerrainMesh
 
     // Cabeçalho Int32: vértices, índices, contagem da tabela de células.
     // Depois posições, normais e UVs Float32, seguidos de índices e células Int32.
-    private static byte[] Pack(List<float> positions, List<float> normals, List<float> uvs, List<int> indices, int[] cells)
+    internal static byte[] Pack(List<float> positions, List<float> normals, List<float> uvs, List<int> indices, int[] cells)
     {
         var bytes = new byte[4 * (3 + positions.Count + normals.Count + uvs.Count + indices.Count + cells.Length)];
         var words = MemoryMarshal.Cast<byte, int>(bytes.AsSpan());

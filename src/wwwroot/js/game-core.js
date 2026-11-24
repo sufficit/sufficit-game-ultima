@@ -41,7 +41,9 @@
     const sceneryStyle = host.scenery === 'lowpoly' ? 'lowpoly' : 'procedural';
     // F7b: 'padrao' (StandardMaterial convertido, iluminação atual) ou 'pbr' (materiais
     // glTF originais + IBL de um env procedural). Padrão = padrao; troca pede recarga.
-    const graphicsStyle = host.graphics === 'pbr' ? 'pbr' : 'padrao';
+    const graphicsStyle = host.graphics || 'padrao';
+    const usePbr = graphicsStyle === 'pbr' || graphicsStyle === 'cinema';
+    const graphicsEffects = { csm: false, ssao: false, depthOfField: false };
     // id do modelo procedural -> id do asset GLB que o substitui no estilo lowpoly
     const SCENERY_ALT = { 'tree.pine': 'flora.pine', 'rock.boulder': 'rock.boulder2', 'scenery.grass': 'scenery.grass2' };
 
@@ -60,7 +62,8 @@
     const dom = !!host.dom;
     const CAM_POINTER_SENS = 0.01;    // rad/px do arrasto no worker — mesma medida do attachControl na main (200 px ≈ 2,0 rad)
     const camPending = { dx: 0, dy: 0, wheel: 0 };
-    let zoomTarget = null;   // raio escolhido na roda (null = usa o raio atual)
+    let zoomTarget = 7.5;    // zoom escolhido pelo jogador, independente do recuo por colisão
+    let orbitRadius = 7.5;
     const padState = { x: 0, y: 0, lookX: 0, lookY: 0 };
     // Eventos para fora (UI C#, rede) saem todos por aqui — idêntico nos dois modos.
     const dotnet = { invokeMethodAsync: function (name) { host.postEvent(name, Array.prototype.slice.call(arguments, 1)); } };
@@ -347,6 +350,7 @@
     // espalhamento e chunks passam a respeitar as edições automaticamente.
     const worldSculpts = [];
     const worldPaints = [];
+    const worldTunnels = [];
     const worldCarves = [];   // F5b base: grutas {x,z,r,y0,y1} — piso absoluto + rocha
     const PAINT_COLORS = {
         grass: [0.30, 0.46, 0.16], dirt: [0.47, 0.36, 0.23], sand: [0.78, 0.70, 0.50],
@@ -369,6 +373,12 @@
         for (const op of worldSculpts) { values.push(0, op.x, op.z, op.r, op.dh); }
         for (const op of worldCarves) { values.push(1, op.x, op.z, op.r, op.y0); }
         terrain.SetEdits(new Float64Array(values));
+        const volumes = [];
+        for (const op of worldTunnels) {
+            volumes.push(op.radius, op.points.length);
+            for (const point of op.points) { volumes.push(point.x, point.y, point.z); }
+        }
+        terrain.SetVolumes(new Float64Array(volumes));
     }
 
     // Paleta do solo (mesma lógica do gerador original), agora pintável por material.
@@ -635,30 +645,39 @@
         vd.uvs = values.subarray(3 + vertices * 6, indexStart);
         const indices = words.subarray(indexStart, indexStart + count);
         vd.indices = vertices > 65535 ? indices : Uint16Array.from(indices);
-        mesh.metadata = { terrainCells: cellCount ? words.subarray(indexStart + count) : null };
+        const volume = worldTunnels.length > 0 && terrain.HasVolume(cx, cz);
+        mesh.metadata = { volume, terrainCells: cellCount ? words.subarray(indexStart + count) : null };
         vd.applyToMesh(mesh, true);
         mesh.refreshBoundingInfo();
-        if (!cellCount) { saveChunk(cx, cz, vd.positions, vd.normals); }
+        if (!cellCount && !volume) { saveChunk(cx, cz, vd.positions, vd.normals); }
         return mesh;
     }
 
     // Terreno em streaming (F3): janela de chunks ao redor do jogador na fila orçada;
     // chunks distantes são descartados (o cache OPFS devolve os conhecidos na volta).
     let lastEnsureKey = '';
+    const queuedChunks = new Set();
+    let chunkCenterX = 0, chunkCenterZ = 0;
     function enqueueChunkBuild(cx, cz) {
+        const key = chunkKey(cx, cz);
+        if (queuedChunks.has(key)) { return; }
+        queuedChunks.add(key);
         prefetchChunkCache(cx, cz);
-        const label = 'chunk ' + chunkKey(cx, cz);
+        const label = 'chunk ' + key;
         modelQueue.push({
+            terrainChunk: true,
             timing: { id: label, queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
             work: (function* () {
                 yield {
                     label: label,
                     run: function () {
+                        queuedChunks.delete(key);
+                        if (Math.abs(cx - chunkCenterX) > CHUNK_VIEW || Math.abs(cz - chunkCenterZ) > CHUNK_VIEW) { return; }
                         const mesh = buildChunkMesh(cx, cz);
                         mesh.material = chunkMaterial(cx, cz);
                         mesh.receiveShadows = true;
                         mesh.isPickable = true;
-                        chunkMap.set(chunkKey(cx, cz), { mesh: mesh, cx: cx, cz: cz });
+                        chunkMap.set(key, { mesh: mesh, cx: cx, cz: cz });
                     }
                 };
             })()
@@ -668,10 +687,12 @@
 
     function ensureChunksAround(px, pz) {
         if (!scene) { return; }
-        const ccx = Math.floor(px / CHUNK), ccz = Math.floor(pz / CHUNK);
+        const ccx = Math.floor(px / CHUNK + 0.5), ccz = Math.floor(pz / CHUNK + 0.5);
         const key = ccx + ',' + ccz;
         if (key === lastEnsureKey) { return; }
         lastEnsureKey = key;
+        chunkCenterX = ccx;
+        chunkCenterZ = ccz;
         for (let dx = -CHUNK_VIEW; dx <= CHUNK_VIEW; dx++) for (let dz = -CHUNK_VIEW; dz <= CHUNK_VIEW; dz++) {
             if (!chunkMap.has(chunkKey(ccx + dx, ccz + dz))) { enqueueChunkBuild(ccx + dx, ccz + dz); }
         }
@@ -685,7 +706,6 @@
 
     function buildTerrain() {
         ensureChunksAround(0, 0);
-
     }
 
     // (A paleta e o grão do chão vivem na textura de cada chunk — paintChunkTexture.)
@@ -695,6 +715,7 @@
         if (op.kind === 'sculpt') { worldSculpts.push(op); }
         else if (op.kind === 'paint') { worldPaints.push(op); }
         else if (op.kind === 'carve') { worldCarves.push(op); }
+        else if (op.kind === 'tunnel' && Array.isArray(op.points) && op.points.length >= 2) { worldTunnels.push(op); }
         else { return false; }
         return true;
     }
@@ -719,7 +740,32 @@
         return Math.abs(cx * CHUNK - x) <= reach && Math.abs(cz * CHUNK - z) <= reach;
     }
 
-    function refreshChunk({ mesh, cx, cz }, geometryChanged) {
+    const queuedVolumeRefreshes = new Map();
+
+    function refreshChunk(ch, geometryChanged) {
+        if (geometryChanged && (ch.mesh.metadata?.volume ||
+            (worldTunnels.length > 0 && terrain.HasVolume(ch.cx, ch.cz)))) {
+            const key = chunkKey(ch.cx, ch.cz);
+            if (queuedVolumeRefreshes.has(key)) return;
+            queuedVolumeRefreshes.set(key, ch);
+            const label = 'volume ' + key;
+            modelQueue.push({
+                terrainChunk: true,
+                timing: { id: label, queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
+                work: (function* () {
+                    yield { label, run: () => {
+                        queuedVolumeRefreshes.delete(key);
+                        if (chunkMap.get(key) === ch) rebuildChunk(ch, true);
+                    } };
+                })()
+            });
+            modelStatus.queue = modelQueue.length;
+            return;
+        }
+        rebuildChunk(ch, geometryChanged);
+    }
+
+    function rebuildChunk({ mesh, cx, cz }, geometryChanged) {
         if (geometryChanged) {
             buildChunkMesh(cx, cz, mesh);
             clearGroundPreview();
@@ -898,6 +944,78 @@
     }
 
     const supportRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, -1, 0), KNEE_HEIGHT + 0.01);
+    const cameraRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), BABYLON.Vector3.Zero());
+    const orbitEye = BABYLON.Vector3.Zero();
+    const cameraClearance = 0.28;
+
+    function playerFloor(x, z) {
+        return worldTunnels.length && player
+            ? terrain.VolumeFloor(x, z, player.position.y, KNEE_HEIGHT)
+            : terrainHeight(x, z);
+    }
+
+    function passesVolume(x, z, dx, dz, originalFloor) {
+        if (!terrain.NearVolume(x, z) && !terrain.NearVolume(x - dx, z - dz)) { return true; }
+        const floor = playerFloor(x, z);
+        if (floor - originalFloor > KNEE_HEIGHT) { return false; }
+        const length = Math.hypot(dx, dz);
+        if (length < 1e-5) { return true; }
+        const y = floor + PLAYER_HEIGHT - 0.10;
+        const sideX = -dz * PLAYER_RADIUS / length, sideZ = dx * PLAYER_RADIUS / length;
+        return !terrain.TerrainBlocks(x, y, z, 0.06) &&
+            !terrain.TerrainBlocks(x + sideX, y, z + sideZ, 0.03) &&
+            !terrain.TerrainBlocks(x - sideX, y, z - sideZ, 0.03);
+    }
+
+    function traceWorld(from, to) {
+        const direction = cameraRay.direction;
+        to.subtractToRef(from, direction);
+        const length = direction.length();
+        direction.scaleInPlace(1 / length);
+        cameraRay.origin.copyFrom(from);
+        cameraRay.length = length;
+
+        // Testa primeiro os limites das malhas, antes de procurar a face atingida.
+        function traceMesh(mesh) {
+            if (!mesh.isEnabled()) { return; }
+            const { minimumWorld, maximumWorld } = mesh.getBoundingInfo().boundingBox;
+            if (!cameraRay.intersectsBoxMinMax(minimumWorld, maximumWorld, cameraClearance)) { return; }
+            const hit = cameraRay.intersectsMesh(mesh);
+            if (hit.hit && hit.distance < cameraRay.length) { cameraRay.length = hit.distance; }
+        }
+        for (const mesh of obstacles.keys()) { traceMesh(mesh); }
+        for (const mesh of carveRoofs) { traceMesh(mesh); }
+
+        let distance = cameraRay.length;
+        // A altura interpolada é a mesma superfície visível, inclusive em escavações.
+        const intervals = Math.ceil(distance / 0.25);
+        for (let interval = 1; interval <= intervals; interval++) {
+            const t = Math.min(interval * 0.25, distance);
+            const x = from.x + direction.x * t, z = from.z + direction.z * t;
+            const y = from.y + direction.y * t;
+            const blocked = worldTunnels.length && terrain.NearVolume(x, z)
+                ? terrain.TerrainBlocks(x, y, z, cameraClearance)
+                : y < visibleGroundHeight(x, z) + cameraClearance;
+            if (blocked) {
+                distance = t;
+                break;
+            }
+        }
+        return distance < length ? Math.max(0.12, distance - cameraClearance) : length;
+    }
+
+    function updateOrbit(delta, trace) {
+        camera.target.set(player.position.x, player.position.y + PLAYER_HEIGHT / 2, player.position.z);
+        orbitRadius = lerp(orbitRadius, zoomTarget, 1 - Math.exp(-14 * delta));
+        const horizontal = orbitRadius * Math.sin(camera.beta);
+        orbitEye.set(
+            camera.target.x + horizontal * Math.cos(camera.alpha),
+            camera.target.y + orbitRadius * Math.cos(camera.beta),
+            camera.target.z + horizontal * Math.sin(camera.alpha));
+        const limit = trace(camera.target, orbitEye);
+        // Recolher imediatamente evita entrar no obstáculo; a volta é amortecida.
+        camera.radius = Math.min(limit, lerp(camera.radius, orbitRadius, 1 - Math.exp(-12 * delta)));
+    }
 
     function stepSurfaceAt(x, z, ground) {
         let top = ground;
@@ -1065,7 +1183,8 @@
             dotnet.invokeMethodAsync('OnBackpackStatus', 'Esse recurso já foi coletado.');
             return;
         }
-        host.worldOp({ action: 'collect', resource, point: { x: p.x, z: p.z } });
+        const point = { x: p.x, z: p.z };
+        playCharacterAction(target ? 'gather' : 'dig', point, { resource, point });
     }
 
     let collectionPointer = null;
@@ -1138,6 +1257,7 @@
         const chunk = chunkMap.get(chunkKey(cx, cz));
         const vertices = chunk?.mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
         if (!vertices) { return terrainHeight(x, z); }
+        if (chunk.mesh.metadata?.volume) { return playerFloor(x, z); }
         const gx = Math.max(0, Math.min(CHUNK_SUB, (x - (cx * CHUNK - CHUNK / 2)) / CHUNK_STEP));
         const gz = Math.max(0, Math.min(CHUNK_SUB, (z - (cz * CHUNK - CHUNK / 2)) / CHUNK_STEP));
         const i = Math.min(Math.floor(gx), CHUNK_SUB - 1);
@@ -1240,10 +1360,11 @@
     function setWorldEdits(edits, revision) {
         if (revision !== undefined && revision === editsAppliedRev) { return; }
         if (revision !== undefined) { editsAppliedRev = revision; }
-        const dirty = [...worldSculpts, ...worldPaints, ...worldCarves];
+        const dirty = [...worldSculpts, ...worldPaints, ...worldCarves, ...worldTunnels];
         worldSculpts.length = 0;
         worldPaints.length = 0;
         worldCarves.length = 0;
+        worldTunnels.length = 0;
         for (const op of edits || []) {
             if (recordSurfaceEdit(op)) { dirty.push(op); }
         }
@@ -1312,6 +1433,30 @@
     // ---------- Modo construção: cliques no terreno viram ops (F4/F6) ----------
     const buildState = { mode: 'off', asset: '', r: 5, dh: 1.2, mat: 'sand', p1: null };
 
+    const tunnelPoints = [];
+    let tunnelGuide = null;
+    function clearTunnelGuide() {
+        tunnelPoints.length = 0;
+        tunnelGuide?.dispose();
+        tunnelGuide = null;
+    }
+
+    function recordTunnelPoint(point, cid) {
+        tunnelPoints.push(point);
+        if (tunnelPoints.length === 3) {
+            host.worldOp({ action: 'tunnel', points: tunnelPoints.map(p => ({ x: p.x, y: p.y, z: p.z })),
+                r: Math.min(3, buildState.r), cid });
+            clearTunnelGuide();
+            return;
+        }
+        tunnelGuide?.dispose();
+        const path = tunnelPoints.map(p => new BABYLON.Vector3(p.x, p.y + 0.2, p.z));
+        if (path.length === 1) path.push(path[0].add(new BABYLON.Vector3(0, 0.35, 0)));
+        tunnelGuide = BABYLON.MeshBuilder.CreateLines('tunnel-guide', { points: path }, scene);
+        tunnelGuide.color.set(1, 0.8, 0.33);
+        tunnelGuide.isPickable = false;
+    }
+
     function terrainClickImpl(sx, sy) {
         if (buildState.mode === 'off' || !scene || typeof host.worldOp !== 'function') { return; }
         if (buildState.mode === 'collect') { collectAt(sx, sy); return; }
@@ -1326,6 +1471,10 @@
         if (!pick || !pick.hit) { return; }
         const p = pick.pickedPoint;
         const r3 = function (v) { return Math.round(v * 1000) / 1000; };
+        if (buildState.mode === 'tunnel') {
+            recordTunnelPoint(p, cid);
+            return;
+        }
         if (buildState.mode === 'passage') {
             if (!buildState.p1) {
                 buildState.p1 = { x: r3(p.x), z: r3(p.z) };
@@ -1546,7 +1695,7 @@
         const meshes = g.parts.map((p) => {
             let mesh;
             if (p.shape === 'cylinder') { mesh = BABYLON.MeshBuilder.CreateCylinder(p.id, { diameterBottom: p.diameterBottom, diameterTop: p.diameterTop, height: p.height, tessellation: p.tessellation }, scene); }
-            else if (p.shape === 'capsule') { mesh = BABYLON.MeshBuilder.CreateCapsule(p.id, { height: p.height, radius: (p.diameterBottom || p.diameter || 0) / 2, subdivisions: p.subdivisions || 4 }, scene); }
+            else if (p.shape === 'capsule') { mesh = BABYLON.MeshBuilder.CreateCapsule(p.id, { height: p.height, radius: (p.diameterBottom || p.diameter || 0) / 2, subdivisions: p.subdivisions || 4, tessellation: p.crowdSides }, scene); }
             else if (p.shape === 'icosphere') { mesh = BABYLON.MeshBuilder.CreateIcoSphere(p.id, { radius: p.diameter / 2, subdivisions: p.subdivisions }, scene); }
             else if (p.shape === 'sphere') { mesh = BABYLON.MeshBuilder.CreateSphere(p.id, { diameter: p.diameter, segments: p.tessellation }, scene); }
             else if (p.shape === 'plane') {
@@ -1580,6 +1729,29 @@
     }
 
     const modelRegistry = new Map();
+    const crowdCount = Math.floor(Math.max(0, Math.min(300, Number(new URL(host.pageBase).searchParams.get('crowd')) || 0)));
+    let crowd = null, crowdError = null;
+
+    function buildCrowdGroup(desc, name, material) {
+        const group = desc.groups.find(group => group.id === name);
+        const parts = group.parts.map(part => ({ ...part, subdivisions: 1, tessellation: 4, crowdSides: 6 }));
+        return buildModelGroup(desc, { ...group, parts, castShadow: false }, { [group.material]: material });
+    }
+
+    function updateCrowd(delta) {
+        if (!crowd && !crowdError) {
+            const entries = ['character.villager', 'character.wanderer'].map(id => modelRegistry.get(id));
+            if (!entries.every(entry => entry?.desc.crowdWalk?.version === 1)) { return; }
+            try {
+                crowd = G.UltimaCrowd.create(scene, crowdCount, entries, buildCrowdGroup, terrainHeight);
+            } catch (error) {
+                crowdError = String(error.message || error);
+                console.warn('[multidão]', crowdError);
+                return;
+            }
+        }
+        crowd?.update(camera, delta);
+    }
     const modelStatus = { loaded: [], placeholders: [], errors: [], log: [], queue: 0, timings: [] };
     // Entidades (jogador, Guardiã, remotos) que esperam um modelo chegar do carregador C#.
     const modelAwaiters = new Map();   // id do modelo -> [{ make, apply, fallback }]
@@ -1762,9 +1934,11 @@
 
     // Drena a fila até o orçamento do frame; o primeiro passo do item da frente sempre roda.
     function drainModelQueue(frameStart) {
+        let terrainChunkBuilt = false;
         while (modelQueue.length) {
             if (modelQueue[0].timing.steps > 0 && performance.now() - frameStart >= MODEL_BUDGET_MS) { break; }
             const item = modelQueue[0];
+            if (item.terrainChunk && item.timing.steps === 0 && terrainChunkBuilt) { break; }
             let step;
             try { step = item.work.next(); }
             catch (e) { modelQueue.shift(); modelFailed(item, e); continue; }
@@ -1777,6 +1951,7 @@
             const s0 = performance.now();
             try { step.value.run(); }
             catch (e) { modelQueue.shift(); modelFailed(item, e); continue; }
+            terrainChunkBuilt ||= item.terrainChunk === true;
             const stepMs = performance.now() - s0;
             item.timing.cpuMs = Math.round((item.timing.cpuMs + stepMs) * 100) / 100;
             item.timing.steps += 1;
@@ -1968,7 +2143,7 @@
         if (!meshes.length) { throw new Error('nenhuma malha utilizável no GLB'); }
         for (const m of meshes) {
             m.setParent(null);   // preserva a transformada mundial nos valores locais
-            if (graphicsStyle !== 'pbr' || !envOk) { m.material = glbMaterialToStandard(m.material); }
+            if (!usePbr || !envOk) { m.material = glbMaterialToStandard(m.material); }
         }
         const merged = meshes.length === 1 ? meshes[0] : BABYLON.Mesh.MergeMeshes(meshes, true, true, undefined, false, true);
         if (!merged) { throw new Error('falha ao mesclar malhas'); }
@@ -2129,26 +2304,31 @@
     let envOk = false;
     function setupProceduralEnv() {
         try {
-            const faces = {};
-            const mk = function (top, mid, bottom) {
-                const c = document.createElement ? document.createElement('canvas') : new OffscreenCanvas(64, 64);
-                c.width = c.height = 64;
-                const ctx = c.getContext('2d');
-                const g = ctx.createLinearGradient(0, 0, 0, 64);
-                g.addColorStop(0, top); g.addColorStop(0.55, mid); g.addColorStop(1, bottom);
-                ctx.fillStyle = g;
-                ctx.fillRect(0, 0, 64, 64);
-                return c.toDataURL ? c.toDataURL('image/png') : '';
-            };
-            const sky = mk('#4d7dc4', '#9fc0e0', '#d3e2ee');
-            const ground = mk('#8a9a7a', '#5c6e4a', '#3f4d33');
-            faces.px = sky; faces.nx = sky; faces.pz = sky; faces.nz = sky;
-            faces.py = sky; faces.ny = ground;
-            const tex = new BABYLON.CubeTexture('', scene, faces, false);
+            const size = 32;
+            const horizon = [190, 208, 222];
+            const colors = [[77, 125, 196], [64, 77, 49]];
+            const faces = Array.from({ length: 6 }, (_, face) => {
+                const data = new Uint8Array(size * size * 4);
+                for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+                    const u = (2 * x + 1) / size - 1, v = (2 * y + 1) / size - 1;
+                    const height = (face === 2 ? 1 : face === 3 ? -1 : -v) / Math.hypot(1, u, v);
+                    const rgb = colors[Number(height < 0)];
+                    const offset = (y * size + x) * 4;
+                    for (let channel = 0; channel < 3; channel++) {
+                        data[offset + channel] = lerp(horizon[channel], rgb[channel], Math.abs(height));
+                    }
+                    data[offset + 3] = 255;
+                }
+                return data;
+            });
+            const tex = new BABYLON.RawCubeTexture(scene, faces, size,
+                BABYLON.Constants.TEXTUREFORMAT_RGBA, BABYLON.Constants.TEXTURETYPE_UNSIGNED_BYTE,
+                true, false, BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
+            tex.gammaSpace = true;
             tex.name = 'env-procedural';
             scene.environmentTexture = tex;
             scene.environmentIntensity = 0.65;
-            envOk = true;
+            envOk = tex.isReady();
         } catch (e) {
             console.warn('[graficos] env procedural indisponível, PBR sem IBL:', e && e.message);
         }
@@ -2203,7 +2383,7 @@
                 sun.intensity = lerp(0.95, 0.25, rainLevel);
                 hemi.intensity = lerp(0.55, 0.61, rainLevel);
                 sky.emissiveTexture.level = lerp(1, 0.61, rainLevel);
-                scene.fogDensity = lerp(0.0072, 0.017, rainLevel);
+                scene.fogDensity = lerp(0.46, 1.088, rainLevel) / (CHUNK * CHUNK_VIEW);
                 BABYLON.Color3.LerpToRef(horizon, overcast, rainLevel, scene.fogColor);
                 scene.clearColor.set(scene.fogColor.r, scene.fogColor.g, scene.fogColor.b, 1);
                 for (const ch of chunkMap.values()) { applyGroundLight(ch.mesh.material); }
@@ -2230,7 +2410,7 @@
         scene.clearColor = new BABYLON.Color4(horizon.r, horizon.g, horizon.b, 1);
         scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
         scene.fogColor = horizon.clone();
-        scene.fogDensity = 0.0072;   // menos névoa: o vale lê como terreno, não céu
+        scene.fogDensity = 0.46 / (CHUNK * CHUNK_VIEW);
         scene.ambientColor = new BABYLON.Color3(0.18, 0.20, 0.22);
 
         // Tone mapping ACES: realça luz e sombra sem estourar os claros.
@@ -2262,7 +2442,27 @@
             const r = (glInfo && (glInfo.renderer || glInfo.vendor)) || '';
             softwareRenderer = /swiftshader|llvmpipe|softpipe|software/i.test(r);
         } catch (e) { /* info indisponível */ }
-        const shadows = new BABYLON.ShadowGenerator(softwareRenderer ? 1024 : 2048, sun);
+        camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 1.12, 7.5, CAM_UP.clone(), scene);
+        camera.lowerRadiusLimit = 0.12;
+        camera.upperRadiusLimit = 40;
+        camera.upperBetaLimit = Math.PI / 2.08;
+        camera.minZ = 0.06;
+        camera.fov = 0.85;
+
+        const advancedGraphics = graphicsStyle === 'cinema' && !softwareRenderer &&
+            (engine.isWebGPU || engine.webGLVersion >= 2);
+        let shadows;
+        if (advancedGraphics && BABYLON.CascadedShadowGenerator?.IsSupported) {
+            try {
+                shadows = new BABYLON.CascadedShadowGenerator(1024, sun, true, camera);
+                shadows.numCascades = 3;
+                shadows.shadowMaxZ = CHUNK;
+                shadows.stabilizeCascades = true;
+                shadows.cascadeBlendPercentage = 0.05;
+                graphicsEffects.csm = true;
+            } catch (error) { console.warn('[gráficos] CSM indisponível', error); }
+        }
+        shadows ??= new BABYLON.ShadowGenerator(softwareRenderer ? 1024 : 2048, sun);
         shadows.usePercentageCloserFiltering = true;       // sombra de bordas suaves (WebGL2)
         shadows.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM;
         shadows.bias = 0.0006;
@@ -2270,7 +2470,7 @@
         shadows.darkness = 0.5;
 
         const sky = skyDome();
-        if (graphicsStyle === 'pbr') { setupProceduralEnv(); }
+        if (usePbr) { setupProceduralEnv(); }
         buildTerrain();   // grade de chunks na fila com orçamento por frame
         void loadGroundMaterials();
         const updateWeather = weatherUpdate(sun, hemi, sky, horizon, softwareRenderer ? 240 : 520);
@@ -2313,13 +2513,16 @@
         marker.material = markerMat;
         scene.registerBeforeRender(() => { marker.rotation.y += 0.02; });
 
-        camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 1.12, 7.5, player.position.add(CAM_UP), scene);
-        camera.lowerRadiusLimit = 2.4;
-        camera.upperRadiusLimit = 40;
-        camera.upperBetaLimit = Math.PI / 2.08;
-        camera.wheelDeltaPercentage = 0.01;
-        camera.fov = 0.85;
-        if (dom) { camera.attachControl(canvas, true); }   // worker: input chega por api.input.camera
+        camera.target.copyFrom(player.position).addInPlace(CAM_UP);
+        if (advancedGraphics && BABYLON.SSAO2RenderingPipeline?.IsSupported) {
+            try {
+                const ao = new BABYLON.SSAO2RenderingPipeline('contact-ao', scene, { ssaoRatio: 0.5, blurRatio: 0.5 }, [camera]);
+                ao.samples = 8;
+                ao.totalStrength = 0.4;
+                ao.radius = 0.8;
+                graphicsEffects.ssao = true;
+            } catch (error) { console.warn('[gráficos] SSAO indisponível', error); }
+        }
 
         // v3: pós-processamento (MSAA 4x, bloom discreto, nitidez) com recuo gracioso.
         try {
@@ -2327,11 +2530,21 @@
             if (softwareRenderer) {
                 pipeline.samples = 1;                 // software: efeitos fora, frames de volta
             } else {
-                pipeline.samples = 4;
-                pipeline.fxaaEnabled = false;
+                pipeline.samples = advancedGraphics ? 1 : 4;
+                pipeline.fxaaEnabled = advancedGraphics;
                 pipeline.bloomEnabled = true;
                 pipeline.bloomThreshold = 0.85; pipeline.bloomWeight = 0.22; pipeline.bloomKernel = 48; pipeline.bloomScale = 0.5;
                 pipeline.sharpenEnabled = true; pipeline.sharpen.edgeAmount = 0.22;
+            }
+            if (advancedGraphics) {
+                pipeline.depthOfFieldBlurLevel = BABYLON.DepthOfFieldEffectBlurLevel.Low;
+                pipeline.depthOfField.fStop = 5.6;
+                pipeline.depthOfField.focalLength = 45;
+                pipeline.depthOfFieldEnabled = true;
+                scene.onBeforeRenderObservable.add(() => {
+                    pipeline.depthOfField.focusDistance = Math.max(400, camera.radius * 1000);
+                });
+                graphicsEffects.depthOfField = true;
             }
         } catch (e) { console.warn('Pós-processamento indisponível:', e); }
 
@@ -2418,10 +2631,21 @@
         movementSpeed += Math.max(-26 * deltaSeconds, Math.min(22 * deltaSeconds, targetSpeed - movementSpeed));
         if (movementSpeed <= 0) { return 0; }
         const { x, z } = player.position;
-        const ground = terrainHeight(x, z);
+        const ground = playerFloor(x, z);
         const stepping = player.position.y - FOOT_GAP > ground + 0.015;
         const distance = (stepping ? Math.min(2.8, movementSpeed) : movementSpeed) * deltaSeconds;
         moveWithObstacles(player.position, movementX * distance, movementZ * distance, ground);
+        if (worldTunnels.length && !passesVolume(player.position.x, player.position.z,
+            player.position.x - x, player.position.z - z, ground)) {
+            if (passesVolume(player.position.x, z, player.position.x - x, 0, ground)) {
+                player.position.z = z;
+            } else if (passesVolume(x, player.position.z, 0, player.position.z - z, ground)) {
+                player.position.x = x;
+            } else {
+                player.position.x = x;
+                player.position.z = z;
+            }
+        }
         const actualX = player.position.x - x, actualZ = player.position.z - z;
         const travelled = Math.hypot(actualX, actualZ);
         const yaw = travelled > 0.001 ? Math.atan2(actualX, actualZ) : Math.atan2(movementX, movementZ);
@@ -2492,16 +2716,21 @@
         return rig;
     }
 
-    const characterActions = {
-        inspect: { duration: 0.56, bend: 0.17, reach: 0.42 },
-        gather: { duration: 0.44, bend: 0.23, reach: 0.84 },
-        dig: { duration: 0.50, bend: 0.34, reach: 0.62 }
+    const fallbackActions = {
+        inspect: { duration: 0.56, bend: 0.17, reach: 0.42, markers: [] },
+        gather: { duration: 0.44, bend: 0.23, reach: 0.84, markers: [
+            { name: 'hit', time: 0.50, payload: 'collect' }, { name: 'sound', time: 0.66, payload: 'gather' }
+        ] },
+        dig: { duration: 0.50, bend: 0.34, reach: 0.62, markers: [
+            { name: 'hit', time: 0.50, payload: 'collect' }, { name: 'sound', time: 0.62, payload: 'dig' }
+        ] }
     };
 
-    function playCharacterAction(name, point) {
+    function playCharacterAction(name, point, target = null) {
         const rig = characterRigs.get(player);
-        if (rig && characterActions[name] && !frozen) {
-            rig.action = { ...characterActions[name], elapsed: 0, point };
+        const clip = modelRegistry.get('character.villager')?.desc.actions?.[name] ?? fallbackActions[name];
+        if (rig && clip && !frozen) {
+            rig.action = { ...clip, times: new Float64Array(clip.markers.map(marker => marker.time)), elapsed: 0, point, target };
         }
     }
 
@@ -2513,7 +2742,10 @@
         const run = smoothstep(WALK_SPEED, RUN_SPEED, speed);
         rig.gaitWeight = lerp(rig.gaitWeight, Math.min(1, speed / 1.1), 1 - Math.exp(-13 * delta));
         rig.gaitPhase = (rig.gaitPhase + distance * Math.PI * 2 / lerp(1.1, 2.35, smoothstep(1.4, RUN_SPEED, speed))) % (Math.PI * 2);
-        if (rig.legs.length) { updateCharacterLegs(rig, delta, distance, speed, terrainHeight(root.position.x, root.position.z)); }
+        if (rig.legs.length) {
+            const { x, z } = root.position;
+            updateCharacterLegs(rig, delta, distance, speed, root === player ? playerFloor(x, z) : terrainHeight(x, z));
+        }
 
         const listening = frozen && (root === player || root === dialoguePartner);
         rig.speaking = Math.max(0, rig.speaking - delta);
@@ -2528,7 +2760,15 @@
             if (action.point && speed < 0.4) {
                 turnCharacter(root, Math.atan2(action.point.x - root.position.x, action.point.z - root.position.z), delta, 13);
             }
-            action.elapsed += delta;
+            const previous = action.elapsed / action.duration;
+            if (!frozen) { action.elapsed += delta; }
+            if (action.target && action.times.length > 0) {
+                const crossed = terrain.CrossedAnimationMarks(previous, action.elapsed / action.duration, false, action.times);
+                for (const index of crossed) {
+                    const mark = action.markers[index];
+                    dotnet.invokeMethodAsync('OnAnimationMarker', mark.name, mark.payload, action.target);
+                }
+            }
             gesture = Math.sin(Math.PI * Math.min(1, action.elapsed / action.duration));
             if (action.elapsed >= action.duration) { rig.action = null; }
         }
@@ -2622,7 +2862,7 @@
             const localX = leg.side * LEG_SPACING;
             const footX = x + localX * cosine + (forward + SHOE_OFFSET) * sine;
             const footZ = z - localX * sine + (forward + SHOE_OFFSET) * cosine;
-            const floor = terrainHeight(footX, footZ);
+            const floor = root === player ? playerFloor(footX, footZ) : terrainHeight(footX, footZ);
             const support = root === player ? stepSurfaceAt(footX, footZ, floor) : floor;
             return { leg, forward, ankleY: support + ANKLE_HEIGHT + SOLE_CLEARANCE + lift, support, onObstacle: support > floor };
         });
@@ -2908,7 +3148,7 @@
             // falhar, o canvas está queimado — erro fatal limpo e o shell recarrega em
             // main com gpu=0 (canvas novo, direto WebGL).
             let adapter = null;
-            if (host.graphics !== 'webgl' && typeof navigator !== 'undefined' && navigator.gpu && BABYLON.WebGPUEngine) {
+            if (!host.gpuOff && typeof navigator !== 'undefined' && navigator.gpu && BABYLON.WebGPUEngine) {
                 try { adapter = await navigator.gpu.requestAdapter(); }
                 catch (e) { adapter = null; }
             }
@@ -2947,35 +3187,17 @@
                     camera.alpha -= (pad.lookX + lookStick.x) * delta * 2.2;
                     camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + (pad.lookY + lookStick.y) * delta * 1.7));
                 }
-                if (!dom) {
-                    // Ponteiro (arrasto/roda) chegou pela ponte — fora do travamento do
-                    // diálogo, como o attachControl na main thread.
-                    if (camPending.dx || camPending.dy) {
-                        camera.alpha -= camPending.dx * CAM_POINTER_SENS;
-                        camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + camPending.dy * CAM_POINTER_SENS));
-                        camPending.dx = 0; camPending.dy = 0;
-                    }
-                    if (camPending.wheel) {
-                        // Zoom equivalente ao attachControl com wheelDeltaPercentage:
-                        // no Babylon, um entalhe (deltaY 120) ≈ 10% do raio somando a
-                        // inércia (fator ~9× sobre 0,01·120·pct). Aplicamos o mesmo
-                        // resultado DIRETO no alvo e suavizamos a chegada — sem a cauda
-                        // de inércia acumulada, que continuava rodando sozinha.
-                        // Proporção medida no attachControl (Babylon 9.36, inércia somada):
-                        // um entalhe (120) afasta ≈12,1%; para perto, 7 entalhes ≈ −50%
-                        // (≈9,9% cada). Em escala logarítmica o delta parcial do
-                        // touchpad fica suave.
-                        const entalhes = -camPending.wheel / 120;
-                        if (zoomTarget === null) { zoomTarget = camera.radius; }
-                        zoomTarget *= entalhes > 0 ? Math.pow(0.9015, entalhes) : Math.pow(1.1212, -entalhes);
-                        zoomTarget = Math.max(camera.lowerRadiusLimit || 2.4, Math.min(camera.upperRadiusLimit || 40, zoomTarget));
-                        camPending.wheel = 0;
-                    }
-                    if (zoomTarget !== null) {
-                        // Chegada suave por tempo real (independente da taxa de quadros).
-                        camera.radius += (zoomTarget - camera.radius) * Math.min(1, Math.min(0.25, engine.getDeltaTime() / 1000) * 14);
-                        if (Math.abs(zoomTarget - camera.radius) < 1e-3) { camera.radius = zoomTarget; zoomTarget = null; }
-                    }
+                if (camPending.dx || camPending.dy) {
+                    camera.alpha -= camPending.dx * CAM_POINTER_SENS;
+                    camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + camPending.dy * CAM_POINTER_SENS));
+                    camPending.dx = 0;
+                    camPending.dy = 0;
+                }
+                if (camPending.wheel) {
+                    const notches = -camPending.wheel / 120;
+                    zoomTarget *= notches > 0 ? Math.pow(0.9015, notches) : Math.pow(1.1212, -notches);
+                    zoomTarget = Math.max(2.4, Math.min(camera.upperRadiusLimit, zoomTarget));
+                    camPending.wheel = 0;
                 }
                 const travelled = movePlayer(delta, pad);
                 if (player) {
@@ -2986,11 +3208,8 @@
                 updateOtherCharacters(delta);
                 checkNear();
                 updateNearbyObject();
-                // Seguir mutando o vetor-alvo NO LUGAR: preserva alfa/beta/raio (a
-                // distância que o jogador escolheu na roda). O setTarget recalcula o
-                // raio a partir da posição atual da câmera — a cada frame com o jogador
-                // em movimento o raio rangueava de volta ao inicial.
-                camera.target.set(player.position.x, player.position.y + PLAYER_HEIGHT / 2, player.position.z);
+                updateOrbit(delta, traceWorld);
+                if (crowdCount) { updateCrowd(delta); }
                 updateCollectionPreview(frameStart);
                 scene.render();
                 framePerf(performance.now() - frameStart);
@@ -3062,8 +3281,8 @@
         },
         resetPlayer() {
             movementSpeed = 0;
-            if (player) { player.position.x = 0; player.position.z = 0; player.rotation.y = 0; }
-            if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 7.5; zoomTarget = null; }
+            if (player) { player.position.set(0, terrainHeight(0, 0) + FOOT_GAP, 0); player.rotation.y = 0; }
+            if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = orbitRadius = zoomTarget = 7.5; }
         },
         teleportToGuardian() {
             if (!player || !camera) return false;
@@ -3118,6 +3337,7 @@
                 activeMeshCount: scene.getActiveMeshes().length,
                 totalVertices: ch.mesh.getTotalVertices(),
                 terrainEngine: "csharp-wasm",
+                volume: ch.mesh.metadata?.volume === true,
                 indicesCount: ch.mesh.getTotalIndices ? ch.mesh.getTotalIndices() : null,
                 depthFunc: ch.mesh.material && ch.mesh.material.needDepthPrePass,
                 texCanvasSample: (function () {
@@ -3152,7 +3372,9 @@
         },
         build: {
             mode(m, opts) {
-                buildState.mode = m || 'off';
+                const nextMode = m || 'off';
+                if (nextMode !== buildState.mode) clearTunnelGuide();
+                buildState.mode = nextMode;
                 if (buildState.mode !== 'collect') { setCollectionPointer(null); }
                 buildState.p1 = null;
                 if (host.onBuildMode) { host.onBuildMode(buildState.mode); }
@@ -3220,6 +3442,8 @@
             // usado pela oficina em C# para os assets do mundo compartilhado.
             scatter(id, opts) { return scatterSeeded(id, opts); }
         },
+        crowdStatus() { return crowd?.status() || { requested: crowdCount, error: crowdError }; },
+        graphicsStatus() { return { style: graphicsStyle, env: envOk, ...graphicsEffects }; },
         perf: {
             // Custo de CPU do loop de render (sem incluir a espera de GPU): amostras dos
             // últimos 600 frames, medianas e máximos para validar o orçamento dos modelos.
@@ -3241,7 +3465,7 @@
         input,
         assetsReport() { return assetsReal ? assetsReal.report() : null; },
         renderSize() { return engine ? { width: engine.getRenderWidth(), height: engine.getRenderHeight(), canvasW: host.canvas.width, canvasH: host.canvas.height, scaling: engine.getHardwareScalingLevel() } : null; },
-        cameraState() { return camera ? { alpha: camera.alpha, beta: camera.beta, radius: camera.radius } : null; },
+        cameraState() { return camera ? { alpha: camera.alpha, beta: camera.beta, radius: camera.radius, zoom: zoomTarget } : null; },
         playerState() { return player ? { x: player.position.x, z: player.position.z, ry: player.rotation.y } : null; },
         coreId() { return CORE_ID; }
     };

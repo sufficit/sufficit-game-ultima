@@ -15,6 +15,8 @@ public sealed class ModelDescriptor
     public List<MaterialDef> Materials { get; set; } = [];
     /// <summary>Grupos de partes; cada grupo vira uma malha (mesmo material) no motor.</summary>
     public List<PartGroup> Groups { get; set; } = [];
+    public SkeletalClip? CrowdWalk { get; set; }
+    public Dictionary<string, ActionClip>? Actions { get; set; }
     public Bounds Bounds { get; set; } = new();
     /// <summary>Raio de colisão no plano XZ (0 = sem colisão).</summary>
     public double CollisionRadius { get; set; }

@@ -21,6 +21,8 @@ public sealed class LiveGame(HttpClient http, IJSRuntime js)
     private (double X, double Z)? _lastPose;
     public event Action<string>? Status;
     public event Action<string, string>? Chat;
+    public event Action<bool>? VolumeTunnelsChanged;
+    public bool HasVolumeTunnels { get; private set; }
 
     public async Task RunAsync(CancellationToken token)
     {
@@ -153,7 +155,7 @@ public sealed class LiveGame(HttpClient http, IJSRuntime js)
             case "npc" when string.IsNullOrEmpty(message.To) || message.To == _id:
                 Chat?.Invoke(message.Name ?? "Guardiã", message.Text ?? "");
                 break;
-            case "job_started" or "job_done" or "job_cancelled" or "map_edited":
+            case "job_started" or "job_done" or "job_cancelled" or "map_edited" or "world_edited":
                 _ = RefreshMapAsync();
                 break;
         }
@@ -191,6 +193,12 @@ public sealed class LiveGame(HttpClient http, IJSRuntime js)
 
     private async Task ApplyMapAsync(WorldMap? map)
     {
+        var supported = map?.VolumeTunnels == true;
+        if (HasVolumeTunnels != supported)
+        {
+            HasVolumeTunnels = supported;
+            VolumeTunnelsChanged?.Invoke(supported);
+        }
         await js.InvokeVoidAsync("game.live.paintMap", _lifetime, map);
     }
 
@@ -211,7 +219,7 @@ public sealed class LiveGame(HttpClient http, IJSRuntime js)
     private sealed record Context(string Api, bool Enabled, string? Token);
     private sealed record Session(string? Token, Character? Me, Character? Character, long EventsFrom, Character[]? Characters, WorldMap? Map);
     private sealed record Character(string? Id, string? Name, double X, double Z, double Yaw);
-    private sealed record WorldMap(JsonElement? Tiles, JsonElement[]? Jobs, JsonElement[]? Edits, long? Revision, JsonElement[]? Placements);
+    private sealed record WorldMap(JsonElement? Tiles, JsonElement[]? Jobs, JsonElement[]? Edits, long? Revision, JsonElement[]? Placements, bool VolumeTunnels);
     private sealed record EventBatch(WorldEvent[]? Events);
     private sealed record WorldEvent(string Type, long Seq, Character[]? Characters, Character? Character, string? From, string? To,
         string? Name, string? Text);

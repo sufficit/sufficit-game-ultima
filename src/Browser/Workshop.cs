@@ -13,6 +13,10 @@ public sealed class Workshop(HttpClient http, IJSRuntime js)
     public const int MaxUploadBytes = 2 * 1024 * 1024;
     private readonly HashSet<string> _known = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _register = new(1);
+    private readonly SemaphoreSlim _editGate = new(1);
+    private readonly Stack<string> _surfaceEdits = new();
+    private string? _editSession;
+    public bool CanUndoSurface => _surfaceEdits.Count > 0;
     private string[] _buildAssets = [];
     public event Action<string[]>? BuildAssetsChanged;
     public event Action<string>? Status;
@@ -69,23 +73,66 @@ public sealed class Workshop(HttpClient http, IJSRuntime js)
         catch (JSException) { return false; }
     }
 
-    public async Task EditAsync(JsonElement operation, CancellationToken token)
+    public Task EditAsync(JsonElement operation, CancellationToken token) =>
+        SendWorldEditAsync(operation, false, token);
+
+    public Task UndoSurfaceAsync(CancellationToken token) =>
+        SendWorldEditAsync(null, true, token);
+
+    private async Task SendWorldEditAsync(JsonElement? operation, bool undo, CancellationToken token)
     {
+        await _editGate.WaitAsync(token);
         try
         {
             var endpoint = await EndpointAsync(token);
+            if (_editSession != endpoint.Token)
+            {
+                _editSession = endpoint.Token;
+                _surfaceEdits.Clear();
+            }
             if (string.IsNullOrEmpty(endpoint.Token))
             {
                 Status?.Invoke("Conecte-se ao servidor do jogo para editar o mundo.");
                 return;
             }
-            using var content = JsonContent.Create(operation);
+
+            if (undo && !_surfaceEdits.TryPeek(out _))
+            {
+                Status?.Invoke("Nenhuma edição desta sessão para desfazer.");
+                return;
+            }
+            using var content = undo
+                ? JsonContent.Create(new { Action = "undo_surface", Edit = _surfaceEdits.Peek() })
+                : JsonContent.Create(operation!.Value);
             var result = await SendAsync<Reply>(endpoint, HttpMethod.Post, "/v1/game/command", content, 15, token);
-            if (result?.Error is { Length: > 0 } error) Status?.Invoke($"Edição recusada: {error}.");
+            if (result?.Error is { Length: > 0 } error)
+            {
+                Status?.Invoke($"Edição recusada: {error}.");
+                return;
+            }
+            if (undo && result?.Ok == true)
+            {
+                _surfaceEdits.Pop();
+                Status?.Invoke("Edição do terreno desfeita.");
+            }
+            else if (result?.Edit is { Length: > 0 } edit)
+            {
+                _surfaceEdits.Push(edit);
+                Status?.Invoke("Edição do terreno salva.");
+            }
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
-        { Status?.Invoke("Conecte-se ao servidor do jogo para editar o mundo."); }
+        {
+            _surfaceEdits.Clear();
+            Status?.Invoke("Conecte-se ao servidor do jogo para editar o mundo.");
+        }
+        catch (WorkshopException ex) when (undo && ex.Code == "edit_not_found")
+        {
+            _surfaceEdits.TryPop(out _);
+            Status?.Invoke("A edição já foi removida do mundo.");
+        }
         catch (Exception ex) when (!token.IsCancellationRequested) { Status?.Invoke($"Edição falhou: {ex.Message}"); }
+        finally { _editGate.Release(); }
     }
 
     public async Task<string> GenerateAsync(string prompt, CancellationToken token)
@@ -151,6 +198,7 @@ public sealed class Workshop(HttpClient http, IJSRuntime js)
             {
                 "too_many_triangles" => " (muitos triângulos: máx. 30 mil)",
                 "not_a_glb" => " (arquivo não é um GLB válido)",
+                "asset_not_approved" => " (o arquivo ainda não está aprovado para este mundo)",
                 "storage_unavailable" => " (servidor sem armazenamento gravável)",
                 _ => ""
             };
@@ -225,7 +273,7 @@ public sealed class Workshop(HttpClient http, IJSRuntime js)
     private sealed record Endpoint(string Api, string? Token);
     private sealed record Catalog(Asset[]? Assets);
     private sealed record Asset(string Id, string File, string Sha256, double? ScaleM);
-    private sealed record Reply(string? Status, string? Engine, string? Job, string? Error, Asset? Asset);
+    private sealed record Reply(string? Status, string? Engine, string? Job, string? Error, Asset? Asset, string? Edit, bool Ok);
     private sealed record GlbState(Dictionary<string, JsonElement>? Instances);
     private sealed class WorkshopException(HttpStatusCode status, string? code) : HttpRequestException($"HTTP {(int)status}", null, status)
     {

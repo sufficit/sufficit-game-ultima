@@ -1,16 +1,16 @@
-# PLAN-WORLD-BUILDER — Mundo expansível: edição 3D, geração assistida e persistência durável
+# Mundo expansível: edição 3D, geração assistida e persistência durável
 
-**Status**: ✅ plano concluído em 23/11/2026 — F1–F4, F5a, F5b (base com colisão real),
-F6, F7a e F7b (PBR+IBL/vento/água) entregues e validadas em produção; refinamentos
-futuros (marching cubes p/ formas livres, CSM/SSAO/DoF) registrados como follow-up ·
-absorve o escopo do [PLAN-TERRAIN-CHUNKS.md](PLAN-TERRAIN-CHUNKS.md)
+**Status**: base entregue em 23/11/2026 — F1–F4, F5a, F5b (base com colisão real),
+F6, F7a e F7b (PBR+IBL/vento/água) entregues e validadas em produção.
+Undo e corredores curvos publicados e validados no backend Run ·
+absorve o escopo do [atividade de câmera e streaming](202611232122-camera-e-streaming.md)
 
-## Decisões que moldam este plano (decisão do usuário, 22/11/2026)
+## Investigação e decisões
 
 1. **Edição precisa de túneis, masmorras, rios** → paradigma = **heightfield esculpível
    + volumes de escavação** (ops carve/fill renderizadas com marching cubes no worker),
    não voxel puro: mantém a identidade visual e a qualidade gráfica, com ops compactas
-   no journal. Registro formal: [decisions/world-builder-v5.md](../decisions/world-builder-v5.md).
+   no journal. Registro formal: [decisions/world-builder-v5.md](../../decisions/world-builder-v5.md).
 2. **O mundo se auto-incrementa conforme os jogadores andam** → chunks sob demanda,
    gerados deterministicamente (seed + coordenadas) e **cristalizados** na primeira
    visita: o agente de IA pode enriquecer (variação de bioma, ruínas, clareiras) uma
@@ -30,14 +30,14 @@ absorve o escopo do [PLAN-TERRAIN-CHUNKS.md](PLAN-TERRAIN-CHUNKS.md)
 Journal único append-only (JSONL) + snapshots periódicos (compaction); revisão global
 transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~100k ops.
 
-## Fases
+## Alterações por fase
 
-### F1 ✅ — Persistência durável **concluída em 22/11/2026** → [PLAN-WORLD-STORE.md](PLAN-WORLD-STORE.md)
+### F1 ✅ — Persistência durável **concluída em 22/11/2026** → [Atividade de persistência do mundo](202611232303-persistencia-do-mundo.md)
 - [x] PVC dedicado no deployment do backend (volume `data` + `ULTIMA_DATA_DIR=/data`)
       via patch do deployment — mapa e `assets/` saem do `/tmp`.
 - [x] Mapa migra de snapshot `map.json` para **journal JSONL** (ops append-only) +
       snapshot compactado, atrás da interface `IWorldStore`
-      ([decisão world-store-v1](../decisions/world-store-v1.md): arquivo-first,
+      ([decisão world-store-v1](../../decisions/world-store-v1.md): arquivo-first,
       SQLite ~100k ops, MySQL só para dados relacionais).
 - [x] Validação: recriar o pod → mundo e assets intactos; replay do journal ==
       snapshot.
@@ -63,7 +63,9 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
 - [x] Pincéis no cliente (levantar/cavar/pintar via clique + raio ajustável) — aplicação local
       otimista + op autoritativa no servidor (rate limit, raio máximo, budget/jogador).
 - [x] Água pintável (rios = cavar o canal e pintar água; material real na F7) (base do F7).
-- [ ] Validação: edição persiste para todos; undo via replay do journal.
+- [x] Edição e undo confirmados em dois clientes com backend local. Lotes
+  atômicos e reaplicação do journal verificados após reiniciar o servidor.
+- [x] Backend atualizado no Sufficit Run com o volume durável atual.
 
 ### F5a ✅ — Passagens abertas **concluída em 23/11/2026**
 - [x] Action `passage` (dois cliques na Oficina): o servidor expande a linha em ops de
@@ -79,9 +81,17 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
       replay idênticos às demais ops; botão Gruta na Oficina.
 - [x] Validação: piso em -3,00 m exato (borda intacta) local e **-2,00 m em produção**
       (rev 31), 0 erros.
-- [ ] Formas livres (corredores curvos arbitrários): marching cubes sobre voxels —
-      entra quando o jogo pedir geometria além de cilindros (poços/salas/grutas já
-      cobertos com colisão real).
+- [x] Formas livres (corredores curvos): marching cubes no C# WebAssembly.
+      A API aceita de três a oito pontos; a Oficina inicia com entrada,
+      curva e saída. Cada trajeto é limitado a 60 m.
+  1. [concluído] Campo volumétrico e marching cubes compilados; RulesSmoke
+     confirmou o mesmo contorno de ambos os lados de uma divisa de chunks.
+  2. [concluído] Piso da caverna e terreno externo selecionados por altura;
+     teste nos dois modos confirmou movimento interno e recuo de câmera.
+  3. [concluído] A Oficina criou e desfez o volume em dois navegadores
+     conectados à API local. O teste do journal confirmou a restauração
+     do corredor mantido após reiniciar.
+  4. [concluído] Corredor e undo verificados com duas sessões na API publicada.
 
 ### F6 ✅ — Objetos do mundo: construir com assets **concluída em 23/11/2026**
 - [x] Ops `place`/`remove` de qualquer asset (builtin CC0 + catálogo do servidor) (CC0/gerado/upload) com
@@ -105,7 +115,8 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
       e brilho rasante do céu (FresnelParameters).
 - [x] Validação: PBR carrega com env ok e 0 erros; mediana 4,5 ms (vs 3,2 padrão),
       0 frames >33 ms; produção com toggle disponível.
-- [ ] Refinamentos futuros (precisam de QA em GPU real): sombras CSM, SSAO, DoF leve.
+- [x] Perfil Cinemático opcional, com CSM de três cascatas, SSAO em meia
+  resolução e DoF focado no personagem. Validado em GPU AMD via WebGL 2.
 
 ## Riscos e mitigações
 
@@ -124,3 +135,9 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
   chunk — referência para o F5 se os volumes crescerem além de ops.
 - lineage-rust (`/mnt/sufficit/lineage-rust`): amortização de entrada e streaming.
 - Infra de agentes de NPC do próprio jogo (`NpcScheduler`/WebLLM): molde do agente do F3.
+
+## Validação e entrega
+
+As fases registram as provas de cada frente. A publicação final confirmou a continuidade do mapa e o undo na API pública.
+
+[Publicação do backend](202611232303-publicacao-do-backend-no-run.md).

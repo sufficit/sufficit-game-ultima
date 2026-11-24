@@ -2,6 +2,7 @@
 @implements IDisposable
 @using Ultima.Npc
 @using Ultima.Browser
+@using Ultima.Windows
 @inject NavigationManager Navigation
 @inject Backpack BackpackState
 @inject Workshop WorkshopService
@@ -135,6 +136,8 @@
                     <SUICardContent>
                         <SUIStack Spacing="2">
 
+                            <SUIButton SizeValue="SUISize.Small" OnClick="OpenJournal">Diário</SUIButton>
+
                             <SUIExpansionPanel Title="Mochila" StartIcon="inbox">
                                 <SUIStack Spacing="2">
                                     <SUIButton SizeValue="SUISize.Small" StartIcon="plus" OnClick="ToggleCollectionAsync">
@@ -228,7 +231,13 @@
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="delete" OnClick="@(() => BuildModeAsync("dig"))">Cavar</SUIButton>
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="arrow-right" Title="Dois cliques: início e fim" OnClick="@(() => BuildModeAsync("passage"))">Passagem</SUIButton>
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="inbox" Title="Cava uma gruta com paredão de rocha" OnClick="@(() => BuildModeAsync("cave"))">Gruta</SUIButton>
+                                                @if (Live.HasVolumeTunnels)
+                                                {
+                                                    <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="ChooseTunnelAsync">Corredor curvo</SUIButton>
+                                                }
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="palette" OnClick="@(() => BuildModeAsync("paint"))">Pintar</SUIButton>
+                                                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined"
+                                                           Disabled="@(!WorkshopService.CanUndoSurface)" OnClick="UndoSurfaceAsync">Desfazer edição</SUIButton>
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="close" OnClick="@(() => BuildModeAsync("off"))">Sair do modo</SUIButton>
                                             </SUIStack>
                                             <SUISelect TValue="string" Id="paint-mat" Label="Material da pintura" Value="_paintMaterial" ValueChanged="OnPaintMaterialChanged">
@@ -273,8 +282,10 @@
                                                            aria-pressed="@(_gfxStyle == "padrao" ? "true" : "false")" OnClick="@(() => SetGfxAsync("padrao"))">Padrão (leve)</SUIButton>
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="@(_gfxStyle == "pbr" ? SUIVariant.Soft : SUIVariant.Outlined)"
                                                            aria-pressed="@(_gfxStyle == "pbr" ? "true" : "false")" OnClick="@(() => SetGfxAsync("pbr"))">PBR + IBL</SUIButton>
+                                                <SUIButton SizeValue="SUISize.Small" VariantValue="@(_gfxStyle == "cinema" ? SUIVariant.Soft : SUIVariant.Outlined)"
+                                                           aria-pressed="@(_gfxStyle == "cinema" ? "true" : "false")" OnClick="@(() => SetGfxAsync("cinema"))">Cinemático</SUIButton>
                                             </SUIStack>
-                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@(_gfxDirty ? "Recarregue para aplicar." : "Ativo: " + (_gfxStyle == "pbr" ? "PBR + IBL" : "padrão") + ".")</SUIText>
+                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@(_gfxDirty ? "Recarregue para aplicar." : "Ativo: " + (_gfxStyle == "cinema" ? "cinemático" : _gfxStyle == "pbr" ? "PBR + IBL" : "padrão") + ".")</SUIText>
                                             <SUISelect TValue="string" Id="weather-mode" Label="Clima" Value="_weatherMode" ValueChanged="OnWeatherChanged">
                                                 <SUISelectItem Value='@("clear")'>Céu limpo</SUISelectItem>
                                                 <SUISelectItem Value='@("rain")'>Chuva</SUISelectItem>
@@ -451,37 +462,12 @@
 
         @if (_view is not null)
         {
-            <section class="ultima-dialog" role="dialog" aria-modal="false" aria-label="Conversa com a Guardiã">
-                <SUICard Elevation="3" Class="ultima-card--glass">
-                    <SUICardContent>
-                        <SUIStack Spacing="2">
-                            <p class="ultima-dialog__speaker">@_view.Lines[_view.CurrentLine].Speaker</p>
-                            <p class="ultima-dialog__line" aria-live="polite">@_view.Lines[_view.CurrentLine].Text</p>
-                            @if (!_view.Thinking && !string.IsNullOrEmpty(_view.ReplySource) && _view.Lines[_view.CurrentLine].Speaker != "Você")
-                            {
-                                <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">✦ origem da resposta: @_view.ReplySource</SUIText>
-                            }
-                            <form class="ultima-dialog__compose" @onsubmit="SubmitDialogAsync" @onsubmit:preventDefault="true">
-                                <label class="sr-only" for="dialog-input">Escreva para a Guardiã</label>
-                                <SUITextField TValue="string" Id="dialog-input" Placeholder="Escreva algo para a Guardiã…"
-                                              MaxLength="300" Immediate="true" @bind-Value="_dialogDraft" />
-                                <SUIButton ButtonTypeValue="SUIButtonType.Submit" SizeValue="SUISize.Small" StartIcon="send"
-                                           aria-label="Enviar para a Guardiã">Enviar</SUIButton>
-                                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="audio"
-                                           OnClick="ToggleDictationAsync">@(_dictating ? "Parar ditado" : "Ditar")</SUIButton>
-                            </form>
-                            @if (!string.IsNullOrEmpty(_speechError))
-                            {
-                                <SUIText Typo="SUITypo.caption" Color="SUIColor.Error">@_speechError</SUIText>
-                            }
-                            <SUIStack Row="true" Spacing="2" Wrap="true">
-                                <SUIButton OnClick="AdvanceAsync">@(_view.CurrentLine + 1 < _view.Lines.Count ? "Continuar · E/A" : "Encerrar · E/A")</SUIButton>
-                                <SUIButton VariantValue="SUIVariant.Outlined" OnClick="CloseDialog">Fechar · Esc</SUIButton>
-                            </SUIStack>
-                        </SUIStack>
-                    </SUICardContent>
-                </SUICard>
-            </section>
+            <GameWindow Layout="GameLayout.Conversation" State="ConversationState()" Label="@(_view.Speaker == "Andarilho" ? "Conversa com o Andarilho" : "Conversa com a Guardiã")"
+                        Contrast="_windowContrast" OnAction="DispatchWindowActionAsync" OnEdit="EditWindow" />
+        }
+        else if (_journalOpen)
+        {
+            <GameWindow Layout="GameLayout.Journal" State="_journalState" Contrast="_windowContrast" OnAction="DispatchWindowActionAsync" />
         }
     </main>
 </div>
@@ -555,6 +541,17 @@
         if ((!_panelOpen || !_workshopOpen) && !string.IsNullOrWhiteSpace(message)) { Snackbar.Info(message); }
     }
 
+    private async Task ChooseTunnelAsync()
+    {
+        await BuildModeAsync("tunnel", new { r = _brushRadius });
+        _panelOpen = false;
+        Snackbar.Info("Clique na entrada, na curva e na saída do corredor.");
+    }
+
+    private void ShowVolumeTunnels(bool supported) => _ = InvokeAsync(StateHasChanged);
+
+    private Task UndoSurfaceAsync() => WorkshopService.UndoSurfaceAsync(_browserLifetime.Token);
+
     private void OnWorkshopToggled(bool open) => _workshopOpen = open;
     private async Task BuildModeAsync(string? mode, object? options = null)
     {
@@ -598,13 +595,13 @@
         _workshopFileName = string.Empty;
     }
 
-    private async Task VaryAsync(string id, double? detail)
+    private async Task VaryAsync(string id, double? detail, int? proposedSeed = null)
     {
         SetWorkshopStatus("Remodelando…");
         StateHasChanged();
         try
         {
-            var seed = Random.Shared.Next();
+            var seed = proposedSeed ?? Random.Shared.Next();
             var ok = await JS.InvokeAsync<bool>("game.models.vary", id, new { seed, detail = detail ?? 1.0 });
             SetWorkshopStatus(ok ? "✓ cenário atualizado" : "Não foi possível trocar (modelo DLL ausente)");
         }
@@ -635,7 +632,7 @@
 
     private async Task SetGfxAsync(string style)
     {
-        _gfxStyle = await JS.InvokeAsync<string>("setGfx", style);
+        _gfxStyle = await JS.InvokeAsync<string>("game.graphics.set", style);
         _gfxDirty = true;
     }
     private async Task OnWeatherChanged(string? value)
@@ -724,8 +721,9 @@
             LivePose = Live.PoseAsync,
             LiveChat = Live.SayAsync,
             WorldCommand = operation => WorkshopService.EditAsync(operation, _browserLifetime.Token),
+            AnimationMarker = (name, payload, target) => _ = InvokeAsync(() => Dispatch(new AnimationMarked(NowMs(), name, payload, target))),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
-            Close = () => _ = InvokeAsync(CloseDialog),
+            Close = () => _ = InvokeAsync(() => DispatchWindowActionAsync("close")),
             MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; RunNpcTick(); StateHasChanged(); }),
             NetStatus = (state, peers) => _ = InvokeAsync(() => { _netStatus = state; StateHasChanged(); }),
             Chat = (from, text) => _ = InvokeAsync(() => { AddChat(from, text); StateHasChanged(); }),
@@ -741,6 +739,7 @@
         Dialogs.Changed += ShowDialogCount;
         Live.Status += ShowLiveStatus;
         Live.Chat += ShowLiveChat;
+        Live.VolumeTunnelsChanged += ShowVolumeTunnels;
         BackpackState.Changed += ShowBackpack;
         BackpackState.Status += ShowBackpackStatus;
         WorkshopService.Status += ShowWorkshopStatus;
@@ -795,7 +794,7 @@
         catch (JSException) { _playerName = string.Empty; }
         try { _sceneryStyle = await JS.InvokeAsync<string>("game.scenery.get") ?? "procedural"; }
         catch (JSException) { _sceneryStyle = "procedural"; }
-        try { _gfxStyle = await JS.InvokeAsync<string>("getGfx") is "pbr" ? "pbr" : "padrao"; }
+        try { _gfxStyle = await JS.InvokeAsync<string>("game.graphics.get"); }
         catch (JSException) { _gfxStyle = "padrao"; }
         try { _weatherMode = await JS.InvokeAsync<string>("game.weather.get"); }
         catch (JSException) { _weatherMode = "clear"; }
@@ -869,6 +868,9 @@
         {
             switch (command)
             {
+                case ResolveAnimationMark mark:
+                    _ = ResolveAnimationMarkAsync(mark);
+                    break;
                 case OpenDialog:
                     _ = SetFrozen(true);
                     break;
@@ -900,6 +902,25 @@
         StateHasChanged();
     }
 
+    private async Task ResolveAnimationMarkAsync(ResolveAnimationMark mark)
+    {
+        if (mark.Name == "hit" && mark.Payload == "collect" &&
+            mark.Target.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            try
+            {
+                var target = System.Text.Json.JsonSerializer.Deserialize<AnimationCollectionTarget>(
+                    mark.Target, AnimationTargetJson.Default.AnimationCollectionTarget);
+                if (target?.Resource is not null) await BackpackState.CollectAsync(target.Resource, target.Point);
+            }
+            catch (System.Text.Json.JsonException) { }
+        }
+        else if (mark.Name == "sound")
+        {
+            await JS.InvokeVoidAsync("game.animationSound", mark.Payload);
+        }
+    }
+
     private Task OnInteractAsync()
     {
         if (_view is null && !_near && !_nearWanderer && _nearObject is { } label)
@@ -909,6 +930,71 @@
         else
         {
             Dispatch(new PlayerInteracted(NowMs()));
+        }
+        return Task.CompletedTask;
+    }
+
+    private SceneryProposal? _proposal;
+    private string? _proposalReply;
+    private bool _journalOpen;
+    private bool _windowContrast;
+    private readonly WindowState _conversationState = new();
+    private readonly WindowState _journalState = new();
+
+    private WindowState ConversationState()
+    {
+        var view = _view!;
+        var line = view.Lines[view.CurrentLine];
+        var values = _conversationState.Text;
+        values["speaker"] = line.Speaker;
+        values["line"] = line.Text;
+        values["source"] = !view.Thinking && !string.IsNullOrEmpty(view.ReplySource) && line.Speaker != "Você"
+            ? "✦ origem da resposta: " + view.ReplySource : "";
+        values["variation"] = line.Text == _proposalReply ? _proposal?.Label ?? "" : "";
+        values["draft"] = _dialogDraft;
+        values["dictation"] = _dictating ? "Parar ditado" : "Ditar";
+        values["speechError"] = _speechError;
+        values["advance"] = view.CurrentLine + 1 < view.Lines.Count ? "Continuar · E/A" : "Encerrar · E/A";
+        return _conversationState;
+    }
+
+    private void EditWindow((string Key, string Value) edit)
+    {
+        if (edit.Key == "draft") _dialogDraft = edit.Value;
+    }
+
+    private void OpenJournal()
+    {
+        _panelOpen = false;
+        _journalOpen = true;
+        var entries = Dialogs.RecentEntries();
+        _journalState.Lists["entries"] = entries;
+        _journalState.Text["empty"] = entries.Count == 0 ? "Suas conversas com personagens aparecem aqui." : "";
+        _journalState.Text["hasEntries"] = entries.Count == 0 ? "" : "true";
+        UpdateWindowThemeLabel();
+    }
+
+    private void UpdateWindowThemeLabel() =>
+        _journalState.Text["theme"] = _windowContrast ? "Tema padrão" : "Mais contraste";
+
+    private Task DispatchWindowActionAsync(string action)
+    {
+        switch (action)
+        {
+            case "advance": return AdvanceAsync();
+            case "speak": return SubmitDialogAsync();
+            case "vary" when _proposal is { } proposal:
+                _proposal = null;
+                return VaryAsync(proposal.Model, proposal.Detail, proposal.Seed);
+            case "dictate": return ToggleDictationAsync();
+            case "close":
+                if (_view is not null) CloseDialog();
+                else _journalOpen = false;
+                break;
+            case "theme":
+                _windowContrast = !_windowContrast;
+                UpdateWindowThemeLabel();
+                break;
         }
         return Task.CompletedTask;
     }
@@ -925,6 +1011,33 @@
         _turnStartedMs = NowMs();   // t50: base do tempo de resposta do turno registrado
         _ = JS.InvokeVoidAsync("game.characterDialogueLine", "Você", text.Length);
         Dispatch(new PlayerSpoke(NowMs(), text));
+        _proposal = null;
+        _proposalReply = null;
+        if (SceneryProposal.ForRequest(text, Random.Shared.Next()) is { } proposal)
+        {
+            var speaker = _view.Speaker;
+            var proposalSource = "oficina do mundo · versão procedural";
+            if (_aiState == "ready")
+            {
+                try
+                {
+                    var choice = await JS.InvokeAsync<double[]?>("game.ai.proposeScenery", TimeSpan.FromSeconds(20), proposal.Model, text);
+                    if (choice is [var seed, var detail] && seed >= 0 && seed <= int.MaxValue && seed == Math.Truncate(seed)
+                        && detail is >= 0.5 and <= 1.6)
+                    {
+                        proposal = proposal with { Seed = (int)seed, Detail = detail };
+                        proposalSource = "GPU do jogador · oficina do mundo";
+                    }
+                }
+                catch (JSException) { /* a proposta local segue disponível */ }
+                catch (OperationCanceledException) { /* tempo limite do produtor */ }
+            }
+            if (_view?.Speaker != speaker || !_view.Thinking) return;
+            _proposal = proposal;
+            _proposalReply = $"Posso preparar outra versão para você. Use “{proposal.Label}” para experimentar.";
+            Dispatch(new ReplyArrived(NowMs(), _proposalReply, proposalSource));
+            return;
+        }
         // Produtores caros (WebLLM na GPU, API do jogo, fallback local) correm fora do
         // tick; a resposta vira evento e o cérebro a aplica em um tick futuro. Os
         // produtores atuais têm a persona da Guardiã: o Andarilho responde com falas
@@ -1004,6 +1117,8 @@
         if (_view is null) return;
         _npc.Submit(new DialogClosedByPlayer(NowMs()));   // sincroniza o cérebro sem tick extra
         _view = null;
+        _proposal = null;
+        _proposalReply = null;
         _ = JS.InvokeVoidAsync("game.voice.stopDictation");
         _ = SetFrozen(false);
         StateHasChanged();
@@ -1091,6 +1206,7 @@
         Dialogs.Changed -= ShowDialogCount;
         Live.Status -= ShowLiveStatus;
         Live.Chat -= ShowLiveChat;
+        Live.VolumeTunnelsChanged -= ShowVolumeTunnels;
         BackpackState.Changed -= ShowBackpack;
         BackpackState.Status -= ShowBackpackStatus;
         WorkshopService.Status -= ShowWorkshopStatus;

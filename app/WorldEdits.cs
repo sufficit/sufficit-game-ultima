@@ -67,11 +67,54 @@ sealed partial class GameWorld
 
     void RecordSurfaceEdit(string kind, JsonObject op)
     {
-        _revision++;
-        op["rev"] = _revision;
-        _edits.Add(op);
+        var revision = _revision + 1;
+        op["rev"] = revision;
         _store.Append(kind, op);
+        _edits.Add(op);
+        _revision = revision;
+        EmitSurfaceEdit(op);
+    }
+
+    void EmitSurfaceEdit(JsonObject op) =>
         Emit(new JsonObject { ["type"] = "world_edited", ["revision"] = _revision, ["op"] = op.DeepClone() });
+
+    (int, JsonObject) RecordPlayerEdits(Character player, IReadOnlyList<JsonObject> changes)
+    {
+        if (_edits.Count > MaxSurfaceEdits - changes.Count) return (507, J.Err("too_many_surface_edits"));
+        var edit = "e" + J.Hex(12);
+        var revision = _revision;
+        foreach (var change in changes)
+        {
+            change["edit"] = edit;
+            change["owner"] = player.EditOwner;
+            change["rev"] = ++revision;
+        }
+        var batch = new JsonObject
+        {
+            ["rev"] = revision,
+            ["changes"] = J.Arr(changes.Select(change => change.DeepClone())),
+        };
+        _store.Append("surface_batch", batch);
+        _edits.AddRange(changes);
+        _revision = revision;
+        foreach (var change in changes) EmitSurfaceEdit(change);
+        return (200, new JsonObject { ["ok"] = true, ["revision"] = revision, ["edit"] = edit });
+    }
+
+    (int, JsonObject) UndoSurfaceCmd(Character player, JsonObject data)
+    {
+        var edit = J.Str(data["edit"]);
+        if (edit.Length != 25 || !edit.StartsWith('e')) return (400, J.Err("edit_required"));
+        if (!_edits.Any(change => J.Str(change["edit"]) == edit && J.Str(change["owner"]) == player.EditOwner))
+            return (404, J.Err("edit_not_found"));
+
+        var revision = _revision + 1;
+        var operation = new JsonObject { ["kind"] = "undo_surface", ["edit"] = edit, ["rev"] = revision };
+        _store.Append("undo_surface", operation);
+        _edits.RemoveAll(change => J.Str(change["edit"]) == edit);
+        _revision = revision;
+        EmitSurfaceEdit(operation);
+        return (200, new JsonObject { ["ok"] = true, ["revision"] = revision });
     }
 
     /// <summary>Esculpe o terreno (pincel aditivo): todos os clientes aplicam {x,z,r,dh} nos chunks.</summary>
@@ -86,8 +129,7 @@ sealed partial class GameWorld
             ["kind"] = "sculpt", ["x"] = J.R(x, 3), ["z"] = J.R(z, 3), ["r"] = J.R(r, 2), ["dh"] = J.R(dh, 3),
             ["by"] = ch.Name, ["at"] = J.R(now, 3), ["cid"] = J.Str(data["cid"]),
         };
-        RecordSurfaceEdit("sculpt", op);
-        return (200, new JsonObject { ["ok"] = true, ["revision"] = _revision });
+        return RecordPlayerEdits(ch, [op]);
     }
 
     /// <summary>Pinta o material do solo (grama/terra/areia/rocha/neve/água) num raio.</summary>
@@ -102,8 +144,7 @@ sealed partial class GameWorld
             ["kind"] = "paint", ["x"] = J.R(x, 3), ["z"] = J.R(z, 3), ["r"] = J.R(r, 2), ["mat"] = mat,
             ["by"] = ch.Name, ["at"] = J.R(now, 3), ["cid"] = J.Str(data["cid"]),
         };
-        RecordSurfaceEdit("paint", op);
-        return (200, new JsonObject { ["ok"] = true, ["revision"] = _revision });
+        return RecordPlayerEdits(ch, [op]);
     }
 
     /// <summary>Planta um asset do catálogo (builtin ou do servidor) com transform completo.</summary>
@@ -236,14 +277,12 @@ sealed partial class GameWorld
             ["y0"] = J.R(y0, 3), ["y1"] = J.R(y1, 3),
             ["by"] = ch.Name, ["at"] = J.R(now, 3), ["cid"] = J.Str(data["cid"]),
         };
-        RecordSurfaceEdit("carve", op);
         var rock = new JsonObject
         {
             ["kind"] = "paint", ["x"] = J.R(x, 3), ["z"] = J.R(z, 3), ["r"] = J.R(r, 2), ["mat"] = "rock",
             ["by"] = ch.Name, ["at"] = J.R(now, 3), ["cid"] = J.Str(data["cid"]),
         };
-        RecordSurfaceEdit("paint", rock);
-        return (200, new JsonObject { ["ok"] = true, ["revision"] = _revision });
+        return RecordPlayerEdits(ch, [op, rock]);
     }
 
     /// <summary>
@@ -256,6 +295,7 @@ sealed partial class GameWorld
         if (!J.TryFloat(data["x1"], out var x1) || !J.TryFloat(data["z1"], out var z1) ||
             !J.TryFloat(data["x2"], out var x2) || !J.TryFloat(data["z2"], out var z2))
             return (400, J.Err("x1_z1_x2_z2_required"));
+        if (!InEditBounds(x1, z1) || !InEditBounds(x2, z2)) return (400, J.Err("x_z_r_invalid"));
         var len = Math.Sqrt((x2 - x1) * (x2 - x1) + (z2 - z1) * (z2 - z1));
         if (len is < 1 or > 60) return (400, J.Err("length_1_to_60"));
         var r = 4.0;
@@ -269,6 +309,7 @@ sealed partial class GameWorld
         // Ops ao longo da linha + paredes de rocha nas laterais para ler como passagem.
         var step = r * 0.8;
         var n = (int)Math.Ceiling(len / step) + 1;
+        var changes = new List<JsonObject>();
         for (var i = 0; i <= n; i++)
         {
             var t = n == 0 ? 0 : (double)i / n;
@@ -279,7 +320,7 @@ sealed partial class GameWorld
                 ["kind"] = "sculpt", ["x"] = J.R(x, 3), ["z"] = J.R(z, 3), ["r"] = J.R(r, 2), ["dh"] = J.R(dh, 3),
                 ["by"] = ch.Name, ["at"] = J.R(now, 3), ["cid"] = J.Str(data["cid"]),
             };
-            RecordSurfaceEdit("sculpt", op);
+            changes.Add(op);
             if (i % 2 == 0)
             {
                 var wall = new JsonObject
@@ -287,10 +328,62 @@ sealed partial class GameWorld
                     ["kind"] = "paint", ["x"] = J.R(x, 3), ["z"] = J.R(z, 3), ["r"] = J.R(r * 1.4, 2), ["mat"] = "rock",
                     ["by"] = ch.Name, ["at"] = J.R(now, 3), ["cid"] = J.Str(data["cid"]),
                 };
-                RecordSurfaceEdit("paint", wall);
+                changes.Add(wall);
             }
         }
-        return (200, new JsonObject { ["ok"] = true, ["revision"] = _revision, ["ops"] = n + 1 });
+        var (status, reply) = RecordPlayerEdits(ch, changes);
+        if (status == 200) reply["ops"] = n + 1;
+        return (status, reply);
+    }
+
+    (int, JsonObject) TunnelCmd(Character ch, JsonObject data, double now)
+    {
+        if (data["points"] is not JsonArray path || path.Count is < 3 or > 8)
+            return (400, J.Err("tunnel_path_3_to_8"));
+        var radius = 2.4;
+        if (data.ContainsKey("r") && !J.TryFloat(data["r"], out radius))
+            return (400, J.Err("x_z_r_invalid"));
+        radius = Math.Clamp(radius, 1.8, 3);
+        var points = new List<(double X, double Y, double Z)>(path.Count);
+        var length = 0.0;
+        foreach (var point in path)
+        {
+            if (point is not JsonObject node || !J.TryFloat(node["x"], out var x) ||
+                !J.TryFloat(node["y"], out var y) || !J.TryFloat(node["z"], out var z) ||
+                !InEditBounds(x, z) || y is < -20 or > 45)
+                return (400, J.Err("invalid_tunnel_point"));
+            if (points.Count > 0)
+            {
+                var previous = points[^1];
+                var dx = x - previous.X;
+                var dz = z - previous.Z;
+                var segment = Math.Sqrt(dx * dx + dz * dz);
+                if (segment < 5 || Math.Abs(y - previous.Y) > segment * 0.8)
+                    return (400, J.Err("tunnel_points_too_close_or_steep"));
+                length += segment;
+            }
+            points.Add((x, y, z));
+        }
+        if (length > 60) return (400, J.Err("tunnel_too_long"));
+        if (_edits.Count(op => J.Str(op["kind"]) == "tunnel") >= 48)
+            return (507, J.Err("too_many_tunnels"));
+
+        var centerX = (points.Min(point => point.X) + points.Max(point => point.X)) / 2;
+        var centerZ = (points.Min(point => point.Z) + points.Max(point => point.Z)) / 2;
+        var extent = points.Max(point => Math.Max(Math.Abs(point.X - centerX), Math.Abs(point.Z - centerZ))) + radius + 0.5;
+        var stored = points.Select((point, index) => new JsonObject
+        {
+            ["x"] = J.R(point.X, 3),
+            ["z"] = J.R(point.Z, 3),
+            ["y"] = J.R(point.Y + radius * (index == 0 || index == points.Count - 1 ? 0.4 : -1.35), 3),
+        });
+        var op = new JsonObject
+        {
+            ["kind"] = "tunnel", ["x"] = J.R(centerX, 3), ["z"] = J.R(centerZ, 3),
+            ["r"] = J.R(extent, 3), ["radius"] = J.R(radius, 3), ["points"] = J.Arr(stored),
+            ["by"] = ch.Name, ["at"] = J.R(now, 3), ["cid"] = J.Str(data["cid"]),
+        };
+        return RecordPlayerEdits(ch, [op]);
     }
 
     /// <summary>Remove um objeto plantado (uid).</summary>

@@ -20,6 +20,17 @@ sealed class WorldAssets(string dataDir, GameWorld game, ILogger log)
     const int MaxPrompt = 120;
 
     readonly object _lock = new();
+    readonly HashSet<string>? _approvedUploads = ReadUploadAllowList();
+
+    static HashSet<string>? ReadUploadAllowList()
+    {
+        var raw = Environment.GetEnvironmentVariable("ULTIMA_UPLOAD_SHA256_ALLOWLIST");
+        if (raw is null) return null; // instalações existentes preservam a política anterior
+        var values = raw.Split([',', ';', ' ', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries);
+        if (values.Any(value => value.Length != 64 || !value.All(Uri.IsHexDigit)))
+            throw new InvalidOperationException("ULTIMA_UPLOAD_SHA256_ALLOWLIST contém um SHA-256 inválido.");
+        return new HashSet<string>(values, StringComparer.OrdinalIgnoreCase);
+    }
     JsonObject? _catalog;
     DateTime _catalogStamp;
     readonly Dictionary<string, MeshyJob> _jobs = new();
@@ -84,8 +95,10 @@ sealed class WorldAssets(string dataDir, GameWorld game, ILogger log)
         var fileName = entry["id"]!.GetValue<string>() + "-" + sha[..8] + ".glb";
         entry["file"] = "file/" + fileName;
         Directory.CreateDirectory(Dir);
-        File.WriteAllBytes(Path.Combine(Dir, fileName), bytes);
-        var catalog = LoadCatalog();
+        var path = Path.Combine(Dir, fileName);
+        File.WriteAllBytes(path + ".tmp", bytes);
+        File.Move(path + ".tmp", path, overwrite: true);
+        var catalog = (JsonObject)LoadCatalog().DeepClone();
         var assets = AssetsOf(catalog);
         // mesmo id já publicado: substitui a entrada (o arquivo antigo fica órfão, sem dano)
         for (var i = assets.Count - 1; i >= 0; i--)
@@ -94,6 +107,7 @@ sealed class WorldAssets(string dataDir, GameWorld game, ILogger log)
         }
         assets.Add(entry);
         SaveCatalog(catalog);
+        _catalog = catalog;
         return entry;
     }
 
@@ -105,6 +119,52 @@ sealed class WorldAssets(string dataDir, GameWorld game, ILogger log)
         {
             try { return File.ReadAllBytes(Path.Combine(Dir, fileName)); }
             catch (Exception) { return null; }
+        }
+    }
+
+    public async Task PruneOrphansAsync(TimeSpan age, CancellationToken stop)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromHours(24));
+        try
+        {
+            do
+            {
+                lock (_lock) PruneOrphans(age);
+            } while (await timer.WaitForNextTickAsync(stop));
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+    }
+
+    private void PruneOrphans(TimeSpan age)
+    {
+        try
+        {
+            // Só um catálogo legível é autoridade suficiente para remover bytes.
+            if (!File.Exists(CatalogPath) ||
+                JsonNode.Parse(File.ReadAllText(CatalogPath)) is not JsonObject catalog ||
+                catalog["assets"] is not JsonArray entries) return;
+            var referenced = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in entries)
+            {
+                if (entry is not JsonObject meta) return;
+                var file = J.Str(meta["file"]);
+                if (!file.StartsWith("file/", StringComparison.Ordinal) || file.Length == 5) return;
+                referenced.Add(file[5..]);
+            }
+            var olderThan = DateTime.UtcNow - age;
+            foreach (var path in Directory.EnumerateFiles(Dir, "*.glb"))
+            {
+                var file = Path.GetFileName(path);
+                if ((!file.StartsWith("player.", StringComparison.Ordinal) && !file.StartsWith("gen.", StringComparison.Ordinal)) ||
+                    file.Length < 17 || file[^13] != '-' || !file[^12..^4].All(Uri.IsHexDigit) ||
+                    referenced.Contains(file) || File.GetLastWriteTimeUtc(path) >= olderThan) continue;
+                File.Delete(path);
+                log.LogInformation("Arquivo GLB órfão expirado: {File}", file);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            log.LogWarning(ex, "Coleta de arquivos órfãos adiada");
         }
     }
 
@@ -164,10 +224,11 @@ sealed class WorldAssets(string dataDir, GameWorld game, ILogger log)
         var tris = InspectTris(bytes);
         if (tris <= 0) return (415, J.Err("not_a_glb"));
         if (tris > MaxTris) return (422, J.Err("too_many_triangles"));
+        var sha = Convert.ToHexStringLower(SHA256.HashData(bytes));
+        if (_approvedUploads is not null && !_approvedUploads.Contains(sha)) return (403, J.Err("asset_not_approved"));
         lock (_lock)
         {
             if (AssetsOf(LoadCatalog()).Count >= MaxAssets) return (507, J.Err("catalog_full"));
-            var sha = Convert.ToHexStringLower(SHA256.HashData(bytes));
             var id = "player." + Slug(rawName, "modelo");
             var by = game.SessionName(token) ?? "jogador";
             var scale = Math.Clamp(scaleM <= 0 ? 1 : scaleM, 0.05, 12);

@@ -129,6 +129,13 @@ public sealed class DialogLog(IJSRuntime js)
         finally { _sending = false; }
     }
 
+    public IReadOnlyList<string> RecentEntries() => _history
+        .SelectMany(entry => entry.Value.Select(turn => (Npc: entry.Key, Turn: turn)))
+        .OrderByDescending(entry => entry.Turn.T)
+        .Take(12)
+        .Select(entry => $"{entry.Npc}: {entry.Turn.Reply}")
+        .ToArray();
+
     public DialogLogState Debug() => new(_enabled, _url, _queue.Count, _sending, _interval,
         Math.Max(0, _retryAt - Now()), _sentTotal, _lastSentAt, _lastError);
 

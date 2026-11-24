@@ -17,6 +17,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Windows/Layouts/*.json" />
+    <Compile Include="../engine/Ultima.Terrain/AnimationTimeline.cs" Link="Terrain/AnimationTimeline.cs" />
     <Compile Include="../engine/Ultima.Terrain/Terrain*.cs" Link="Terrain/%(Filename)%(Extension)" />
     <Compile Include="../engine/Ultima.Terrain/BrowserExports.cs" Link="Terrain/BrowserExports.cs" />
   </ItemGroup>

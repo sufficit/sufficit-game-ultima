@@ -75,7 +75,7 @@ Critérios de aceite:
 
 > **Decisão de 22/11/2026:** a migração (checkpoints 2–5) ficou **programada, não
 > executada** — por coordenação, não por técnica. A frente de
-> [PLAN-PLAYER-ASSETS.md](PLAN-PLAYER-ASSETS.md) está ativa no mesmo `game.js`
+> [Atividade de catálogo de modelos](activities/202611232303-catalogo-de-modelos-do-mundo.md) está ativa no mesmo `game.js`
 > (módulo `game.glb`, fases 2–4 ainda por vir); refatorar o arquivo inteiro agora
 > forçaria rebase massivo no trabalho concorrente. O protótipo (checkpoint 1)
 > comprovou a viabilidade; o design abaixo deixa a execução pronta para a
