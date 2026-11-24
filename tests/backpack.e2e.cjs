@@ -63,8 +63,12 @@ async function records(page) {
         };
     }));
 }
-async function until(check, label='A alteração esperada não apareceu') {
-    for (let i=0;i<100;i++) {
+async function until(check, label='A alteração esperada não apareceu', timeoutMs=180000) {
+    // Prontidão real medida na bancada (render por software + terreno WASM sem AOT):
+    // chunks>=25 aos ~52 s e fila de modelos zerando aos ~119 s. A janela cobre isso
+    // com folga sem estourar o teto de 600 s do executor.
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
         if (await check()) return;
         await new Promise(resolve=>setTimeout(resolve,250));
     }
