@@ -15,10 +15,16 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
 
     internal void Trip(double strength)
     {
-        if (_stumble > 0) return;
+        // Um impacto corporal tem prioridade sobre a recuperação de um passo curto.
+        if (_stumble > 0 && !(strength < 0 && _strength > 0)) return;
         _stumble = RecoveryTime;
         _strength = strength;
         _speed *= 0.45;
+    }
+
+    internal void TripOnFootContact(double shortening)
+    {
+        if (_speed > 2.4 && shortening > 0.12) Trip(0.7);
     }
 
     internal double Recover(double delta)

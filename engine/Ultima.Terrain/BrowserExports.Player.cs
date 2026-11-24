@@ -60,10 +60,19 @@ internal static partial class BrowserExports
     }
 
     [JSExport]
-    internal static double[] SetCharacterHitboxes(double[] values, int length)
+    internal static int[] SetCharacterHitboxes(double[] values, int length)
     {
-        _characters.SetHitboxes(values.AsSpan(0, length));
-        if (length == 0) return [];
+        _characters.SetHitboxes(values.AsSpan(0, length), tagged: true);
+        return length == 0 ? [] : _characters.CollectLimbContacts();
+    }
+
+    [JSExport]
+    internal static bool TryCharacterLimbPose(int id, int limb, double[] values, int length)
+        => _characters.TryLimbPose(id, limb, values.AsSpan(0, length));
+
+    [JSExport]
+    internal static double[] ResolveCharacterContacts()
+    {
         var corrections = _characters.ResolveAnimatedContacts();
         for (var i = 0; i < corrections.Length; i += 3)
         {
@@ -73,6 +82,20 @@ internal static partial class BrowserExports
         }
         return corrections;
     }
+
+    private static readonly double[] ShortFoot = new double[4];
+
+    [JSExport]
+    internal static double[] SolveShortenedFoot(double bodyY, double support, double forward, double lateral,
+        double lift, double pitch)
+    {
+        PlayerPose.SolveSingleLeg(ShortFoot, bodyY + _hipHeight - support - _ankleOffset - lift,
+            forward, lateral, _legLength, pitch);
+        return ShortFoot;
+    }
+
+    [JSExport]
+    internal static void OnFootContact(double shortening) => _movement.TripOnFootContact(shortening);
 
     [JSExport]
     internal static void ResetCamera() => Camera.Reset();

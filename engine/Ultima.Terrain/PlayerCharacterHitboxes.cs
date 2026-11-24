@@ -4,7 +4,7 @@ namespace Ultima.Terrain;
 
 // Caixa orientada pelo transform de uma malha. Os vetores U/V/W têm o
 // comprimento de cada semieixo, de modo que a projeção usa só produtos escalares.
-internal readonly record struct PlayerCharacterBox(Vector3 Center, Vector3 U, Vector3 V, Vector3 W)
+internal readonly record struct PlayerCharacterBox(Vector3 Center, Vector3 U, Vector3 V, Vector3 W, int Limb = 0)
 {
     internal float RadiusSquared => U.LengthSquared() + V.LengthSquared() + W.LengthSquared();
 

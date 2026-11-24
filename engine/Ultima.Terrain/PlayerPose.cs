@@ -107,6 +107,14 @@ internal static class PlayerPose
         }
     }
 
+    internal static void SolveSingleLeg(Span<double> output, double drop, double forward, double lateral,
+        double legLength, double pitch)
+    {
+        drop = Math.Max(0.16, drop);
+        SetAngles(output[..3], double.Hypot(drop, lateral), forward, legLength, pitch);
+        output[3] = Math.Atan2(lateral, drop);
+    }
+
     private static void SetAngles(Span<double> output, double drop, double forward, double legLength, double pitch)
     {
         var extent = double.Hypot(drop, forward);

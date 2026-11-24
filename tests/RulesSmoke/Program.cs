@@ -411,6 +411,27 @@ var poseCorrection = animatedBodies.ResolveAnimatedContacts();
 Check("braços que entram em contato na pose são corrigidos sem deslocar o jogador",
     poseCorrection.Length == 3 && poseCorrection[0] == 0 && double.Hypot(poseCorrection[1] - .62, poseCorrection[2]) >= .099);
 Check("a resolução da pose estabiliza quando o contato some", animatedBodies.ResolveAnimatedContacts().Length == 0);
+var articulated = new PlayerCharacterSpace();
+articulated.Set(PlayerCharacterSpace.Player, 0, 0, 0);
+articulated.Set(0, 0.62, 0, 0);
+double[] occupiedArm = [0, -.31, 1.03, 0, .06, 0, 0, 0, .21, 0, 0, 0, .05, 1];
+articulated.SetHitboxes([
+    PlayerCharacterSpace.Player, .31, 1.03, 0, .06, 0, 0, 0, .21, 0, 0, 0, .05, 2,
+    .. occupiedArm
+], tagged: true);
+Check("detecção de pose identifica os membros em contato", articulated.CollectLimbContacts().SequenceEqual([-1, 2, 0, 1]));
+Check("validação rejeita uma articulação ainda sobreposta", !articulated.TryLimbPose(0, 1, occupiedArm));
+var retractedArm = occupiedArm.ToArray();
+retractedArm[1] = -.16;
+Check("braço retraído resolve contato sem separar raízes",
+    articulated.TryLimbPose(0, 1, retractedArm) && articulated.ResolveAnimatedContacts().Length == 0);
+Span<double> shortenedLeg = stackalloc double[4];
+PlayerPose.SolveSingleLeg(shortenedLeg, .53, .12, .04, .36, .10);
+var solvedForward = -.36 * (Math.Sin(shortenedLeg[0]) + Math.Sin(shortenedLeg[0] + shortenedLeg[1]));
+Check("passo encurtado alcança o alvo com o quadril fixo",
+    Math.Abs(solvedForward - .12) < 1e-9 && shortenedLeg[1] > 0
+    && Math.Abs(shortenedLeg[0] + shortenedLeg[1] + shortenedLeg[2] - .10) < 1e-9);
+
 var recovering = new PlayerMovement(1.75, .41, .03);
 recovering.Trip(1);
 Check("tropeço tem reação e recuperação finita", recovering.Recover(.16) > 0.8 && recovering.Recover(.48) == 0);

@@ -14,6 +14,8 @@ internal sealed class PlayerCharacterSpace
     private readonly Dictionary<int, Body> _bodies = [];
     private int _revision = 1;
     private readonly List<double> _corrections = [];
+    private readonly List<int> _limbs = [];
+    private readonly HashSet<(int Id, int Limb)> _reportedLimbs = [];
 
     internal void Set(int id, double x, double y, double z)
     {
@@ -24,10 +26,11 @@ internal sealed class PlayerCharacterSpace
     internal void Remove(int id) => _bodies.Remove(id);
 
     // Lista intercalada por malha: ator, centro relativo e três semieixos no espaço do mundo.
-    internal void SetHitboxes(ReadOnlySpan<double> values)
+    internal void SetHitboxes(ReadOnlySpan<double> values, bool tagged = false)
     {
         _revision++;
-        for (var i = 0; i + 12 < values.Length; i += 13)
+        var stride = tagged ? 14 : 13;
+        for (var i = 0; i + stride <= values.Length; i += stride)
         {
             if (!_bodies.TryGetValue((int)values[i], out var body)) continue;
             if (body.Revision != _revision)
@@ -35,10 +38,64 @@ internal sealed class PlayerCharacterSpace
                 body.Revision = _revision;
                 body.Boxes.Clear();
             }
-            body.Boxes.Add(new(ReadVector(values, i + 1), ReadVector(values, i + 4),
-                ReadVector(values, i + 7), ReadVector(values, i + 10)));
+            body.Boxes.Add(ReadBox(values, i, tagged ? (int)values[i + 13] : 0));
         }
     }
+
+    internal int[] CollectLimbContacts()
+    {
+        _limbs.Clear();
+        _reportedLimbs.Clear();
+        foreach (var (id, body) in _bodies)
+        {
+            if (body.Revision != _revision) continue;
+            foreach (var (other, target) in _bodies)
+            {
+                if (id == other || (target.Revision == _revision && id > other)) continue;
+                var offset = body.Position - target.Position;
+                if (!Near(offset)) continue;
+                foreach (ref readonly var a in GetBoxes(body))
+                foreach (ref readonly var b in GetBoxes(target))
+                {
+                    if (!PlayerCharacterBox.Sweep(a, b, offset, Vector3.Zero, out _, out _)) continue;
+                    Report(id, a.Limb);
+                    Report(other, b.Limb);
+                }
+            }
+        }
+        return _limbs.Count == 0 ? [] : _limbs.ToArray();
+    }
+
+    private void Report(int id, int limb)
+    {
+        if (!_reportedLimbs.Add((id, limb))) return;
+        _limbs.Add(id);
+        _limbs.Add(limb);
+    }
+
+    internal bool TryLimbPose(int id, int limb, ReadOnlySpan<double> values)
+    {
+        if (!_bodies.TryGetValue(id, out var body) || body.Revision != _revision || values.IsEmpty) return false;
+        for (var i = 0; i + 14 <= values.Length; i += 14)
+        {
+            var box = ReadBox(values, i, limb);
+            foreach (var (other, target) in _bodies)
+            {
+                if (id == other) continue;
+                var offset = body.Position - target.Position;
+                if (!Near(offset)) continue;
+                foreach (ref readonly var b in GetBoxes(target))
+                    if (PlayerCharacterBox.Sweep(box, b, offset, Vector3.Zero, out _, out _)) return false;
+            }
+        }
+
+        body.Boxes.RemoveAll(box => box.Limb == limb);
+        for (var i = 0; i + 14 <= values.Length; i += 14) body.Boxes.Add(ReadBox(values, i, limb));
+        return true;
+    }
+
+    private static bool Near(Vector3 offset)
+        => MathF.Abs(offset.X) <= 1.8f && MathF.Abs(offset.Z) <= 1.8f && MathF.Abs(offset.Y) <= 2.5f;
 
     internal (double X, double Z, bool Blocked) Move(int id, double x, double y, double z, double targetX, double targetZ)
     {
@@ -132,6 +189,10 @@ internal sealed class PlayerCharacterSpace
 
     private ReadOnlySpan<PlayerCharacterBox> GetBoxes(Body? body)
         => body?.Revision == _revision ? CollectionsMarshal.AsSpan(body.Boxes) : Fallback;
+
+    private static PlayerCharacterBox ReadBox(ReadOnlySpan<double> values, int i, int limb)
+        => new(ReadVector(values, i + 1), ReadVector(values, i + 4), ReadVector(values, i + 7),
+            ReadVector(values, i + 10), limb);
 
     private static Vector3 ReadVector(ReadOnlySpan<double> values, int index)
         => new((float)values[index], (float)values[index + 1], (float)values[index + 2]);

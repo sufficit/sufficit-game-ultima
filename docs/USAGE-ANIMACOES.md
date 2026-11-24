@@ -91,3 +91,17 @@ jogador, o C# verifica as caixas orientadas novamente e separa os
 personagens antes de desenhar o quadro. A prioridade preserva a Guardiã
 fixa e o apoio do jogador quando há um avatar remoto que pode ser
 reposicionado.
+
+### Resposta nas articulações
+
+Cada braço humanoide tem malhas de braço e antebraço ligadas pelo
+cotovelo. A mão segue o punho. Em caso de contato, o motor tenta
+flexionar o cotovelo e recolher o ombro antes de mover os personagens.
+Quando dois braços bloqueiam um ao outro, testa a retração simultânea.
+O C# só aceita a pose que libera as caixas em contato.
+
+No jogador, o pé no ar pode buscar um ponto mais próximo sem mover a
+raiz nem trocar a pose da outra perna. O solucionador recalcula o
+quadril, joelho e tornozelo com a altura do apoio naquele ponto.
+Um corte superior a 12 cm sob impulso suficiente aciona o tropeço.
+A separação corporal atende os contatos que resistem aos ajustes.

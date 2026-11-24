@@ -70,6 +70,31 @@ async function wait(callback,label) {
         if(errors.length) throw Error(errors.join('\n'));
         return pose();
     }
+    async function walkGame(key, budget, axis, target, sign = 1) {
+        // Conta o tempo usado pelo motor, inclusive quando há quadros longos.
+        await renderer.evaluate(({budget,axis,target,sign})=>{
+            const scene=BABYLON.EngineStore.LastCreatedScene;
+            const player=scene.getTransformNodeByName('player');
+            globalThis.contactTraversal=new Promise((resolve,reject)=>{
+                let elapsed=0;
+                const timer=setTimeout(()=>{
+                    scene.onAfterRenderObservable.remove(observe);
+                    reject(Error('tempo limite no percurso de contato'));
+                },15000);
+                const observe=scene.onAfterRenderObservable.add(()=>{
+                    elapsed+=Math.min(0.05,scene.getEngine().getDeltaTime()/1000);
+                    if(sign*player.position[axis]<=sign*target && elapsed<budget) return;
+                    scene.onAfterRenderObservable.remove(observe);
+                    clearTimeout(timer);
+                    const {x,y,z}=player.position;
+                    resolve({x,y,z,elapsed});
+                });
+            });
+        },{budget,axis,target,sign});
+        await p.keyboard.down(key);
+        try { return await renderer.evaluate(()=>globalThis.contactTraversal); }
+        finally { await p.keyboard.up(key); await p.waitForTimeout(T300); }
+    }
     // Mede a velocidade em TEMPO DE JOGO (soma do delta truncado por quadro), não em tempo de parede:
     // sob renderização por software o runner faz ~1 quadro/s e cada quadro avança no máximo 0,05 s
     // (game-core.js), então a distância percorrida em tempo de parede depende do FPS da janela.
@@ -213,19 +238,30 @@ async function wait(callback,label) {
         const player=scene.getTransformNodeByName('player').position;
         const other=scene.getTransformNodeByName('remote-pose-arm').position;
         const gap=Math.hypot(other.x-player.x,other.z-player.z);
-        return !a.intersectsMesh(b,true) && Math.hypot(player.x,player.z)<0.005 && gap<1.25 ? gap : 0;
-    }),'pose animada separa os braços sem mover o jogador parado');
+        return !a.intersectsMesh(b,true) && Math.hypot(player.x,player.z)<0.005 && Math.abs(gap-0.63)<0.005 ? gap : 0;
+    }),'articulações separam os braços sem mover os dois personagens');
     const settled=await renderer.evaluate(async ()=>{
         const scene=BABYLON.EngineStore.LastCreatedScene;
         const a=scene.getMeshByName('char-character.villager-arm-right-player');
         const b=scene.getMeshByName('char-character.wanderer-arm-left-remote-pose-arm');
+        const shoulderA=scene.getTransformNodeByName('player-shoulder-right');
+        const shoulderB=scene.getTransformNodeByName('remote-pose-arm-shoulder-left');
+        const player=scene.getTransformNodeByName('player').position;
+        const remote=scene.getTransformNodeByName('remote-pose-arm').position;
+        let bent=false;
         for(let frame=0;frame<8;frame++){
+            shoulderA.rotation.z=0.8;
+            shoulderB.rotation.z=-0.8;
             await new Promise(resolve=>scene.onAfterRenderObservable.addOnce(()=>resolve()));
-            if(a.intersectsMesh(b,true)) return false;
+            if(a.intersectsMesh(b,true) || Math.hypot(player.x,player.z)>=0.005 ||
+                Math.hypot(remote.x-0.63,remote.z)>=0.005)
+                return {frame, overlap:a.intersectsMesh(b,true), player:[player.x,player.z], remote:[remote.x,remote.z]};
+            bent ||= Math.abs(scene.getTransformNodeByName('player-elbow-right').rotation.x)>0.1 ||
+                Math.abs(scene.getTransformNodeByName('remote-pose-arm-elbow-left').rotation.x)>0.1;
         }
-        return true;
+        return {bent};
     });
-    assert.ok(settled,'os braços continuam separados nos quadros seguintes');
+    assert.ok(settled.bent,'os braços continuam separados nos quadros seguintes: '+JSON.stringify(settled));
     console.log(JSON.stringify({armGap}));
     await renderer.evaluate(()=>{
         BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('player-shoulder-right').rotation.z=0.055;
@@ -246,31 +282,47 @@ async function wait(callback,label) {
         const gap=Math.hypot(a.position.x-b.position.x,a.position.z-b.position.z);
         return gap>=0.33 && gap<=0.69 ? gap : 0;
     }), 'duas poses sobrepostas se separam perto da silhueta');
+    await p.evaluate(()=>game.removeRemote('contact-b'));
+    await renderer.evaluate(()=>{
+        const scene=BABYLON.EngineStore.LastCreatedScene;
+        const player=scene.getTransformNodeByName('player');
+        const torso=scene.getTransformNodeByName('player-upper-body');
+        const actor=scene.getTransformNodeByName('remote-contact-a');
+        globalThis.bodyImpact=new Promise((resolve,reject)=>{
+            let elapsed=0, maxZ=0, minBend=0;
+            const timer=setTimeout(()=>{
+                scene.onAfterRenderObservable.remove(observe);
+                reject(Error('choque não observado: '+JSON.stringify({maxZ,minBend,elapsed})));
+            },12000);
+            const observe=scene.onAfterRenderObservable.add(()=>{
+                elapsed+=Math.min(0.05,scene.getEngine().getDeltaTime()/1000);
+                const z=player.position.z, bend=torso.rotation.x;
+                maxZ=Math.max(maxZ,z);
+                minBend=Math.min(minBend,bend);
+                if(z<2.32 || z>2.85 || bend>=-0.16) return;
+                const front=Math.max(...player.getChildMeshes().map(mesh=>mesh.getBoundingInfo().boundingBox.maximumWorld.z));
+                const back=Math.min(...actor.getChildMeshes().map(mesh=>mesh.getBoundingInfo().boundingBox.minimumWorld.z));
+                if(back-front>=0.1) return;
+                scene.onAfterRenderObservable.remove(observe);
+                clearTimeout(timer);
+                resolve({z,bend,gap:back-front});
+            });
+        });
+    });
     await p.keyboard.down('Shift');
     await p.keyboard.down('w');
     try {
-        const stumble=await wait(()=>renderer.evaluate(()=>{
-            const scene=BABYLON.EngineStore.LastCreatedScene;
-            const player=scene.getTransformNodeByName('player');
-            const torso=scene.getTransformNodeByName('player-upper-body');
-            const z=player?.position.z, bend=torso?.rotation.x;
-            if(z<2.32 || z>2.85 || bend>=-0.16) return null;
-            const actor=scene.getTransformNodeByName('remote-contact-a');
-            const front=Math.max(...player.getChildMeshes().map(mesh=>mesh.getBoundingInfo().boundingBox.maximumWorld.z));
-            const back=Math.min(...actor.getChildMeshes().map(mesh=>mesh.getBoundingInfo().boundingBox.minimumWorld.z));
-            return back-front<0.1 ? {z,bend,gap:back-front} : null;
-        }), 'choque com outro personagem bloqueia avanço e inicia tropeço');
+        const stumble=await renderer.evaluate(()=>globalThis.bodyImpact);
         console.log(JSON.stringify({avatarGap,stumble}));
     } finally {
         await p.keyboard.up('w');
         await p.keyboard.up('Shift');
     }
-    const beside=await walk(['d'],590,false);
-    const around=await walk(['w'],610,false);
-    assert.ok(beside.x>0.8 && around.z>3.7,'é possível contornar os personagens: '+JSON.stringify({beside,around}));
+    const beside=await walkGame('a',0.95,'x',-0.85,-1);
+    const around=await walkGame('w',0.95,'z',3.7);
+    assert.ok(beside.x<-0.8 && around.z>3.7,'é possível contornar os personagens: '+JSON.stringify({beside,around}));
     await p.evaluate(()=>{
         game.removeRemote('contact-a');
-        game.removeRemote('contact-b');
         game.resetPlayer();
     });
     await p.waitForTimeout(T300);
@@ -304,31 +356,7 @@ async function wait(callback,label) {
         return s.getTransformNodeByName('remote-contact-gap-left')?.position.z===2.65 &&
             s.getTransformNodeByName('remote-contact-gap-right')?.position.z===2.65;
     }),'passagem entre personagens pronta');
-    // O motor limita o delta por quadro. Meça a passagem em tempo de jogo.
-    await renderer.evaluate(()=>{
-        const scene=BABYLON.EngineStore.LastCreatedScene;
-        const player=scene.getTransformNodeByName('player');
-        globalThis.gapTraversal=new Promise((resolve,reject)=>{
-            let elapsed=0;
-            const timer=setTimeout(()=>{
-                scene.onAfterRenderObservable.remove(observe);
-                reject(Error('tempo limite da passagem entre personagens'));
-            },15000);
-            const observe=scene.onAfterRenderObservable.add(()=>{
-                elapsed+=Math.min(0.05,scene.getEngine().getDeltaTime()/1000);
-                if(player.position.z<=3.45 && elapsed<1.37) return;
-                scene.onAfterRenderObservable.remove(observe);
-                clearTimeout(timer);
-                const {x,z}=player.position;
-                resolve({x,z,elapsed});
-            });
-        });
-    });
-    await p.keyboard.down('w');
-    let throughGap;
-    try { throughGap=await renderer.evaluate(()=>globalThis.gapTraversal); }
-    finally { await p.keyboard.up('w'); }
-    await p.waitForTimeout(T300);
+    const throughGap=await walkGame('w',1.37,'z',3.45);
     assert.ok(throughGap.z>3.45 && Math.abs(throughGap.x)<0.15,
         'passa entre dois corpos com espaço livre: '+JSON.stringify(throughGap));
     console.log(JSON.stringify({sideContact,sideGap,beside,around,throughGap}));

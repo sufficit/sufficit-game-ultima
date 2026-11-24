@@ -1602,6 +1602,27 @@
                 for (const leg of rig.legs) { leg.shoe.material = proto.material; }
                 continue;
             }
+            if (rig.elbows.length && (group === 'arm-left' || group === 'arm-right')) {
+                const side = group === 'arm-left' ? 0 : 1;
+                const name = proto.name.replace('model-', 'char-') + '-' + entry.root.name;
+                const radius = PLAYER_HEIGHT * 0.026;
+                const segments = [
+                    [name, rig.shoulders[side], -rig.elbows[side].position.y],
+                    [name + '-forearm', rig.elbows[side], -rig.wrists[side].position.y]
+                ];
+                for (const [meshName, parent, length] of segments) {
+                    const mesh = BABYLON.MeshBuilder.CreateCapsule(meshName,
+                        { height: length + radius, radius, subdivisions: 2, tessellation: 8 }, scene);
+                    mesh.parent = parent;
+                    mesh.position.y = -length / 2;
+                    mesh.material = proto.material;
+                    mesh.isPickable = false;
+                    mesh.metadata = { contactLimb: side + 1 };
+                    rig.limbMeshes[side + 1].push(mesh);
+                    trackCharacterShadow(rig, mesh);
+                }
+                continue;
+            }
             const clone = proto.clone(proto.name.replace('model-', 'char-') + '-' + entry.root.name);
             clone.isVisible = true;
             clone.isPickable = false;
@@ -1609,6 +1630,11 @@
             clone.parent = pivot;
             clone.position.set(0, 0, 0);
             if (pivot !== entry.root) { clone.position.copyFrom(pivot.metadata.modelOffset); }
+            if (rig.elbows.length && (group === 'hand-left' || group === 'hand-right')) {
+                const limb = group === 'hand-left' ? 1 : 2;
+                clone.metadata = { contactLimb: limb };
+                rig.limbMeshes[limb].push(clone);
+            }
             trackCharacterShadow(rig, clone);
         }
         for (const material of rig.fallbackLegMaterials.splice(0)) { material.dispose(); }
@@ -2413,6 +2439,16 @@
         const shoulders = guardian ? [] : [-1, 1].map(side =>
             joints?.get(side < 0 ? 'shoulder-left' : 'shoulder-right') ??
                 createCharacterJoint(root, side < 0 ? 'shoulder-left' : 'shoulder-right', upper, side * armX, PLAYER_HEIGHT * 0.80));
+        const elbows = shoulders.map((shoulder, i) => {
+            const side = i === 0 ? 'left' : 'right';
+            return joints?.get('elbow-' + side) ?? createCharacterJoint(root, 'elbow-' + side,
+                shoulder, (i * 2 - 1) * armX, PLAYER_HEIGHT * 0.63);
+        });
+        const wrists = elbows.map((elbow, i) => {
+            const side = i === 0 ? 'left' : 'right';
+            return joints?.get('wrist-' + side) ?? createCharacterJoint(root, 'wrist-' + side,
+                elbow, (i * 2 - 1) * armX, PLAYER_HEIGHT * 0.45);
+        });
         if (shoulders.length) {
             shoulders[0].rotation.z = -0.055;
             shoulders[1].rotation.z = 0.055;
@@ -2444,16 +2480,22 @@
         const mouth = facialFeature('mouth', face, 0, headRadius * 0.68, headRadius * 0.96, 0.048, 0.008);
         const attachments = {
             torso: upper, tunic: upper, neck: upper, head, hair: head, hood: head, skin: head, eyes,
-            'arm-left': shoulders[0], 'hand-left': joints?.get('wrist-left') ?? shoulders[0],
-            'arm-right': shoulders[1], 'hand-right': joints?.get('wrist-right') ?? shoulders[1]
+            'arm-left': shoulders[0], 'hand-left': wrists[0],
+            'arm-right': shoulders[1], 'hand-right': wrists[1]
         };
         const legs = guardian ? [] : buildCharacterLegs(root, joints);
         const rig = {
-            root, upper, head, eyes, shoulders, face, brows, mouth, attachments, castsShadow, shadowMeshes: [],
+            root, upper, head, eyes, shoulders, elbows, wrists, face, brows, mouth, attachments, castsShadow, shadowMeshes: [],
+            limbMeshes: [[], [], [], [], []],
             legs, fallbackLegMaterials: legs.length ? [legs[0].thigh.material, legs[0].shoe.material] : [],
             clock: 0, gaitPhase: 0, gaitWeight: 0, speaking: 0, action: null
         };
-        for (const { thigh, shin, shoe } of legs) {
+        for (const [index, { thigh, shin, shoe }] of legs.entries()) {
+            if (joints) {
+                const limb = 3 + index;
+                for (const mesh of [thigh, shin, shoe]) mesh.metadata = { contactLimb: limb };
+                rig.limbMeshes[limb].push(thigh, shin, shoe);
+            }
             trackCharacterShadow(rig, thigh);
             trackCharacterShadow(rig, shin);
             trackCharacterShadow(rig, shoe);
@@ -2538,6 +2580,7 @@
         rig.brows[0].rotation.z = browZ;
         rig.brows[1].rotation.z = -browZ;
         if (rig.shoulders.length) {
+            rig.elbows[0].rotation.x = rig.elbows[1].rotation.x = 0;
             rig.shoulders[0].rotation.x = leftArm;
             rig.shoulders[1].rotation.x = rightArm;
         }
@@ -2608,7 +2651,7 @@
             for (const mesh of [thigh, shin, shoe]) {
                 mesh.isPickable = false;
             }
-            return { side, hip, hipRoll, knee, ankle, thigh, shin, shoe };
+            return { side, hip, hipRoll, knee, ankle, thigh, shin, shoe, stride: new Float64Array(5) };
         });
     }
 
@@ -2650,6 +2693,13 @@
         }
         const [left, right] = rig.legs;
         root.position.y = angles[i];
+        if (root === player) {
+            left.stride[0] = frame[28]; right.stride[0] = frame[33];
+            left.stride[1] = frame[41]; right.stride[1] = frame[42];
+            left.stride[2] = frame[29]; right.stride[2] = frame[34];
+            left.stride[3] = frame[35]; right.stride[3] = frame[36];
+            left.stride[4] = frame[39]; right.stride[4] = frame[40];
+        }
         applyLeg(left, angles, i + 1, i === 0 ? angles[7] : frame[37], frame[39]);
         applyLeg(right, angles, i + 4, i === 0 ? angles[8] : frame[38], frame[40]);
     }
@@ -2751,50 +2801,163 @@
     let hadHitboxes = false;
     const hitboxCenter = new BABYLON.Vector3();
 
+    const limbHitboxes = new Float64Array(42);
+
+    function writeHitbox(values, count, id, root, mesh) {
+        const matrix = mesh.computeWorldMatrix(true);
+        const { center, extendSize } = mesh.getBoundingInfo().boundingBox;
+        BABYLON.Vector3.TransformCoordinatesToRef(center, matrix, hitboxCenter);
+        const m = matrix.m, { x, y, z } = root.position;
+        values[count++] = id;
+        values[count++] = hitboxCenter.x - x;
+        values[count++] = hitboxCenter.y - y;
+        values[count++] = hitboxCenter.z - z;
+        values[count++] = m[0] * extendSize.x;
+        values[count++] = m[1] * extendSize.x;
+        values[count++] = m[2] * extendSize.x;
+        values[count++] = m[4] * extendSize.y;
+        values[count++] = m[5] * extendSize.y;
+        values[count++] = m[6] * extendSize.y;
+        values[count++] = m[8] * extendSize.z;
+        values[count++] = m[9] * extendSize.z;
+        values[count++] = m[10] * extendSize.z;
+        values[count++] = mesh.metadata?.contactLimb ?? 0;
+        return count;
+    }
+
+    function tryLimbPose(id, rig, limb) {
+        let count = 0;
+        for (const mesh of rig.limbMeshes[limb]) {
+            if (mesh.isEnabled() && mesh.isVisible) count = writeHitbox(limbHitboxes, count, id, rig.root, mesh);
+        }
+        return count > 0 && terrain.TryCharacterLimbPose(id, limb, limbHitboxes.subarray(0, count), count);
+    }
+
+    function retractArm(id, rig, limb) {
+        const shoulder = rig.shoulders[limb - 1], elbow = rig.elbows[limb - 1];
+        const { x, z } = shoulder.rotation, bend = elbow.rotation.x;
+        const neutral = limb === 1 ? -0.055 : 0.055;
+        for (const [reach, flex] of [[1, -0.9], [0.5, -0.55], [0, -0.25], [0, 0]]) {
+            shoulder.rotation.x = x * reach;
+            shoulder.rotation.z = neutral + (z - neutral) * reach;
+            elbow.rotation.x = flex;
+            if (tryLimbPose(id, rig, limb)) return true;
+        }
+        shoulder.rotation.x = x;
+        shoulder.rotation.z = z;
+        elbow.rotation.x = bend;
+        return false;
+    }
+
+    function retractArmsTogether(contacts, resample) {
+        const arms = [];
+        for (let i = 0; i < contacts.length; i += 2) {
+            const limb = contacts[i + 1], rig = characterRigs.get(characterFromContact(contacts[i]));
+            if (!limb || limb > 2 || !rig?.limbMeshes[limb]?.length) continue;
+            const shoulder = rig.shoulders[limb - 1], elbow = rig.elbows[limb - 1];
+            arms.push({ shoulder, elbow, x: shoulder.rotation.x, z: shoulder.rotation.z,
+                bend: elbow.rotation.x, neutral: limb === 1 ? -0.055 : 0.055 });
+        }
+        if (arms.length < 2) return contacts;
+        // Dois braços estendidos precisam ceder no mesmo quadro quando nenhum consegue
+        // liberar sozinho o espaço ocupado pelos dois.
+        for (const flex of [-0.25, 0]) {
+            for (const arm of arms) {
+                arm.shoulder.rotation.x = 0;
+                arm.shoulder.rotation.z = arm.neutral;
+                arm.elbow.rotation.x = flex;
+            }
+            const remaining = resample();
+            let clear = true;
+            for (let i = 1; i < remaining.length; i += 2) {
+                if (remaining[i] === 1 || remaining[i] === 2) { clear = false; break; }
+            }
+            if (clear) return remaining;
+        }
+        for (const arm of arms) {
+            arm.shoulder.rotation.x = arm.x;
+            arm.shoulder.rotation.z = arm.z;
+            arm.elbow.rotation.x = arm.bend;
+        }
+        return resample();
+    }
+
+    function shortenStep(rig, limb) {
+        const leg = rig.legs[limb - 3], [forward, lateral, lift, pitch, yaw] = leg.stride;
+        if (lift < 0.02 || Math.abs(forward) < 0.04) return;
+        const hip = leg.hip.rotation.x, knee = leg.knee.rotation.x, roll = leg.hipRoll.rotation.z;
+        const ankle = leg.ankle.rotationQuaternion.clone();
+        const { x, y, z } = player.position;
+        const sin = Math.sin(player.rotation.y), cos = Math.cos(player.rotation.y);
+        const side = leg.side * LEG_SPACING + lateral;
+        for (const scale of [0.65, 0.35, 0]) {
+            const shortened = forward * scale;
+            const wx = x + side * cos + shortened * sin + SHOE_OFFSET * Math.sin(player.rotation.y + yaw);
+            const wz = z - side * sin + shortened * cos + SHOE_OFFSET * Math.cos(player.rotation.y + yaw);
+            const ground = worldTunnels.length ? terrain.VolumeFloor(wx, wz, y, KNEE_HEIGHT) : terrainHeight(wx, wz);
+            const angles = terrain.SolveShortenedFoot(y, stepSurfaceAt(wx, wz, ground), shortened, lateral, lift, pitch);
+            applyLeg(leg, angles, 0, angles[3], yaw);
+            if (tryLimbPose(-1, rig, limb)) {
+                terrain.OnFootContact(Math.abs(forward - shortened));
+                return;
+            }
+        }
+        leg.hip.rotation.x = hip;
+        leg.knee.rotation.x = knee;
+        leg.hipRoll.rotation.z = roll;
+        leg.ankle.rotationQuaternion.copyFrom(ankle);
+    }
+
+    function characterFromContact(id) {
+        return id === -1 ? player : id === -3 ? wandererRoot : id === -2 ? guardianRoot : remoteSlots.get(id)?.avatar;
+    }
+
     function syncCharacterHitboxes() {
         let count = 0;
         const p = player.position;
         function add(id, root) {
-            const { x, y, z } = root.position;
             for (const mesh of characterRigs.get(root).shadowMeshes) {
                 if (!mesh.isEnabled() || !mesh.isVisible) continue;
-                const matrix = mesh.computeWorldMatrix(true);
-                const { center, extendSize } = mesh.getBoundingInfo().boundingBox;
-                BABYLON.Vector3.TransformCoordinatesToRef(center, matrix, hitboxCenter);
-                if (count + 13 > actorHitboxes.length) {
+                if (count + 14 > actorHitboxes.length) {
                     const grown = new Float64Array(actorHitboxes.length * 2);
                     grown.set(actorHitboxes);
                     actorHitboxes = grown;
                 }
-                const m = matrix.m;
-                actorHitboxes[count++] = id;
-                actorHitboxes[count++] = hitboxCenter.x - x;
-                actorHitboxes[count++] = hitboxCenter.y - y;
-                actorHitboxes[count++] = hitboxCenter.z - z;
-                actorHitboxes[count++] = m[0] * extendSize.x;
-                actorHitboxes[count++] = m[1] * extendSize.x;
-                actorHitboxes[count++] = m[2] * extendSize.x;
-                actorHitboxes[count++] = m[4] * extendSize.y;
-                actorHitboxes[count++] = m[5] * extendSize.y;
-                actorHitboxes[count++] = m[6] * extendSize.y;
-                actorHitboxes[count++] = m[8] * extendSize.z;
-                actorHitboxes[count++] = m[9] * extendSize.z;
-                actorHitboxes[count++] = m[10] * extendSize.z;
+                count = writeHitbox(actorHitboxes, count, id, root, mesh);
             }
         }
         function addIfNear(id, root) {
             if ((root.position.x - p.x) ** 2 + (root.position.z - p.z) ** 2 <= 16) add(id, root);
         }
-        addIfNear(-2, guardianRoot);
-        addIfNear(-3, wandererRoot);
-        for (const { serial, avatar } of remoteSlots.values()) addIfNear(serial, avatar);
-        if (count) add(-1, player);
+        function gather() {
+            count = 0;
+            addIfNear(-2, guardianRoot);
+            addIfNear(-3, wandererRoot);
+            for (const { serial, avatar } of remoteSlots.values()) addIfNear(serial, avatar);
+            if (count) add(-1, player);
+        }
+        function resample() {
+            gather();
+            return terrain.SetCharacterHitboxes(actorHitboxes.subarray(0, count), count);
+        }
+        gather();
         if (count || hadHitboxes) {
-            const corrections = terrain.SetCharacterHitboxes(actorHitboxes.subarray(0, count), count);
+            let contacts = terrain.SetCharacterHitboxes(actorHitboxes.subarray(0, count), count);
+            let retryArms = false;
+            for (let i = 0; i < contacts.length; i += 2) {
+                const id = contacts[i], limb = contacts[i + 1];
+                if (!limb) continue;
+                const rig = characterRigs.get(characterFromContact(id));
+                if (!rig?.limbMeshes[limb]?.length || tryLimbPose(id, rig, limb)) continue;
+                if (limb <= 2) {
+                    if (!retractArm(id, rig, limb)) retryArms = true;
+                } else if (id === -1) shortenStep(rig, limb);
+            }
+            if (retryArms) contacts = retractArmsTogether(contacts, resample);
+            const corrections = contacts.length ? terrain.ResolveCharacterContacts() : [];
             for (let i = 0; i < corrections.length; i += 3) {
                 const id = corrections[i], x = corrections[i + 1], z = corrections[i + 2];
-                const entry = id >= 0 ? remoteSlots.get(id) : null;
-                const root = id === -1 ? player : id === -3 ? wandererRoot : entry?.avatar;
+                const root = characterFromContact(id), entry = remoteSlots.get(id);
                 if (root) {
                     root.position.x = x;
                     root.position.z = z;
@@ -2845,6 +3008,7 @@
             rig.upper.rotation.z = frame[i + 7];
             rig.head.rotation.x = frame[i + 8];
             rig.eyes.scaling.y = frame[i + 9];
+            rig.elbows[0].rotation.x = rig.elbows[1].rotation.x = 0;
             rig.shoulders[0].rotation.x = frame[i + 10];
             rig.shoulders[1].rotation.x = frame[i + 11];
             const [left, right] = rig.legs;
