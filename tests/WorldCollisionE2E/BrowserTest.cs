@@ -49,6 +49,9 @@ internal static class BrowserTest
     internal static Task<T> RenderAsync<T>(IPage page, string expression, object? arg = null) =>
         ReadAsync<T>(page, expression, arg, MainThread ? null : page.Workers[0]);
 
+    internal static int LoadTimeoutMs(int defaultTries) =>
+        250 * (int.TryParse(Environment.GetEnvironmentVariable("ULTIMA_WAIT_TRIES"), out var tries) && tries > 0 ? tries : defaultTries);
+
     internal static async Task WaitAsync(Func<Task<bool>> condition, string description, int timeoutMs = 60_000, int intervalMs = 250)
     {
         var clock = Stopwatch.StartNew();

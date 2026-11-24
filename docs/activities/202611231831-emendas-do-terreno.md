@@ -22,7 +22,7 @@ como referência visual junto da captura do mantenedor.
 
 ## Validação e entrega
 
-- No [ensaio de emendas](../../tests/terrain-seams.e2e.cjs), o desvio médio
+- No [ensaio de emendas](https://github.com/sufficit/sufficit-game-ultima/blob/fdf37ed6cba91ec88e94a0cbc7b227182c1cf693/tests/terrain-seams.e2e.cjs), o desvio médio
   saiu de cerca de quatro níveis RGB para zero nas amostras horizontal e
   vertical, antes e depois de escavar e pintar. Posições e normais
   coincidiram nas duas divisas. A malha passou de 2.401 para 4.225 vértices

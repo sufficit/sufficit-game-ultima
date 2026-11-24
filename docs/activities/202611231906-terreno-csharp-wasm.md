@@ -28,7 +28,7 @@ worker de renderização.
 
 - Publish Release, RulesSmoke, sintaxe JavaScript e Bash e `git diff --check`
   passaram.
-- O [teste de emendas](../../tests/terrain-seams.e2e.cjs) confirmou execução
+- O [teste de emendas](https://github.com/sufficit/sufficit-game-ultima/blob/fdf37ed6cba91ec88e94a0cbc7b227182c1cf693/tests/terrain-seams.e2e.cjs) confirmou execução
   em C# no worker e no modo principal. A geometria e as normais coincidiram
   nas duas divisas medidas, incluindo após escavar. O chunk passou de
   4.225 para 4.335 vértices com o refinamento local. O worker passou

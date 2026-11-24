@@ -19,7 +19,7 @@ máxima entre a altura desenhada e a superfície calculada foi de 1,14 m.
 
 ## Validação e entrega
 
-- No [ensaio de emendas](../../tests/terrain-seams.e2e.cjs), a diferença
+- No [ensaio de emendas](https://github.com/sufficit/sufficit-game-ultima/blob/fdf37ed6cba91ec88e94a0cbc7b227182c1cf693/tests/terrain-seams.e2e.cjs), a diferença
   máxima da parede caiu de 1,14 m para 0,155 m. As amostras de cor,
   posição e normal coincidiram nas duas divisas testadas. A grade de base
   permaneceu em 4.225 vértices por bloco.

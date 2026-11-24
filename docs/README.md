@@ -28,6 +28,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Migração dos testes de câmera e terreno para C#](activities/202611241813-testes-camera-terreno-csharp.md)
+
 - [Migração dos testes de passo, relógio e mochila para C#](activities/202611241803-testes-e2e-csharp.md)
 
 - [Migração do teste de colisão do mundo para C#](activities/202611241746-colisao-e2e-csharp.md)

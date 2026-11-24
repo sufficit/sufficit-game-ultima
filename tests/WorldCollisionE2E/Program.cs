@@ -33,8 +33,17 @@ try
         case "backpack":
             await new Backpack(browser).RunAsync();
             break;
+        case "camera-streaming":
+            await CameraStreaming.RunAsync(browser);
+            break;
+        case "terrain-cache":
+            await TerrainCache.RunAsync(browser);
+            break;
+        case "terrain-seams":
+            await TerrainSeams.RunAsync(browser);
+            break;
         default:
-            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack.");
+            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, terrain-cache, terrain-seams.");
     }
     return 0;
 }

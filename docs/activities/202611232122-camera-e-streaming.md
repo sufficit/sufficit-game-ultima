@@ -21,7 +21,7 @@ coordenada duas vezes antes de concluir a malha e arredondava pela borda errada.
 ## Validação e entrega
 
 - Publish Release, testes de mochila, colisão, comandos e emendas passaram.
-- O [ensaio de câmera e streaming](../../tests/camera-streaming.e2e.cjs)
+- O [ensaio de câmera e streaming](https://github.com/sufficit/sufficit-game-ultima/blob/fdf37ed6cba91ec88e94a0cbc7b227182c1cf693/tests/camera-streaming.e2e.cjs)
   passou no Chromium em worker e modo principal, inclusive no build
   `7aede38` no GitHub Pages. O raio de 7,50 m recuou a 1,25 m em um
   grupo de pinheiros e voltou a 7,50 m depois de removê-los. A janela

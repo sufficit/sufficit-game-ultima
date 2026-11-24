@@ -38,7 +38,7 @@ também descartava a preferência de PBR e a textura ambiente dependia do DOM.
 - Em `4646276`, [corredor](../../tests/tunnel.e2e.cjs) passou em worker e
   modo principal. A superfície manteve aproximadamente 0,51 m, e a
   caminhada subterrânea ficou em aproximadamente −4,73 m no trecho
-  medido. O [teste das emendas](../../tests/terrain-seams.e2e.cjs)
+  medido. O [teste das emendas](https://github.com/sufficit/sufficit-game-ultima/blob/fdf37ed6cba91ec88e94a0cbc7b227182c1cf693/tests/terrain-seams.e2e.cjs)
   também passou na publicação.
 - O [ensaio de dois navegadores](../../tests/world-undo.e2e.cjs) criou
   e reverteu pincel e corredor com o cliente publicado e um backend

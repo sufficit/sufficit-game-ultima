@@ -156,7 +156,8 @@ Valide regras com [RulesSmoke](tests/RulesSmoke) e exercite câmera, colisão,
 coleta e terreno em worker e main pelos [testes no navegador](tests).
 
 A [suíte de navegador em C#](tests/WorldCollisionE2E) usa Microsoft.Playwright.
-Ela cobre colisão e marcha, passo articulado, relógio e clima, mochila e coleta.
+Ela cobre colisão e marcha, passo articulado, relógio e clima, mochila e coleta,
+câmera e streaming, cache OPFS e emendas do terreno.
 O runner controla o Chromium e calcula as métricas em C#. As sondas JavaScript
 consultam APIs do navegador e dados da cena do Babylon.js no contexto em que
 são atualizados.
@@ -169,20 +170,25 @@ ULTIMA_MODE=main dotnet run --project tests/WorldCollisionE2E -c Release --no-bu
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- step
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- clock
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- backpack
+dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- camera-streaming
+dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- terrain-cache
+dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- terrain-seams
 ```
 
 O cenário padrão é `collision`. Use `ULTIMA_MODE=main` com qualquer cenário
 para exercitar o fallback. Em `clock`, use `ULTIMA_MOBILE=1` para abrir o menu
 móvel em uma tela estreita e `ULTIMA_SCREENSHOTS` para gravar as capturas.
 Em `backpack`, use `ULTIMA_TOUCH=1` para coletar por toque e `ULTIMA_DPR=2`
-para exercitar a projeção em alta densidade.
+para exercitar a projeção em alta densidade. Em `terrain-seams`, use
+`ULTIMA_PROCEDURAL=1` para confirmar o fallback sem os materiais WebP.
 
 A instalação do Chromium é feita uma vez por versão do Playwright. Defina
 `ULTIMA_CHROMIUM` para usar um executável já disponível. Por padrão, a suíte
 testa o site publicado. Use `ULTIMA_SITE` para apontar para outro endereço e
-`ULTIMA_BUILD` para exigir um SHA específico. Na suíte de colisão,
-`ULTIMA_WAIT_TRIES` amplia o orçamento de espera, `ULTIMA_WALK_SCALE`
-estende o assentamento e `ULTIMA_VIEWPORT` ajusta a resolução.
+`ULTIMA_BUILD` para exigir um SHA específico. `ULTIMA_WAIT_TRIES` amplia o
+orçamento de espera nas suítes de colisão, câmera e terreno. Na colisão,
+`ULTIMA_WALK_SCALE` estende o assentamento e `ULTIMA_VIEWPORT` ajusta a
+resolução.
 `ULTIMA_CHROMIUM_ARGS` aceita os argumentos do navegador e `ULTIMA_TRACE`
 registra o tempo de jogo e a distância por quadro nas medições de marcha.
 
