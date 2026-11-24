@@ -60,7 +60,8 @@
     const dom = !!host.dom;
     const CAM_POINTER_SENS = 0.01;    // rad/px do arrasto no worker — mesma medida do attachControl na main (200 px ≈ 2,0 rad)
     const camPending = { dx: 0, dy: 0, wheel: 0 };
-    let zoomTarget = null;   // raio escolhido na roda (null = usa o raio atual)
+    let zoomTarget = 7.5;    // zoom escolhido pelo jogador, independente do recuo por colisão
+    let orbitRadius = 7.5;
     const padState = { x: 0, y: 0, lookX: 0, lookY: 0 };
     // Eventos para fora (UI C#, rede) saem todos por aqui — idêntico nos dois modos.
     const dotnet = { invokeMethodAsync: function (name) { host.postEvent(name, Array.prototype.slice.call(arguments, 1)); } };
@@ -645,20 +646,28 @@
     // Terreno em streaming (F3): janela de chunks ao redor do jogador na fila orçada;
     // chunks distantes são descartados (o cache OPFS devolve os conhecidos na volta).
     let lastEnsureKey = '';
+    const queuedChunks = new Set();
+    let chunkCenterX = 0, chunkCenterZ = 0;
     function enqueueChunkBuild(cx, cz) {
+        const key = chunkKey(cx, cz);
+        if (queuedChunks.has(key)) { return; }
+        queuedChunks.add(key);
         prefetchChunkCache(cx, cz);
-        const label = 'chunk ' + chunkKey(cx, cz);
+        const label = 'chunk ' + key;
         modelQueue.push({
+            terrainChunk: true,
             timing: { id: label, queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
             work: (function* () {
                 yield {
                     label: label,
                     run: function () {
+                        queuedChunks.delete(key);
+                        if (Math.abs(cx - chunkCenterX) > CHUNK_VIEW || Math.abs(cz - chunkCenterZ) > CHUNK_VIEW) { return; }
                         const mesh = buildChunkMesh(cx, cz);
                         mesh.material = chunkMaterial(cx, cz);
                         mesh.receiveShadows = true;
                         mesh.isPickable = true;
-                        chunkMap.set(chunkKey(cx, cz), { mesh: mesh, cx: cx, cz: cz });
+                        chunkMap.set(key, { mesh: mesh, cx: cx, cz: cz });
                     }
                 };
             })()
@@ -668,10 +677,12 @@
 
     function ensureChunksAround(px, pz) {
         if (!scene) { return; }
-        const ccx = Math.floor(px / CHUNK), ccz = Math.floor(pz / CHUNK);
+        const ccx = Math.floor(px / CHUNK + 0.5), ccz = Math.floor(pz / CHUNK + 0.5);
         const key = ccx + ',' + ccz;
         if (key === lastEnsureKey) { return; }
         lastEnsureKey = key;
+        chunkCenterX = ccx;
+        chunkCenterZ = ccz;
         for (let dx = -CHUNK_VIEW; dx <= CHUNK_VIEW; dx++) for (let dz = -CHUNK_VIEW; dz <= CHUNK_VIEW; dz++) {
             if (!chunkMap.has(chunkKey(ccx + dx, ccz + dz))) { enqueueChunkBuild(ccx + dx, ccz + dz); }
         }
@@ -685,7 +696,6 @@
 
     function buildTerrain() {
         ensureChunksAround(0, 0);
-
     }
 
     // (A paleta e o grão do chão vivem na textura de cada chunk — paintChunkTexture.)
@@ -898,6 +908,55 @@
     }
 
     const supportRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, -1, 0), KNEE_HEIGHT + 0.01);
+    const cameraRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), BABYLON.Vector3.Zero());
+    const orbitEye = BABYLON.Vector3.Zero();
+    const cameraClearance = 0.28;
+
+    function traceWorld(from, to) {
+        const direction = cameraRay.direction;
+        to.subtractToRef(from, direction);
+        const length = direction.length();
+        direction.scaleInPlace(1 / length);
+        cameraRay.origin.copyFrom(from);
+        cameraRay.length = length;
+
+        // Testa primeiro os limites das malhas, antes de procurar a face atingida.
+        function traceMesh(mesh) {
+            if (!mesh.isEnabled()) { return; }
+            const { minimumWorld, maximumWorld } = mesh.getBoundingInfo().boundingBox;
+            if (!cameraRay.intersectsBoxMinMax(minimumWorld, maximumWorld, cameraClearance)) { return; }
+            const hit = cameraRay.intersectsMesh(mesh);
+            if (hit.hit && hit.distance < cameraRay.length) { cameraRay.length = hit.distance; }
+        }
+        for (const mesh of obstacles.keys()) { traceMesh(mesh); }
+        for (const mesh of carveRoofs) { traceMesh(mesh); }
+
+        let distance = cameraRay.length;
+        // A altura interpolada é a mesma superfície visível, inclusive em escavações.
+        const intervals = Math.ceil(distance / 0.25);
+        for (let interval = 1; interval <= intervals; interval++) {
+            const t = Math.min(interval * 0.25, distance);
+            const x = from.x + direction.x * t, z = from.z + direction.z * t;
+            if (from.y + direction.y * t < visibleGroundHeight(x, z) + cameraClearance) {
+                distance = t;
+                break;
+            }
+        }
+        return distance < length ? Math.max(0.12, distance - cameraClearance) : length;
+    }
+
+    function updateOrbit(delta, trace) {
+        camera.target.set(player.position.x, player.position.y + PLAYER_HEIGHT / 2, player.position.z);
+        orbitRadius = lerp(orbitRadius, zoomTarget, 1 - Math.exp(-14 * delta));
+        const horizontal = orbitRadius * Math.sin(camera.beta);
+        orbitEye.set(
+            camera.target.x + horizontal * Math.cos(camera.alpha),
+            camera.target.y + orbitRadius * Math.cos(camera.beta),
+            camera.target.z + horizontal * Math.sin(camera.alpha));
+        const limit = trace(camera.target, orbitEye);
+        // Recolher imediatamente evita entrar no obstáculo; a volta é amortecida.
+        camera.radius = Math.min(limit, lerp(camera.radius, orbitRadius, 1 - Math.exp(-12 * delta)));
+    }
 
     function stepSurfaceAt(x, z, ground) {
         let top = ground;
@@ -1762,9 +1821,11 @@
 
     // Drena a fila até o orçamento do frame; o primeiro passo do item da frente sempre roda.
     function drainModelQueue(frameStart) {
+        let terrainChunkBuilt = false;
         while (modelQueue.length) {
             if (modelQueue[0].timing.steps > 0 && performance.now() - frameStart >= MODEL_BUDGET_MS) { break; }
             const item = modelQueue[0];
+            if (item.terrainChunk && item.timing.steps === 0 && terrainChunkBuilt) { break; }
             let step;
             try { step = item.work.next(); }
             catch (e) { modelQueue.shift(); modelFailed(item, e); continue; }
@@ -1777,6 +1838,7 @@
             const s0 = performance.now();
             try { step.value.run(); }
             catch (e) { modelQueue.shift(); modelFailed(item, e); continue; }
+            terrainChunkBuilt ||= item.terrainChunk === true;
             const stepMs = performance.now() - s0;
             item.timing.cpuMs = Math.round((item.timing.cpuMs + stepMs) * 100) / 100;
             item.timing.steps += 1;
@@ -2203,7 +2265,7 @@
                 sun.intensity = lerp(0.95, 0.25, rainLevel);
                 hemi.intensity = lerp(0.55, 0.61, rainLevel);
                 sky.emissiveTexture.level = lerp(1, 0.61, rainLevel);
-                scene.fogDensity = lerp(0.0072, 0.017, rainLevel);
+                scene.fogDensity = lerp(0.46, 1.088, rainLevel) / (CHUNK * CHUNK_VIEW);
                 BABYLON.Color3.LerpToRef(horizon, overcast, rainLevel, scene.fogColor);
                 scene.clearColor.set(scene.fogColor.r, scene.fogColor.g, scene.fogColor.b, 1);
                 for (const ch of chunkMap.values()) { applyGroundLight(ch.mesh.material); }
@@ -2230,7 +2292,7 @@
         scene.clearColor = new BABYLON.Color4(horizon.r, horizon.g, horizon.b, 1);
         scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
         scene.fogColor = horizon.clone();
-        scene.fogDensity = 0.0072;   // menos névoa: o vale lê como terreno, não céu
+        scene.fogDensity = 0.46 / (CHUNK * CHUNK_VIEW);
         scene.ambientColor = new BABYLON.Color3(0.18, 0.20, 0.22);
 
         // Tone mapping ACES: realça luz e sombra sem estourar os claros.
@@ -2314,12 +2376,11 @@
         scene.registerBeforeRender(() => { marker.rotation.y += 0.02; });
 
         camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 1.12, 7.5, player.position.add(CAM_UP), scene);
-        camera.lowerRadiusLimit = 2.4;
+        camera.lowerRadiusLimit = 0.12;
         camera.upperRadiusLimit = 40;
         camera.upperBetaLimit = Math.PI / 2.08;
-        camera.wheelDeltaPercentage = 0.01;
+        camera.minZ = 0.06;
         camera.fov = 0.85;
-        if (dom) { camera.attachControl(canvas, true); }   // worker: input chega por api.input.camera
 
         // v3: pós-processamento (MSAA 4x, bloom discreto, nitidez) com recuo gracioso.
         try {
@@ -2947,35 +3008,17 @@
                     camera.alpha -= (pad.lookX + lookStick.x) * delta * 2.2;
                     camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + (pad.lookY + lookStick.y) * delta * 1.7));
                 }
-                if (!dom) {
-                    // Ponteiro (arrasto/roda) chegou pela ponte — fora do travamento do
-                    // diálogo, como o attachControl na main thread.
-                    if (camPending.dx || camPending.dy) {
-                        camera.alpha -= camPending.dx * CAM_POINTER_SENS;
-                        camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + camPending.dy * CAM_POINTER_SENS));
-                        camPending.dx = 0; camPending.dy = 0;
-                    }
-                    if (camPending.wheel) {
-                        // Zoom equivalente ao attachControl com wheelDeltaPercentage:
-                        // no Babylon, um entalhe (deltaY 120) ≈ 10% do raio somando a
-                        // inércia (fator ~9× sobre 0,01·120·pct). Aplicamos o mesmo
-                        // resultado DIRETO no alvo e suavizamos a chegada — sem a cauda
-                        // de inércia acumulada, que continuava rodando sozinha.
-                        // Proporção medida no attachControl (Babylon 9.36, inércia somada):
-                        // um entalhe (120) afasta ≈12,1%; para perto, 7 entalhes ≈ −50%
-                        // (≈9,9% cada). Em escala logarítmica o delta parcial do
-                        // touchpad fica suave.
-                        const entalhes = -camPending.wheel / 120;
-                        if (zoomTarget === null) { zoomTarget = camera.radius; }
-                        zoomTarget *= entalhes > 0 ? Math.pow(0.9015, entalhes) : Math.pow(1.1212, -entalhes);
-                        zoomTarget = Math.max(camera.lowerRadiusLimit || 2.4, Math.min(camera.upperRadiusLimit || 40, zoomTarget));
-                        camPending.wheel = 0;
-                    }
-                    if (zoomTarget !== null) {
-                        // Chegada suave por tempo real (independente da taxa de quadros).
-                        camera.radius += (zoomTarget - camera.radius) * Math.min(1, Math.min(0.25, engine.getDeltaTime() / 1000) * 14);
-                        if (Math.abs(zoomTarget - camera.radius) < 1e-3) { camera.radius = zoomTarget; zoomTarget = null; }
-                    }
+                if (camPending.dx || camPending.dy) {
+                    camera.alpha -= camPending.dx * CAM_POINTER_SENS;
+                    camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + camPending.dy * CAM_POINTER_SENS));
+                    camPending.dx = 0;
+                    camPending.dy = 0;
+                }
+                if (camPending.wheel) {
+                    const notches = -camPending.wheel / 120;
+                    zoomTarget *= notches > 0 ? Math.pow(0.9015, notches) : Math.pow(1.1212, -notches);
+                    zoomTarget = Math.max(2.4, Math.min(camera.upperRadiusLimit, zoomTarget));
+                    camPending.wheel = 0;
                 }
                 const travelled = movePlayer(delta, pad);
                 if (player) {
@@ -2986,11 +3029,7 @@
                 updateOtherCharacters(delta);
                 checkNear();
                 updateNearbyObject();
-                // Seguir mutando o vetor-alvo NO LUGAR: preserva alfa/beta/raio (a
-                // distância que o jogador escolheu na roda). O setTarget recalcula o
-                // raio a partir da posição atual da câmera — a cada frame com o jogador
-                // em movimento o raio rangueava de volta ao inicial.
-                camera.target.set(player.position.x, player.position.y + PLAYER_HEIGHT / 2, player.position.z);
+                updateOrbit(delta, traceWorld);
                 updateCollectionPreview(frameStart);
                 scene.render();
                 framePerf(performance.now() - frameStart);
@@ -3063,7 +3102,7 @@
         resetPlayer() {
             movementSpeed = 0;
             if (player) { player.position.x = 0; player.position.z = 0; player.rotation.y = 0; }
-            if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = 7.5; zoomTarget = null; }
+            if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = orbitRadius = zoomTarget = 7.5; }
         },
         teleportToGuardian() {
             if (!player || !camera) return false;
@@ -3241,7 +3280,7 @@
         input,
         assetsReport() { return assetsReal ? assetsReal.report() : null; },
         renderSize() { return engine ? { width: engine.getRenderWidth(), height: engine.getRenderHeight(), canvasW: host.canvas.width, canvasH: host.canvas.height, scaling: engine.getHardwareScalingLevel() } : null; },
-        cameraState() { return camera ? { alpha: camera.alpha, beta: camera.beta, radius: camera.radius } : null; },
+        cameraState() { return camera ? { alpha: camera.alpha, beta: camera.beta, radius: camera.radius, zoom: zoomTarget } : null; },
         coreId() { return CORE_ID; }
     };
     G.game = G.game || {};

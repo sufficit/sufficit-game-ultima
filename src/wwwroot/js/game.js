@@ -306,7 +306,7 @@
             actionWasDown = action; cancelWasDown = cancel;
         })();
 
-        setupWorldPointer(canvas, true);
+        setupWorldPointer(canvas);
 
         // Analógicos virtuais de toque continuam no DOM, entregando pela ponte.
         setupVirtualStick('move-stick', 'move-thumb', function (x, y) { deliver('stick', ['move', x, y]); });
@@ -321,9 +321,8 @@
         }
     }
 
-    function setupWorldPointer(canvas, forwardCamera) {
-        // O clique no mundo usa a mesma ponte nos dois renderizadores. Os deltas
-        // da câmera são encaminhados ao worker; na main o Babylon cuida deles.
+    function setupWorldPointer(canvas) {
+        // Clique e câmera usam a mesma ponte nos dois renderizadores.
         // Um dedo/mouse arrasta e gira; dois dedos são pinça (zoom) e o giro fica
         // suspenso. Convenção do attachControl do Babylon (pinchInwards): juntar os
         // dedos aproxima. A pinça usa a mesma escala da roda: reduzir a distância
@@ -379,7 +378,6 @@
         }
         window.addEventListener('pointerup', solta);
         window.addEventListener('pointercancel', solta);
-        if (!forwardCamera) { return; }
         window.addEventListener('pointermove', function (e) {
             if (!pointers.has(e.pointerId)) { return; }
             if (pointers.size === 2) {
@@ -512,7 +510,7 @@
                         throw err;
                     })
                 : startMain(canvas).then(function (ok) {
-                        setupWorldPointer(canvas, false);
+                        setupWorldPointer(canvas);
                         watchSizeMain(canvas);
                         return ok;
                     });
