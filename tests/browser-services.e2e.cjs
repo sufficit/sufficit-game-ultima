@@ -132,6 +132,19 @@ async function until(check, label) {
         await until(() => worldCommands.some(command => command.action === 'say' && command.token === 'migration-session'),
             'comando de chat autenticado');
         assert.ok(worldCommands.some(command => command.action === 'pose' && typeof command.yaw === 'number'));
+        // Terreno WASM constrói os chunks numa fila orçada; o clique de escultura só
+        // acerta o raycast quando o chão sob o ponto já existe (bancada: 25 chunks
+        // aos ~52 s, fila zerando aos ~119 s). O teste de réplica usa exatamente a
+        // mesma chamada scene.pick do motor, então a porta cobre o caso real.
+        await until(() => {
+            const renderer = page.workers()[0] || page;
+            return renderer.evaluate(() => {
+                const scene = BABYLON.EngineStore.LastCreatedScene;
+                if (!scene) { return false; }
+                const pick = scene.pick(650, 380, m => !!(m && m.name && m.name.indexOf('ground-') === 0));
+                return !!(pick && pick.hit);
+            });
+        }, 'terreno visível sob o ponto de escultura');
         await page.evaluate(async () => {
             await game.build.mode('raise', { r: 1.5 });
             game.terrainClick(650, 380);
