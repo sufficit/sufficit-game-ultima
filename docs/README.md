@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Alinhamento do joelho na inversão de marcha](activities/202611241621-joelho-na-inversao.md)
+
 - [Resposta articulada ao contato](activities/202611241603-contatos-articulados.md)
 
 - [Não sobreposição dos corpos durante a animação](activities/202611241300-nao-sobreposicao-dos-corpos.md)
