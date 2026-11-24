@@ -45,8 +45,17 @@ try
         case "garden":
             await Garden.RunAsync(browser);
             break;
+        case "tunnel":
+            await Tunnel.RunAsync(browser);
+            break;
+        case "world-undo":
+            await WorldUndo.RunAsync(browser);
+            break;
+        case "graphics":
+            await Graphics.RunAsync(browser);
+            break;
         default:
-            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, terrain-cache, terrain-seams, garden.");
+            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics.");
     }
     return 0;
 }

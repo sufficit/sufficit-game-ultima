@@ -157,7 +157,7 @@ coleta e terreno em worker e main pelos [testes no navegador](tests).
 
 A [suíte de navegador em C#](tests/WorldCollisionE2E) usa Microsoft.Playwright.
 Ela cobre colisão e marcha, passo articulado, relógio e clima, mochila e coleta,
-câmera e streaming, cache OPFS e emendas do terreno.
+câmera e streaming, cache OPFS, emendas, túnel, histórico de edições e modo cinema.
 O runner controla o Chromium e calcula as métricas em C#. As sondas JavaScript
 consultam APIs do navegador e dados da cena do Babylon.js no contexto em que
 são atualizados.
@@ -173,6 +173,8 @@ dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- backpack
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- camera-streaming
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- terrain-cache
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- terrain-seams
+dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- tunnel
+dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- graphics
 ```
 
 O cenário padrão é `collision`. Use `ULTIMA_MODE=main` com qualquer cenário
@@ -180,7 +182,9 @@ para exercitar o fallback. Em `clock`, use `ULTIMA_MOBILE=1` para abrir o menu
 móvel em uma tela estreita e `ULTIMA_SCREENSHOTS` para gravar as capturas.
 Em `backpack`, use `ULTIMA_TOUCH=1` para coletar por toque e `ULTIMA_DPR=2`
 para exercitar a projeção em alta densidade. Em `terrain-seams`, use
-`ULTIMA_PROCEDURAL=1` para confirmar o fallback sem os materiais WebP.
+`ULTIMA_PROCEDURAL=1` para confirmar o fallback sem os materiais WebP. Em `graphics`, use
+`ULTIMA_CAPTURE` para gravar uma captura. O cenário `world-undo` usa dois
+clientes worker e um backend descartável. Veja a [validação do mundo](docs/USAGE-MUNDO.md#validação).
 
 A instalação do Chromium é feita uma vez por versão do Playwright. Defina
 `ULTIMA_CHROMIUM` para usar um executável já disponível. Por padrão, a suíte

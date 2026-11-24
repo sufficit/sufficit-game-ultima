@@ -75,5 +75,13 @@ cena do jogador e fica salvo no mesmo navegador.
 
 Com o app em Release, execute `python3 tests/world-store.integration.py`.
 O teste sobe servidores em portas efêmeras com diretórios temporários.
-O ensaio `tests/world-undo.e2e.cjs` usa dois navegadores e um backend de
-teste local para verificar alterações e reversões nas malhas.
+O cenário `world-undo` da suíte C# usa dois clientes em worker para
+verificar alterações e reversões nas malhas. Para rodá-lo, suba o
+servidor Release com um diretório de dados descartável e use seu endereço
+HTTP em `ULTIMA_API`.
+
+```bash
+ULTIMA_SITE=https://sufficit.github.io/sufficit-game-ultima/ \
+ULTIMA_API=http://127.0.0.1:8090 \
+dotnet run --project tests/WorldCollisionE2E -c Release -- world-undo
+```

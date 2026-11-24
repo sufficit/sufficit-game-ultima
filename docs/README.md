@@ -29,6 +29,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Migração dos testes de túnel, histórico e gráficos para C#](activities/202611241834-testes-tunel-historico-graficos-csharp.md)
+
 - [Guardiã e API do jardim](activities/202611241828-guardia-api-jardim.md)
 
 - [Migração dos testes de câmera e terreno para C#](activities/202611241813-testes-camera-terreno-csharp.md)
