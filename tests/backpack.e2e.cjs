@@ -27,7 +27,7 @@ async function bag(page) {
 async function ready(page) {
     // domcontentloaded: na bancada (render por software) o evento load demora além
     // dos 30 s padrão do Playwright; o ready() abaixo já espera o jogo de verdade.
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await until(()=>page.evaluate(async()=>{
         if (!window.game?.glb?.status || !game?.build?.state) return false;
         const map=await game.build.state(), glb=await game.glb.status();

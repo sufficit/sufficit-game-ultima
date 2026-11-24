@@ -97,7 +97,7 @@ async function until(check, label, attempts = 100) {
 
         const url = new URL(site);
         url.search = new URLSearchParams({ api, rede: '0', sala: 'jardim', migrationTest: '1' }).toString();
-        await page.goto(url.href, { waitUntil: 'domcontentloaded' });
+        await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 90000 });
         await until(() => page.evaluate(async () => (await game?.dialogLog?.debug())?.queued === 1), 'fila anterior restaurada');
 
         await page.getByRole('alert').getByText('Nova versão disponível (fixture).').waitFor();
