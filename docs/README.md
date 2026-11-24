@@ -21,6 +21,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Preparação do cenário em C#](activities/202611240032-preparacao-cenario-csharp.md)
+
 - [Auditoria dos planos e recuperação do cache de malhas](activities/202611240018-auditoria-planos-e-cache-do-terreno.md)
 
 - [Paleta do terreno em C#](activities/202611240008-paleta-terreno-csharp.md)

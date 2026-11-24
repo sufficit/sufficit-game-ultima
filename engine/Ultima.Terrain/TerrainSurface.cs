@@ -61,6 +61,12 @@ internal sealed class TerrainSurface
     internal double Height(double x, double z) => Height(x, z, Depth(x, z));
 
     internal double Height(double x, double z, double depth)
+        => HeightFromBase(x, z, BaseHeight(x, z), depth);
+
+    internal double HeightFromBase(double x, double z, double natural)
+        => HeightFromBase(x, z, natural, Depth(x, z));
+
+    private double HeightFromBase(double x, double z, double natural, double depth)
     {
         var sculpted = 0.0;
         foreach (var (brush, height) in _sculpts)
@@ -68,7 +74,7 @@ internal sealed class TerrainSurface
             var t = 1 - Length(x - brush.X, z - brush.Z) / brush.Radius;
             if (t > 0) sculpted += height * t * t * (3 - 2 * t);
         }
-        var y = BaseHeight(x, z) + sculpted;
+        var y = natural + sculpted;
         foreach (var (brush, height) in _carves)
         {
             var floor = height + sculpted;

@@ -9,7 +9,6 @@
         create: function (host) {
 
     const WORLD_HALF = 400;   // F3: mundo expansível (montanhas do gerador são a barreira natural)
-    const SCATTER_HALF = 52;   // raio do espalhamento inicial (vale central)
     const NPC_POSITION = { x: 0, z: -14 };      // Guardiã
     const WANDERER_HOME = { x: 5.0, z: 0.0 };    // Andarilho: circula pela clareira inicial
     // Escala realista: personagem com ~1,75 m; os olhos ficam a ~1,62 m do chão.
@@ -167,70 +166,12 @@
 
     // ---------- Ruído de Perlin 2D (valor/gradiente) ----------
     const lerp = (a, b, t) => a + (b - a) * t;
-    const smoothstep = (a, b, t) => { const x = Math.max(0, Math.min(1, (t - a) / (b - a))); return x * x * (3 - 2 * x); };
-
-    function makeNoise(seed) {
-        let s = seed >>> 0;
-        const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
-        const p = Array.from({ length: 256 }, (_, i) => i);
-        for (let i = 255; i > 0; i--) {
-            const j = Math.floor(rand() * (i + 1));
-            const tmp = p[i]; p[i] = p[j]; p[j] = tmp;
-        }
-        const perm = new Uint8Array(512);
-        for (let i = 0; i < 512; i++) { perm[i] = p[i & 255]; }
-        const fade = (t) => t * t * (3 - 2 * t);
-        const grad = (h, x, y) => ((h & 1) ? x : -x) + ((h & 2) ? y : -y);
-        return function noise2(x, y) {
-            const xi = Math.floor(x), yi = Math.floor(y);
-            const X = xi & 255, Y = yi & 255;
-            const xf = x - xi, yf = y - yi;
-            const u = fade(xf), v = fade(yf);
-            const aa = perm[perm[X] + Y], ab = perm[perm[X] + Y + 1];
-            const ba = perm[perm[X + 1] + Y], bb = perm[perm[X + 1] + Y + 1];
-            const x1 = lerp(grad(aa, xf, yf), grad(ba, xf - 1, yf), u);
-            const x2 = lerp(grad(ab, xf, yf - 1), grad(bb, xf - 1, yf - 1), u);
-            return lerp(x1, x2, v);
-        };
-    }
-
-    const noise = makeNoise(20261115);
-
-    // Distância lateral até o eixo da trilha (trilha sinuosa, quase reta).
-    function pathOffset(z) { return noise(z * 0.09 + 3.1, 17.7) * 1.6; }
-    function pathBlend(x, z) { return smoothstep(1.5, 3.4, Math.abs(x - pathOffset(z))); }
 
     const SLOPE_SAMPLE_RADIUS = 0.7;
     let terrain;
-    function baseHeight(x, z) { return terrain.BaseHeight(x, z); }
     function terrainHeight(x, z) { return terrain.Height(x, z); }
-    function slopeAt(x, z, surface = terrainHeight) { return terrain.Slope(x, z, surface === baseHeight); }
 
     // ---------- Cena ----------
-    // Distorce levemente vértices do protótipo: silhueta orgânica replicada nas instâncias.
-    function jitterMesh(mesh, amount, seed) {
-        const pos=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind); if(!pos)return;
-        const rnd=makeNoise(seed);
-        for(let i=0;i<pos.length;i+=3){
-            const x=pos[i],y=pos[i+1],z=pos[i+2]; if(Math.hypot(x,y,z)<1e-5)continue;
-            const n=rnd(x*2.3+y*1.1,z*2.3-y*0.7),f=1+(n-0.5)*2*amount;
-            pos[i]=x*f;pos[i+1]=y*f;pos[i+2]=z*f;
-        }
-        mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind,pos);
-    }
-
-    // Estria o tronco por ângulo, preservando veios paralelos à altura.
-    function fluteMesh(mesh, amount, seed) {
-        const pos=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind); if(!pos)return;
-        const rnd=makeNoise(seed);
-        for(let i=0;i<pos.length;i+=3){
-            const x=pos[i],z=pos[i+2];if(Math.hypot(x,z)<1e-5)continue;
-            const a=Math.atan2(z,x),n=rnd(Math.cos(a)*3+5,Math.sin(a)*3+5),f=1+(n-0.5)*2*amount;
-            pos[i]=x*f;pos[i+2]=z*f;
-        }
-        mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind,pos);
-    }
-
     function skyDome() {
         const sky = BABYLON.MeshBuilder.CreateSphere('sky', { diameter: 180, segments: 12, sideOrientation: BABYLON.Mesh.BACKSIDE }, scene);
         sky.infiniteDistance = true;
@@ -271,7 +212,7 @@
     // a primeira visita gera e grava, as seguintes carregam prontas (warm no init).
     // Sem OPFS — ou com cache corrompido — gera como antes: o cache é pura otimização.
     const texCache = new Map();   // nome -> { size, rgba, h }
-    const texWarm = { bark: 128, foliage: 128, rock: 128, grass: 128, detail: 256 };
+    const texWarm = { bark: 128, foliage: 128, rock: 128, grass: 128 };
 
     function applyTextureData(name, size, data) {
         const tex = new BABYLON.DynamicTexture(name, { width: size, height: size }, scene, true);
@@ -300,30 +241,6 @@
                 texCache.set(name, { size: hit.size, rgba: hit.rgba, h: hit.h });
             }
         }
-    }
-
-    // Granulação de solo/grama (multiplica a cor por vértice); ladrilha sem emenda visível.
-    function makeDetailTexture() {
-        const tex = proceduralTexture('detail', 256, function (N) {
-            const img = new ImageData(N, N);
-            const rnd = makeNoise(777);
-            for (let y = 0; y < N; y++) {
-                for (let x = 0; x < N; x++) {
-                    // Ruído periódico: soma de ruídos amostrados em círculo (sem costura).
-                    const u = x / N * Math.PI * 2, v = y / N * Math.PI * 2;
-                    const c1 = rnd(Math.cos(u) * 3 + 10, Math.sin(u) * 3 + Math.cos(v) * 3);
-                    const c2 = rnd(Math.cos(u * 3) * 4 - 7, Math.sin(v * 3) * 4 + Math.sin(u * 3) * 4);
-                    const grain = (Math.random() - 0.5) * 0.26;
-                    const val = 0.78 + c1 * 0.12 + c2 * 0.10 + grain;
-                    const k = Math.max(0, Math.min(255, val * 255)) | 0;
-                    const i = (y * N + x) * 4;
-                    img.data[i] = k; img.data[i + 1] = k; img.data[i + 2] = Math.min(255, k + 2); img.data[i + 3] = 255;
-                }
-            }
-            return { rgba: img.data, h: null };
-        });
-        tex.anisotropicFilteringLevel = 8;
-        return tex;
     }
 
     // ---------- Terreno em chunks (F2) + edição de superfície (F4) ----------
@@ -702,24 +619,7 @@
     const waterDiscs = new Map();
     let waterTex = null;
     function waterNormalTexture() {
-        if (waterTex) { return waterTex; }
-        const N = 128;
-        waterTex = new BABYLON.DynamicTexture('waterNrm', { width: N, height: N }, scene, true);
-        const ctx = waterTex.getContext();
-        const img = ctx.createImageData(N, N);
-        const rnd = makeNoise(4242);
-        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-            const u = x / N * Math.PI * 2, v = y / N * Math.PI * 2;
-            const dx = (rnd(Math.cos(u) * 4 + 1, Math.sin(v) * 4) - 0.5) * 0.9;
-            const dy = (rnd(Math.cos(v) * 4 - 2, Math.sin(u) * 4 + 7) - 0.5) * 0.9;
-            const inv = 1 / Math.hypot(dx, dy, 3), i = (y * N + x) * 4;
-            img.data[i] = ((-dx * inv) * 0.5 + 0.5) * 255;
-            img.data[i + 1] = ((-dy * inv) * 0.5 + 0.5) * 255;
-            img.data[i + 2] = ((3 * inv) * 0.5 + 0.5) * 255;
-            img.data[i + 3] = 255;
-        }
-        ctx.putImageData(img, 0, 0);
-        waterTex.update(true);
+        waterTex ??= applyTextureData('waterNrm', 128, texturePixels(terrain.RasterizeWater(128), 128));
         return waterTex;
     }
     function syncWaterDiscs() {
@@ -1380,81 +1280,63 @@
         }
     }
 
-    // ---------- v3: relevo (normal map) e oclusão ambiente nos vértices ----------
-    // Converte o mapa de alturas guardado em tex._h num mapa de normais (relevo real sob a luz).
-    function makeBumpTexture(srcTex, N, strength) {
-        const h = srcTex._h, tex = new BABYLON.DynamicTexture('bump-' + srcTex.name, { width: N, height: N }, scene, true);
-        const ctx = tex.getContext(), img = ctx.createImageData(N, N);
-        const at = (x, y) => h[((y + N) % N) * N + ((x + N) % N)];
-        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-            const dx = (at(x + 1, y) - at(x - 1, y)) * strength, dy = (at(x, y + 1) - at(x, y - 1)) * strength;
-            const inv = 1 / Math.hypot(dx, dy, 1), i = (y * N + x) * 4;
-            img.data[i] = ((-dx * inv) * 0.5 + 0.5) * 255; img.data[i + 1] = ((-dy * inv) * 0.5 + 0.5) * 255;
-            img.data[i + 2] = (inv * 0.5 + 0.5) * 255; img.data[i + 3] = 255;
-        }
-        ctx.putImageData(img, 0, 0); tex.update(true); return tex;
+    function texturePixels(pixels, size, hasHeight = false) {
+        const bytes = size * size * 4;
+        return {
+            rgba: new Uint8ClampedArray(pixels.buffer, pixels.byteOffset, bytes),
+            h: hasHeight ? new Float32Array(pixels.buffer, pixels.byteOffset + bytes, size * size) : null
+        };
     }
 
-    // AO "assado": escurece a base e variações por vértice (copas mais densas por baixo).
-    function bakeVertexAO(mesh, darkest, seed) {
-        const pos = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-        let minY = Infinity, maxY = -Infinity;
-        for (let i = 1; i < pos.length; i += 3) { minY = Math.min(minY, pos[i]); maxY = Math.max(maxY, pos[i]); }
-        const rnd = makeNoise(seed), col = new Float32Array((pos.length / 3) * 4);
-        for (let v = 0; v < pos.length / 3; v++) {
-            const t = (pos[v * 3 + 1] - minY) / Math.max(0.001, maxY - minY);
-            const k = darkest + (1 - darkest) * Math.pow(t, 0.7) + (rnd(pos[v * 3] * 1.7, pos[v * 3 + 2] * 1.7) - 0.5) * 0.12;
-            const c = Math.max(0.2, Math.min(1.05, k));
-            col[v * 4] = c; col[v * 4 + 1] = c; col[v * 4 + 2] = c * 0.97; col[v * 4 + 3] = 1;
+    function makeBumpTexture(srcTex, size, strength) {
+        const key = size + ':' + strength;
+        const normals = srcTex._normalPixels ??= new Map();
+        let pixels = normals.get(key);
+        if (!pixels) {
+            const height = srcTex._h;
+            const bytes = new Uint8Array(height.buffer, height.byteOffset, height.byteLength);
+            pixels = texturePixels(terrain.RasterizeBump(bytes, size, strength), size);
+            normals.set(key, pixels);
         }
-        mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind, col);
+        return applyTextureData('bump-' + srcTex.name, size, pixels);
     }
 
-    // ---------- Texturas procedurais de vegetação (cache OPFS via proceduralTexture) ----------
-    // Casca: veios verticais irregulares, sem costura na horizontal.
+    const meshEffects = { jitter: 0, flute: 1, ao: 2 };
+    function applyMeshEffects(mesh, modifiers) {
+        const effects = [];
+        let movesVertices = false;
+        for (const mod of modifiers) {
+            const effect = meshEffects[mod.kind];
+            if (effect === undefined) { continue; }
+            effects.push(effect, mod.amount, mod.seed);
+            movesVertices ||= effect !== 2;
+        }
+        if (!effects.length) { return; }
+        const raw = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+        if (!raw?.length) { return; }
+        const positions = raw instanceof Float32Array ? raw : Float32Array.from(raw);
+        const bytes = new Uint8Array(positions.buffer, positions.byteOffset, positions.byteLength);
+        const result = terrain.PrepareMesh(bytes, new Float64Array(effects));
+        if (movesVertices) {
+            mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind,
+                new Float32Array(result.buffer, result.byteOffset, positions.length));
+        }
+        if (result.byteLength > positions.byteLength) {
+            mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind,
+                new Float32Array(result.buffer, result.byteOffset + positions.byteLength, positions.length / 3 * 4));
+        }
+    }
+
     function makeBarkTexture() {
-        return proceduralTexture('bark', 128, function (W) {
-            const H = W;
-            const img = new ImageData(W, H), rnd = makeNoise(421), hgt = new Float32Array(W * H);
-            for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-                const u = x / W * Math.PI * 2;
-                const ridge = rnd(Math.cos(u) * 6 + 3, Math.sin(u) * 6 + 3);
-                const fibre = rnd(Math.cos(u) * 14 - 9, y * 0.35 + Math.sin(u) * 14);
-                const val = 0.52 + ridge * 0.30 + (fibre - 0.5) * 0.22, i = (y * W + x) * 4;
-                hgt[y * W + x] = val; img.data[i] = Math.max(0, Math.min(255, val * 190)) | 0;
-                img.data[i+1] = Math.max(0, Math.min(255, val * 135)) | 0;
-                img.data[i+2] = Math.max(0, Math.min(255, val * 88)) | 0; img.data[i+3] = 255;
-            }
-            return { rgba: img.data, h: hgt };
-        });
+        return proceduralTexture('bark', 128, size => texturePixels(terrain.RasterizeBark(size), size, true));
     }
 
-    // Folhagem: manchas procedurais de verde, em vez de uma cor plana.
     function makeFoliageTexture() {
-        return proceduralTexture('foliage', 128, function (N) {
-            const img = new ImageData(N, N), rnd = makeNoise(907);
-            for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-                const u = x / N * Math.PI * 2, v = y / N * Math.PI * 2;
-                const blob = rnd(Math.cos(u)*5+1, Math.sin(u)*5+Math.cos(v)*5);
-                const leaf = rnd(Math.cos(u)*16+8, Math.sin(v)*16-4), t = blob*0.7+leaf*0.3, i=(y*N+x)*4;
-                img.data[i] = Math.max(0,Math.min(255,(0.10+t*0.22)*255))|0;
-                img.data[i+1] = Math.max(0,Math.min(255,(0.26+t*0.42)*255))|0;
-                img.data[i+2] = Math.max(0,Math.min(255,(0.10+t*0.16)*255))|0; img.data[i+3]=255;
-            }
-            return { rgba: img.data, h: null };
-        });
+        return proceduralTexture('foliage', 128, size => texturePixels(terrain.RasterizeFoliage(size), size));
     }
 
-    // Rocha compartilhada entre pedregulhos e tetos, com padrão repetível nas duas direções.
     function makeRockTexture() {
-        return proceduralTexture('rock', 128, function (size) {
-            const pixels = terrain.RasterizeRock(size);
-            const bytes = size * size * 4;
-            return {
-                rgba: new Uint8ClampedArray(pixels.buffer, pixels.byteOffset, bytes),
-                h: new Float32Array(pixels.buffer, pixels.byteOffset + bytes, size * size)
-            };
-        });
+        return proceduralTexture('rock', 128, size => texturePixels(terrain.RasterizeRock(size), size, true));
     }
 
     function makeGrassTexture() {
@@ -1510,48 +1392,51 @@
     // entre tronco e copa garantido pelo Ultima.Models.Core se mantém em qualquer tamanho.
     // Resumível: cada chamada coloca até "n" árvores e devolve true ao terminar, para a fila
     // de modelos espalhar em lotes sem estourar o orçamento do frame.
+    function makeScatterPlacer(seed, count, opts, place, tree = false, workshop = false) {
+        const total = Math.ceil(count);
+        let state = seed, remaining = tree ? 2400 : Math.ceil(count * 40), placed = 0;
+        return function (batch) {
+            const values = terrain.ScatterBatch(state, Math.min(batch, total - placed), remaining, tree, workshop,
+                NPC_POSITION.x, NPC_POSITION.z, opts.minR || 5, opts.maxAlt ?? Infinity, opts.maxSlope || 0.6,
+                opts.minScale, opts.maxScale || opts.minScale, opts.sink || 0);
+            state = values[0];
+            remaining = values[1];
+            const last = 3 + values[2] * 6;
+            for (let i = 3; i < last; i += 6) {
+                place(values, i, placed++);
+            }
+            return placed >= total || remaining <= 0;
+        };
+    }
+
+    function applyScatterTransform(instance, values, i) {
+        instance.position.set(values[i], values[i + 1], values[i + 2]);
+        instance.scaling.set(values[i + 3], values[i + 4], values[i + 3]);
+        instance.rotation.y = values[i + 5];
+    }
+
     function makeTreePlacer(protos, sink, count, radius) {
-        const rand = mulberry32(seedHash('tree.pine'));
-        let placed = 0, tries = 0;
-        return function (n) {
-            while (placed < count && tries < 2400 && n > 0) {
-                tries += 1;
-                const x = (rand() * 2 - 1) * SCATTER_HALF;
-                const z = (rand() * 2 - 1) * (WORLD_HALF + 4);
-                const r = Math.hypot(x, z);
-                if (r < 6.5) { continue; }                                                     // clareira inicial
-                if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 5.5) { continue; }    // clareira da Guardiã
-                if (pathBlend(x, z) < 0.75) { continue; }                                      // longe da trilha
-                if (baseHeight(x, z) > 17) { continue; }                                                      // acima da linha das árvores
-                if (slopeAt(x, z, baseHeight) > 0.5) { continue; }                                         // encosta íngreme
-                const s = 0.75 + rand() * 0.9;
-                const sy = s * (0.9 + rand() * 0.5);
-                const rotation = rand() * Math.PI * 2;
-                const y = terrainHeight(x, z);
+        return makeScatterPlacer(seedHash('tree.pine'), count,
+            { minR: 6.5, maxAlt: 17, maxSlope: 0.5, minScale: 0.75, sink },
+            (values, i, placed) => {
                 for (const proto of protos) {
                     const inst = proto.createInstance(proto.name.replace('model-', 'tree-') + '-' + placed);
-                    inst.position.set(x, y - sink * sy, z);
-                    inst.scaling.set(s, sy, s);
-                    inst.rotation.y = rotation;
+                    applyScatterTransform(inst, values, i);
                     trackGatherable(inst, 'pine:' + placed, 'tree.pine', true);
-                    if (proto === protos[0]) { trackObstacle(inst, proto, 'Pinheiro', radius * s); }
+                    if (proto === protos[0]) { trackObstacle(inst, proto, 'Pinheiro', radius * values[i + 3]); }
                 }
-                placed += 1;
-                n -= 1;
-            }
-            return placed >= count || tries >= 2400;
-        };
+            }, true);
     }
 
     // ---------- Renderizador genérico de modelos (descritores do Ultima.Models.Core) ----------
     const modelTextures = {};
-    function modelMaterial(def) {
+    const textureMakers = { bark: makeBarkTexture, foliage: makeFoliageTexture, rock: makeRockTexture, grass: makeGrassTexture };
+
+    function modelMaterial(def, texture, bump) {
         const mat = new BABYLON.StandardMaterial('mat-' + def.id + '-' + Math.random().toString(36).slice(2, 6), scene);
-        const makers = { bark: makeBarkTexture, foliage: makeFoliageTexture, rock: makeRockTexture, grass: makeGrassTexture };
-        if (makers[def.texture]) {
-            const tex = modelTextures[def.texture] || (modelTextures[def.texture] = makers[def.texture]());
-            mat.diffuseTexture = tex;
-            if (def.bumpStrength > 0 && tex._h) { mat.bumpTexture = makeBumpTexture(tex, 128, def.bumpStrength); mat.bumpTexture.level = 1.1; }
+        if (texture) {
+            mat.diffuseTexture = texture;
+            if (bump) { mat.bumpTexture = bump; bump.level = 1.1; }
             if (def.uScale && def.uScale !== 1) { mat.diffuseTexture.uScale = def.uScale; }
             if (def.texture === 'grass') { mat.useAlphaFromDiffuseTexture = true; mat.backFaceCulling = false; }  // lâminas com alfa nos dois lados
         }
@@ -1593,11 +1478,7 @@
         const merged = meshes.length === 1 ? meshes[0] : BABYLON.Mesh.MergeMeshes(meshes, true, true, undefined, false, true);
         if (meshes.length === 1) { merged.bakeCurrentTransformIntoVertices(); }
         merged.name = 'model-' + desc.id + '-' + g.id;
-        for (const mod of g.modifiers) {
-            if (mod.kind === 'jitter') { jitterMesh(merged, mod.amount, mod.seed); }
-            else if (mod.kind === 'flute') { fluteMesh(merged, mod.amount, mod.seed); }
-            else if (mod.kind === 'ao') { bakeVertexAO(merged, mod.amount, mod.seed); }
-        }
+        applyMeshEffects(merged, g.modifiers);
         merged.material = mats[g.material];
         merged.isVisible = false;
         if (g.castShadow && sceneShadows) { sceneShadows.addShadowCaster(merged); }
@@ -1619,7 +1500,7 @@
             const entries = ['character.villager', 'character.wanderer'].map(id => modelRegistry.get(id));
             if (!entries.every(entry => entry?.desc.crowdWalk?.version === 1)) { return; }
             try {
-                crowd = G.UltimaCrowd.create(scene, crowdCount, entries, buildCrowdGroup, terrainHeight);
+                crowd = G.UltimaCrowd.create(scene, crowdCount, entries, buildCrowdGroup, terrain);
             } catch (error) {
                 crowdError = String(error.message || error);
                 console.warn('[multidão]', crowdError);
@@ -1737,14 +1618,22 @@
         }
     }
 
-    // Trabalho de um modelo em passos: um material por passo, um grupo por passo,
-    // registro no mundo, e o espalhamento em lotes.
+    // Trabalho em passos: textura, relevo, material, grupo, registro e espalhamento em lotes.
     function* modelWork(desc, placeholder) {
         const mats = {};
         const protos = [];
         let registered = false;
         for (const m of desc.materials) {
-            yield { label: desc.id + ':material ' + m.id, run: function () { mats[m.id] = modelMaterial(m); } };
+            const maker = textureMakers[m.texture];
+            if (maker && !modelTextures[m.texture]) {
+                yield { label: desc.id + ':textura ' + m.texture, run: () => { modelTextures[m.texture] = maker(); } };
+            }
+            const texture = modelTextures[m.texture];
+            let bump = null;
+            if (m.bumpStrength > 0 && texture?._h) {
+                yield { label: desc.id + ':relevo ' + m.id, run: () => { bump = makeBumpTexture(texture, 128, m.bumpStrength); } };
+            }
+            yield { label: desc.id + ':material ' + m.id, run: () => { mats[m.id] = modelMaterial(m, texture, bump); } };
         }
         for (const g of desc.groups) {
             yield { label: desc.id + ':grupo ' + g.id, run: function () { protos.push(buildModelGroup(desc, g, mats)); } };
@@ -1860,33 +1749,13 @@
         const asset = proto.name.startsWith('glb-') ? proto.name.slice(4)
             : proto.name.startsWith('model-rock.boulder-') ? 'rock.boulder' : 'scenery.grass';
         const solid = opts.radius > 0 || solidAssets.has(asset);
-        const rand = mulberry32(seedHash(proto.name));
-        let placed = 0, tries = 0;
-        return function (n) {
-            while (placed < count && tries < count * 40 && n > 0) {
-                tries += 1;
-                const x = (rand() * 2 - 1) * SCATTER_HALF;
-                const z = (rand() * 2 - 1) * SCATTER_HALF;
-                const r = Math.hypot(x, z);
-                if (r < (opts.minR || 5)) { continue; }
-                if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 4.5) { continue; }
-                if (pathBlend(x, z) < 0.72) { continue; }
-                const y = baseHeight(x, z);
-                if (opts.maxAlt !== undefined && y > opts.maxAlt) { continue; }
-                if (slopeAt(x, z, baseHeight) > (opts.maxSlope || 0.6)) { continue; }
-                const s = opts.minScale + rand() * ((opts.maxScale || opts.minScale) - opts.minScale);
-                const inst = proto.createInstance(proto.name + '-i' + placed);
-                inst.position.set(x, terrainHeight(x, z) + (opts.sink || 0) * s, z);
-                inst.rotation.y = rand() * Math.PI * 2;
-                inst.scaling.set(s, s * (0.85 + rand() * 0.5), s);
-                trackGatherable(inst, 'scenery:' + proto.name + ':' + placed, asset, true);
-                if (opts.radius) { trackObstacle(inst, proto, opts.label, opts.radius * s); }
-                else if (solid) { trackGlbObstacle(inst, proto, asset); }
-                placed += 1;
-                n -= 1;
-            }
-            return placed >= count || tries >= count * 40;
-        };
+        return makeScatterPlacer(seedHash(proto.name), count, opts, (values, i, placed) => {
+            const inst = proto.createInstance(proto.name + '-i' + placed);
+            applyScatterTransform(inst, values, i);
+            trackGatherable(inst, 'scenery:' + proto.name + ':' + placed, asset, true);
+            if (opts.radius) { trackObstacle(inst, proto, opts.label, opts.radius * values[i + 3]); }
+            else if (solid) { trackGlbObstacle(inst, proto, asset); }
+        });
     }
 
     // ---------- Assets GLB CC0 (catálogo assets/assets.json assinado por SHA-256) ----------
@@ -2121,42 +1990,14 @@
     }
 
     function seededScatterWork(proto, count, opts, seed) {
-        const rnd = mulberry32(seed);
-        let placed = 0, tries = 0;
-        return (function* () {
-            while (true) {
-                let done = false;
-                yield {
-                    label: 'oficina ' + proto.name + ' ' + placed + '/' + count,
-                    run: function () {
-                        let n = MODEL_SCATTER_BATCH;
-                        while (placed < count && tries < count * 40 && n > 0) {
-                            tries += 1;
-                            const x = (rnd() * 2 - 1) * SCATTER_HALF;
-                            const z = (rnd() * 2 - 1) * SCATTER_HALF;
-                            const r = Math.hypot(x, z);
-                            if (r < (opts.minR || 5)) { continue; }
-                            if (Math.hypot(x - NPC_POSITION.x, z - NPC_POSITION.z) < 4.5) { continue; }
-                            if (pathBlend(x, z) < 0.72) { continue; }
-                            const y = baseHeight(x, z);
-                            if (opts.maxAlt !== undefined && y > opts.maxAlt) { continue; }
-                            if (slopeAt(x, z, baseHeight) > (opts.maxSlope || 0.6)) { continue; }
-                            const s = opts.minScale + rnd() * ((opts.maxScale || opts.minScale) - opts.minScale);
-                            const inst = proto.createInstance(proto.name + '-w' + placed);
-                            inst.position.set(x, terrainHeight(x, z) + (opts.sink || 0) * s, z);
-                            inst.rotation.y = rnd() * Math.PI * 2;
-                            inst.scaling.set(s, s * (0.9 + rnd() * 0.3), s);
-                            trackGatherable(inst, 'catalog:' + proto.name + ':' + placed, proto.name.slice(4), true);
-                            trackGlbObstacle(inst, proto, proto.name.slice(4), true);
-                            placed += 1;
-                            n -= 1;
-                        }
-                        done = placed >= count || tries >= count * 40;
-                    }
-                };
-                if (done) { return; }
-            }
-        })();
+        const asset = proto.name.slice(4);
+        const place = makeScatterPlacer(seed, count, opts, (values, i, placed) => {
+            const inst = proto.createInstance(proto.name + '-w' + placed);
+            applyScatterTransform(inst, values, i);
+            trackGatherable(inst, 'catalog:' + proto.name + ':' + placed, asset, true);
+            trackGlbObstacle(inst, proto, asset, true);
+        }, false, true);
+        return batchedSteps('oficina ' + proto.name, place);
     }
 
     // Espalha um asset já registrado em posições determinísticas (mesmas em todo cliente).
@@ -2963,7 +2804,7 @@
                 ANKLE_HEIGHT + SOLE_CLEARANCE, LEG_SPACING, SHOE_OFFSET);
             if (G.game && G.game.assets) {
                 await G.game.assets.init(host.build);
-                await warmTextures();   // chunks: aquecimento por aproximação (prefetchChunkCache)
+                await warmTextures();
             }
             // No worker o OffscreenCanvas não tem layout nem devicePixelRatio: o shell
             // mede (CSS × densidade) e o tamanho é aplicado daqui; sem isso o canvas
