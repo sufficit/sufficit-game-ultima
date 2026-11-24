@@ -1,6 +1,6 @@
 # world-builder-v5 — Mundo expansível com edição 3D e cristalização assistida por IA
 
-**Data**: 22/11/2026 · **Contexto**: [PLAN-WORLD-BUILDER.md](../docs/PLAN-WORLD-BUILDER.md)
+**Data**: 22/11/2026 · **Contexto**: [Atividade de mundo expansível](../docs/activities/202611232303-mundo-expansivel.md)
 
 **Pedido do usuário**: pensar desde já em grandes edições (com boa qualidade gráfica e
 persistência); necessidade explícita de **túneis, masmorras, rios**; o mundo deve

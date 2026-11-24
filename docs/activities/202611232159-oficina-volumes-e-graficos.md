@@ -45,7 +45,4 @@ também descartava a preferência de PBR e a textura ambiente dependia do DOM.
   descartável. A ligação ao loopback ocorreu por rota do Playwright
   apenas no ensaio. [Jogo](https://sufficit.github.io/sufficit-game-ultima/)
   · [Workflow](https://github.com/sufficit/sufficit-game-ultima/actions/runs/45300996367).
-- O Sufficit Run ainda serve a API anterior. O volume `world-data` estava
-  vinculado e a API saudável, sem anunciar `volumeTunnels`. A publicação
-  exige a conexão ao publicador do Run, ausente nesta sessão.
-  [Plano em aberto](../PLAN-EXECUCAO-DO-BACKLOG.md).
+- A API foi publicada no Sufficit Run. [Validação em produção](202611232303-publicacao-do-backend-no-run.md).

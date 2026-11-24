@@ -1,18 +1,17 @@
-# PLAN-WORLD-STORE — Persistência durável do mundo (F1 do WORLD-BUILDER)
+# Persistência durável do mundo
 
-**Status**: base publicada em 22/11/2026. A correção da migração legada e o
-replay de undo foram validados em Release e aguardam publicação no Sufficit Run.
-**Decisão**: [decisions/world-store-v1.md](../decisions/world-store-v1.md)
+**Status**: publicada e validada no Sufficit Run.
+**Decisão**: [decisions/world-store-v1.md](../../decisions/world-store-v1.md)
 (arquivo-first + `IWorldStore`; MySQL só para dados relacionais futuros)
 
-## Objetivo
+## Investigação
 
 Os dados do mundo (edições de mapa, jobs, assets da oficina) saem do `/tmp` efêmero do
 pod e ganham **volume durável + journal append-only**: sobrevivem à recriação do pod,
 ganham histórico/undo por replay e preparam o terreno para as fases F2+ (chunks,
 cristalização IA, sculpt/carve).
 
-## Entregas e checkpoints
+## Alterações
 
 - [x] **C1 — Store no backend**: `app/WorldStore.cs` — `IWorldStore`
       (`Load`/`Append`/`Compact`) + `JournalWorldStore`: journal
@@ -30,10 +29,10 @@ cristalização IA, sculpt/carve).
       Validar contra o reconciler da plataforma (patch pode ser revertido — se ocorrer,
       virar feature da plataforma).
 - [x] **C5 — Prova de durabilidade**: editar mapa + gerar asset em produção →
-      **deletar o pod** → novo pod serve a mesma edição/revisão e o catálogo; journal
+      **recriar o pod** → novo pod serve a mesma edição/revisão e o catálogo; journal
       com as ops no volume.
 
-## Validação (todas executadas)
+## Validação e entrega
 
 - [x] Local: edição+dig gravam ops; restart preserva revisão/tiles e retoma job (jobDone
       gravado); seqs monotônicas pós-restart (bug de reset corrigido no caminho);
@@ -47,10 +46,12 @@ cristalização IA, sculpt/carve).
 - [x] `map.json` legado com tile+job → boot → snapshot criado, backup `.migrated`,
       job retomado (progresso por tempo de parede).
 - [x] Replay == estado em memória (revisão, tiles, jobs) após edições mistas
-  e reversões. [Teste de integração](../tests/world-store.integration.py).
-- [ ] Publicar a correção no runtime Run e comprovar saúde e persistência.
+  e reversões. [Teste de integração](../../tests/world-store.integration.py).
+- [x] Correção publicada no Run. O PVC permaneceu vinculado, e o mapa e catálogo foram recuperados pela nova release.
 
 ## Fora de escopo (fases seguintes do WORLD-BUILDER)
 
 Formato por chunk, ops de sculpt/carve, cristalização IA, SQLite/MySQL (gatilhos na
 decisão world-store-v1).
+
+[Publicação do backend](202611232303-publicacao-do-backend-no-run.md).

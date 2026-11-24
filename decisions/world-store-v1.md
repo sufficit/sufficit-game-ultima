@@ -1,7 +1,7 @@
 # world-store-v1 — Persistência do mundo: arquivo-first com interface isoladora
 
-**Data**: 22/11/2026 · **Contexto**: [PLAN-WORLD-STORE.md](../docs/PLAN-WORLD-STORE.md)
-(fase F1 do [PLAN-WORLD-BUILDER.md](../docs/PLAN-WORLD-BUILDER.md))
+**Data**: 22/11/2026 · **Contexto**: [Atividade de persistência do mundo](../docs/activities/202611232303-persistencia-do-mundo.md)
+(fase F1 do [Atividade de mundo expansível](../docs/activities/202611232303-mundo-expansivel.md))
 
 **Pergunta do usuário**: "volume durável ou MySQL?" — decisão pelo formato de acesso,
 não por gosto.

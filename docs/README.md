@@ -9,40 +9,22 @@ Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
-Prioritários:
+Planos históricos:
 
-- [Execução dos planos do Ultima](PLAN-EXECUCAO-DO-BACKLOG.md)
-- [Persistência do mundo](PLAN-WORLD-STORE.md) — atualização pendente no Sufficit Run.
-
-1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **base entregue em 23/11/2026**
-   (commit `70720cd`): persistência durável (journal+PVC), terreno em chunks com
-   streaming, mundo que cresce ao andar com cristalização assistida, esculpir/pintar,
-   passagens, **grutas com piso caminhável e colisão real (F5b)**, construção com
-   assets e gráficos com **PBR+IBL opcional, vento e água com normais/fresnel (F7b)**
-   — base validada em produção. Corredores volumétricos e undo foram validados
-   com backend de teste e aguardam o Sufficit Run. Decisões:
-   [world-builder-v5](../decisions/world-builder-v5.md) e
-   [world-store-v1](../decisions/world-store-v1.md).
-2. ✅ [PLAN-WORKER-OFFSCREEN-CANVAS.md](PLAN-WORKER-OFFSCREEN-CANVAS.md) —
+1. ✅ [PLAN-WORKER-OFFSCREEN-CANVAS.md](PLAN-WORKER-OFFSCREEN-CANVAS.md) —
    **concluído em 22/11/2026**: motor em `game-core.js` sem DOM, shell com worker
    OffscreenCanvas + fallback `?render=main`, loader glTF verificado por SHA-384 no
    worker. Atividade:
    [202611220130-motor-worker-offscreen.md](activities/202611220130-motor-worker-offscreen.md).
-2. ✅ [PLAN-PLAYER-ASSETS.md](PLAN-PLAYER-ASSETS.md) — **base entregue em 22/11/2026**.
-   O Run ainda precisa receber as extensões do catálogo. A entrega inicial inclui
-   assets GLB CC0 com catálogo assinado por SHA-256, variação paramétrica do cenário,
-   geração por prompt (gerador procedural local + adapter Meshy), upload dos jogadores
-   com validação server-side e estilo do mundo procedural↔low-poly. Atividade:
-   [202611220130-player-assets.md](activities/202611220130-player-assets.md).
-3. ✅ [PLAN-DLL-OPFS-CACHE.md](PLAN-DLL-OPFS-CACHE.md) — **concluído em 21/11/2026**:
+2. ✅ [PLAN-DLL-OPFS-CACHE.md](PLAN-DLL-OPFS-CACHE.md) — **concluído em 21/11/2026**:
    OPFS com chave SHA-256 de build+escopo; texturas e terreno prontos nas revisitas
    (init 106→41 ms em produção). Atividade:
    [202611212050-cache-opfs-preparados.md](activities/202611212050-cache-opfs-preparados.md).
-4. ✅ [PLAN-NPC-AI-DECISIONS.md](PLAN-NPC-AI-DECISIONS.md) — **concluído em
+3. ✅ [PLAN-NPC-AI-DECISIONS.md](PLAN-NPC-AI-DECISIONS.md) — **concluído em
    22/11/2026**: cérebros por NPC (Guardiã e Andarilho), agendador com budget por
    tick, WebLLM/API como produtores externos; 34 testes. Atividade:
    [202611220040-ia-npcs-decisoes.md](activities/202611220040-ia-npcs-decisoes.md).
-5. ✅ [PLAN-ASSET-UPLOAD-BUDGET.md](PLAN-ASSET-UPLOAD-BUDGET.md) — **concluído em
+4. ✅ [PLAN-ASSET-UPLOAD-BUDGET.md](PLAN-ASSET-UPLOAD-BUDGET.md) — **concluído em
    21/11/2026**: fila com orçamento de 4 ms/frame, scatter em lotes e
    `game.perf.report()`. Atividade:
    [202611212030-upload-amortizado-modelos.md](activities/202611212030-upload-amortizado-modelos.md).
@@ -53,6 +35,14 @@ Fonte técnica das frentes 1–10: análise do repositório
 `/mnt/sufficit/lineage-rust`). Cada plano cita os arquivos-fonte correspondentes.
 
 ## Atividades (`activities/`)
+
+- [Publicação do backend no Sufficit Run](activities/202611232303-publicacao-do-backend-no-run.md)
+
+- [Mundo expansível](activities/202611232303-mundo-expansivel.md)
+
+- [Persistência do mundo](activities/202611232303-persistencia-do-mundo.md)
+
+- [Catálogo de modelos do mundo](activities/202611232303-catalogo-de-modelos-do-mundo.md)
 
 - [Oficina, corredores e perfil Cinemático](activities/202611232159-oficina-volumes-e-graficos.md)
 

@@ -1,9 +1,11 @@
-# PLAN-PLAYER-ASSETS — Assets GLB CC0 e a evolução dos modelos do mundo
+# Assets GLB CC0 e a evolução dos modelos do mundo
 
 **Status**: fases 1–5 publicadas em 22/11/2026. Extensões do catálogo validadas
-localmente e pendentes de publicação no Sufficit Run ·
-[atividade](activities/202611220130-player-assets.md) ·
-[fase 1 (GLB CC0)](activities/) registrada no commit `94a2231`
+em ambiente isolado e publicadas no Sufficit Run ·
+[atividade](202611220130-player-assets.md) ·
+[fase 1 (GLB CC0)](.) registrada no commit `94a2231`
+
+## Investigação
 
 O jogo nasceu 100% paramétrico: modelos são descritores de primitivas em DLLs C#
 verificadas por SHA-256 (`Ultima.Models.*`), com texturas procedurais. Este plano
@@ -15,7 +17,9 @@ IA (interna ou via API).
 Decisão de estilo: **low-poly por enquanto** (Quaternius/KayKit/Kenney, CC0),
 permitindo trocas e acréscimos baratos conforme o jogo cresce.
 
-## Fase 1 ✅ — Pipeline GLB CC0 com catálogo assinado (concluída em 22/11/2026)
+## Alterações
+
+### Fase 1 ✅ — Pipeline GLB CC0 com catálogo assinado (concluída em 22/11/2026)
 
 - [x] Curadoria CC0 (Quaternius, via Poly Pizza) em `assets/glb/` com proveniência
       em `assets/LICENSE.md`: arbusto, flores, cogumelo, samambaia, tronco e toco.
@@ -42,7 +46,7 @@ permitindo trocas e acréscimos baratos conforme o jogo cresce.
       explícita (`'.glb'`): o core decodifica o binário GLB e alimenta o plugin — sem
       arquivo temporário, sem segunda ida à rede depois do fetch verificado.
 
-## Fase 2 ✅ — Evolução paramétrica in-game (concluída em 22/11/2026)
+### Fase 2 ✅ — Evolução paramétrica in-game (concluída em 22/11/2026)
 
 - [x] `ModelLoader.Rebuild(id, seed, detail)` reconstrói o descritor com novos
       `ModelParams` (o modelo continua sendo dados+parâmetros, sem malha nova);
@@ -55,7 +59,7 @@ permitindo trocas e acréscimos baratos conforme o jogo cresce.
       do clique do jogador. Quando disponível, WebLLM escolhe semente e
       detalhe com validação. O navegador tem proposta local de reserva.
 
-## Fase 3 ✅ — Geração de modelos via API (concluída em 22/11/2026)
+### Fase 3 ✅ — Geração de modelos via API (concluída em 22/11/2026)
 
 - [x] Backend `app/WorldAssets.cs`: `POST /v1/assets/generate {prompt}` com dois motores —
       **gerador procedural local** (C# escreve o binário GLB na mão: cristal/totem/flor
@@ -68,7 +72,7 @@ permitindo trocas e acréscimos baratos conforme o jogo cresce.
 - Nota de licença: Meshy free = **CC-BY 4.0** (exige atribuição; ver `assets/LICENSE.md`
   se usado); planos pagos dão ownership sem crédito. O gerador local não tem restrição.
 
-## Fase 4 ✅ — Upload/edição pelos jogadores (concluída em 22/11/2026)
+### Fase 4 ✅ — Upload/edição pelos jogadores (concluída em 22/11/2026)
 
 - [x] `POST /v1/assets/upload` (token de sessão, corpo binário): validação server-side —
       magic do GLB, ≤ 2 MB, ≤ 30 mil triângulos (parse do chunk JSON), id em slug,
@@ -79,10 +83,10 @@ permitindo trocas e acréscimos baratos conforme o jogo cresce.
 - [x] UI: input de arquivo + escala em metros na oficina; recusas do servidor viram
       mensagens claras.
 - [x] Catálogo por instalação de mundo, lista opcional de hashes aceitos
-      e coleta opcional de órfãos. [Configuração](USAGE-MUNDO.md).
-- [ ] Publicar as extensões de catálogo no Sufficit Run.
+      e coleta opcional de órfãos. [Configuração](../USAGE-MUNDO.md).
+- [x] Extensões de catálogo publicadas. O GLB já presente no mundo foi servido pela nova release e conferido por SHA-256.
 
-## Fase 5 ✅ — Substituição opcional dos modelos procedurais (concluída em 22/11/2026)
+### Fase 5 ✅ — Substituição opcional dos modelos procedurais (concluída em 22/11/2026)
 
 - [x] Mecanismo de estilo do cenário: `game.scenery` (`procedural` padrão ↔ `lowpoly`),
       persistido em `localStorage`, toggle na oficina com "recarregar para aplicar".
@@ -94,7 +98,7 @@ permitindo trocas e acréscimos baratos conforme o jogo cresce.
 
 ---
 
-### Validação
+## Validação e entrega
 
 - **Fase 1** (commit `94a2231`): local (publish servido, Chrome headless via CDP)
   6/6 assets, 450/450 instâncias, 0 erros, 0 frames >33 ms; GLB com byte corrompido
@@ -105,3 +109,5 @@ permitindo trocas e acréscimos baratos conforme o jogo cresce.
   planta "totem de pedra verde", sync traz assets do servidor para o cliente, upload
   pela UI publica "prop.stump" no catálogo e planta, estilo lowpoly ativa 64/26/420
   alternativos com o mesmo visual coeso (sem placeholders/flutuação).
+
+[Publicação do backend](202611232303-publicacao-do-backend-no-run.md).
