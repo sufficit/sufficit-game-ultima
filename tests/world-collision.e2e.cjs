@@ -187,6 +187,52 @@ async function wait(callback,label) {
             minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide,swingSamples,swingRetreat,swingRetreatAfterTakeoff,maxSideSpeed,maxBackSpeed,closestGap};
     }
     await p.evaluate(()=>{
+        game.addRemote('pose-arm','Contato em repouso');
+        game.updateRemote('pose-arm',0.63,0,0);
+    });
+    await wait(()=>renderer.evaluate(()=>{
+        const scene=BABYLON.EngineStore.LastCreatedScene;
+        return scene.getTransformNodeByName('remote-pose-arm')?.position.x===0.63 &&
+            !!scene.getMeshByName('char-character.wanderer-arm-left-remote-pose-arm');
+    }),'avatar em repouso pronto');
+    const forcedOverlap=await renderer.evaluate(()=>{
+        const scene=BABYLON.EngineStore.LastCreatedScene;
+        scene.getTransformNodeByName('player-shoulder-right').rotation.z=0.8;
+        scene.getTransformNodeByName('remote-pose-arm-shoulder-left').rotation.z=-0.8;
+        const a=scene.getMeshByName('char-character.villager-arm-right-player');
+        const b=scene.getMeshByName('char-character.wanderer-arm-left-remote-pose-arm');
+        a.computeWorldMatrix(true);
+        b.computeWorldMatrix(true);
+        return a.intersectsMesh(b,true);
+    });
+    assert.ok(forcedOverlap,'a pose de teste produz interseção dos braços');
+    const armGap=await wait(()=>renderer.evaluate(()=>{
+        const scene=BABYLON.EngineStore.LastCreatedScene;
+        const a=scene.getMeshByName('char-character.villager-arm-right-player');
+        const b=scene.getMeshByName('char-character.wanderer-arm-left-remote-pose-arm');
+        const player=scene.getTransformNodeByName('player').position;
+        const other=scene.getTransformNodeByName('remote-pose-arm').position;
+        const gap=Math.hypot(other.x-player.x,other.z-player.z);
+        return !a.intersectsMesh(b,true) && Math.hypot(player.x,player.z)<0.005 && gap<1.25 ? gap : 0;
+    }),'pose animada separa os braços sem mover o jogador parado');
+    const settled=await renderer.evaluate(async ()=>{
+        const scene=BABYLON.EngineStore.LastCreatedScene;
+        const a=scene.getMeshByName('char-character.villager-arm-right-player');
+        const b=scene.getMeshByName('char-character.wanderer-arm-left-remote-pose-arm');
+        for(let frame=0;frame<8;frame++){
+            await new Promise(resolve=>scene.onAfterRenderObservable.addOnce(()=>resolve()));
+            if(a.intersectsMesh(b,true)) return false;
+        }
+        return true;
+    });
+    assert.ok(settled,'os braços continuam separados nos quadros seguintes');
+    console.log(JSON.stringify({armGap}));
+    await renderer.evaluate(()=>{
+        BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('player-shoulder-right').rotation.z=0.055;
+    });
+    await p.evaluate(()=>game.removeRemote('pose-arm'));
+    await p.waitForTimeout(T300);
+    await p.evaluate(()=>{
         game.addRemote('contact-a', 'Contato A');
         game.updateRemote('contact-a', 0, 3, 0);
         game.addRemote('contact-b', 'Contato B');

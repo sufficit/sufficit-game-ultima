@@ -81,3 +81,13 @@ a distância lateral entre os tornozelos e a largura projetada das solas.
 Quando as pernas iriam se cruzar, desloca prioritariamente o pé no ar e
 levanta o pé corretivo quando necessário. Os braços usam pivôs levemente
 abertos na pose neutra. As caixas são aproximações da geometria da pose.
+
+### Regra de física dos corpos
+
+Dois corpos não devem ocupar o mesmo lugar no espaço. A regra vale
+durante o deslocamento e durante a animação, incluindo gestos e mudanças
+de pose de personagens parados. Depois de atualizar as poses próximas ao
+jogador, o C# verifica as caixas orientadas novamente e separa os
+personagens antes de desenhar o quadro. A prioridade preserva a Guardiã
+fixa e o apoio do jogador quando há um avatar remoto que pode ser
+reposicionado.

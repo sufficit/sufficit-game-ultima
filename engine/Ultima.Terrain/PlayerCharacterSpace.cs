@@ -13,6 +13,7 @@ internal sealed class PlayerCharacterSpace
         [new(new(0, 0.9f, 0), new(0.23f, 0, 0), new(0, 0.79f, 0), new(0, 0, TorsoDepth))];
     private readonly Dictionary<int, Body> _bodies = [];
     private int _revision = 1;
+    private readonly List<double> _corrections = [];
 
     internal void Set(int id, double x, double y, double z)
     {
@@ -62,18 +63,43 @@ internal sealed class PlayerCharacterSpace
         return (x + moved.X, z + moved.Z, blocked);
     }
 
-    internal (double X, double Z) Place(int id, double x, double y, double z)
+    internal double[] ResolveAnimatedContacts()
+    {
+        _corrections.Clear();
+        // A Guardiã é fixa. Resolve primeiro os remotos para preservar o apoio do jogador.
+        foreach (var (id, body) in _bodies)
+        {
+            if (id >= 0) ResolveAnimatedBody(id, body);
+        }
+        if (_bodies.TryGetValue(Wanderer, out var wanderer)) ResolveAnimatedBody(Wanderer, wanderer);
+        if (_bodies.TryGetValue(Player, out var player)) ResolveAnimatedBody(Player, player);
+        return _corrections.Count == 0 ? [] : _corrections.ToArray();
+    }
+
+    private void ResolveAnimatedBody(int id, Body body)
+    {
+        if (body.Revision != _revision) return;
+        var (x, z) = Place(id, body.Position.X, body.Position.Y, body.Position.Z, 0.01);
+        if (x == body.Position.X && z == body.Position.Z) return;
+        body.Position.X = (float)x;
+        body.Position.Z = (float)z;
+        _corrections.Add(id);
+        _corrections.Add(x);
+        _corrections.Add(z);
+    }
+
+    internal (double X, double Z) Place(int id, double x, double y, double z, double step = 0.04)
     {
         var position = new Vector3((float)x, (float)y, (float)z);
         if (!FindContact(id, position, Vector3.Zero, out _, out _)) return (x, z);
 
         // Procura o ponto livre mais próximo sem impor um afastamento universal.
-        for (var ring = 1; ring <= 24 + _bodies.Count * 4; ring++)
+        for (var ring = 1; ring <= (int)((0.96 + _bodies.Count * 0.16) / step); ring++)
         for (var direction = 0; direction < 16; direction++)
         {
             var (sin, cos) = Math.SinCos(Math.Tau * direction / 16);
-            var px = x + ring * 0.04 * cos;
-            var pz = z + ring * 0.04 * sin;
+            var px = x + ring * step * cos;
+            var pz = z + ring * step * sin;
             if (Math.Abs(px) > WorldHalf || Math.Abs(pz) > WorldHalf) continue;
             if (!FindContact(id, new((float)px, (float)y, (float)pz), Vector3.Zero, out _, out _))
                 return (px, pz);

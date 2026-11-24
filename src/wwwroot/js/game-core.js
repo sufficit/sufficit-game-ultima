@@ -2758,7 +2758,7 @@
             const { x, y, z } = root.position;
             for (const mesh of characterRigs.get(root).shadowMeshes) {
                 if (!mesh.isEnabled() || !mesh.isVisible) continue;
-                const matrix = mesh.computeWorldMatrix();
+                const matrix = mesh.computeWorldMatrix(true);
                 const { center, extendSize } = mesh.getBoundingInfo().boundingBox;
                 BABYLON.Vector3.TransformCoordinatesToRef(center, matrix, hitboxCenter);
                 if (count + 13 > actorHitboxes.length) {
@@ -2789,7 +2789,22 @@
         addIfNear(-3, wandererRoot);
         for (const { serial, avatar } of remoteSlots.values()) addIfNear(serial, avatar);
         if (count) add(-1, player);
-        if (count || hadHitboxes) terrain.SetCharacterHitboxes(actorHitboxes.subarray(0, count), count);
+        if (count || hadHitboxes) {
+            const corrections = terrain.SetCharacterHitboxes(actorHitboxes.subarray(0, count), count);
+            for (let i = 0; i < corrections.length; i += 3) {
+                const id = corrections[i], x = corrections[i + 1], z = corrections[i + 2];
+                const entry = id >= 0 ? remoteSlots.get(id) : null;
+                const root = id === -1 ? player : id === -3 ? wandererRoot : entry?.avatar;
+                if (root) {
+                    root.position.x = x;
+                    root.position.z = z;
+                }
+                if (entry) {
+                    entry.label.position.x = x;
+                    entry.label.position.z = z;
+                }
+            }
+        }
         hadHitboxes = count > 0;
     }
 
@@ -3022,9 +3037,6 @@
                 const pad = padState;
                 advanceCamera(delta, pad);
                 syncColliders();
-                const p = player.position, g = guardianRoot.position, w = wandererRoot.position;
-                terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
-                syncCharacterHitboxes();
                 const travelled = movePlayer(delta, pad);
                 if (player) {
                     const { x, z } = player.position;
@@ -3035,6 +3047,10 @@
                 orbitEye.set(camera.target.x + cameraFrame[3], camera.target.y + cameraFrame[4], camera.target.z + cameraFrame[5]);
                 camera.radius = Math.min(traceWorld(camera.target, orbitEye), cameraFrame[6]);
                 updateOtherCharacters(delta);
+                const p = player.position, g = guardianRoot.position, w = wandererRoot.position;
+                terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
+                syncCharacterHitboxes();
+                camera.target.set(p.x, p.y + CAM_UP.y, p.z);
                 checkNear();
                 updateNearbyObject();
                 if (crowdCount) { updateCrowd(delta); }

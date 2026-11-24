@@ -60,8 +60,19 @@ internal static partial class BrowserExports
     }
 
     [JSExport]
-    internal static void SetCharacterHitboxes(double[] values, int length)
-        => _characters.SetHitboxes(values.AsSpan(0, length));
+    internal static double[] SetCharacterHitboxes(double[] values, int length)
+    {
+        _characters.SetHitboxes(values.AsSpan(0, length));
+        if (length == 0) return [];
+        var corrections = _characters.ResolveAnimatedContacts();
+        for (var i = 0; i < corrections.Length; i += 3)
+        {
+            var id = (int)corrections[i];
+            if (id >= 0) _remoteAvatars!.CorrectPosition(id, corrections[i + 1], corrections[i + 2]);
+            else if (id == PlayerCharacterSpace.Player) PlayerFeet.Reset();
+        }
+        return corrections;
+    }
 
     [JSExport]
     internal static void ResetCamera() => Camera.Reset();

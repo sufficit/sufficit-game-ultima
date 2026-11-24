@@ -53,6 +53,13 @@ flowchart LR
 
 ## Simulação e interoperabilidade
 
+### Regras de física dos corpos
+
+- **Nenhum corpo ocupa o mesmo lugar no espaço.** A resolução de contato
+  entre personagens considera o movimento e a pose final de cada quadro.
+  Uma animação em repouso também pode produzir contato. A simulação
+  representa os corpos próximos por caixas orientadas das malhas.
+
 O Babylon.js envia ao C# centros, raios e limites de altura dos colisores
 quando muda o conjunto de obstáculos ativos. A cada quadro, o C# devolve
 posição, orientação desejada e distância percorrida. Uma chamada por personagem

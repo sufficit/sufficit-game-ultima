@@ -400,6 +400,17 @@ occupied.SetHitboxes([
 var sideBody = occupied.Move(PlayerCharacterSpace.Player, 0, 0, 0, 0, 3);
 Check("aproximação lateral usa o semieixo girado junto com a malha",
     sideBody.Blocked && Math.Abs(sideBody.Z - 1.598) < 1e-5);
+var animatedBodies = new PlayerCharacterSpace();
+animatedBodies.Set(PlayerCharacterSpace.Player, 0, 0, 0);
+animatedBodies.Set(0, 0.62, 0, 0);
+animatedBodies.SetHitboxes([
+    PlayerCharacterSpace.Player, .31, 1.03, 0, .06, 0, 0, 0, .21, 0, 0, 0, .05,
+    0, -.31, 1.03, 0, .06, 0, 0, 0, .21, 0, 0, 0, .05
+]);
+var poseCorrection = animatedBodies.ResolveAnimatedContacts();
+Check("braços que entram em contato na pose são corrigidos sem deslocar o jogador",
+    poseCorrection.Length == 3 && poseCorrection[0] == 0 && double.Hypot(poseCorrection[1] - .62, poseCorrection[2]) >= .099);
+Check("a resolução da pose estabiliza quando o contato some", animatedBodies.ResolveAnimatedContacts().Length == 0);
 var recovering = new PlayerMovement(1.75, .41, .03);
 recovering.Trip(1);
 Check("tropeço tem reação e recuperação finita", recovering.Recover(.16) > 0.8 && recovering.Recover(.48) == 0);

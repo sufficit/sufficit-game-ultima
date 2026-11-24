@@ -28,6 +28,11 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
         characters?.Remove(id);
     }
 
+    internal void CorrectPosition(int id, double x, double z)
+    {
+        if (_avatars.TryGetValue(id, out var actor)) (actor.X, actor.Z) = (x, z);
+    }
+
     internal bool Target(int id, double x, double z, double yaw)
     {
         if (!_avatars.TryGetValue(id, out var actor)) return false;
