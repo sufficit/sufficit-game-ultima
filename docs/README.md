@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Relógio GMT, céu de Greenwich e perfis de clima](activities/202611241645-relogio-ceu-clima.md)
+
 - [Estabilidade da postura em repouso](activities/202611241631-postura-em-repouso.md)
 
 - [Alinhamento do joelho na inversão de marcha](activities/202611241621-joelho-na-inversao.md)
