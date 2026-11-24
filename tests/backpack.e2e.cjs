@@ -36,6 +36,31 @@ async function ready(page) {
     // pode passar de 3 min; a janela de 300 s cobre sem depender do teto do executor.
     }), 'o jogo não ficou pronto (chunks, toco e fila de modelos)', 300000);
 }
+async function readyBridge(page) {
+    // 2ª aba: a checagem de atomicidade só exige a ponte da mochila ligada
+    // (game.backpack.init -> .NET), não a cena inteira. Dois jogos renderizados por
+    // software no mesmo navegador estouram o container de 2 GB antes dos chunks e dos
+    // modelos; as demais cargas continuam esperando o jogo pronto de verdade (ready()).
+    // O sinal é a primeira leitura da mochila: Index.razor chama backpack.init e logo
+    // em seguida SynchronizeAsync (game.backpack.read), então ler = ponte ligada.
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    await page.evaluate(() => {
+        const read = game.backpack.read;
+        window.__bridgeBound = false;
+        game.backpack.read = function (...args) { window.__bridgeBound = true; return read.apply(this, args); };
+    });
+    try {
+        await until(() => page.evaluate(() => window.__bridgeBound === true),
+            'a ponte da mochila não ligou na 2ª aba', 300000);
+    } catch (e) {
+        const state = await page.evaluate(async () => ({
+            hasBuild: !!game?.build?.state,
+            chunks: game?.build?.state ? (await game.build.state())?.chunks : null
+        })).catch(err => ({ erro: String(err) }));
+        e.message += ' ' + JSON.stringify(state);
+        throw e;
+    }
+}
 async function lookIntoExcavation(target) {
     // Mantém o fundo visível para atingir o mesmo ponto em cada camada.
     await target.evaluate(async()=>{
@@ -196,7 +221,7 @@ async function until(check, label='A alteração esperada não apareceu', timeou
         await page.getByRole('button',{name:'Parar coleta',exact:true}).click();
         await bag(page);
         const second=await context.newPage();
-        await ready(second);
+        await readyBridge(second);
         await Promise.all([page,second].map(p=>p.evaluate(r=>game.backpack.collect(r),
             {id:'concurrency-check',item:'Validação de duplicidade',kind:'object'})));
         assert.equal((await records(page)).length,7);
