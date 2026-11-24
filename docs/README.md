@@ -47,10 +47,6 @@ Prioritários:
 
 Futuros (bom ter na manga):
 
-6. [PLAN-CAMERA-TRACE-COLLISION.md](PLAN-CAMERA-TRACE-COLLISION.md) —
-   câmera orbital com colisão por trace em degraus.
-7. [PLAN-TERRAIN-CHUNKS.md](PLAN-TERRAIN-CHUNKS.md) —
-   terreno em chunks com janela deslizante e costura de seams.
 8. [PLAN-CROWD-SKINNING.md](PLAN-CROWD-SKINNING.md) —
    multidões: skeletons compartilhados, bone texture e LOD por tamanho em tela.
 9. [PLAN-UI-DECLARATIVE.md](PLAN-UI-DECLARATIVE.md) —
@@ -64,6 +60,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 `/mnt/sufficit/lineage-rust`). Cada plano cita os arquivos-fonte correspondentes.
 
 ## Atividades (`activities/`)
+
+- [Câmera e streaming do terreno](activities/202611232122-camera-e-streaming.md)
 
 - [Terreno em C# WebAssembly](activities/202611231906-terreno-csharp-wasm.md)
 

@@ -3,7 +3,7 @@
 **Status**: ✅ plano concluído em 23/11/2026 — F1–F4, F5a, F5b (base com colisão real),
 F6, F7a e F7b (PBR+IBL/vento/água) entregues e validadas em produção; refinamentos
 futuros (marching cubes p/ formas livres, CSM/SSAO/DoF) registrados como follow-up ·
-absorve o escopo do [PLAN-TERRAIN-CHUNKS.md](PLAN-TERRAIN-CHUNKS.md)
+absorve o escopo do [atividade de câmera e streaming](activities/202611232122-camera-e-streaming.md)
 
 ## Decisões que moldam este plano (decisão do usuário, 22/11/2026)
 

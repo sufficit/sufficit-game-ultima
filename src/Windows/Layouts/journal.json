@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "title": "Diário",
+  "controls": [
+    { "type": "speaker", "text": "Diário" },
+    { "type": "note", "bind": "empty", "when": "empty" },
+    { "type": "list", "bind": "entries", "when": "hasEntries" },
+    { "type": "row", "children": [
+      { "type": "button", "bind": "theme", "style": "outline", "action": "theme" },
+      { "type": "button", "text": "Fechar · Esc", "action": "close" }
+    ] }
+  ]
+}

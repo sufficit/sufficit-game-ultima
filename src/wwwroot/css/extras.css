@@ -79,3 +79,6 @@ body[data-input="touch"] .hint-touch { display: inline; }
 .ai-panel .ai-models button { text-align: left; font-size: .72rem; padding: .3rem .5rem; }
 .ai-panel .ai-models button[aria-pressed="true"] { outline: 1px solid #38d9a9; }
 .ai-panel[data-ai-state="loading"] progress { accent-color: #74c0fc; }
+
+/* As notificações ficam acima do mundo enquanto uma janela usa a base da tela. */
+body:has(.ultima-window) .sui-snackbar-host { top: var(--sui-space-4); bottom: auto; }

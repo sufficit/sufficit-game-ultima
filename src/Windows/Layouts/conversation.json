@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "title": "Conversa",
+  "controls": [
+    { "type": "speaker", "bind": "speaker" },
+    { "type": "line", "bind": "line" },
+    { "type": "note", "bind": "source", "when": "source" },
+    { "type": "form", "action": "speak", "children": [
+      { "type": "input", "id": "dialog-input", "bind": "draft", "text": "Escreva algo para a Guardiã…", "label": "Escreva para a Guardiã", "maxLength": 300 },
+      { "type": "submit", "text": "Enviar", "icon": "send", "label": "Enviar para a Guardiã" },
+      { "type": "button", "bind": "dictation", "icon": "audio", "style": "outline", "action": "dictate" }
+    ] },
+    { "type": "note", "bind": "speechError", "when": "speechError", "style": "error" },
+    { "type": "row", "children": [
+      { "type": "button", "bind": "advance", "action": "advance" },
+      { "type": "button", "text": "Fechar · Esc", "style": "outline", "action": "close" }
+    ] }
+  ]
+}

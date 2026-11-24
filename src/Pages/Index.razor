@@ -2,6 +2,7 @@
 @implements IDisposable
 @using Ultima.Npc
 @using Ultima.Browser
+@using Ultima.Windows
 @inject NavigationManager Navigation
 @inject Backpack BackpackState
 @inject Workshop WorkshopService
@@ -121,6 +122,8 @@
                 <SUICard Elevation="3" Class="ultima-card--glass">
                     <SUICardContent>
                         <SUIStack Spacing="2">
+
+                            <SUIButton SizeValue="SUISize.Small" OnClick="OpenJournal">Diário</SUIButton>
 
                             <SUIExpansionPanel Title="Mochila" StartIcon="inbox">
                                 <SUIStack Spacing="2">
@@ -435,37 +438,12 @@
 
         @if (_view is not null)
         {
-            <section class="ultima-dialog" role="dialog" aria-modal="false" aria-label="Conversa com a Guardiã">
-                <SUICard Elevation="3" Class="ultima-card--glass">
-                    <SUICardContent>
-                        <SUIStack Spacing="2">
-                            <p class="ultima-dialog__speaker">@_view.Lines[_view.CurrentLine].Speaker</p>
-                            <p class="ultima-dialog__line" aria-live="polite">@_view.Lines[_view.CurrentLine].Text</p>
-                            @if (!_view.Thinking && !string.IsNullOrEmpty(_view.ReplySource) && _view.Lines[_view.CurrentLine].Speaker != "Você")
-                            {
-                                <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">✦ origem da resposta: @_view.ReplySource</SUIText>
-                            }
-                            <form class="ultima-dialog__compose" @onsubmit="SubmitDialogAsync" @onsubmit:preventDefault="true">
-                                <label class="sr-only" for="dialog-input">Escreva para a Guardiã</label>
-                                <SUITextField TValue="string" Id="dialog-input" Placeholder="Escreva algo para a Guardiã…"
-                                              MaxLength="300" Immediate="true" @bind-Value="_dialogDraft" />
-                                <SUIButton ButtonTypeValue="SUIButtonType.Submit" SizeValue="SUISize.Small" StartIcon="send"
-                                           aria-label="Enviar para a Guardiã">Enviar</SUIButton>
-                                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="audio"
-                                           OnClick="ToggleDictationAsync">@(_dictating ? "Parar ditado" : "Ditar")</SUIButton>
-                            </form>
-                            @if (!string.IsNullOrEmpty(_speechError))
-                            {
-                                <SUIText Typo="SUITypo.caption" Color="SUIColor.Error">@_speechError</SUIText>
-                            }
-                            <SUIStack Row="true" Spacing="2" Wrap="true">
-                                <SUIButton OnClick="AdvanceAsync">@(_view.CurrentLine + 1 < _view.Lines.Count ? "Continuar · E/A" : "Encerrar · E/A")</SUIButton>
-                                <SUIButton VariantValue="SUIVariant.Outlined" OnClick="CloseDialog">Fechar · Esc</SUIButton>
-                            </SUIStack>
-                        </SUIStack>
-                    </SUICardContent>
-                </SUICard>
-            </section>
+            <GameWindow Layout="GameLayout.Conversation" State="ConversationState()" Label="@(_view.Speaker == "Andarilho" ? "Conversa com o Andarilho" : "Conversa com a Guardiã")"
+                        Contrast="_windowContrast" OnAction="DispatchWindowActionAsync" OnEdit="EditWindow" />
+        }
+        else if (_journalOpen)
+        {
+            <GameWindow Layout="GameLayout.Journal" State="_journalState" Contrast="_windowContrast" OnAction="DispatchWindowActionAsync" />
         }
     </main>
 </div>
@@ -707,7 +685,7 @@
             LiveChat = Live.SayAsync,
             WorldCommand = operation => WorkshopService.EditAsync(operation, _browserLifetime.Token),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
-            Close = () => _ = InvokeAsync(CloseDialog),
+            Close = () => _ = InvokeAsync(() => DispatchWindowActionAsync("close")),
             MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; RunNpcTick(); StateHasChanged(); }),
             NetStatus = (state, peers) => _ = InvokeAsync(() => { _netStatus = state; StateHasChanged(); }),
             Chat = (from, text) => _ = InvokeAsync(() => { AddChat(from, text); StateHasChanged(); }),
@@ -891,6 +869,65 @@
         else
         {
             Dispatch(new PlayerInteracted(NowMs()));
+        }
+        return Task.CompletedTask;
+    }
+
+    private bool _journalOpen;
+    private bool _windowContrast;
+    private readonly WindowState _conversationState = new();
+    private readonly WindowState _journalState = new();
+
+    private WindowState ConversationState()
+    {
+        var view = _view!;
+        var line = view.Lines[view.CurrentLine];
+        var values = _conversationState.Text;
+        values["speaker"] = line.Speaker;
+        values["line"] = line.Text;
+        values["source"] = !view.Thinking && !string.IsNullOrEmpty(view.ReplySource) && line.Speaker != "Você"
+            ? "✦ origem da resposta: " + view.ReplySource : "";
+        values["draft"] = _dialogDraft;
+        values["dictation"] = _dictating ? "Parar ditado" : "Ditar";
+        values["speechError"] = _speechError;
+        values["advance"] = view.CurrentLine + 1 < view.Lines.Count ? "Continuar · E/A" : "Encerrar · E/A";
+        return _conversationState;
+    }
+
+    private void EditWindow((string Key, string Value) edit)
+    {
+        if (edit.Key == "draft") _dialogDraft = edit.Value;
+    }
+
+    private void OpenJournal()
+    {
+        _panelOpen = false;
+        _journalOpen = true;
+        var entries = Dialogs.RecentEntries();
+        _journalState.Lists["entries"] = entries;
+        _journalState.Text["empty"] = entries.Count == 0 ? "Suas conversas com personagens aparecem aqui." : "";
+        _journalState.Text["hasEntries"] = entries.Count == 0 ? "" : "true";
+        UpdateWindowThemeLabel();
+    }
+
+    private void UpdateWindowThemeLabel() =>
+        _journalState.Text["theme"] = _windowContrast ? "Tema padrão" : "Mais contraste";
+
+    private Task DispatchWindowActionAsync(string action)
+    {
+        switch (action)
+        {
+            case "advance": return AdvanceAsync();
+            case "speak": return SubmitDialogAsync();
+            case "dictate": return ToggleDictationAsync();
+            case "close":
+                if (_view is not null) CloseDialog();
+                else _journalOpen = false;
+                break;
+            case "theme":
+                _windowContrast = !_windowContrast;
+                UpdateWindowThemeLabel();
+                break;
         }
         return Task.CompletedTask;
     }
