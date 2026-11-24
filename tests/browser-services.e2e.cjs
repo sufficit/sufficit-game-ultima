@@ -9,8 +9,8 @@ const queueKey = 'ultima-dialog-queue';
 const previous = { id: 'd-legacy', t: 1700000000000, npc: 'Guardiã', player: 'Olá', reply: 'Bem-vindo',
     model: '', source: 'servidor · regras', ms: 23 };
 
-async function until(check, label) {
-    for (let attempt = 0; attempt < 100; attempt++) {
+async function until(check, label, attempts = 100) {
+    for (let attempt = 0; attempt < attempts; attempt++) {
         if (await check()) return;
         await new Promise(resolve => setTimeout(resolve, 200));
     }
@@ -144,7 +144,7 @@ async function until(check, label) {
                 const pick = scene.pick(650, 380, m => !!(m && m.name && m.name.indexOf('ground-') === 0));
                 return !!(pick && pick.hit);
             });
-        }, 'terreno visível sob o ponto de escultura');
+        }, 'terreno visível sob o ponto de escultura', 600);
         await page.evaluate(async () => {
             await game.build.mode('raise', { r: 1.5 });
             game.terrainClick(650, 380);
