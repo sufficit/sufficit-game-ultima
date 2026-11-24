@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Visibilidade dos avatares remotos distantes](activities/202611241114-visibilidade-avatares-remotos.md)
+
 - [Sombras dos avatares remotos por distância](activities/202611241105-sombras-avatares-remotos.md)
 
 - [Desempenho dos avatares remotos em C#](activities/202611241052-desempenho-avatares-remotos.md)
