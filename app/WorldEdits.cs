@@ -336,6 +336,56 @@ sealed partial class GameWorld
         return (status, reply);
     }
 
+    (int, JsonObject) TunnelCmd(Character ch, JsonObject data, double now)
+    {
+        if (data["points"] is not JsonArray path || path.Count is < 3 or > 8)
+            return (400, J.Err("tunnel_path_3_to_8"));
+        var radius = 2.4;
+        if (data.ContainsKey("r") && !J.TryFloat(data["r"], out radius))
+            return (400, J.Err("x_z_r_invalid"));
+        radius = Math.Clamp(radius, 1.8, 3);
+        var points = new List<(double X, double Y, double Z)>(path.Count);
+        var length = 0.0;
+        foreach (var point in path)
+        {
+            if (point is not JsonObject node || !J.TryFloat(node["x"], out var x) ||
+                !J.TryFloat(node["y"], out var y) || !J.TryFloat(node["z"], out var z) ||
+                !InEditBounds(x, z) || y is < -20 or > 45)
+                return (400, J.Err("invalid_tunnel_point"));
+            if (points.Count > 0)
+            {
+                var previous = points[^1];
+                var dx = x - previous.X;
+                var dz = z - previous.Z;
+                var segment = Math.Sqrt(dx * dx + dz * dz);
+                if (segment < 5 || Math.Abs(y - previous.Y) > segment * 0.8)
+                    return (400, J.Err("tunnel_points_too_close_or_steep"));
+                length += segment;
+            }
+            points.Add((x, y, z));
+        }
+        if (length > 60) return (400, J.Err("tunnel_too_long"));
+        if (_edits.Count(op => J.Str(op["kind"]) == "tunnel") >= 48)
+            return (507, J.Err("too_many_tunnels"));
+
+        var centerX = (points.Min(point => point.X) + points.Max(point => point.X)) / 2;
+        var centerZ = (points.Min(point => point.Z) + points.Max(point => point.Z)) / 2;
+        var extent = points.Max(point => Math.Max(Math.Abs(point.X - centerX), Math.Abs(point.Z - centerZ))) + radius + 0.5;
+        var stored = points.Select((point, index) => new JsonObject
+        {
+            ["x"] = J.R(point.X, 3),
+            ["z"] = J.R(point.Z, 3),
+            ["y"] = J.R(point.Y + radius * (index == 0 || index == points.Count - 1 ? 0.4 : -1.35), 3),
+        });
+        var op = new JsonObject
+        {
+            ["kind"] = "tunnel", ["x"] = J.R(centerX, 3), ["z"] = J.R(centerZ, 3),
+            ["r"] = J.R(extent, 3), ["radius"] = J.R(radius, 3), ["points"] = J.Arr(stored),
+            ["by"] = ch.Name, ["at"] = J.R(now, 3), ["cid"] = J.Str(data["cid"]),
+        };
+        return RecordPlayerEdits(ch, [op]);
+    }
+
     /// <summary>Remove um objeto plantado (uid).</summary>
     (int, JsonObject) RemoveCmd(Character ch, JsonObject data, double now)
     {

@@ -185,6 +185,7 @@ sealed partial class GameWorld
         ["jobs"] = J.Arr(_jobs.Select(j => (JsonNode?)JobPublic(j))),
         // Edição de mundo (F4/F6): ops de pincel para o replay do terreno e objetos plantados.
         ["edits"] = J.Arr(_edits.Select(e => (JsonNode?)e.DeepClone())),
+        ["volumeTunnels"] = true,
         ["placements"] = J.Arr(_placements.Select(p => (JsonNode?)p.ToJson())),
     };
 

@@ -16,8 +16,9 @@ Reaproveitar entregas comprovadas e preservar os critérios pendentes de cada fr
    no build de produção `f59bfde`.
 5. [parcialmente bloqueado] Oficina, undo, migração, catálogo por mundo, filtro
    SHA-256, limpeza de órfãos e gráficos avançados implementados e verificados
-   localmente. A API exige publicação pelo Sufficit Run. A escavação volumétrica
-   em formas livres segue em aberto no plano de mundo.
+   localmente. Os corredores volumétricos passaram em dois navegadores com API
+   local, o replay preservou o corredor após reiniciar e o undo convergiu.
+   A publicação da API depende do Sufficit Run.
 6. [em andamento] Validar o conjunto no GitHub Pages, atualizar o índice e
    converter os planos que tiverem todos os critérios comprovados.
 
@@ -28,8 +29,9 @@ O ensaio local reutilizou a câmera orbital e verificou recuo de 7,50 m para
 1,25 m diante de pinheiros, recuperação do zoom, arrasto, roda e descarte do
 chunk de origem nos dois renderizadores. A emenda e a mochila passaram.
 
-Próxima ação. Confirmar o perfil Cinemático e a proposta de variação na
-publicação estática. O publicador `workspace_app_publish` não foi exposto
+Próxima ação. Confirmar os volumes no build do GitHub Pages usando dados de
+teste. O perfil Cinemático e a proposta por diálogo passaram no build
+`105c2a7`. O publicador `workspace_app_publish` não foi exposto
 à sessão. O CLI respondeu que o shell não recebeu a ligação ao publicador;
 o endpoint atual do Run segue saudável com o volume existente.
 

@@ -97,15 +97,23 @@ def main(path):
             assert result["ok"]
             request(url, command, {"action": "undo_surface", "edit": key}, a, expect=404)
 
+        path_points = [{"x": 0, "y": 0, "z": 4}, {"x": 4, "y": 0.5, "z": 10}, {"x": 10, "y": 0.4, "z": 18}]
+        invalid = request(url, command, {"action": "tunnel", "points": path_points[:2]}, a, expect=400)
+        assert invalid["error"] == "tunnel_path_3_to_8"
+        removed_tunnel = request(url, command, {"action": "tunnel", "points": path_points, "r": 2.4}, a)
+        request(url, command, {"action": "undo_surface", "edit": removed_tunnel["edit"]}, a)
+        tunnel = request(url, command, {"action": "tunnel", "points": path_points, "r": 2.4}, b)
         final = request(url, "/v1/game/map")
+        assert final["volumeTunnels"]
+        assert final["edits"][-1]["kind"] == "tunnel" and final["edits"][-1]["points"][1]["y"] < -2.5
         assert final["tiles"]["3,3"]["rev"] == tile["revision"]
-        assert [op["edit"] for op in final["edits"]] == [paint["edit"]]
+        assert [op["edit"] for op in final["edits"]] == [paint["edit"], tunnel["edit"]]
         for client in [alice, bob]:
             events = request(url, f"/v1/game/events?since={client['eventsFrom']}&wait=0", token=client["token"])
-            assert sum(event.get("op", {}).get("kind") == "undo_surface" for event in events["events"]) == 3
+            assert sum(event.get("op", {}).get("kind") == "undo_surface" for event in events["events"]) == 4
             assert request(url, "/v1/game/state", token=client["token"])["map"]["edits"] == final["edits"]
         ops = journal(path)
-        assert len([op for op in ops if op["kind"] == "surface_batch"]) == 4
+        assert len([op for op in ops if op["kind"] == "surface_batch"]) == 6
         assert any(op["kind"] == "tile" and op["cell"] == "3,3" for op in ops)
         assert [op["op"] for op in ops] == list(range(1, len(ops) + 1))
 

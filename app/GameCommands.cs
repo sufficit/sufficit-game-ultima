@@ -217,6 +217,7 @@ sealed partial class GameWorld
                 case "remove": return RemoveCmd(ch, data, now);
                 case "passage": return PassageCmd(ch, data, now);
                 case "carve": return CarveCmd(ch, data, now);
+                case "tunnel": return TunnelCmd(ch, data, now);
                 default:
                     return (400, new JsonObject { ["error"] = "unknown_action", ["actions"] = J.StrArr(Actions) });
             }

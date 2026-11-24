@@ -7,13 +7,18 @@ namespace Ultima.Terrain;
 internal static partial class BrowserExports
 {
     private static TerrainSurface _surface = new();
+    private static TerrainVolumes _volumes = new(_surface);
 
     [JSExport]
     internal static int[] CrossedAnimationMarks(double previous, double current, bool loops, double[] marks)
         => AnimationTimeline.Crossed(previous, current, loops, marks);
 
     [JSExport]
-    internal static void Reset() => _surface = new TerrainSurface();
+    internal static void Reset()
+    {
+        _surface = new TerrainSurface();
+        _volumes = new(_surface);
+    }
 
     [JSExport]
     internal static double BaseHeight(double x, double z) => TerrainSurface.BaseHeight(x, z);
@@ -34,7 +39,29 @@ internal static partial class BrowserExports
     internal static void SetEdits(double[] values) => _surface.SetEdits(values);
 
     [JSExport]
-    internal static byte[] Build(int cx, int cz) => TerrainMesh.Build(_surface, cx, cz);
+    internal static byte[] Build(int cx, int cz)
+    {
+        var tunnels = _volumes.InChunk(cx, cz);
+        return tunnels.Length == 0 ? TerrainMesh.Build(_surface, cx, cz)
+            : TerrainVolumeMesh.Build(_surface, _volumes, tunnels, cx, cz);
+    }
+
+    [JSExport]
+    internal static void SetVolumes(double[] values) => _volumes.Set(values);
+
+    [JSExport]
+    internal static bool HasVolume(int cx, int cz) => _volumes.InChunk(cx, cz).Length != 0;
+
+    [JSExport]
+    internal static bool NearVolume(double x, double z) => _volumes.Near(x, z);
+
+    [JSExport]
+    internal static bool TerrainBlocks(double x, double y, double z, double clearance)
+        => _volumes.Blocks(x, y, z, clearance);
+
+    [JSExport]
+    internal static double VolumeFloor(double x, double z, double foot, double reach)
+        => _volumes.Floor(x, z, foot, reach);
 
     [JSExport]
     internal static double[] SamplePalette(int cx, int cz, int samples, int gutter)

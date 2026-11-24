@@ -15,6 +15,19 @@ reversão. O replay materializa somente as edições em vigor. Os
 clientes atualizam o mapa quando recebem `world_edited`. Edições
 legadas, que não possuem dono de sessão, permanecem no mapa.
 
+## Corredores curvos
+
+Quando o servidor anuncia suporte a volumes, **Corredor curvo** fica disponível
+na Oficina. Clique na entrada, no ponto da curva e na saída. O mesher em
+C# WebAssembly resolve as faces do volume em uma grade de 0,50 m. A camada
+externa do terreno e o piso subterrâneo são selecionados pela altura do
+personagem. O corredor inteiro é desfeito em uma única ação.
+
+A API `tunnel` aceita de três a oito pontos e 60 m de comprimento total.
+O raio fica entre 1,8 e 3 m. Cada ponto indica a altura da superfície
+escolhida. O servidor deriva os pontos internos abaixo dela e registra
+toda a trajetória como um lote no journal.
+
 ## Catálogo de cada instalação
 
 | Variável | Efeito |

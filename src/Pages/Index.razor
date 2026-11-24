@@ -218,6 +218,10 @@
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="delete" OnClick="@(() => BuildModeAsync("dig"))">Cavar</SUIButton>
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="arrow-right" Title="Dois cliques: início e fim" OnClick="@(() => BuildModeAsync("passage"))">Passagem</SUIButton>
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="inbox" Title="Cava uma gruta com paredão de rocha" OnClick="@(() => BuildModeAsync("cave"))">Gruta</SUIButton>
+                                                @if (Live.HasVolumeTunnels)
+                                                {
+                                                    <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" OnClick="ChooseTunnelAsync">Corredor curvo</SUIButton>
+                                                }
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="palette" OnClick="@(() => BuildModeAsync("paint"))">Pintar</SUIButton>
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined"
                                                            Disabled="@(!WorkshopService.CanUndoSurface)" OnClick="UndoSurfaceAsync">Desfazer edição</SUIButton>
@@ -520,6 +524,15 @@
         if ((!_panelOpen || !_workshopOpen) && !string.IsNullOrWhiteSpace(message)) { Snackbar.Info(message); }
     }
 
+    private async Task ChooseTunnelAsync()
+    {
+        await BuildModeAsync("tunnel", new { r = _brushRadius });
+        _panelOpen = false;
+        Snackbar.Info("Clique na entrada, na curva e na saída do corredor.");
+    }
+
+    private void ShowVolumeTunnels(bool supported) => _ = InvokeAsync(StateHasChanged);
+
     private Task UndoSurfaceAsync() => WorkshopService.UndoSurfaceAsync(_browserLifetime.Token);
 
     private void OnWorkshopToggled(bool open) => _workshopOpen = open;
@@ -708,6 +721,7 @@
         Dialogs.Changed += ShowDialogCount;
         Live.Status += ShowLiveStatus;
         Live.Chat += ShowLiveChat;
+        Live.VolumeTunnelsChanged += ShowVolumeTunnels;
         BackpackState.Changed += ShowBackpack;
         BackpackState.Status += ShowBackpackStatus;
         WorkshopService.Status += ShowWorkshopStatus;
@@ -1174,6 +1188,7 @@
         Dialogs.Changed -= ShowDialogCount;
         Live.Status -= ShowLiveStatus;
         Live.Chat -= ShowLiveChat;
+        Live.VolumeTunnelsChanged -= ShowVolumeTunnels;
         BackpackState.Changed -= ShowBackpack;
         BackpackState.Status -= ShowBackpackStatus;
         WorkshopService.Status -= ShowWorkshopStatus;

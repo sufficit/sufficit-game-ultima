@@ -350,6 +350,7 @@
     // espalhamento e chunks passam a respeitar as edições automaticamente.
     const worldSculpts = [];
     const worldPaints = [];
+    const worldTunnels = [];
     const worldCarves = [];   // F5b base: grutas {x,z,r,y0,y1} — piso absoluto + rocha
     const PAINT_COLORS = {
         grass: [0.30, 0.46, 0.16], dirt: [0.47, 0.36, 0.23], sand: [0.78, 0.70, 0.50],
@@ -372,6 +373,12 @@
         for (const op of worldSculpts) { values.push(0, op.x, op.z, op.r, op.dh); }
         for (const op of worldCarves) { values.push(1, op.x, op.z, op.r, op.y0); }
         terrain.SetEdits(new Float64Array(values));
+        const volumes = [];
+        for (const op of worldTunnels) {
+            volumes.push(op.radius, op.points.length);
+            for (const point of op.points) { volumes.push(point.x, point.y, point.z); }
+        }
+        terrain.SetVolumes(new Float64Array(volumes));
     }
 
     // Paleta do solo (mesma lógica do gerador original), agora pintável por material.
@@ -638,10 +645,11 @@
         vd.uvs = values.subarray(3 + vertices * 6, indexStart);
         const indices = words.subarray(indexStart, indexStart + count);
         vd.indices = vertices > 65535 ? indices : Uint16Array.from(indices);
-        mesh.metadata = { terrainCells: cellCount ? words.subarray(indexStart + count) : null };
+        const volume = worldTunnels.length > 0 && terrain.HasVolume(cx, cz);
+        mesh.metadata = { volume, terrainCells: cellCount ? words.subarray(indexStart + count) : null };
         vd.applyToMesh(mesh, true);
         mesh.refreshBoundingInfo();
-        if (!cellCount) { saveChunk(cx, cz, vd.positions, vd.normals); }
+        if (!cellCount && !volume) { saveChunk(cx, cz, vd.positions, vd.normals); }
         return mesh;
     }
 
@@ -707,6 +715,7 @@
         if (op.kind === 'sculpt') { worldSculpts.push(op); }
         else if (op.kind === 'paint') { worldPaints.push(op); }
         else if (op.kind === 'carve') { worldCarves.push(op); }
+        else if (op.kind === 'tunnel' && Array.isArray(op.points) && op.points.length >= 2) { worldTunnels.push(op); }
         else { return false; }
         return true;
     }
@@ -731,7 +740,32 @@
         return Math.abs(cx * CHUNK - x) <= reach && Math.abs(cz * CHUNK - z) <= reach;
     }
 
-    function refreshChunk({ mesh, cx, cz }, geometryChanged) {
+    const queuedVolumeRefreshes = new Map();
+
+    function refreshChunk(ch, geometryChanged) {
+        if (geometryChanged && (ch.mesh.metadata?.volume ||
+            (worldTunnels.length > 0 && terrain.HasVolume(ch.cx, ch.cz)))) {
+            const key = chunkKey(ch.cx, ch.cz);
+            if (queuedVolumeRefreshes.has(key)) return;
+            queuedVolumeRefreshes.set(key, ch);
+            const label = 'volume ' + key;
+            modelQueue.push({
+                terrainChunk: true,
+                timing: { id: label, queuedAt: Math.round(performance.now()), cpuMs: 0, steps: 0, maxStepMs: 0 },
+                work: (function* () {
+                    yield { label, run: () => {
+                        queuedVolumeRefreshes.delete(key);
+                        if (chunkMap.get(key) === ch) rebuildChunk(ch, true);
+                    } };
+                })()
+            });
+            modelStatus.queue = modelQueue.length;
+            return;
+        }
+        rebuildChunk(ch, geometryChanged);
+    }
+
+    function rebuildChunk({ mesh, cx, cz }, geometryChanged) {
         if (geometryChanged) {
             buildChunkMesh(cx, cz, mesh);
             clearGroundPreview();
@@ -914,6 +948,25 @@
     const orbitEye = BABYLON.Vector3.Zero();
     const cameraClearance = 0.28;
 
+    function playerFloor(x, z) {
+        return worldTunnels.length && player
+            ? terrain.VolumeFloor(x, z, player.position.y, KNEE_HEIGHT)
+            : terrainHeight(x, z);
+    }
+
+    function passesVolume(x, z, dx, dz, originalFloor) {
+        if (!terrain.NearVolume(x, z) && !terrain.NearVolume(x - dx, z - dz)) { return true; }
+        const floor = playerFloor(x, z);
+        if (floor - originalFloor > KNEE_HEIGHT) { return false; }
+        const length = Math.hypot(dx, dz);
+        if (length < 1e-5) { return true; }
+        const y = floor + PLAYER_HEIGHT - 0.10;
+        const sideX = -dz * PLAYER_RADIUS / length, sideZ = dx * PLAYER_RADIUS / length;
+        return !terrain.TerrainBlocks(x, y, z, 0.06) &&
+            !terrain.TerrainBlocks(x + sideX, y, z + sideZ, 0.03) &&
+            !terrain.TerrainBlocks(x - sideX, y, z - sideZ, 0.03);
+    }
+
     function traceWorld(from, to) {
         const direction = cameraRay.direction;
         to.subtractToRef(from, direction);
@@ -939,7 +992,11 @@
         for (let interval = 1; interval <= intervals; interval++) {
             const t = Math.min(interval * 0.25, distance);
             const x = from.x + direction.x * t, z = from.z + direction.z * t;
-            if (from.y + direction.y * t < visibleGroundHeight(x, z) + cameraClearance) {
+            const y = from.y + direction.y * t;
+            const blocked = worldTunnels.length && terrain.NearVolume(x, z)
+                ? terrain.TerrainBlocks(x, y, z, cameraClearance)
+                : y < visibleGroundHeight(x, z) + cameraClearance;
+            if (blocked) {
                 distance = t;
                 break;
             }
@@ -1200,6 +1257,7 @@
         const chunk = chunkMap.get(chunkKey(cx, cz));
         const vertices = chunk?.mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
         if (!vertices) { return terrainHeight(x, z); }
+        if (chunk.mesh.metadata?.volume) { return playerFloor(x, z); }
         const gx = Math.max(0, Math.min(CHUNK_SUB, (x - (cx * CHUNK - CHUNK / 2)) / CHUNK_STEP));
         const gz = Math.max(0, Math.min(CHUNK_SUB, (z - (cz * CHUNK - CHUNK / 2)) / CHUNK_STEP));
         const i = Math.min(Math.floor(gx), CHUNK_SUB - 1);
@@ -1302,10 +1360,11 @@
     function setWorldEdits(edits, revision) {
         if (revision !== undefined && revision === editsAppliedRev) { return; }
         if (revision !== undefined) { editsAppliedRev = revision; }
-        const dirty = [...worldSculpts, ...worldPaints, ...worldCarves];
+        const dirty = [...worldSculpts, ...worldPaints, ...worldCarves, ...worldTunnels];
         worldSculpts.length = 0;
         worldPaints.length = 0;
         worldCarves.length = 0;
+        worldTunnels.length = 0;
         for (const op of edits || []) {
             if (recordSurfaceEdit(op)) { dirty.push(op); }
         }
@@ -1374,6 +1433,30 @@
     // ---------- Modo construção: cliques no terreno viram ops (F4/F6) ----------
     const buildState = { mode: 'off', asset: '', r: 5, dh: 1.2, mat: 'sand', p1: null };
 
+    const tunnelPoints = [];
+    let tunnelGuide = null;
+    function clearTunnelGuide() {
+        tunnelPoints.length = 0;
+        tunnelGuide?.dispose();
+        tunnelGuide = null;
+    }
+
+    function recordTunnelPoint(point, cid) {
+        tunnelPoints.push(point);
+        if (tunnelPoints.length === 3) {
+            host.worldOp({ action: 'tunnel', points: tunnelPoints.map(p => ({ x: p.x, y: p.y, z: p.z })),
+                r: Math.min(3, buildState.r), cid });
+            clearTunnelGuide();
+            return;
+        }
+        tunnelGuide?.dispose();
+        const path = tunnelPoints.map(p => new BABYLON.Vector3(p.x, p.y + 0.2, p.z));
+        if (path.length === 1) path.push(path[0].add(new BABYLON.Vector3(0, 0.35, 0)));
+        tunnelGuide = BABYLON.MeshBuilder.CreateLines('tunnel-guide', { points: path }, scene);
+        tunnelGuide.color.set(1, 0.8, 0.33);
+        tunnelGuide.isPickable = false;
+    }
+
     function terrainClickImpl(sx, sy) {
         if (buildState.mode === 'off' || !scene || typeof host.worldOp !== 'function') { return; }
         if (buildState.mode === 'collect') { collectAt(sx, sy); return; }
@@ -1388,6 +1471,10 @@
         if (!pick || !pick.hit) { return; }
         const p = pick.pickedPoint;
         const r3 = function (v) { return Math.round(v * 1000) / 1000; };
+        if (buildState.mode === 'tunnel') {
+            recordTunnelPoint(p, cid);
+            return;
+        }
         if (buildState.mode === 'passage') {
             if (!buildState.p1) {
                 buildState.p1 = { x: r3(p.x), z: r3(p.z) };
@@ -2544,10 +2631,21 @@
         movementSpeed += Math.max(-26 * deltaSeconds, Math.min(22 * deltaSeconds, targetSpeed - movementSpeed));
         if (movementSpeed <= 0) { return 0; }
         const { x, z } = player.position;
-        const ground = terrainHeight(x, z);
+        const ground = playerFloor(x, z);
         const stepping = player.position.y - FOOT_GAP > ground + 0.015;
         const distance = (stepping ? Math.min(2.8, movementSpeed) : movementSpeed) * deltaSeconds;
         moveWithObstacles(player.position, movementX * distance, movementZ * distance, ground);
+        if (worldTunnels.length && !passesVolume(player.position.x, player.position.z,
+            player.position.x - x, player.position.z - z, ground)) {
+            if (passesVolume(player.position.x, z, player.position.x - x, 0, ground)) {
+                player.position.z = z;
+            } else if (passesVolume(x, player.position.z, 0, player.position.z - z, ground)) {
+                player.position.x = x;
+            } else {
+                player.position.x = x;
+                player.position.z = z;
+            }
+        }
         const actualX = player.position.x - x, actualZ = player.position.z - z;
         const travelled = Math.hypot(actualX, actualZ);
         const yaw = travelled > 0.001 ? Math.atan2(actualX, actualZ) : Math.atan2(movementX, movementZ);
@@ -2644,7 +2742,10 @@
         const run = smoothstep(WALK_SPEED, RUN_SPEED, speed);
         rig.gaitWeight = lerp(rig.gaitWeight, Math.min(1, speed / 1.1), 1 - Math.exp(-13 * delta));
         rig.gaitPhase = (rig.gaitPhase + distance * Math.PI * 2 / lerp(1.1, 2.35, smoothstep(1.4, RUN_SPEED, speed))) % (Math.PI * 2);
-        if (rig.legs.length) { updateCharacterLegs(rig, delta, distance, speed, terrainHeight(root.position.x, root.position.z)); }
+        if (rig.legs.length) {
+            const { x, z } = root.position;
+            updateCharacterLegs(rig, delta, distance, speed, root === player ? playerFloor(x, z) : terrainHeight(x, z));
+        }
 
         const listening = frozen && (root === player || root === dialoguePartner);
         rig.speaking = Math.max(0, rig.speaking - delta);
@@ -2761,7 +2862,7 @@
             const localX = leg.side * LEG_SPACING;
             const footX = x + localX * cosine + (forward + SHOE_OFFSET) * sine;
             const footZ = z - localX * sine + (forward + SHOE_OFFSET) * cosine;
-            const floor = terrainHeight(footX, footZ);
+            const floor = root === player ? playerFloor(footX, footZ) : terrainHeight(footX, footZ);
             const support = root === player ? stepSurfaceAt(footX, footZ, floor) : floor;
             return { leg, forward, ankleY: support + ANKLE_HEIGHT + SOLE_CLEARANCE + lift, support, onObstacle: support > floor };
         });
@@ -3180,7 +3281,7 @@
         },
         resetPlayer() {
             movementSpeed = 0;
-            if (player) { player.position.x = 0; player.position.z = 0; player.rotation.y = 0; }
+            if (player) { player.position.set(0, terrainHeight(0, 0) + FOOT_GAP, 0); player.rotation.y = 0; }
             if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = orbitRadius = zoomTarget = 7.5; }
         },
         teleportToGuardian() {
@@ -3236,6 +3337,7 @@
                 activeMeshCount: scene.getActiveMeshes().length,
                 totalVertices: ch.mesh.getTotalVertices(),
                 terrainEngine: "csharp-wasm",
+                volume: ch.mesh.metadata?.volume === true,
                 indicesCount: ch.mesh.getTotalIndices ? ch.mesh.getTotalIndices() : null,
                 depthFunc: ch.mesh.material && ch.mesh.material.needDepthPrePass,
                 texCanvasSample: (function () {
@@ -3270,7 +3372,9 @@
         },
         build: {
             mode(m, opts) {
-                buildState.mode = m || 'off';
+                const nextMode = m || 'off';
+                if (nextMode !== buildState.mode) clearTunnelGuide();
+                buildState.mode = nextMode;
                 if (buildState.mode !== 'collect') { setCollectionPointer(null); }
                 buildState.p1 = null;
                 if (host.onBuildMode) { host.onBuildMode(buildState.mode); }

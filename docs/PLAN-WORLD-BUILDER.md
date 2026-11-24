@@ -1,8 +1,8 @@
 # PLAN-WORLD-BUILDER — Mundo expansível: edição 3D, geração assistida e persistência durável
 
 **Status**: base entregue em 23/11/2026 — F1–F4, F5a, F5b (base com colisão real),
-F6, F7a e F7b (PBR+IBL/vento/água) entregues e validadas em produção; refinamentos
-futuros (marching cubes p/ formas livres, CSM/SSAO/DoF) registrados como follow-up ·
+F6, F7a e F7b (PBR+IBL/vento/água) entregues e validadas em produção.
+Undo e corredores curvos dependem da atualização do backend Run ·
 absorve o escopo do [atividade de câmera e streaming](activities/202611232122-camera-e-streaming.md)
 
 ## Decisões que moldam este plano (decisão do usuário, 22/11/2026)
@@ -81,9 +81,17 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
       replay idênticos às demais ops; botão Gruta na Oficina.
 - [x] Validação: piso em -3,00 m exato (borda intacta) local e **-2,00 m em produção**
       (rev 31), 0 erros.
-- [ ] Formas livres (corredores curvos arbitrários): marching cubes sobre voxels —
-      entra quando o jogo pedir geometria além de cilindros (poços/salas/grutas já
-      cobertos com colisão real).
+- [x] Formas livres (corredores curvos): marching cubes no C# WebAssembly.
+      A API aceita de três a oito pontos; a Oficina inicia com entrada,
+      curva e saída. Cada trajeto é limitado a 60 m.
+  1. [concluído] Campo volumétrico e marching cubes compilados; RulesSmoke
+     confirmou o mesmo contorno de ambos os lados de uma divisa de chunks.
+  2. [concluído] Piso da caverna e terreno externo selecionados por altura;
+     teste nos dois modos confirmou movimento interno e recuo de câmera.
+  3. [concluído] A Oficina criou e desfez o volume em dois navegadores
+     conectados à API local. O teste do journal confirmou a restauração
+     do corredor mantido após reiniciar.
+  4. [pendente] Validar a ação com a API publicada no Sufficit Run.
 
 ### F6 ✅ — Objetos do mundo: construir com assets **concluída em 23/11/2026**
 - [x] Ops `place`/`remove` de qualquer asset (builtin CC0 + catálogo do servidor) (CC0/gerado/upload) com
