@@ -8,7 +8,7 @@ internal static partial class BrowserExports
     private static PlayerCharacterSpace _characters = new();
     private static PlayerMovement _movement = new(0, 0, 0);
     private static readonly double[] SpawnResult = new double[2];
-    private static readonly double[] MovementResult = new double[4];
+    private static readonly double[] MovementResult = new double[5];
     private static readonly double[] PadResult = new double[4];
 
     private static readonly PlayerFootContacts PlayerFeet = new();
@@ -128,6 +128,7 @@ internal static partial class BrowserExports
     {
         (MovementResult[0], MovementResult[1], MovementResult[2], MovementResult[3]) = _movement.Advance(
             x, y, z, facing, forwardX, forwardZ, keyX, keyZ, analogX, analogZ, sprint, delta, _surface, _volumes, hasTunnels);
+        MovementResult[4] = _movement.PivotProgress >= 0 ? 1 : 0;
         return MovementResult;
     }
 
@@ -137,8 +138,8 @@ internal static partial class BrowserExports
     [JSExport]
     internal static bool CanStepOn(double minY, double maxY, double ground) => _movement.CanStep(minY, maxY, ground);
 
-    // 12 pose channels, 5 timeline channels, 7 leg channels and 13 support-probe channels, 2 hip rolls, 2 foot yaws, 2 lateral offsets and 2 knee swivels.
-    private static readonly double[] CharacterFrame = new double[45];
+    // 12 pose channels, 5 timeline channels, 7 leg channels and 13 support-probe channels, 2 hip rolls, 2 foot yaws, 2 lateral offsets, 2 knee swivels and 1 torso yaw.
+    private static readonly double[] CharacterFrame = new double[46];
     // 24 pose e pernas, seguidas de X, Z, orientação, fase da patrulha e distância.
     private static readonly double[] CompanionFrame = new double[29];
     private static readonly double[] LegResult = new double[9];
@@ -200,7 +201,12 @@ internal static partial class BrowserExports
         speech = Math.Max(0, speech - delta);
         var (next, previous, progress) = PlayerPose.AdvanceAction(elapsed, duration, delta, frozen);
         var strideLength = isPlayer ? PlayerFootContacts.StrideLength : PlayerPose.StrideLength;
-        if (isPlayer) distance = PlayerFeet.Begin(x, z, yaw, distance);
+        var pivot = isPlayer ? _movement.PivotProgress : -1;
+        if (isPlayer)
+        {
+            distance = PlayerFeet.Begin(x, z, yaw, distance);
+            if (pivot >= 0) distance = 0;
+        }
         PlayerPose.Animate(result, phase, weight, clock, distance, delta, nameLength, listening,
             speech > 0 && listening, progress, bend, reach, strideLength, playerGait: isPlayer);
         result[12] = clock;
@@ -215,7 +221,10 @@ internal static partial class BrowserExports
         Span<double> contact = stackalloc double[4];
         if (isPlayer)
         {
-            if (PlayerFeet.Apply(feet, contact, result[0], _spacing, _shoeOffset, delta)) _movement.Trip(0.7);
+            if (pivot >= 0)
+                PlayerFeet.ApplyPivot(feet, contact, _spacing, _shoeOffset, _movement.PivotStart, _movement.PivotTurn, pivot);
+            else if (PlayerFeet.Apply(feet, contact, result[0], _spacing, _shoeOffset, delta))
+                _movement.Trip(0.7);
             PlayerPose.Brace(result, _movement.Recover(delta));
         }
         var leftX = x + feet[2];
@@ -258,6 +267,7 @@ internal static partial class BrowserExports
         result[42] = contact[1];
         result[43] = PlayerPose.KneeSwivel(contact[2]);
         result[44] = PlayerPose.KneeSwivel(contact[3]);
+        result[45] = pivot is > 0 and < 1 ? -Math.Sign(_movement.PivotTurn) * 0.23 * Math.Sin(Math.PI * pivot) : 0;
     }
 
     private static double Floor(double x, double z, double y, bool useVolume)

@@ -2464,11 +2464,12 @@
         const { x, y, z } = player.position;
         const analogX = pad.x + moveStick.x, analogZ = pad.y + moveStick.y;
         const { x: fx, z: fz } = ix || iz || analogX || analogZ ? camera.getForwardRay().direction : BABYLON.Vector3.ZeroReadOnly;
-        const [nextX, nextZ, yaw, travelled] = terrain.MovePlayer(x, y, z, player.rotation.y, fx, fz, ix, iz, analogX, analogZ,
+        const [nextX, nextZ, yaw, travelled, pivot] = terrain.MovePlayer(x, y, z, player.rotation.y, fx, fz, ix, iz, analogX, analogZ,
             !!(keys.ShiftLeft || keys.ShiftRight), delta, worldTunnels.length > 0);
         player.position.x = nextX;
         player.position.z = nextZ;
-        if (Number.isFinite(yaw)) { turnCharacter(player, yaw, delta, 16); }
+        if (pivot) { player.rotation.y = yaw; }
+        else if (Number.isFinite(yaw)) { turnCharacter(player, yaw, delta, 16); }
         return travelled;
     }
 
@@ -2642,6 +2643,7 @@
         }
         rig.upper.rotation.x = torsoX;
         rig.upper.rotation.z = torsoZ;
+        if (root === player) { rig.upper.rotation.y = frame[45]; }
         rig.head.rotation.x = headX;
         rig.head.rotation.z = headZ;
         rig.eyes.scaling.y = eyesY;

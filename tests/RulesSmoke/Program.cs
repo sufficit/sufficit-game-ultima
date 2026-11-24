@@ -434,6 +434,27 @@ Check("voltar a andar eleva gradualmente a sola", feet[1] > 0 && feet[1] < swing
 PlayerPose.Animate(gait, midSwing, 0, .5, 0, .02, 1, false, false, 0, 0, 0, playerStride, playerGait: true);
 Check("tronco em repouso mantém pose neutra", gait[2] == 0 && gait[3] == 0);
 
+var turnKeepsSupport = true;
+var maxPivotWidth = 0d;
+foreach (var turn in new[] { Math.PI, -Math.PI })
+{
+    contacts.Reset();
+    contacts.Begin(0, 0, 0, 0);
+    contacts.Apply(feet, alignment, 0, .091, .06, .01);
+    for (var step = 1; step <= 84; step++)
+    {
+        var progress = step / 84d;
+        var yaw = PlayerMovement.PivotYaw(0, turn, progress);
+        contacts.Begin(0, 0, yaw, 0);
+        contacts.ApplyPivot(feet, alignment, .091, .06, 0, turn, progress);
+        turnKeepsSupport &= feet[1] == 0 || feet[5] == 0;
+        maxPivotWidth = Math.Max(maxPivotWidth, double.Hypot(feet[6] - feet[2], feet[7] - feet[3]));
+    }
+    turnKeepsSupport &= feet[1] == 0 && feet[5] == 0 && Math.Abs(feet[0]) < .04 && Math.Abs(feet[4]) < .04;
+}
+Check("inversão em ambos os sentidos alterna apoio com base compacta",
+    turnKeepsSupport && maxPivotWidth < .28);
+
 const double minimumGap = PlayerCharacterSpace.TorsoDepth * 2;
 var occupied = new PlayerCharacterSpace();
 occupied.Set(PlayerCharacterSpace.Guardian, 0, 0, 2);

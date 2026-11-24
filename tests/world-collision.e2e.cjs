@@ -149,6 +149,7 @@ async function wait(callback,label) {
             const scene=BABYLON.EngineStore.LastCreatedScene, engine=BABYLON.EngineStore.LastCreatedEngine;
             const player=scene.getTransformNodeByName('player');
             const samples=[];
+            const torso=scene.getTransformNodeByName('player-upper-body');
             const ankles=['left','right'].map(side=>scene.getTransformNodeByName('player-ankle-'+side));
             const knees=['left','right'].map(side=>scene.getTransformNodeByName('player-knee-'+side));
             const observer=scene.onAfterRenderObservable.add(() => {
@@ -167,7 +168,7 @@ async function wait(callback,label) {
                     return {x,z,pitch,kneeSwivel,toeSide: direction.x*Math.cos(player.rotation.y)-direction.z*Math.sin(player.rotation.y),
                         planted:Math.abs(pitch)<1e-6 && gap<0.012};
                 });
-                samples.push({x:player.position.x,z:player.position.z,g:Math.min(0.05,engine.getDeltaTime()/1000),yaw:player.rotation.y,feet});
+                samples.push({x:player.position.x,z:player.position.z,g:Math.min(0.05,engine.getDeltaTime()/1000),yaw:player.rotation.y,torsoYaw:torso.rotation.y,feet});
             });
             globalThis.stopMoveTrace=() => { scene.onAfterRenderObservable.remove(observer); return samples; };
         });
@@ -262,10 +263,22 @@ async function wait(callback,label) {
         const swivels=samples.flatMap(sample=>sample.feet.filter(foot=>Math.abs(foot.toeSide)>0.45)
             .map(foot=>foot.kneeSwivel*Math.sign(foot.toeSide)));
         const kneeAlignment=Math.max(0,...swivels);
+        const startYaw = samples[0].yaw;
+        const middleTurn = samples.filter(sample => {
+            const angle = Math.acos(Math.max(-1, Math.min(1, Math.cos(sample.yaw - startYaw))));
+            return angle > Math.PI * .31 && angle < Math.PI * .81;
+        });
+        const firstTurning = middleTurn[0];
+        const pivotDrift = Math.max(0, ...middleTurn.map(sample =>
+            Math.hypot(sample.x - firstTurning.x, sample.z - firstTurning.z)));
+        const pivotReach = Math.max(0, ...middleTurn.flatMap(sample => sample.feet.map(foot =>
+            Math.hypot(foot.x - sample.x, foot.z - sample.z))));
+        const pivotWidth = Math.max(0, ...middleTurn.map(sample => Math.hypot(
+            sample.feet[0].x - sample.feet[1].x, sample.feet[0].z - sample.feet[1].z)));
         const closestGap=Math.min(...samples.map(({yaw,feet:[left,right]})=>
             (right.x-left.x)*Math.cos(yaw)-(right.z-left.z)*Math.sin(yaw)));
         return {v:gC>0?dist/gC:0,x:last?.x,z:last?.z,frames:samples.length,plantedFrames,maxSlide,
-            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide,swingSamples,swingRetreat,swingRetreatAfterTakeoff,maxSideSpeed,maxBackSpeed,closestGap,kneeAlignment};
+            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide,swingSamples,swingRetreat,swingRetreatAfterTakeoff,maxSideSpeed,maxBackSpeed,closestGap,kneeAlignment,pivotDrift,pivotReach,pivotWidth,pivotFrames:middleTurn.length,torsoLag:Math.max(0,...middleTurn.map(sample=>Math.abs(sample.torsoYaw)))};
     }
     await p.evaluate(()=>{
         game.addRemote('pose-arm','Contato em repouso');
@@ -447,8 +460,11 @@ async function wait(callback,label) {
     await p.waitForTimeout(T300);
     const reversing=await speed(['w'],1500,false,'s');
     console.log(JSON.stringify({reversing}));
-    assert.ok(reversing.kneeAlignment>0.2,
-        'o plano de flexão deve acompanhar a sola na inversão: '+JSON.stringify(reversing));
+    assert.ok(reversing.pivotFrames >= 3 && reversing.pivotDrift < 0.015 &&
+        reversing.pivotReach < 0.23 && reversing.pivotWidth < 0.30,
+        'a inversão mantém o eixo e os pés próximos do quadril: '+JSON.stringify(reversing));
+    assert.ok(turning.kneeAlignment>0.2 && reversing.torsoLag>0.12 && reversing.torsoLag<0.28,
+        'na curva, o joelho acompanha a sola. Na inversão, o quadril conduz o tronco: '+JSON.stringify(reversing));
     assert.ok(reversing.closestGap>=0.14,'os sapatos não devem cruzar sob o corpo: '+JSON.stringify(reversing));
     assert.ok(reversing.maxBackSpeed<0.1,'jogador deve girar antes de seguir na direção oposta');
     assert.ok(reversing.turningFrames>=2 && reversing.turnSlide<0.012,

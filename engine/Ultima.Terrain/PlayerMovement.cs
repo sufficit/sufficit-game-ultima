@@ -12,6 +12,11 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
     private double _speed, _directionX, _directionZ;
     private double _stumble, _strength;
     private const double RecoveryTime = 0.48;
+    private const double PivotDuration = 0.42;
+    private const double PivotThreshold = 2.2;
+    internal double PivotProgress { get; private set; } = -1;
+    internal double PivotStart { get; private set; }
+    internal double PivotTurn { get; private set; }
 
     internal void Trip(double strength)
     {
@@ -37,7 +42,11 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
     internal void ResetRecovery() => _stumble = 0;
 
     internal void SetColliders(double[] values) => _colliders = values;
-    internal void Stop() => _speed = 0;
+    internal void Stop()
+    {
+        _speed = 0;
+        PivotProgress = -1;
+    }
 
     internal static (double X, double Y) Stick(double x, double y)
     {
@@ -70,6 +79,19 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
         var running = sprint || double.Hypot(analogX, analogZ) > 0.92;
         var targetSpeed = (running ? RunSpeed : WalkSpeed) * magnitude;
         _speed += Math.Clamp(targetSpeed - _speed, -26 * delta, 22 * delta);
+        if (PivotProgress >= 1) PivotProgress = -1;
+        if (PivotProgress < 0 && magnitude > 0)
+        {
+            var turn = Math.IEEERemainder(Math.Atan2(_directionX, _directionZ) - facing, Math.Tau);
+            if (Math.Abs(turn) >= PivotThreshold)
+                (PivotProgress, PivotStart, PivotTurn) = (0, facing, turn);
+        }
+        if (PivotProgress >= 0)
+        {
+            _speed = 0;
+            PivotProgress = Math.Min(1, PivotProgress + delta / PivotDuration);
+            return (x, z, PivotYaw(PivotStart, PivotTurn, PivotProgress), 0);
+        }
         if (_speed <= 0) return (x, z, double.NaN, 0);
 
         var ground = hasTunnels ? volumes.Floor(x, z, y, kneeHeight) : surface.Height(x, z);
@@ -106,6 +128,9 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
         }
         return (nextX, nextZ, yaw, travelled);
     }
+
+    internal static double PivotYaw(double start, double turn, double progress)
+        => start + turn * progress * progress * (3 - 2 * progress);
 
     internal static double TurnTravelScale(double difference)
     {

@@ -13,7 +13,7 @@ internal sealed partial class PlayerFootContacts
     internal void Reset()
     {
         _ready = false;
-        _resting = false;
+        _resting = _pivoting = false;
     }
 
     internal double Begin(double x, double z, double yaw, double distance)
@@ -30,13 +30,14 @@ internal sealed partial class PlayerFootContacts
     internal bool Apply(Span<double> feet, Span<double> extra, double phase, double spacing, double shoeOffset, double delta = 0)
     {
         var (sin, cos) = Math.SinCos(_yaw);
+        var resuming = _resting || _pivoting;
+        _pivoting = false;
         if (!_moving)
         {
             ApplyStanding(feet, extra, spacing, shoeOffset, sin, cos, delta);
             return false;
         }
 
-        var resuming = _resting;
         _resting = false;
         if (resuming) _airborneBlend = 0;
         else if (!_ready) _airborneBlend = 1;
@@ -123,7 +124,8 @@ internal sealed partial class PlayerFootContacts
         _feet[1].Last = new(_x + feet[6], _z + feet[7], _yaw + extra[3], feet[5], feet[9]);
     }
 
-    private bool KeepFeetApart(Span<double> feet, Span<double> extra, double spacing, double sin, double cos, int foot)
+    private bool KeepFeetApart(Span<double> feet, Span<double> extra, double spacing,
+        double sin, double cos, int foot)
     {
         var ankleGap = 2 * spacing + extra[1] - extra[0];
         var shoeGap = (feet[6] - feet[2]) * cos - (feet[7] - feet[3]) * sin;
@@ -139,12 +141,12 @@ internal sealed partial class PlayerFootContacts
         feet[offset + 3] += dz;
         extra[foot] += lateral;
         ref var contact = ref _feet[foot];
-        if (_moving && !contact.Swing)
+        if (_moving && !_pivoting && !contact.Swing)
         {
             contact.X += dx;
             contact.Z += dz;
         }
-        if (_moving && correction > 0.012)
+        if (_moving && !_pivoting && correction > 0.012)
         {
             const double lift = 0.085;
             if (!contact.Swing) contact.RecoveryLift = lift;

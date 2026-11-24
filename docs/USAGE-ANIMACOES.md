@@ -65,7 +65,10 @@ desaparece na pose neutra.
 Em mudanças de rumo, o jogador progride conforme o corpo se alinha
 ao caminho permitido pela colisão. O controle usa a orientação visível
 e volta à velocidade de regime quando alinha. A passada local também
-usa uma oscilação lateral menor do tronco.
+usa uma oscilação lateral menor do tronco. Nas inversões fechadas, o
+quadril gira sobre o próprio eixo. O tronco acompanha a rotação com uma
+pequena defasagem, enquanto os pés alternam o apoio perto do corpo.
+A passada volta a avançar depois que o giro se completa.
 
 O Andarilho e os avatares remotos continuam com o solucionador sagital.
 O solucionador local usa a altura de apoio e uma sola nivelada durante
