@@ -349,6 +349,22 @@ PlayerPose.FootTargets(feet, 0, 0, 1, 3.5, 0.077, 0.06);
 contacts.Apply(feet, alignment, 0, 0.077, 0.06);
 Check("teleporte solta os apoios anteriores", Math.Abs(feet[2] - plantedX) < 1e-12 && Math.Abs(feet[3] - plantedZ) < 1e-12);
 
+const double swingStart = Math.PI / 2;
+var playerStride = PlayerFootContacts.StrideLength;
+contacts.Reset();
+contacts.Begin(0, 0, 0, 0);
+PlayerPose.FootTargets(feet, 0, swingStart, 1, 3.5, .077, .06, playerStride);
+contacts.Apply(feet, alignment, swingStart, .077, .06);
+var toeOff = feet[3];
+var advance = playerStride * .075;
+contacts.Begin(0, advance, 0, advance);
+var earlySwing = swingStart + Math.PI * .15;
+PlayerPose.FootTargets(feet, 0, earlySwing, 1, 3.5, .077, .06, playerStride);
+contacts.Apply(feet, alignment, earlySwing, .077, .06);
+Check("pé começa a avançar em relação ao corpo após a saída do apoio", feet[3] > toeOff);
+PlayerPose.Animate(gait, Math.PI / 2, 1, 0, 0, 0, 0, false, false, 0, 0, 0, playerStride, opposedArms: true);
+Check("braço esquerdo avança quando a perna direita aterrissa", gait[10] < -.3 && gait[11] > .3);
+
 var camera = new PlayerCamera();
 Span<double> orbit = stackalloc double[8];
 camera.Advance(orbit, -Math.PI / 2, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0);

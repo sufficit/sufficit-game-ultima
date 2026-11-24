@@ -17,16 +17,17 @@ internal static class PlayerPose
 
     internal static void Animate(Span<double> output, double phase, double weight, double clock,
         double distance, double delta, int nameLength, bool listening, bool speaking,
-        double progress, double bend, double reach)
+        double progress, double bend, double reach, double strideLength = StrideLength, bool opposedArms = false)
     {
         var speed = delta > 0 ? distance / delta : 0;
         var run = SmoothStep(PlayerMovement.WalkSpeed, PlayerMovement.RunSpeed, speed);
         weight = Lerp(weight, Math.Min(1, speed / 1.1), 1 - Math.Exp(-13 * delta));
-        phase = (phase + distance * Math.Tau / StrideLength) % Math.Tau;
+        phase = (phase + distance * Math.Tau / strideLength) % Math.Tau;
 
         var gesture = Math.Sin(Math.PI * Math.Min(1, progress));
         var breath = Math.Sin(clock * 2.9) * 0.012;
-        var swing = Math.Cos(phase) * weight * Lerp(0.34, 0.74, run);
+        var armPhase = opposedArms ? -Math.Sin(phase) : Math.Cos(phase);
+        var swing = armPhase * weight * Lerp(0.34, 0.74, run);
         var blink = (clock + nameLength % 7 * 0.43) % 4.7;
         output[0] = phase;
         output[1] = weight;
@@ -43,7 +44,7 @@ internal static class PlayerPose
     }
 
     internal static void FootTargets(Span<double> output, double yaw, double phase, double weight,
-        double speed, double spacing, double shoeOffset)
+        double speed, double spacing, double shoeOffset, double strideLength = StrideLength)
     {
         var run = SmoothStep(PlayerMovement.WalkSpeed, PlayerMovement.RunSpeed, speed);
         var (sine, cosine) = Math.SinCos(yaw);
@@ -53,7 +54,7 @@ internal static class PlayerPose
             var swing = cycle > 1;
             var t = cycle - (swing ? 1 : 0);
             // No apoio, o pé recua exatamente a distância que o corpo avança.
-            var forward = StrideLength / 4 * (swing ? -1 - 2 * t + t * t * (12 - 8 * t) : 1 - 2 * t);
+            var forward = strideLength / 4 * (swing ? -1 - 2 * t + t * t * (12 - 8 * t) : 1 - 2 * t);
             var lift = swing ? Math.Sin(Math.PI * t) * Lerp(0.11, 0.17, run) * weight : 0;
             // A sola roda para a ponta na saída e para o calcanhar ao voltar.
             output[8 + i] = swing ? Math.Sin(Math.Tau * t) * Math.Min(0.38, lift * 3) : 0;

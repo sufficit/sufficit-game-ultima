@@ -119,13 +119,27 @@ async function wait(callback,label) {
         }
         // Descarta a rampa de aceleração (primeiros 0,3 s de jogo): numerador e denominador
         // precisam ser PARES — só contam os passos após a rampa (tempo gC = tempo dos passos medidos).
-        let g=0, gC=0, dist=0, n=0, plantedFrames=0, maxSlide=0, turningFrames=0, turnSlide=0;
+        let g=0, gC=0, dist=0, n=0, plantedFrames=0, maxSlide=0, turningFrames=0, turnSlide=0, swingSamples=0, swingRetreat=0, swingRetreatAfterTakeoff=0;
+        const swingOrigins=[null,null];
         for(let i=1;i<samples.length;i++){
             const d=Math.hypot(samples[i].x-samples[i-1].x, samples[i].z-samples[i-1].z);
             if(g>0.3){
                 dist+=d; gC+=samples[i].g; n++;
                 if(d>0.02) for(let foot=0;foot<2;foot++){
                     const a=samples[i-1].feet[foot], b=samples[i].feet[foot];
+                    const yaw=samples[i].yaw;
+                    if(b.pitch<=1e-6 || Math.abs(yaw-samples[i-1].yaw)>=0.001) swingOrigins[foot]=null;
+                    else if(a.planted) swingOrigins[foot]={sample:samples[i-1], allowance:d};
+                    const origin=swingOrigins[foot];
+                    if(origin){
+                        const forwardX=Math.sin(yaw), forwardZ=Math.cos(yaw);
+                        const retreat=((samples[i].x-origin.sample.x)-(b.x-origin.sample.feet[foot].x))*forwardX +
+                            ((samples[i].z-origin.sample.z)-(b.z-origin.sample.feet[foot].z))*forwardZ;
+                        swingRetreat=Math.max(swingRetreat,retreat);
+                        // A saída do apoio pode ocorrer em qualquer instante entre duas amostras.
+                        swingRetreatAfterTakeoff=Math.max(swingRetreatAfterTakeoff,retreat-origin.allowance);
+                        swingSamples++;
+                    }
                     if(a.planted && b.planted && d<0.2){
                         plantedFrames++;
                         const slide=Math.hypot(b.x-a.x,b.z-a.z);
@@ -158,11 +172,13 @@ async function wait(callback,label) {
         }
         const pitches=samples.flatMap(sample=>sample.feet.map(foot=>foot.pitch));
         return {v:gC>0?dist/gC:0,z:last?.z,frames:samples.length,plantedFrames,maxSlide,
-            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide};
+            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide,swingSamples,swingRetreat,swingRetreatAfterTakeoff};
     }
     const walking=await speed(['w'],1800,false);
     assert.ok(walking.plantedFrames>=5 && walking.maxSlide<0.012,
         'pé de apoio deve ficar fixo no mundo durante a marcha em linha reta: '+JSON.stringify(walking));
+    assert.ok(walking.swingSamples>=3 && walking.swingRetreatAfterTakeoff<0.025,
+        'pé levantado deve avançar na passada: '+JSON.stringify(walking));
     assert.ok(walking.minPitch < -0.1 && walking.maxPitch > 0.1, 'tornozelo alterna a inclinação durante o balanço');
     assert.ok(await renderer.evaluate(()=>{
         const scene=BABYLON.EngineStore.LastCreatedScene;

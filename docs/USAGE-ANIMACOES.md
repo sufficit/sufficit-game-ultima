@@ -48,8 +48,11 @@ próprios de locomoção.
 A fase da passada acompanha a distância percorrida. No jogador, o C#
 mantém a posição horizontal e o rumo de cada sola em coordenadas do
 mundo durante o apoio, inclusive quando o corpo gira. O quadril resolve
-também o alcance lateral. O tornozelo preserva o rumo do apoio e inclina
-o pé durante o balanço. Giros no lugar podem iniciar uma passada de
+também o alcance lateral. A passada do jogador cobre 1,16 m por ciclo.
+Durante o balanço, o pé avança do último apoio para a próxima aterrissagem,
+com aceleração na saída e desaceleração antes do contato. O tornozelo
+inclina a sola e os braços alternam com a perna oposta. Giros no lugar
+podem iniciar uma passada de
 reposicionamento. Teleportes liberam os contatos antigos. O terreno e
 os obstáculos continuam determinando a altura sob a sola.
 

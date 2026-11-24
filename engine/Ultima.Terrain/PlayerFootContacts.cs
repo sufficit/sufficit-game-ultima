@@ -3,6 +3,8 @@ namespace Ultima.Terrain;
 // A sola mantém posição e orientação no mundo durante o apoio.
 internal sealed class PlayerFootContacts
 {
+    internal const double StrideLength = 1.16;
+
     private readonly Contact[] _feet = new Contact[2];
     private bool _ready;
     private double _x, _z, _yaw;
@@ -36,10 +38,17 @@ internal sealed class PlayerFootContacts
 
             if (swing)
             {
-                var t = Math.Min(1, (cycle - 1) / 0.45);
-                var blend = t * t * (3 - 2 * t);
-                x = contact.X + (x - contact.X) * blend;
-                z = contact.Z + (z - contact.Z) * blend;
+                var swingPhase = cycle - 1;
+                if (!_ready) contact.SwingStart = swingPhase;
+                else if (!contact.Swing) contact.SwingStart = 0;
+                var progress = (swingPhase - contact.SwingStart) / (1 - contact.SwingStart);
+                var blend = SwingBlend(progress);
+                // Aterrissagem na ponta do próximo apoio, adiantada pela distância que ainda falta.
+                var landing = shoeOffset + StrideLength * (0.25 + 0.5 * (1 - swingPhase));
+                var landingX = _x + side * cos + landing * sin;
+                var landingZ = _z - side * sin + landing * cos;
+                x = contact.X + (landingX - contact.X) * blend;
+                z = contact.Z + (landingZ - contact.Z) * blend;
                 yaw = contact.Yaw + Math.IEEERemainder(yaw - contact.Yaw, Math.Tau) * blend;
             }
             else
@@ -60,9 +69,19 @@ internal sealed class PlayerFootContacts
         _ready = true;
     }
 
+    private static double SwingBlend(double progress)
+    {
+        const double takeoff = 0.05, touchdown = 0.15;
+        const double area = 1 - (takeoff + touchdown) / 2;
+        if (progress < takeoff) return progress * progress / (2 * takeoff * area);
+        if (progress <= 1 - touchdown) return (progress - takeoff / 2) / area;
+        var remaining = 1 - progress;
+        return 1 - remaining * remaining / (2 * touchdown * area);
+    }
+
     private struct Contact
     {
-        internal double X, Z, Yaw;
+        internal double X, Z, Yaw, SwingStart;
         internal bool Swing;
     }
 }

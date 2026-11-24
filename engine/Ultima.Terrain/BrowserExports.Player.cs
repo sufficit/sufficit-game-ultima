@@ -134,9 +134,10 @@ internal static partial class BrowserExports
         clock += delta;
         speech = Math.Max(0, speech - delta);
         var (next, previous, progress) = PlayerPose.AdvanceAction(elapsed, duration, delta, frozen);
+        var strideLength = isPlayer ? PlayerFootContacts.StrideLength : PlayerPose.StrideLength;
         if (isPlayer) distance = PlayerFeet.Begin(x, z, yaw, distance);
         PlayerPose.Animate(result, phase, weight, clock, distance, delta, nameLength, listening,
-            speech > 0 && listening, progress, bend, reach);
+            speech > 0 && listening, progress, bend, reach, strideLength, opposedArms: isPlayer);
         result[12] = clock;
         result[13] = speech;
         result[14] = next;
@@ -145,7 +146,7 @@ internal static partial class BrowserExports
         if (!hasLegs) return;
 
         Span<double> feet = stackalloc double[10];
-        PlayerPose.FootTargets(feet, yaw, result[0], result[1], delta > 0 ? distance / delta : 0, _spacing, _shoeOffset);
+        PlayerPose.FootTargets(feet, yaw, result[0], result[1], delta > 0 ? distance / delta : 0, _spacing, _shoeOffset, strideLength);
         Span<double> contact = stackalloc double[4];
         if (isPlayer) PlayerFeet.Apply(feet, contact, result[0], _spacing, _shoeOffset);
         var leftX = x + feet[2];
