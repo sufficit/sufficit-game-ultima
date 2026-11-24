@@ -102,7 +102,9 @@ async function wait(callback,label) {
             const player = scene.getTransformNodeByName('player');
             const torso = scene.getTransformNodeByName('player-upper-body');
             const ankles = ['left', 'right'].map(side => scene.getTransformNodeByName('player-ankle-' + side));
+            const knees = ['left', 'right'].map(side => scene.getTransformNodeByName('player-knee-' + side));
             let elapsed = 0, frames = 0, first, rootDrift = 0, maxPitch = 0, verticalDrift = 0, sway = 0;
+            let maxAnkleOffset = 0, maxKneeBend = 0;
             const timer = setTimeout(() => {
                 scene.onAfterRenderObservable.remove(observer);
                 reject(Error('tempo limite ao medir a postura em repouso'));
@@ -119,10 +121,16 @@ async function wait(callback,label) {
                 verticalDrift = Math.max(verticalDrift, ...heights.map((height, i) => Math.abs(height - first.heights[i])));
                 sway = Math.max(sway, Math.hypot(bend - first.bend, roll - first.roll));
                 maxPitch = Math.max(maxPitch, ...ankles.map(ankle => Math.abs(ankle.getDirection(BABYLON.Axis.Z).y)));
+                maxAnkleOffset = Math.max(maxAnkleOffset, ...ankles.map((ankle, i) => {
+                    const foot = ankle.getAbsolutePosition();
+                    const hip = knees[i].parent.getAbsolutePosition();
+                    return Math.hypot(foot.x - hip.x, foot.z - hip.z);
+                }));
+                maxKneeBend = Math.max(maxKneeBend, ...knees.map(knee => knee.rotation.x));
                 if (elapsed < 1.5) return;
                 clearTimeout(timer);
                 scene.onAfterRenderObservable.remove(observer);
-                resolve({ frames, rootDrift, verticalDrift, sway, maxPitch });
+                resolve({ frames, rootDrift, verticalDrift, sway, maxPitch, maxAnkleOffset, maxKneeBend });
             });
         }));
     }
@@ -155,7 +163,9 @@ async function wait(callback,label) {
                     const shoe=scene.getMeshByName(ankle.name.replace('ankle','shoe'));
                     const {x,z}=shoe.getAbsolutePosition();
                     const pitch=Math.asin(Math.max(-1,Math.min(1,-direction.y)));
-                    return {x,z,pitch,kneeSwivel,toeSide: direction.x*Math.cos(player.rotation.y)-direction.z*Math.sin(player.rotation.y),planted:Math.abs(pitch)<1e-6};
+                    const gap=shoe.getBoundingInfo().boundingBox.minimumWorld.y-game.heightAt(x,z);
+                    return {x,z,pitch,kneeSwivel,toeSide: direction.x*Math.cos(player.rotation.y)-direction.z*Math.sin(player.rotation.y),
+                        planted:Math.abs(pitch)<1e-6 && gap<0.012};
                 });
                 samples.push({x:player.position.x,z:player.position.z,g:Math.min(0.05,engine.getDeltaTime()/1000),yaw:player.rotation.y,feet});
             });
@@ -456,6 +466,8 @@ async function wait(callback,label) {
     }
     console.log(JSON.stringify({ rests }));
     assertIdlePose(rests);
+    assert.ok(rests.every(rest => rest.maxAnkleOffset < 0.025 && rest.maxKneeBend < 0.65),
+        'ao parar no chão, os tornozelos sustentam o quadril: ' + JSON.stringify(rests));
     const diagonal=await speed(['w','d'],1600,false);
     console.log(JSON.stringify({diagonal}));
     assert.ok(diagonal.v>3.3 && diagonal.v<3.7 && diagonal.x>1 && Math.abs(diagonal.x-diagonal.z)<0.08,

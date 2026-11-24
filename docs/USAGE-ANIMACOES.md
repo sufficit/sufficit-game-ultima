@@ -57,9 +57,10 @@ com aceleração na saída e desaceleração antes do contato. O tornozelo
 inclina a sola e os braços alternam com a perna oposta. Giros no lugar
 podem iniciar uma passada de
 reposicionamento. Teleportes liberam os contatos antigos. O terreno e
-os obstáculos continuam determinando a altura sob a sola. Ao parar, o pé em
-balanço termina o apoio no ponto em que se encontra. A oscilação do
-tronco ligada à marcha desaparece e a pose neutra permanece estável.
+os obstáculos continuam determinando a altura sob a sola. Ao parar, o
+jogador traz um pé de cada vez para debaixo do quadril. Cada sola segue
+a altura do próprio apoio, e a oscilação do tronco ligada à marcha
+desaparece na pose neutra.
 
 Em mudanças de rumo, o jogador progride conforme o corpo se alinha
 ao caminho permitido pela colisão. O controle usa a orientação visível

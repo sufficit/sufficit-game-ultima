@@ -391,6 +391,9 @@ PlayerPose.FootTargets(feet, 0, swingStart, 1, 3.5, .091, .06, playerStride);
 contacts.Apply(feet, alignment, swingStart, .091, .06);
 var toeOff = feet[3];
 var advance = playerStride * .075;
+contacts.Begin(0, 0, 0, .001);
+PlayerPose.FootTargets(feet, 0, swingStart + .001, 1, 3.5, .091, .06, playerStride);
+contacts.Apply(feet, alignment, swingStart + .001, .091, .06, .016);
 contacts.Begin(0, advance, 0, advance);
 var earlySwing = swingStart + Math.PI * .15;
 PlayerPose.FootTargets(feet, 0, earlySwing, 1, 3.5, .091, .06, playerStride);
@@ -405,17 +408,25 @@ contacts.Begin(0, 0, 0, .02);
 PlayerPose.FootTargets(feet, 0, midSwing, 1, 3.5, .091, .06, playerStride);
 contacts.Apply(feet, alignment, midSwing, .091, .06, .02);
 var swingHeight = feet[1];
-var swingAnchor = (feet[2], feet[3]);
-var restsWithoutDrift = true;
-for (var i = 0; i < 12; i++)
+var previousFeet = feet[..8].ToArray();
+var stepKeepsSupport = true;
+for (var i = 0; i < 25; i++)
 {
     contacts.Begin(0, 0, 0, 0);
     PlayerPose.FootTargets(feet, 0, midSwing, 1, 0, .091, .06, playerStride);
-    restsWithoutDrift &= !contacts.Apply(feet, alignment, midSwing, .091, .06, .02)
-        && (feet[2], feet[3]) == swingAnchor;
+    stepKeepsSupport &= !contacts.Apply(feet, alignment, midSwing, .091, .06, .02)
+        && (feet[1] == 0 || feet[5] == 0);
+    for (var foot = 0; foot <= 4; foot += 4)
+    {
+        if (feet[foot + 1] != 0 || previousFeet[foot + 1] != 0) continue;
+        stepKeepsSupport &= double.Hypot(feet[foot + 2] - previousFeet[foot + 2],
+            feet[foot + 3] - previousFeet[foot + 3]) < 1e-12;
+    }
+    feet[..8].CopyTo(previousFeet);
 }
-Check("parar no meio do balanço nivela a sola sobre o mesmo ponto de apoio",
-    swingHeight > .05 && restsWithoutDrift && feet[1] == 0 && feet[5] == 0 && feet[8] == 0 && feet[9] == 0);
+Check("parar no meio do balanço reequilibra o quadril com um pé plantado de cada vez",
+    swingHeight > .05 && stepKeepsSupport && Math.Abs(feet[0]) < 1e-12 && Math.Abs(feet[4]) < 1e-12
+    && feet[1] == 0 && feet[5] == 0 && feet[8] == 0 && feet[9] == 0);
 contacts.Begin(0, .02, 0, .02);
 PlayerPose.FootTargets(feet, 0, midSwing, 1, 1, .091, .06, playerStride);
 contacts.Apply(feet, alignment, midSwing, .091, .06, .02);

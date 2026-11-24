@@ -1,16 +1,20 @@
 namespace Ultima.Terrain;
 
 // A sola mantém posição e orientação no mundo durante o apoio.
-internal sealed class PlayerFootContacts
+internal sealed partial class PlayerFootContacts
 {
     internal const double StrideLength = 1.16;
-    private const double SettleDuration = 0.18;
+    private const double ResumeDuration = 0.18;
 
     private readonly Contact[] _feet = new Contact[2];
     private bool _ready, _moving;
     private double _x, _z, _yaw, _airborneBlend;
 
-    internal void Reset() => _ready = false;
+    internal void Reset()
+    {
+        _ready = false;
+        _resting = false;
+    }
 
     internal double Begin(double x, double z, double yaw, double distance)
     {
@@ -26,6 +30,18 @@ internal sealed class PlayerFootContacts
     internal bool Apply(Span<double> feet, Span<double> extra, double phase, double spacing, double shoeOffset, double delta = 0)
     {
         var (sin, cos) = Math.SinCos(_yaw);
+        if (!_moving)
+        {
+            ApplyStanding(feet, extra, spacing, shoeOffset, sin, cos, delta);
+            return false;
+        }
+
+        var resuming = _resting;
+        _resting = false;
+        if (resuming) _airborneBlend = 0;
+        else if (!_ready) _airborneBlend = 1;
+        _airborneBlend = Math.Min(1, _airborneBlend + delta / ResumeDuration);
+        var gaitBlend = Smooth(_airborneBlend);
         for (var i = 0; i < 2; i++)
         {
             ref var contact = ref _feet[i];
@@ -36,14 +52,20 @@ internal sealed class PlayerFootContacts
             var x = _x + feet[offset + 2];
             var z = _z + feet[offset + 3];
             var yaw = _yaw;
-            if (!_ready) contact.RecoveryLift = 0;
-            if (!_ready || !swing && contact.Swing)
+            if (!_ready || resuming) contact.RecoveryLift = 0;
+            if (resuming)
+            {
+                (contact.X, contact.Z, contact.Yaw) = (contact.Last.X, contact.Last.Z, contact.Last.Yaw);
+                contact.ResumeLift = contact.Last.Lift;
+                contact.ResumePitch = contact.Last.Pitch;
+            }
+            else if (!_ready || !swing && contact.Swing)
                 (contact.X, contact.Z, contact.Yaw) = (x, z, yaw);
 
             if (swing)
             {
                 var swingPhase = cycle - 1;
-                if (!_ready) contact.SwingStart = swingPhase;
+                if (!_ready || resuming) contact.SwingStart = swingPhase;
                 else if (!contact.Swing) contact.SwingStart = 0;
                 var progress = (swingPhase - contact.SwingStart) / (1 - contact.SwingStart);
                 var blend = SwingBlend(progress);
@@ -61,41 +83,47 @@ internal sealed class PlayerFootContacts
             }
             contact.Swing = swing;
 
-            var (footSin, footCos) = Math.SinCos(yaw);
-            var dx = x - shoeOffset * footSin - _x;
-            var dz = z - shoeOffset * footCos - _z;
-            var localX = dx * cos - dz * sin;
-            var yawDifference = Math.IEEERemainder(yaw - _yaw, Math.Tau);
             contact.RecoveryLift = Math.Max(0, contact.RecoveryLift - delta * 0.6);
-            if (contact.RecoveryLift > feet[offset + 1])
+            var lift = feet[offset + 1] * gaitBlend + contact.ResumeLift * (1 - gaitBlend);
+            var pitch = feet[8 + i] * gaitBlend + contact.ResumePitch * (1 - gaitBlend);
+            if (contact.RecoveryLift > lift)
             {
-                feet[offset + 1] = contact.RecoveryLift;
-                feet[8 + i] = 1.5 * contact.RecoveryLift;
+                lift = contact.RecoveryLift;
+                pitch = 1.5 * lift;
             }
-            feet[offset] = dx * sin + dz * cos;
-            feet[offset + 2] = x - _x;
-            feet[offset + 3] = z - _z;
-            extra[i] = localX - side;
-            extra[2 + i] = yawDifference;
+            WriteFoot(feet, extra, i, side, shoeOffset, sin, cos, new(x, z, yaw, lift, pitch));
         }
-        if (!_ready) _airborneBlend = _moving ? 1 : 0;
         _ready = true;
-
-        // A fase congela sem avanço. Pousa o pé onde ele parou, sem deslocar
-        // as solas na horizontal nem reiniciar a animação de tropeço.
-        _airborneBlend = Math.Clamp(_airborneBlend + (_moving ? delta : -delta) / SettleDuration, 0, 1);
-        if (_airborneBlend < 1)
-        {
-            var blend = _airborneBlend * _airborneBlend * (3 - 2 * _airborneBlend);
-            feet[1] *= blend;
-            feet[5] *= blend;
-            feet[8] *= blend;
-            feet[9] *= blend;
-        }
-        return KeepFeetApart(feet, extra, spacing, sin, cos);
+        var crossed = KeepFeetApart(feet, extra, spacing, sin, cos, _feet[0].Swing ? 0 : 1);
+        RememberFeet(feet, extra);
+        return crossed;
     }
 
-    private bool KeepFeetApart(Span<double> feet, Span<double> extra, double spacing, double sin, double cos)
+    private void WriteFoot(Span<double> feet, Span<double> extra, int foot, double side,
+        double shoeOffset, double sin, double cos, Foot pose)
+    {
+        var offset = 4 * foot;
+        var (footSin, footCos) = Math.SinCos(pose.Yaw);
+        var dx = pose.X - _x;
+        var dz = pose.Z - _z;
+        var ankleX = dx - shoeOffset * footSin;
+        var ankleZ = dz - shoeOffset * footCos;
+        feet[offset] = ankleX * sin + ankleZ * cos;
+        feet[offset + 1] = pose.Lift;
+        feet[offset + 2] = dx;
+        feet[offset + 3] = dz;
+        feet[8 + foot] = pose.Pitch;
+        extra[foot] = ankleX * cos - ankleZ * sin - side;
+        extra[2 + foot] = Math.IEEERemainder(pose.Yaw - _yaw, Math.Tau);
+    }
+
+    private void RememberFeet(Span<double> feet, Span<double> extra)
+    {
+        _feet[0].Last = new(_x + feet[2], _z + feet[3], _yaw + extra[2], feet[1], feet[8]);
+        _feet[1].Last = new(_x + feet[6], _z + feet[7], _yaw + extra[3], feet[5], feet[9]);
+    }
+
+    private bool KeepFeetApart(Span<double> feet, Span<double> extra, double spacing, double sin, double cos, int foot)
     {
         var ankleGap = 2 * spacing + extra[1] - extra[0];
         var shoeGap = (feet[6] - feet[2]) * cos - (feet[7] - feet[3]) * sin;
@@ -103,7 +131,6 @@ internal sealed class PlayerFootContacts
         if (correction <= 0) return false;
 
         // Preserva a sola em apoio e desvia a que estiver avançando.
-        var foot = _feet[0].Swing ? 0 : 1;
         var lateral = foot == 0 ? -correction : correction;
         var offset = 4 * foot;
         var dx = lateral * cos;
@@ -112,7 +139,7 @@ internal sealed class PlayerFootContacts
         feet[offset + 3] += dz;
         extra[foot] += lateral;
         ref var contact = ref _feet[foot];
-        if (!contact.Swing)
+        if (_moving && !contact.Swing)
         {
             contact.X += dx;
             contact.Z += dz;
@@ -144,9 +171,12 @@ internal sealed class PlayerFootContacts
         return 1 - remaining * remaining / (2 * touchdown * area);
     }
 
+    private readonly record struct Foot(double X, double Z, double Yaw, double Lift, double Pitch);
+
     private struct Contact
     {
-        internal double X, Z, Yaw, SwingStart, RecoveryLift;
+        internal double X, Z, Yaw, SwingStart, RecoveryLift, ResumeLift, ResumePitch;
+        internal Foot Last, RestStart;
         internal bool Swing;
     }
 }
