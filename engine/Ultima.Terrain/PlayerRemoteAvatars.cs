@@ -40,7 +40,7 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
         var size = _avatars.Count * Stride;
         if (_frame.Length != size) _frame = new double[size];
         Span<double> pose = stackalloc double[12];
-        Span<double> feet = stackalloc double[8];
+        Span<double> feet = stackalloc double[10];
         Span<double> legs = stackalloc double[7];
         var offset = 0;
         foreach (var (id, actor) in _avatars)
@@ -75,7 +75,7 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
                 var left = actor.Left.Sample(surface, actor.X + feet[2], actor.Z + feet[3]);
                 var right = actor.Right.Sample(surface, actor.X + feet[6], actor.Z + feet[7]);
                 PlayerPose.SolveLegs(legs, ground, actor.Y, actor.Elapsed, footGap, hipHeight, legLength, ankleOffset,
-                    feet[0], feet[1], left, false, feet[4], feet[5], right, false);
+                    feet[0], feet[1], left, false, feet[4], feet[5], right, false, feet[8], feet[9]);
                 actor.Y = legs[0];
                 actor.Elapsed = actor.Travel = 0;
                 actor.ForcePose = false;

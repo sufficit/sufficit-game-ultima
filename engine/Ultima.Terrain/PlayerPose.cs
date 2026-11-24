@@ -2,6 +2,8 @@ namespace Ultima.Terrain;
 
 internal static class PlayerPose
 {
+    internal const double StrideLength = 0.96;
+
     internal static bool CanCollect(double dx, double dy, double dz)
         => dx * dx + dy * dy + dz * dz <= 3.5 * 3.5;
 
@@ -20,8 +22,7 @@ internal static class PlayerPose
         var speed = delta > 0 ? distance / delta : 0;
         var run = SmoothStep(PlayerMovement.WalkSpeed, PlayerMovement.RunSpeed, speed);
         weight = Lerp(weight, Math.Min(1, speed / 1.1), 1 - Math.Exp(-13 * delta));
-        phase = (phase + distance * Math.Tau / Lerp(1.1, 2.35,
-            SmoothStep(1.4, PlayerMovement.RunSpeed, speed))) % Math.Tau;
+        phase = (phase + distance * Math.Tau / StrideLength) % Math.Tau;
 
         var gesture = Math.Sin(Math.PI * Math.Min(1, progress));
         var breath = Math.Sin(clock * 2.9) * 0.012;
@@ -48,9 +49,14 @@ internal static class PlayerPose
         var (sine, cosine) = Math.SinCos(yaw);
         for (var i = 0; i < 2; i++)
         {
-            var legPhase = phase + i * Math.PI;
-            var forward = Math.Cos(legPhase) * Lerp(0.18, 0.27, run) * weight;
-            var lift = Math.Max(0, -Math.Sin(legPhase)) * Lerp(0.11, 0.17, run) * weight;
+            var cycle = (phase / Math.PI + 0.5 + i) % 2;
+            var swing = cycle > 1;
+            var t = cycle - (swing ? 1 : 0);
+            // No apoio, o pé recua exatamente a distância que o corpo avança.
+            var forward = StrideLength / 4 * (swing ? -1 - 2 * t + t * t * (12 - 8 * t) : 1 - 2 * t);
+            var lift = swing ? Math.Sin(Math.PI * t) * Lerp(0.11, 0.17, run) * weight : 0;
+            // A sola roda para a ponta na saída e para o calcanhar ao voltar.
+            output[8 + i] = swing ? Math.Sin(Math.Tau * t) * Math.Min(0.38, lift * 3) : 0;
             var localX = i == 0 ? -spacing : spacing;
             var offset = 4 * i;
             output[offset] = forward;
@@ -63,33 +69,35 @@ internal static class PlayerPose
     internal static void SolveLegs(Span<double> output, double ground, double previousY, double delta,
         double footGap, double hipHeight, double legLength, double ankleOffset,
         double leftForward, double leftLift, double leftSupport, bool leftOnObstacle,
-        double rightForward, double rightLift, double rightSupport, bool rightOnObstacle)
+        double rightForward, double rightLift, double rightSupport, bool rightOnObstacle,
+        double leftPitch = 0, double rightPitch = 0)
     {
         var leftAnkle = leftSupport + ankleOffset + leftLift;
         var rightAnkle = rightSupport + ankleOffset + rightLift;
         var bodyY = ground + footGap;
+        var spanSquared = 4 * legLength * legLength;
+        var leftReach = leftAnkle + Math.Sqrt(Math.Max(0, spanSquared - leftForward * leftForward)) - hipHeight;
+        var rightReach = rightAnkle + Math.Sqrt(Math.Max(0, spanSquared - rightForward * rightForward)) - hipHeight;
         if (leftOnObstacle || rightOnObstacle)
         {
             var top = Math.Max(leftSupport, rightSupport) + footGap;
-            var spanSquared = 4 * legLength * legLength;
-            var leftReach = leftAnkle + Math.Sqrt(Math.Max(0, spanSquared - leftForward * leftForward)) - hipHeight;
-            var rightReach = rightAnkle + Math.Sqrt(Math.Max(0, spanSquared - rightForward * rightForward)) - hipHeight;
             var riseLimit = Math.Max(bodyY, previousY) + delta * 3;
-            bodyY = Math.Min(Math.Max(bodyY, top), Math.Min(Math.Min(leftReach, rightReach), riseLimit));
+            bodyY = Math.Min(Math.Max(bodyY, top), riseLimit);
         }
+        bodyY = Math.Min(bodyY, Math.Min(leftReach, rightReach));
         output[0] = bodyY;
-        SetAngles(output[1..4], bodyY + hipHeight - leftAnkle, leftForward, legLength);
-        SetAngles(output[4..7], bodyY + hipHeight - rightAnkle, rightForward, legLength);
+        SetAngles(output[1..4], bodyY + hipHeight - leftAnkle, leftForward, legLength, leftPitch);
+        SetAngles(output[4..7], bodyY + hipHeight - rightAnkle, rightForward, legLength, rightPitch);
     }
 
-    private static void SetAngles(Span<double> output, double drop, double forward, double legLength)
+    private static void SetAngles(Span<double> output, double drop, double forward, double legLength, double pitch)
     {
         drop = Math.Max(0.16, drop);
         var extent = double.Hypot(drop, forward);
         var flex = Math.Acos(Math.Min(1, extent / (2 * legLength)));
         output[0] = -Math.Atan2(forward, drop) - flex;
         output[1] = 2 * flex;
-        output[2] = -output[0] - output[1];
+        output[2] = pitch - output[0] - output[1];
     }
 
     private static double Lerp(double from, double to, double weight) => from + (to - from) * weight;

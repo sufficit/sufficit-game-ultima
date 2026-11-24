@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices.JavaScript;
+using System.Text.Json;
 
 namespace Ultima.Terrain;
 
@@ -13,6 +14,10 @@ internal static partial class BrowserExports
     private static double _kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset;
 
     private static PlayerRemoteAvatars? _remoteAvatars;
+
+    [JSExport]
+    internal static string GetAnatomy(string kind, double height)
+        => JsonSerializer.Serialize(PlayerAnatomy.Create(kind, height), AnatomyJsonContext.Default.AnatomyJointArray);
 
     [JSExport]
     internal static void ConfigurePlayer(double height, double kneeHeight, double footGap,
@@ -65,8 +70,8 @@ internal static partial class BrowserExports
     [JSExport]
     internal static bool CanStepOn(double minY, double maxY, double ground) => _movement.CanStep(minY, maxY, ground);
 
-    // 12 pose channels, 5 timeline channels, 7 leg channels and 11 support-probe channels.
-    private static readonly double[] CharacterFrame = new double[35];
+    // 12 pose channels, 5 timeline channels, 7 leg channels and 13 support-probe channels.
+    private static readonly double[] CharacterFrame = new double[37];
     // 24 pose e pernas, seguidas de X, Z, orientação, fase da patrulha e distância.
     private static readonly double[] CompanionFrame = new double[29];
     private static readonly double[] LegResult = new double[7];
@@ -133,7 +138,7 @@ internal static partial class BrowserExports
         result[16] = progress;
         if (!hasLegs) return;
 
-        Span<double> feet = stackalloc double[8];
+        Span<double> feet = stackalloc double[10];
         PlayerPose.FootTargets(feet, yaw, result[0], result[1], delta > 0 ? distance / delta : 0, _spacing, _shoeOffset);
         var leftX = x + feet[2];
         var leftZ = z + feet[3];
@@ -144,7 +149,7 @@ internal static partial class BrowserExports
         var leftFloor = Floor(leftX, leftZ, y, useVolume);
         var rightFloor = Floor(rightX, rightZ, y, useVolume);
         PlayerPose.SolveLegs(result[17..24], ground, y, delta, _footGap, _hipHeight, _legLength, _ankleOffset,
-            feet[0], feet[1], leftFloor, false, feet[4], feet[5], rightFloor, false);
+            feet[0], feet[1], leftFloor, false, feet[4], feet[5], rightFloor, false, feet[8], feet[9]);
         if (!isPlayer) return;
         result[24] = ground;
         result[25] = leftX;
@@ -157,6 +162,8 @@ internal static partial class BrowserExports
         result[32] = rightFloor;
         result[33] = feet[4];
         result[34] = feet[5];
+        result[35] = feet[8];
+        result[36] = feet[9];
     }
 
     private static double Floor(double x, double z, double y, bool useVolume)
@@ -165,11 +172,11 @@ internal static partial class BrowserExports
     [JSExport]
     internal static double[] SolveSupportedLegs(double ground, double previousY, double delta,
         double leftForward, double leftLift, double leftFloor, double leftSupport,
-        double rightForward, double rightLift, double rightFloor, double rightSupport)
+        double rightForward, double rightLift, double rightFloor, double rightSupport, double leftPitch, double rightPitch)
     {
         PlayerPose.SolveLegs(LegResult, ground, previousY, delta, _footGap, _hipHeight, _legLength, _ankleOffset,
             leftForward, leftLift, leftSupport, leftSupport > leftFloor,
-            rightForward, rightLift, rightSupport, rightSupport > rightFloor);
+            rightForward, rightLift, rightSupport, rightSupport > rightFloor, leftPitch, rightPitch);
         return LegResult;
     }
 }

@@ -292,6 +292,39 @@ PlayerPose.SolveLegs(legs, 0, 0.03, 0.03, 0.03, 0.77, 0.364, 0.051,
 Check("desnível eleva quadril com limite e mantém as solas niveladas", legs[0] > 0.03 && legs[0] <= 0.12
     && Math.Abs(legs[1] + legs[2] + legs[3]) < 1e-12 && Math.Abs(legs[4] + legs[5] + legs[6]) < 1e-12);
 
+Span<double> gait = stackalloc double[12];
+Span<double> feet = stackalloc double[10];
+var walked = 0.0;
+var phase = 0.0;
+var maxContactDrift = 0.0;
+foreach (var step in new[] { 0.01, 0.02, 0.035, 0.045, 0.055, 0.06 })
+{
+    walked += step;
+    PlayerPose.Animate(gait, phase, 1, 0, step, 0.01, 1, false, false, 0, 0, 0);
+    phase = gait[0];
+    PlayerPose.FootTargets(feet, 0, phase, gait[1], step / 0.01, 0.077, 0.06);
+    PlayerPose.SolveLegs(legs, 0, 0.03, 0.01, 0.03, 0.77, 0.364, 0.051,
+        feet[0], feet[1], 0, false, feet[4], feet[5], 0, false, feet[8], feet[9]);
+    var ankleForward = -0.364 * (Math.Sin(legs[1]) + Math.Sin(legs[1] + legs[2]));
+    maxContactDrift = Math.Max(maxContactDrift, Math.Abs(walked + ankleForward));
+}
+Check("sola de apoio resiste à aceleração e à troca de velocidade em linha reta", maxContactDrift < 1e-9);
+PlayerPose.FootTargets(feet, 0, Math.PI * 0.75, 1, 3.5, 0.077, 0.06);
+var toePitch = feet[8];
+PlayerPose.FootTargets(feet, 0, Math.PI * 1.25, 1, 3.5, 0.077, 0.06);
+Check("tornozelo alterna inclinação na saída e na preparação do contato", toePitch > 0.1 && feet[8] < -0.1);
+
+foreach (var kind in new[] { "humano", "canino", "equino", "ave" })
+{
+    var structure = PlayerAnatomy.Create(kind, 1.75);
+    var parents = new HashSet<string> { "root" };
+    Check("estrutura ordenada de " + kind, structure.All(joint => parents.Contains(joint.Parent) && parents.Add(joint.Name)));
+}
+var human = PlayerAnatomy.Create("humano", 1.75).ToDictionary(joint => joint.Name);
+Check("humano liga tornozelo ao joelho e falanges aos punhos",
+    human["ankle-left"].Parent == "knee-left" && human["finger-5-right"].Parent == "wrist-right"
+    && human["toe-4-right-tip"].Parent == "toe-4-right");
+
 var camera = new PlayerCamera();
 Span<double> orbit = stackalloc double[8];
 camera.Advance(orbit, -Math.PI / 2, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0);

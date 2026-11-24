@@ -1532,11 +1532,11 @@
     // cada grupo vira clone visível filho do root. Se o modelo ainda não chegou, entra na
     // fila e usa o fallback JS imediatamente; quando o modelo chega, o fallback é
     // substituído. makeFallback deve devolver uma malha já posicionada (centro na origem).
-    function spawnFromModel(modelId, name, groundPos, rotationY, makeFallback, castsShadow = true) {
+    function spawnFromModel(modelId, name, groundPos, rotationY, makeFallback, castsShadow = true, anatomy = null) {
         const root = new BABYLON.TransformNode(name, scene);
         root.position.copyFrom(groundPos);
         root.rotation.y = rotationY || 0;
-        const rig = createCharacterRig(root, modelId === 'character.guardian', castsShadow);
+        const rig = createCharacterRig(root, modelId === 'character.guardian', castsShadow, anatomy);
         const entry = { root, rig, onFallback: null };
         root.onDisposeObservable.addOnce(() => {
             characterRigs.delete(root);
@@ -2239,7 +2239,8 @@
         // enquanto a DLL não chega, o protótipo JS serve de fallback. Origem do root = pés.
         player = spawnFromModel('character.villager', 'player',
             new BABYLON.Vector3(0, terrainHeight(0, 0) + 0.03, 0), 0,
-            () => { const m = buildHumanoid('player-js', { shirt:new BABYLON.Color3(0.20,0.50,0.92), skin:new BABYLON.Color3(0.90,0.72,0.58) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
+            () => { const m = buildHumanoid('player-js', { shirt:new BABYLON.Color3(0.20,0.50,0.92), skin:new BABYLON.Color3(0.90,0.72,0.58) }); m.position.y = PLAYER_HEIGHT / 2; return m; },
+            true, JSON.parse(terrain.GetAnatomy('humano', PLAYER_HEIGHT)));
 
         // Guardiã: figura encapuzada dourada (1,7 m) com anel de destaque no chão —
         // modelo C# (character.guardian) carregado em runtime, fallback JS centrado.
@@ -2380,25 +2381,38 @@
         root.rotation.y += Math.atan2(Math.sin(difference), Math.cos(difference)) * (1 - Math.exp(-rate * delta));
     }
 
-    let faceInk;
-    function createCharacterRig(root, guardian, castsShadow) {
-        function joint(name, parent, x, y) {
-            const node = new BABYLON.TransformNode(root.name + '-' + name, scene);
-            node.parent = parent;
-            const offset = parent.metadata?.modelOffset;
-            node.position.set(x + (offset?.x ?? 0), y + (offset?.y ?? 0), 0);
-            node.metadata = { modelOffset: new BABYLON.Vector3(-x, -y, 0) };
-            return node;
+    function createCharacterJoint(root, name, parent, x, y, z = 0) {
+        const node = new BABYLON.TransformNode(root.name + '-' + name, scene);
+        node.parent = parent;
+        const offset = parent.metadata?.modelOffset;
+        node.position.set(x + (offset?.x ?? 0), y + (offset?.y ?? 0), z + (offset?.z ?? 0));
+        node.metadata = { modelOffset: new BABYLON.Vector3(-x, -y, -z) };
+        return node;
+    }
+
+    function createJointHierarchy(root, anatomy) {
+        const joints = new Map([['root', root]]);
+        for (const { name, parent, x, y, z, motion } of anatomy) {
+            const node = createCharacterJoint(root, name, joints.get(parent), x, y, z);
+            node.metadata.motion = motion;
+            joints.set(name, node);
         }
+        return joints;
+    }
+
+    let faceInk;
+    function createCharacterRig(root, guardian, castsShadow, anatomy) {
+        const joints = anatomy ? createJointHierarchy(root, anatomy) : null;
         const headRadius = guardian ? 1.7 * 0.075 : PLAYER_HEIGHT * 0.07;
         const headBase = guardian ? 1.7 * 0.82 : PLAYER_HEIGHT - 2 * headRadius;
-        const upper = joint('upper-body', root, 0, guardian ? 1.7 * 0.52 : HIP_HEIGHT);
-        const head = joint('head-pivot', upper, 0, headBase);
-        const eyes = joint('eye-pivot', head, 0, headBase + 1.1 * headRadius);
+        const upper = joints?.get('upper-body') ?? createCharacterJoint(root, 'upper-body', root, 0, guardian ? 1.7 * 0.52 : HIP_HEIGHT);
+        const head = joints?.get('head-pivot') ?? createCharacterJoint(root, 'head-pivot', upper, 0, headBase);
+        const eyes = joints?.get('eye-pivot') ?? createCharacterJoint(root, 'eye-pivot', head, 0, headBase + 1.1 * headRadius);
         eyes.setEnabled(false);
         const armX = PLAYER_HEIGHT * (0.088 + 0.026 * 1.3);
         const shoulders = guardian ? [] : [-1, 1].map(side =>
-            joint(side < 0 ? 'shoulder-left' : 'shoulder-right', upper, side * armX, PLAYER_HEIGHT * 0.80));
+            joints?.get(side < 0 ? 'shoulder-left' : 'shoulder-right') ??
+                createCharacterJoint(root, side < 0 ? 'shoulder-left' : 'shoulder-right', upper, side * armX, PLAYER_HEIGHT * 0.80));
         const face = new BABYLON.TransformNode(root.name + '-expression', scene);
         face.parent = head;
         face.setEnabled(false);
@@ -2426,9 +2440,10 @@
         const mouth = facialFeature('mouth', face, 0, headRadius * 0.68, headRadius * 0.96, 0.048, 0.008);
         const attachments = {
             torso: upper, tunic: upper, neck: upper, head, hair: head, hood: head, skin: head, eyes,
-            'arm-left': shoulders[0], 'hand-left': shoulders[0], 'arm-right': shoulders[1], 'hand-right': shoulders[1]
+            'arm-left': shoulders[0], 'hand-left': joints?.get('wrist-left') ?? shoulders[0],
+            'arm-right': shoulders[1], 'hand-right': joints?.get('wrist-right') ?? shoulders[1]
         };
-        const legs = guardian ? [] : buildCharacterLegs(root);
+        const legs = guardian ? [] : buildCharacterLegs(root, joints);
         const rig = {
             root, upper, head, eyes, shoulders, face, brows, mouth, attachments, castsShadow, shadowMeshes: [],
             legs, fallbackLegMaterials: legs.length ? [legs[0].thigh.material, legs[0].shoe.material] : [],
@@ -2541,7 +2556,7 @@
         }
     }
 
-    function buildCharacterLegs(root) {
+    function buildCharacterLegs(root, joints) {
         const pants = new BABYLON.StandardMaterial(root.name + '-leg-pants', scene);
         pants.diffuseColor.set(0.20, 0.22, 0.28);
         const shoes = new BABYLON.StandardMaterial(root.name + '-leg-shoes', scene);
@@ -2549,15 +2564,20 @@
         const radius = LEG_RADIUS;
         return [-1, 1].map(side => {
             const suffix = side < 0 ? 'left' : 'right';
-            const hip = new BABYLON.TransformNode(root.name + '-hip-' + suffix, scene);
-            hip.parent = root;
-            hip.position.set(side * LEG_SPACING, HIP_HEIGHT, 0);
-            const knee = new BABYLON.TransformNode(root.name + '-knee-' + suffix, scene);
-            knee.parent = hip;
-            knee.position.y = -LEG_SEGMENT;
-            const ankle = new BABYLON.TransformNode(root.name + '-ankle-' + suffix, scene);
-            ankle.parent = knee;
-            ankle.position.y = -LEG_SEGMENT;
+            let hip = joints?.get('hip-' + suffix);
+            let knee = joints?.get('knee-' + suffix);
+            let ankle = joints?.get('ankle-' + suffix);
+            if (!joints) {
+                hip = new BABYLON.TransformNode(root.name + '-hip-' + suffix, scene);
+                hip.parent = root;
+                hip.position.set(side * LEG_SPACING, HIP_HEIGHT, 0);
+                knee = new BABYLON.TransformNode(root.name + '-knee-' + suffix, scene);
+                knee.parent = hip;
+                knee.position.y = -LEG_SEGMENT;
+                ankle = new BABYLON.TransformNode(root.name + '-ankle-' + suffix, scene);
+                ankle.parent = knee;
+                ankle.position.y = -LEG_SEGMENT;
+            }
 
             const options = { height: LEG_SEGMENT + 0.085, radius, subdivisions: 4 };
             const thigh = BABYLON.MeshBuilder.CreateCapsule(root.name + '-thigh-' + suffix, options, scene);
@@ -2590,7 +2610,8 @@
             const rightSupport = stepSurfaceAt(frame[30], frame[31], rightFloor);
             if (leftSupport > leftFloor || rightSupport > rightFloor) {
                 angles = terrain.SolveSupportedLegs(ground, root.position.y, delta,
-                    frame[28], frame[29], leftFloor, leftSupport, frame[33], frame[34], rightFloor, rightSupport);
+                    frame[28], frame[29], leftFloor, leftSupport, frame[33], frame[34], rightFloor, rightSupport,
+                    frame[35], frame[36]);
                 i = 0;
             }
         }

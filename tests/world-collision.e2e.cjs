@@ -80,8 +80,15 @@ async function wait(callback,label) {
             const scene=BABYLON.EngineStore.LastCreatedScene, engine=BABYLON.EngineStore.LastCreatedEngine;
             const player=scene.getTransformNodeByName('player');
             const samples=[];
-            const observer=scene.onAfterRenderObservable.add(() => samples.push({x:player.position.x,z:player.position.z,
-                g:Math.min(0.05,engine.getDeltaTime()/1000)}));
+            const ankles=['left','right'].map(side=>scene.getTransformNodeByName('player-ankle-'+side));
+            const observer=scene.onAfterRenderObservable.add(() => {
+                const feet=ankles.map(ankle=>{
+                    const {x,z}=ankle.getAbsolutePosition();
+                    const pitch=ankle.rotation.x+ankle.parent.rotation.x+ankle.parent.parent.rotation.x;
+                    return {x,z,pitch,planted:Math.abs(pitch)<1e-8};
+                });
+                samples.push({x:player.position.x,z:player.position.z,g:Math.min(0.05,engine.getDeltaTime()/1000),feet});
+            });
             globalThis.stopMoveTrace=() => { scene.onAfterRenderObservable.remove(observer); return samples; };
         });
         if(sprint) await p.keyboard.down('Shift');
@@ -102,10 +109,19 @@ async function wait(callback,label) {
         }
         // Descarta a rampa de aceleração (primeiros 0,3 s de jogo): numerador e denominador
         // precisam ser PARES — só contam os passos após a rampa (tempo gC = tempo dos passos medidos).
-        let g=0, gC=0, dist=0, n=0;
+        let g=0, gC=0, dist=0, n=0, plantedFrames=0, maxSlide=0;
         for(let i=1;i<samples.length;i++){
             const d=Math.hypot(samples[i].x-samples[i-1].x, samples[i].z-samples[i-1].z);
-            if(g>0.3){ dist+=d; gC+=samples[i].g; n++; }
+            if(g>0.3){
+                dist+=d; gC+=samples[i].g; n++;
+                if(d>0.02) for(let foot=0;foot<2;foot++){
+                    const a=samples[i-1].feet[foot], b=samples[i].feet[foot];
+                    if(a.planted && b.planted && d<0.2){
+                        plantedFrames++;
+                        maxSlide=Math.max(maxSlide,Math.hypot(b.x-a.x,b.z-a.z));
+                    }
+                }
+            }
             g+=samples[i].g;
         }
         const last=samples[samples.length-1];
@@ -114,9 +130,21 @@ async function wait(callback,label) {
             const dAll=samples.length>1?Math.hypot(last.x-samples[0].x,last.z-samples[0].z):0;
             return {v:gAll>0?dAll/gAll:0,z:last?.z,frames:samples.length};
         }
-        return {v:gC>0?dist/gC:0,z:last?.z,frames:samples.length};
+        const pitches=samples.flatMap(sample=>sample.feet.map(foot=>foot.pitch));
+        return {v:gC>0?dist/gC:0,z:last?.z,frames:samples.length,plantedFrames,maxSlide,
+            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches)};
     }
     const walking=await speed(['w'],1800,false);
+    assert.ok(walking.plantedFrames>=5 && walking.maxSlide<0.012,
+        'pé de apoio deve ficar fixo no mundo durante a marcha em linha reta: '+JSON.stringify(walking));
+    assert.ok(walking.minPitch < -0.1 && walking.maxPitch > 0.1, 'tornozelo alterna a inclinação durante o balanço');
+    assert.ok(await renderer.evaluate(()=>{
+        const scene=BABYLON.EngineStore.LastCreatedScene;
+        const node=name=>scene.getTransformNodeByName('player-'+name);
+        const joint=(child,parent)=>!!node(child) && node(child).parent===node(parent);
+        return joint('ankle-left','knee-left') && joint('wrist-right','elbow-right') &&
+            joint('toe-1-left-tip','toe-1-left');
+    }),'jogador instancia o esqueleto humano');
     await p.evaluate(()=>game.resetPlayer());
     await p.waitForTimeout(T300);
     const running=await speed(['w'],1400);

@@ -20,3 +20,34 @@ aos modelos. Uma linha da textura armazena todos os ossos de um quadro,
 mais uma matriz identidade. O Babylon reproduz a textura na GPU com
 fases independentes por instância. Os dois LODs de cada tipo usam
 a mesma paleta e o mesmo esqueleto.
+
+## Anatomia e apoio dos pés
+
+O WASM fornece a pose neutra em metros com `GetAnatomy(espécie, altura)`.
+Cada articulação contém `name`, `parent`, `x`, `y`, `z` e `motion`.
+As coordenadas seguem o espaço do modelo, com +Y para cima e +Z para a
+frente. O pai vem antes do filho, e `root` é o nó do personagem.
+`createJointHierarchy` transforma a lista em pivôs para as malhas.
+`motion` descreve dobradiças e juntas esféricas para orientar a criação
+dos controladores. A hierarquia deste estágio é cinemática.
+[Definições das espécies](../engine/Ultima.Terrain/PlayerAnatomy.cs)
+
+| Espécie | Referência da altura | Estrutura |
+| --- | --- | --- |
+| `humano` | Estatura | Pelve, coluna, cabeça, mandíbula, braços, pernas e dedos |
+| `canino` | Cernelha | Membros dianteiros e traseiros, patas e cauda |
+| `equino` | Cernelha | Membros dianteiros e traseiros, cascos e cauda |
+| `ave` | Altura da ave | Pernas, bico, cauda e asas articuladas |
+
+O jogador usa a hierarquia humana no rig. Dedos, mandíbula e outras juntas
+secundárias estão disponíveis como pivôs. Para deformá-los em cena, as
+malhas precisam de grupos separados ou pesos de skinning. Os perfis
+animais fornecem a pose neutra para construir malhas e controladores
+próprios de locomoção.
+
+A fase da passada é proporcional à distância percorrida. Em linha reta,
+o recuo do pé em apoio compensa o avanço do corpo. O quadril respeita
+o alcance das pernas, a sola fica nivelada no apoio e o tornozelo
+inclina o pé entre a saída e o próximo contato. Em mudanças de direção,
+o apoio acompanha a rotação do corpo. Fixação mundial em curvas e
+contato orientado pela normal do terreno exigem um solucionador 3D.
