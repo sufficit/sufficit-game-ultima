@@ -370,16 +370,36 @@ Check("pé começa a avançar em relação ao corpo após a saída do apoio", fe
 PlayerPose.Animate(gait, Math.PI / 2, 1, 0, 0, 0, 0, false, false, 0, 0, 0, playerStride, playerGait: true);
 Check("braço esquerdo avança quando a perna direita aterrissa", gait[10] < -.3 && gait[11] > .3);
 
-const double minimumGap = PlayerCharacterSpace.Radius * 2;
+const double minimumGap = PlayerCharacterSpace.TorsoDepth * 2;
 var occupied = new PlayerCharacterSpace();
 occupied.Set(PlayerCharacterSpace.Guardian, 0, 0, 2);
 var blockedByActor = occupied.Move(PlayerCharacterSpace.Player, 0, 0, 0, 0, 6);
 Check("varredura impede atravessar personagem em alta velocidade",
-    blockedByActor.Blocked && Math.Abs(blockedByActor.Z - (2 - minimumGap - 0.002)) < 1e-9);
+    blockedByActor.Blocked && Math.Abs(blockedByActor.Z - (2 - minimumGap - 0.002)) < 1e-5);
 Check("atores acima do alcance vertical podem se cruzar no plano",
     !occupied.Move(PlayerCharacterSpace.Player, 0, 3, 0, 0, 6).Blocked);
 var actorSpawn = occupied.Place(3, 0, 0, 2);
-Check("pose de rede sobreposta é separada", double.Hypot(actorSpawn.X, actorSpawn.Z - 2) >= minimumGap);
+Check("pose de rede sobreposta é separada sem impor o raio antigo",
+    double.Hypot(actorSpawn.X, actorSpawn.Z - 2) >= minimumGap && double.Hypot(actorSpawn.X, actorSpawn.Z - 2) < 0.55);
+var tangent = occupied.Move(PlayerCharacterSpace.Player, 0, 0, 1.65, 1, 2.15);
+Check("contato deixa avançar pela tangente", tangent.Blocked && tangent.X > 0.8);
+occupied.Set(PlayerCharacterSpace.Player, 0, 0, 0);
+occupied.SetHitboxes([
+    PlayerCharacterSpace.Guardian, 0.25, 0.40, 0, 0.07, 0, 0, 0, 0.35, 0, 0, 0, 0.07,
+    PlayerCharacterSpace.Player, 0.25, 0.40, 0, 0.07, 0, 0, 0, 0.35, 0, 0, 0, 0.07
+]);
+var legsOnly = occupied.Move(PlayerCharacterSpace.Player, 0, 0, 0, 0, 3);
+Check("duas malhas finas aproximam até o contato real de suas caixas",
+    legsOnly.Blocked && Math.Abs(legsOnly.Z - 1.858) < 1e-5);
+Check("partes desencontradas deixam passagem",
+    !occupied.Move(PlayerCharacterSpace.Player, 0.2, 0, 0, 0.2, 3).Blocked);
+occupied.SetHitboxes([
+    PlayerCharacterSpace.Guardian, 0, .90, 0, 0, 0, -.23, 0, .79, 0, .17, 0, 0,
+    PlayerCharacterSpace.Player, 0, .90, 0, .23, 0, 0, 0, .79, 0, 0, 0, .17
+]);
+var sideBody = occupied.Move(PlayerCharacterSpace.Player, 0, 0, 0, 0, 3);
+Check("aproximação lateral usa o semieixo girado junto com a malha",
+    sideBody.Blocked && Math.Abs(sideBody.Z - 1.598) < 1e-5);
 var recovering = new PlayerMovement(1.75, .41, .03);
 recovering.Trip(1);
 Check("tropeço tem reação e recuperação finita", recovering.Recover(.16) > 0.8 && recovering.Recover(.48) == 0);

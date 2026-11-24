@@ -87,7 +87,7 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
                 if (actor.Travel == 0 && actor.Weight < 0.0001) actor.Weight = 0;
                 PlayerPose.Animate(pose, actor.Phase, actor.Weight, actor.Clock, actor.Travel, actor.Elapsed,
                     actor.NameLength, false, false, 0, 0, 0);
-                if (actor.Stumble > 0) PlayerPose.Brace(pose, Math.Sin(Math.PI * actor.Stumble / 0.48));
+                if (actor.Stumble > 0) PlayerPose.Brace(pose, -Math.Sin(Math.PI * actor.Stumble / 0.48));
                 actor.Phase = pose[0];
                 actor.Weight = pose[1];
                 var speed = actor.Elapsed > 0 ? actor.Travel / actor.Elapsed : 0;

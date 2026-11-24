@@ -45,10 +45,11 @@ internal static class PlayerPose
 
     internal static void Brace(Span<double> pose, double impact)
     {
-        pose[2] += 0.5 * impact;
+        // Um choque externo recua o torso. O passo cruzado inclina para a recuperação.
+        pose[2] += (impact < 0 ? 0.32 : 0.5) * impact;
         pose[4] -= 0.14 * impact;
-        pose[10] -= 0.62 * impact;
-        pose[11] -= 0.62 * impact;
+        pose[10] -= (impact < 0 ? 0.22 : 0.62) * impact;
+        pose[11] -= (impact < 0 ? 0.22 : 0.62) * impact;
     }
 
     internal static void FootTargets(Span<double> output, double yaw, double phase, double weight,

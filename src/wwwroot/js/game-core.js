@@ -2747,6 +2747,52 @@
         terrain.SetRemoteAvatarTarget(p.serial, x, z, ry);
     }
 
+    let actorHitboxes = new Float64Array(512);
+    let hadHitboxes = false;
+    const hitboxCenter = new BABYLON.Vector3();
+
+    function syncCharacterHitboxes() {
+        let count = 0;
+        const p = player.position;
+        function add(id, root) {
+            const { x, y, z } = root.position;
+            for (const mesh of characterRigs.get(root).shadowMeshes) {
+                if (!mesh.isEnabled() || !mesh.isVisible) continue;
+                const matrix = mesh.computeWorldMatrix();
+                const { center, extendSize } = mesh.getBoundingInfo().boundingBox;
+                BABYLON.Vector3.TransformCoordinatesToRef(center, matrix, hitboxCenter);
+                if (count + 13 > actorHitboxes.length) {
+                    const grown = new Float64Array(actorHitboxes.length * 2);
+                    grown.set(actorHitboxes);
+                    actorHitboxes = grown;
+                }
+                const m = matrix.m;
+                actorHitboxes[count++] = id;
+                actorHitboxes[count++] = hitboxCenter.x - x;
+                actorHitboxes[count++] = hitboxCenter.y - y;
+                actorHitboxes[count++] = hitboxCenter.z - z;
+                actorHitboxes[count++] = m[0] * extendSize.x;
+                actorHitboxes[count++] = m[1] * extendSize.x;
+                actorHitboxes[count++] = m[2] * extendSize.x;
+                actorHitboxes[count++] = m[4] * extendSize.y;
+                actorHitboxes[count++] = m[5] * extendSize.y;
+                actorHitboxes[count++] = m[6] * extendSize.y;
+                actorHitboxes[count++] = m[8] * extendSize.z;
+                actorHitboxes[count++] = m[9] * extendSize.z;
+                actorHitboxes[count++] = m[10] * extendSize.z;
+            }
+        }
+        function addIfNear(id, root) {
+            if ((root.position.x - p.x) ** 2 + (root.position.z - p.z) ** 2 <= 16) add(id, root);
+        }
+        addIfNear(-2, guardianRoot);
+        addIfNear(-3, wandererRoot);
+        for (const { serial, avatar } of remoteSlots.values()) addIfNear(serial, avatar);
+        if (count) add(-1, player);
+        if (count || hadHitboxes) terrain.SetCharacterHitboxes(actorHitboxes.subarray(0, count), count);
+        hadHitboxes = count > 0;
+    }
+
     function updateOtherCharacters(delta) {
         updateCharacterPose(wandererRoot, delta, 0, dialoguePartner !== wandererRoot);
         updateCharacterPose(guardianRoot, delta, 0);
@@ -2978,6 +3024,7 @@
                 syncColliders();
                 const p = player.position, g = guardianRoot.position, w = wandererRoot.position;
                 terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
+                syncCharacterHitboxes();
                 const travelled = movePlayer(delta, pad);
                 if (player) {
                     const { x, z } = player.position;

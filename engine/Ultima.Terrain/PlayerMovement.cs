@@ -94,7 +94,7 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
                 (nextX, nextZ) = (validated.X, validated.Z);
             }
             var actualDistance = double.Hypot(nextX - x, nextZ - z);
-            if (permitted.Blocked && delta > 0 && (travelled - actualDistance) / delta > 1.8) Trip(1);
+            if (permitted.Blocked && delta > 0 && (travelled - actualDistance) / delta > 1.8) Trip(-1);
             travelled = actualDistance;
             characters.Set(PlayerCharacterSpace.Player, nextX, y, nextZ);
         }

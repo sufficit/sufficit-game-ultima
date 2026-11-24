@@ -1,90 +1,119 @@
+using System.Numerics;
+using System.Runtime.InteropServices;
+
 namespace Ultima.Terrain;
 
-// Volumes conservadores no plano horizontal, com intervalo vertical por ator.
 internal sealed class PlayerCharacterSpace
 {
     internal const int Player = -1, Guardian = -2, Wanderer = -3;
-    internal const double Radius = 0.54;
-    private const double Diameter = Radius * 2;
-    private const double Height = 1.75;
+    internal const float TorsoDepth = 0.17f;
+    private const double WorldHalf = 400;
+    private const float Skin = 0.002f;
+    private static readonly PlayerCharacterBox[] Fallback =
+        [new(new(0, 0.9f, 0), new(0.23f, 0, 0), new(0, 0.79f, 0), new(0, 0, TorsoDepth))];
     private readonly Dictionary<int, Body> _bodies = [];
+    private int _revision = 1;
 
-    internal void Set(int id, double x, double y, double z) => _bodies[id] = new(x, y, z);
+    internal void Set(int id, double x, double y, double z)
+    {
+        if (!_bodies.TryGetValue(id, out var body)) _bodies.Add(id, body = new());
+        body.Position = new((float)x, (float)y, (float)z);
+    }
+
     internal void Remove(int id) => _bodies.Remove(id);
+
+    // Lista intercalada por malha: ator, centro relativo e três semieixos no espaço do mundo.
+    internal void SetHitboxes(ReadOnlySpan<double> values)
+    {
+        _revision++;
+        for (var i = 0; i + 12 < values.Length; i += 13)
+        {
+            if (!_bodies.TryGetValue((int)values[i], out var body)) continue;
+            if (body.Revision != _revision)
+            {
+                body.Revision = _revision;
+                body.Boxes.Clear();
+            }
+            body.Boxes.Add(new(ReadVector(values, i + 1), ReadVector(values, i + 4),
+                ReadVector(values, i + 7), ReadVector(values, i + 10)));
+        }
+    }
 
     internal (double X, double Z, bool Blocked) Move(int id, double x, double y, double z, double targetX, double targetZ)
     {
-        var dx = targetX - x;
-        var dz = targetZ - z;
-        var lengthSquared = dx * dx + dz * dz;
-        if (lengthSquared < 1e-12) return (x, z, false);
-        var limit = 1.0;
-        foreach (var (other, body) in _bodies)
+        var remaining = new Vector3((float)(targetX - x), 0, (float)(targetZ - z));
+        var position = new Vector3((float)x, (float)y, (float)z);
+        var moved = Vector3.Zero;
+        var blocked = false;
+        for (var pass = 0; pass < 3 && remaining.LengthSquared() > 1e-12f; pass++)
         {
-            if (other == id || Math.Abs(y - body.Y) >= Height) continue;
-            var ox = x - body.X;
-            var oz = z - body.Z;
-            if (Math.Abs(ox) > Diameter + Math.Abs(dx) || Math.Abs(oz) > Diameter + Math.Abs(dz)) continue;
-            var approach = ox * dx + oz * dz;
-            if (approach >= 0) continue;
-            var gap = ox * ox + oz * oz - Diameter * Diameter;
-            var discriminant = approach * approach - lengthSquared * gap;
-            if (discriminant <= 0) continue;
-            var hit = gap <= 0 ? 0 : (-approach - Math.Sqrt(discriminant)) / lengthSquared;
-            limit = Math.Min(limit, hit);
+            if (!FindContact(id, position + moved, remaining, out var time, out var normal))
+            {
+                if (!blocked) return (targetX, targetZ, false);
+                moved += remaining;
+                break;
+            }
+
+            blocked = true;
+            moved += remaining * Math.Max(0, time - Skin / remaining.Length());
+            remaining *= 1 - time;
+            remaining -= normal * Math.Min(0, Vector3.Dot(remaining, normal));
         }
-        if (limit >= 1) return (targetX, targetZ, false);
-        limit = Math.Max(0, limit - 0.002 / Math.Sqrt(lengthSquared));
-        return (x + dx * limit, z + dz * limit, true);
+        return (x + moved.X, z + moved.Z, blocked);
     }
 
-    // Poses recebidas da rede podem nascer dentro de um volume já ocupado.
     internal (double X, double Z) Place(int id, double x, double y, double z)
     {
-        const double worldHalf = 400;
-        var originX = x;
-        var originZ = z;
-        for (var pass = 0; pass < 8; pass++)
-        {
-            var changed = false;
-            foreach (var (other, body) in _bodies)
-            {
-                if (id == other || Math.Abs(y - body.Y) >= Height) continue;
-                var dx = x - body.X;
-                var dz = z - body.Z;
-                if (Math.Abs(dx) >= Diameter || Math.Abs(dz) >= Diameter) continue;
-                var distance = double.Hypot(dx, dz);
-                if (distance >= Diameter) continue;
-                var scale = (Diameter + 0.002) / (distance > 1e-8 ? distance : 1);
-                x = Math.Clamp(body.X + (distance > 1e-8 ? dx : id < other ? -1 : 1) * scale, -worldHalf, worldHalf);
-                z = Math.Clamp(body.Z + dz * scale, -worldHalf, worldHalf);
-                changed = true;
-            }
-            if (!changed) return (x, z);
-        }
+        var position = new Vector3((float)x, (float)y, (float)z);
+        if (!FindContact(id, position, Vector3.Zero, out _, out _)) return (x, z);
 
-        // Se várias pessoas chegam ao mesmo ponto, procura um lugar livre ao redor.
-        for (var ring = 1; ring <= _bodies.Count + 1; ring++)
+        // Procura o ponto livre mais próximo sem impor um afastamento universal.
+        for (var ring = 1; ring <= 24 + _bodies.Count * 4; ring++)
         for (var direction = 0; direction < 16; direction++)
         {
             var (sin, cos) = Math.SinCos(Math.Tau * direction / 16);
-            x = originX + ring * Diameter * cos;
-            z = originZ + ring * Diameter * sin;
-            if (Math.Abs(x) > worldHalf || Math.Abs(z) > worldHalf) continue;
-            if (IsFree(id, x, y, z)) return (x, z);
+            var px = x + ring * 0.04 * cos;
+            var pz = z + ring * 0.04 * sin;
+            if (Math.Abs(px) > WorldHalf || Math.Abs(pz) > WorldHalf) continue;
+            if (!FindContact(id, new((float)px, (float)y, (float)pz), Vector3.Zero, out _, out _))
+                return (px, pz);
         }
-        return (originX, originZ);
+        return (x, z);
     }
 
-    private bool IsFree(int id, double x, double y, double z)
+    private bool FindContact(int id, Vector3 position, Vector3 motion, out float time, out Vector3 normal)
     {
+        time = 1;
+        normal = default;
+        var reach = 1.8f + motion.Length();
+        var boxes = GetBoxes(_bodies.GetValueOrDefault(id));
         foreach (var (other, body) in _bodies)
         {
-            if (id != other && Math.Abs(y - body.Y) < Height && double.Hypot(x - body.X, z - body.Z) < Diameter)
-                return false;
+            if (other == id) continue;
+            var offset = position - body.Position;
+            if (MathF.Abs(offset.X) > reach || MathF.Abs(offset.Z) > reach || MathF.Abs(offset.Y) > 2.5f) continue;
+            foreach (ref readonly var a in boxes)
+            foreach (ref readonly var b in GetBoxes(body))
+            {
+                if (!PlayerCharacterBox.Sweep(a, b, offset, motion, out var t, out var n) || t >= time) continue;
+                time = t;
+                normal = n;
+                if (motion == Vector3.Zero) return true;
+            }
         }
-        return true;
+        return time < 1;
     }
 
-    private readonly record struct Body(double X, double Y, double Z);
+    private ReadOnlySpan<PlayerCharacterBox> GetBoxes(Body? body)
+        => body?.Revision == _revision ? CollectionsMarshal.AsSpan(body.Boxes) : Fallback;
+
+    private static Vector3 ReadVector(ReadOnlySpan<double> values, int index)
+        => new((float)values[index], (float)values[index + 1], (float)values[index + 2]);
+
+    private sealed class Body
+    {
+        internal Vector3 Position;
+        internal int Revision;
+        internal readonly List<PlayerCharacterBox> Boxes = [];
+    }
 }

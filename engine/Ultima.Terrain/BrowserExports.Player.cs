@@ -60,6 +60,10 @@ internal static partial class BrowserExports
     }
 
     [JSExport]
+    internal static void SetCharacterHitboxes(double[] values, int length)
+        => _characters.SetHitboxes(values.AsSpan(0, length));
+
+    [JSExport]
     internal static void ResetCamera() => Camera.Reset();
 
     [JSExport]

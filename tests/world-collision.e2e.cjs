@@ -196,10 +196,10 @@ async function wait(callback,label) {
         const scene=BABYLON.EngineStore.LastCreatedScene;
         const a=scene.getTransformNodeByName('remote-contact-a');
         const b=scene.getTransformNodeByName('remote-contact-b');
-        if(a?.position.z!==3 || b?.position.z!==3) return 0;
+        if(Math.abs((a?.position.z ?? -10)-3)>0.65 || Math.abs((b?.position.z ?? -10)-3)>0.65) return 0;
         const gap=Math.hypot(a.position.x-b.position.x,a.position.z-b.position.z);
-        return gap>=1.079 ? gap : 0;
-    }), 'dois avatares na mesma coordenada ficam separados');
+        return gap>=0.33 && gap<=0.69 ? gap : 0;
+    }), 'duas poses sobrepostas se separam perto da silhueta');
     await p.keyboard.down('Shift');
     await p.keyboard.down('w');
     try {
@@ -208,16 +208,63 @@ async function wait(callback,label) {
             const player=scene.getTransformNodeByName('player');
             const torso=scene.getTransformNodeByName('player-upper-body');
             const z=player?.position.z, bend=torso?.rotation.x;
-            return z>1.5 && z<1.93 && bend>0.28 ? {z,bend} : null;
+            if(z<2.32 || z>2.85 || bend>=-0.16) return null;
+            const actor=scene.getTransformNodeByName('remote-contact-a');
+            const front=Math.max(...player.getChildMeshes().map(mesh=>mesh.getBoundingInfo().boundingBox.maximumWorld.z));
+            const back=Math.min(...actor.getChildMeshes().map(mesh=>mesh.getBoundingInfo().boundingBox.minimumWorld.z));
+            return back-front<0.1 ? {z,bend,gap:back-front} : null;
         }), 'choque com outro personagem bloqueia avanço e inicia tropeço');
         console.log(JSON.stringify({avatarGap,stumble}));
     } finally {
         await p.keyboard.up('w');
         await p.keyboard.up('Shift');
     }
+    const beside=await walk(['d'],590,false);
+    const around=await walk(['w'],610,false);
+    assert.ok(beside.x>0.8 && around.z>3.7,'é possível contornar os personagens: '+JSON.stringify({beside,around}));
     await p.evaluate(()=>{
         game.removeRemote('contact-a');
         game.removeRemote('contact-b');
+        game.resetPlayer();
+    });
+    await p.waitForTimeout(T300);
+    await p.evaluate(()=>{
+        game.addRemote('contact-side','Contato lateral');
+        game.updateRemote('contact-side',1.8,0,0);
+    });
+    await wait(()=>renderer.evaluate(()=>BABYLON.EngineStore.LastCreatedScene
+        .getTransformNodeByName('remote-contact-side')?.position.x===1.8),'personagem lateral pronto');
+    const sideContact=await walk(['d'],900,false);
+    const sideGap=await renderer.evaluate(()=>{
+        const scene=BABYLON.EngineStore.LastCreatedScene;
+        const meshes=name=>scene.getTransformNodeByName(name).getChildMeshes()
+            .filter(mesh=>mesh.isEnabled() && mesh.isVisible);
+        const front=Math.max(...meshes('player').map(mesh=>mesh.getBoundingInfo().boundingBox.maximumWorld.x));
+        const back=Math.min(...meshes('remote-contact-side').map(mesh=>mesh.getBoundingInfo().boundingBox.minimumWorld.x));
+        return back-front;
+    });
+    assert.ok(sideContact.x>1 && sideContact.x<1.66 && sideGap<0.14,
+        'chega junto ao corpo de lado: '+JSON.stringify({sideContact,sideGap}));
+    await p.evaluate(()=>{ game.removeRemote('contact-side'); game.resetPlayer(); });
+    await p.waitForTimeout(T300);
+    await p.evaluate(()=>{
+        game.addRemote('contact-gap-left','Passagem esquerda');
+        game.updateRemote('contact-gap-left',-0.60,2.65,0);
+        game.addRemote('contact-gap-right','Passagem direita');
+        game.updateRemote('contact-gap-right',0.60,2.65,0);
+    });
+    await wait(()=>renderer.evaluate(()=>{
+        const s=BABYLON.EngineStore.LastCreatedScene;
+        return s.getTransformNodeByName('remote-contact-gap-left')?.position.z===2.65 &&
+            s.getTransformNodeByName('remote-contact-gap-right')?.position.z===2.65;
+    }),'passagem entre personagens pronta');
+    const throughGap=await walk(['w'],1370,false);
+    assert.ok(throughGap.z>3.45 && Math.abs(throughGap.x)<0.15,
+        'passa entre dois corpos com espaço livre: '+JSON.stringify(throughGap));
+    console.log(JSON.stringify({sideContact,sideGap,beside,around,throughGap}));
+    await p.evaluate(()=>{
+        game.removeRemote('contact-gap-left');
+        game.removeRemote('contact-gap-right');
         game.resetPlayer();
     });
     await p.waitForTimeout(T300);
