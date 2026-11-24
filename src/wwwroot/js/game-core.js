@@ -346,17 +346,8 @@
     const worldPaints = [];
     const worldTunnels = [];
     const worldCarves = [];   // F5b base: grutas {x,z,r,y0,y1} — piso absoluto + rocha
-    const PAINT_COLORS = {
-        grass: [0.30, 0.46, 0.16], dirt: [0.47, 0.36, 0.23], sand: [0.78, 0.70, 0.50],
-        rock: [0.46, 0.45, 0.44], snow: [0.93, 0.95, 0.97], water: [0.16, 0.42, 0.62],
-    };
-
-    function brushWeight(x, z, op) {
-        const t = 1 - Math.hypot(x - op.x, z - op.z) / op.r;
-        return t <= 0 ? 0 : t * t * (3 - 2 * t);   // falloff suave na borda do pincel
-    }
-
-    const SOIL_DEPTH = 0.48;
+    const paletteMaterials = ['grass', 'dirt', 'sand', 'rock', 'snow', 'water'];
+    let paletteDirty = false;
     const SOIL_RADIUS = 1;
     const collectedIds = new Set();
     function surfaceResourceId(kind, op) { return kind + ':' + (op.rev ?? [op.x, op.z, op.r].join(',')); }
@@ -375,77 +366,16 @@
         terrain.SetVolumes(new Float64Array(volumes));
     }
 
-    // Paleta do solo (mesma lógica do gerador original), agora pintável por material.
-    function terrainColorAt(x, y, z, slope = slopeAt(x, z), soilDepth = terrain.Depth(x, z)) {
-        const grassDark = [0.10, 0.27, 0.09], grassLight = [0.25, 0.44, 0.13], grassDry = [0.44, 0.42, 0.18];
-        const dirt = [0.47, 0.36, 0.23], dirtLight = [0.58, 0.47, 0.32];
-        const rock = [0.42, 0.41, 0.40], rockLight = [0.55, 0.54, 0.52], snow = [0.93, 0.95, 0.97];
-        const patch = noise(x * 0.11 + 100, z * 0.11 - 60);
-        const fine = noise(x * 0.85 - 13.7, z * 0.85 + 77.1) * 0.5 + 0.5;
-        const t = Math.max(0, Math.min(1, y * 0.16 + 0.42 + patch * 0.45 + (fine - 0.5) * 0.18));
-        let r = lerp(lerp(grassDark[0], grassLight[0], t), grassDry[0], Math.max(0, patch - 0.35) * 1.4);
-        let g = lerp(lerp(grassDark[1], grassLight[1], t), grassDry[1], Math.max(0, patch - 0.35) * 1.4);
-        let b = lerp(lerp(grassDark[2], grassLight[2], t), grassDry[2], Math.max(0, patch - 0.35) * 1.4);
-        const fringe = noise(x * 0.67 + 4.2, z * 0.67 - 3.1) * 0.55 + (fine - 0.5) * 0.35;
-        const distanceToPath = Math.abs(x - pathOffset(z)) + fringe;
-        const path = smoothstep(1.3, 3.6, distanceToPath);
-        const core = 1 - smoothstep(0.4, 2.6, distanceToPath);
-        const dr = lerp(dirtLight[0], dirt[0], path), dg = lerp(dirtLight[1], dirt[1], path), db = lerp(dirtLight[2], dirt[2], path);
-        r = lerp(dr, r, path); g = lerp(dg, g, path); b = lerp(db, b, path);
-        r = lerp(r, dr * 1.08, (1 - path) * core * 0.5);
-        g = lerp(g, dg * 1.08, (1 - path) * core * 0.5);
-        b = lerp(b, db * 1.08, (1 - path) * core * 0.5);
-        const rocky = smoothstep(0.44, 1.22, slope + fringe * 0.35);
-        let exposedRock = 0;
-        for (const op of worldCarves) {
-            const inset = op.r - Math.hypot(x - op.x, z - op.z);
-            exposedRock = Math.max(exposedRock, smoothstep(-0.5, 0.35, inset + fine * 0.18 - 0.09));
-        }
-        const rockU = x * 1.15 + z * 0.36, rockV = z * 0.8 + y * 1.3;
-        let mineral;
-        const mineralCover = 1 - (1 - exposedRock) * (1 - rocky);
-        if (mineralCover > 0) {
-            mineral = rockRelief(rockU, rockV);
-            const shade = 1 + mineral * 0.4;
-            r = lerp(r, lerp(rock[0], rockLight[0], fine) * shade, mineralCover);
-            g = lerp(g, lerp(rock[1], rockLight[1], fine) * shade, mineralCover);
-            b = lerp(b, lerp(rock[2], rockLight[2], fine) * shade, mineralCover);
-        }
-        const snowLine = 8.5 + noise(x * 0.18 + 7.7, z * 0.18 - 3.3) * 1.6 - rocky * 1.2;
-        const snowy = smoothstep(snowLine, snowLine + 1.6, y);
-        r = lerp(r, snow[0], snowy); g = lerp(g, snow[1], snowy); b = lerp(b, snow[2], snowy);
-        let material = path >= 0.5 ? 'grass' : 'dirt';
-        if (rocky >= 0.5 || exposedRock >= 0.5) { material = 'rock'; }
-        if (snowy >= 0.5) { material = 'snow'; }
-        const cover = (1 - mineralCover) * (1 - snowy);
-        let grassDetail = path * cover, dirtDetail = (1 - path) * cover;
-        for (let i = 0; i < worldPaints.length; i++) {
-            const op = worldPaints[i];
+    function syncPalette() {
+        if (!paletteDirty) { return; }
+        const values = [];
+        for (const op of worldPaints) {
             if (op.mat === 'water' && collectedIds.has(surfaceResourceId('water', op))) { continue; }
-            const w = brushWeight(x + (op.mat === 'water' ? 0 : fringe * 0.32), z, op);
-            if (w > 0) {
-                const c = PAINT_COLORS[op.mat];
-                if (w >= 0.5) { material = op.mat; }
-                grassDetail = lerp(grassDetail, op.mat === 'grass' ? 1 : 0, w);
-                dirtDetail = lerp(dirtDetail, op.mat === 'dirt' ? 1 : 0, w);
-                // Pinturas de rocha do journal também recebem o relevo mineral.
-                if (op.mat === 'rock') { mineral ??= rockRelief(rockU, rockV); }
-                const relief = op.mat === 'rock' ? 1 + mineral * 0.36 : 1;
-                r = lerp(r, c[0] * relief, w);
-                g = lerp(g, c[1] * relief, w);
-                b = lerp(b, c[2] * relief, w);
-            }
+            const material = paletteMaterials.indexOf(op.mat);
+            if (material >= 0) { values.push(op.x, op.z, op.r, material); }
         }
-        if (grassDetail > 0 && soilDepth > 0) {
-            const exposedSoil = Math.min(1, soilDepth / SOIL_DEPTH) * 0.85 * grassDetail;
-            r = lerp(r, dirt[0], exposedSoil);
-            g = lerp(g, dirt[1], exposedSoil);
-            b = lerp(b, dirt[2], exposedSoil);
-            grassDetail = lerp(grassDetail, 0, exposedSoil);
-            dirtDetail = lerp(dirtDetail, 1, exposedSoil);
-            if (material === 'grass' && exposedSoil >= 0.5) { material = 'dirt'; }
-        }
-        return [r, g, b, grassDetail, dirtDetail, material];
+        terrain.SetPaints(new Float64Array(values));
+        paletteDirty = false;
     }
 
     function chunkKey(cx, cz) { return cx + ',' + cz; }
@@ -490,16 +420,6 @@
     const DETAIL_GUTTER = PALETTE_GUTTER * DETAIL_TEX / CHUNK_TEX;
     const MATERIAL_TILE = DETAIL_TEX / 8;   // uma repetição a cada 4 m, alinhada entre chunks
     let groundMaterials = [];
-    const groundGrain = makeNoise(9090);
-    const rockNoise = makeNoise(577);
-
-    function rockRelief(u, v) {
-        const coarse = rockNoise(u * 0.8, v * 0.8);
-        const fine = rockNoise(u * 3.3 + 19, v * 2.6 - 7);
-        const strata = rockNoise(u * 0.46, (v + coarse * 0.38) * 3.8);
-        return coarse * 0.55 + fine * 0.25 + strata * 0.55;
-    }
-
     async function loadGroundMaterials() {
         try {
             const tiles = await Promise.all(['grass', 'dirt'].map(async name => {
@@ -544,41 +464,23 @@
         const ctx = tex.getContext();
         // As bordas usam texels dos dois lados da divisa, na mesma grade mundial.
         const samples = CHUNK_TEX + 2 * PALETTE_GUTTER;
-        const img = ctx.createImageData(samples, samples);
-        const masks = groundMaterials.map(() => ctx.createImageData(samples, samples));
-        const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
-        const detailed = masks.length > 0;
-        const paletteSamples = terrain.SamplePalette(cx, cz, CHUNK_TEX, PALETTE_GUTTER);
-        for (let ty = 0; ty < samples; ty++) for (let tx = 0; tx < samples; tx++) {
-            const x = x0 + (tx - PALETTE_GUTTER + 0.5) * CHUNK / CHUNK_TEX;
-            const z = z0 + (ty - PALETTE_GUTTER + 0.5) * CHUNK / CHUNK_TEX;
-            const sample = 3 * (ty * samples + tx);
-            const [r, g, b, grass, dirt] = terrainColorAt(x, paletteSamples[sample], z,
-                paletteSamples[sample + 1], paletteSamples[sample + 2]);
-            const mottling = groundGrain(x * 0.94, z * 0.94);
-            const grit = groundGrain(x * 2.1 + 13, z * 2.1 - 17);
-            const relief = detailed ? 1 - (grass + dirt) * 0.52 : 1;
-            const grain = 1.07 + (mottling * 0.25 + grit * 0.22) * relief;
-            const i = (ty * samples + tx) * 4;
-            img.data[i] = r * grain * 255;
-            img.data[i + 1] = g * grain * 255;
-            img.data[i + 2] = b * grain * 255;
-            img.data[i + 3] = 255;
-            if (detailed) {
-                masks[0].data[i + 3] = grass * 196;
-                masks[1].data[i + 3] = dirt * 184;
-            }
-        }
+        const detailed = groundMaterials.length > 0;
+        syncPalette();
+        const pixels = terrain.RasterizePalette(cx, cz, CHUNK_TEX, PALETTE_GUTTER, detailed);
+        const planeSize = samples * samples * 4;
+        const image = plane => new ImageData(
+            new Uint8ClampedArray(pixels.buffer, pixels.byteOffset + plane * planeSize, planeSize), samples, samples);
+        const img = image(0);
         if (detailed) {
             const palette = terrainPalette.canvas;
             const size = terrainBlend.canvas.width;
             terrainPalette.putImageData(img, 0, 0);
             ctx.drawImage(palette, 0, 0, size, size);
-            for (let i = 0; i < masks.length; i++) {
+            for (let i = 0; i < groundMaterials.length; i++) {
                 terrainBlend.globalCompositeOperation = 'copy';
                 terrainBlend.fillStyle = groundMaterials[i];
                 terrainBlend.fillRect(0, 0, size, size);
-                terrainPalette.putImageData(masks[i], 0, 0);
+                terrainPalette.putImageData(image(i + 1), 0, 0);
                 terrainBlend.globalCompositeOperation = 'destination-in';
                 terrainBlend.drawImage(palette, 0, 0, size, size);
                 ctx.drawImage(terrainBlend.canvas, 0, 0);
@@ -709,7 +611,10 @@
     // ---------- Aplicação de edições e objetos plantados (F4/F6) ----------
     function recordSurfaceEdit(op) {
         if (op.kind === 'sculpt') { worldSculpts.push(op); }
-        else if (op.kind === 'paint') { worldPaints.push(op); }
+        else if (op.kind === 'paint') {
+            worldPaints.push(op);
+            paletteDirty = true;
+        }
         else if (op.kind === 'carve') { worldCarves.push(op); }
         else if (op.kind === 'tunnel' && Array.isArray(op.points) && op.points.length >= 2) { worldTunnels.push(op); }
         else { return false; }
@@ -1059,7 +964,6 @@
         ['prop.log', 'Tronco caído'], ['prop.stump', 'Toco'],
         ['material.water', 'Água'], ['material.rock', 'Rocha']
     ]);
-    const soilLabels = { grass: 'Solo com grama', dirt: 'Terra', sand: 'Areia', rock: 'Rocha', snow: 'Neve', water: 'Água' };
 
     function trackGatherable(mesh, id, asset, scattered, brush) {
         const resource = { id, item: resourceLabels.get(asset) || asset, scattered, brush };
@@ -1088,6 +992,7 @@
         for (const entry of entries) {
             if (collectedIds.has(entry.id)) { continue; }
             collectedIds.add(entry.id);
+            if (entry.id?.startsWith('water:')) { paletteDirty = true; }
             if (entry.kind === 'soil') {
                 const cut = { x: entry.x, z: entry.z, r: SOIL_RADIUS, geometryChanged: true };
                 terrain.AddDig(cut.x, cut.z);
@@ -1131,8 +1036,8 @@
         if (target) {
             resource = { id: target.id, item: target.item, kind: 'object', brush: target.brush };
         } else {
-            const material = terrainColorAt(p.x, p.y, p.z)[5];
-            resource = { item: soilLabels[material], kind: 'soil', x: p.x, z: p.z };
+            syncPalette();
+            resource = { item: terrain.SoilItem(p.x, p.y, p.z), kind: 'soil', x: p.x, z: p.z };
         }
         if (collectedIds.has(resource.id)) {
             dotnet.invokeMethodAsync('OnBackpackStatus', 'Esse recurso já foi coletado.');
@@ -1317,6 +1222,7 @@
         const dirty = [...worldSculpts, ...worldPaints, ...worldCarves, ...worldTunnels];
         worldSculpts.length = 0;
         worldPaints.length = 0;
+        paletteDirty = true;
         worldCarves.length = 0;
         worldTunnels.length = 0;
         for (const op of edits || []) {
@@ -1517,21 +1423,13 @@
 
     // Rocha compartilhada entre pedregulhos e tetos, com padrão repetível nas duas direções.
     function makeRockTexture() {
-        return proceduralTexture('rock', 128, function (N) {
-            const img = new ImageData(N, N);
-            const hgt = new Float32Array(N * N);
-            for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-                const u = x / N * 2 * Math.PI, v = y / N * 2 * Math.PI;
-                const relief = rockRelief(Math.cos(u) * 5 + Math.sin(v) * 3, Math.sin(u) * 3 + Math.cos(v) * 5);
-                const value = 0.42 + relief * 0.25;
-                const i = y * N + x;
-                hgt[i] = value;
-                img.data[i * 4] = value * 268;
-                img.data[i * 4 + 1] = value * 255;
-                img.data[i * 4 + 2] = value * 233;
-                img.data[i * 4 + 3] = 255;
-            }
-            return { rgba: img.data, h: hgt };
+        return proceduralTexture('rock', 128, function (size) {
+            const pixels = terrain.RasterizeRock(size);
+            const bytes = size * size * 4;
+            return {
+                rgba: new Uint8ClampedArray(pixels.buffer, pixels.byteOffset, bytes),
+                h: new Float32Array(pixels.buffer, pixels.byteOffset + bytes, size * size)
+            };
         });
     }
 

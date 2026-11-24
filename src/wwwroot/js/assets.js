@@ -55,7 +55,13 @@
         dv.setUint32(4, hb.length, true);
         new Uint8Array(buf, 8, hb.length).set(hb);
         let off = 8 + hb.length;
-        for (const p of parts) { new Uint8Array(buf, off).set(new Uint8Array(p)); off += p.byteLength; }
+        for (const part of parts) {
+            const bytes = ArrayBuffer.isView(part)
+                ? new Uint8Array(part.buffer, part.byteOffset, part.byteLength)
+                : new Uint8Array(part);
+            new Uint8Array(buf, off, bytes.length).set(bytes);
+            off += bytes.length;
+        }
         return buf;
     }
 
@@ -142,8 +148,8 @@
 
     function saveTex(name, size, rgba, h) {
         return digest(['tex', name, size]).then(function (key) {
-            const parts = [rgba.buffer];
-            if (h) { parts.push(h.buffer); }
+            const parts = [rgba];
+            if (h) { parts.push(h); }
             return save(key, { v: 1, kind: 'tex', name: name, size: size, hasH: !!h, parts: parts.map(function (p) { return p.byteLength; }) }, parts);
         });
     }

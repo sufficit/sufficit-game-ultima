@@ -36,6 +36,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 
 ## Atividades (`activities/`)
 
+- [Paleta do terreno em C#](activities/202611240008-paleta-terreno-csharp.md)
+
 - [Câmera e animação por quadro em C#](activities/202611232346-camera-animacao-csharp.md)
 
 - [Simulação do jogador em C# no navegador](activities/202611232327-simulacao-csharp-navegador.md)

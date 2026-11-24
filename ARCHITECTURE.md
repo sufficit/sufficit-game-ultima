@@ -27,7 +27,7 @@ flowchart LR
 | [Regras](src/Rules) e [NPCs](src/Npc) | Regras de interação e diálogo, agendamento de NPCs e eventos de animação. São código do jogo executado em C#. |
 | [Serviços do navegador](src/Browser) | Mochila, Oficina, diário de diálogos, atualizações e sessão do mundo compartilhado. C# coordena os fluxos. Adaptadores JavaScript acessam APIs como IndexedDB e localStorage. |
 | [Ponte de entrada e cena](src/wwwroot/js/game.js) | Captura entrada do navegador e encaminha comandos. [GAME.JsInterop.cs](src/GAME.JsInterop.cs) recebe eventos do motor para o Blazor. [game-core.js](src/wwwroot/js/game-core.js) mantém a cena, aplica as poses e resolve os raios de câmera, apoio e seleção. |
-| [Terreno em C#](engine/Ultima.Terrain) | Calcula altura, superfície, malhas e escavação volumétrica. [BrowserExports.cs](engine/Ultima.Terrain/BrowserExports.cs) expõe operações que entregam dados de geometria em lote para a cena. |
+| [Terreno em C#](engine/Ultima.Terrain) | Calcula altura, superfície, malhas, escavação volumétrica e [paleta de materiais](engine/Ultima.Terrain/TerrainPalette.cs). [BrowserExports.cs](engine/Ultima.Terrain/BrowserExports.cs) entrega dados de geometria e textura em lote para a cena. |
 | [Simulação em C#](engine/Ultima.Terrain/PlayerMovement.cs) | Normaliza o analógico, resolve aceleração, colisão, deslizamento e passagem por volumes. [PlayerPose](engine/Ultima.Terrain/PlayerPose.cs) calcula marcha, expressão, apoio dos pés, tempo de ação e alcance de coleta. [PlayerCamera](engine/Ultima.Terrain/PlayerCamera.cs) resolve entrada, zoom e órbita. |
 | [Modelos em C#](models) | Pacotes de personagens, árvores, rochas e cenário. O [carregador](src/Models/ModelLoader.cs) confere SHA-256 antes de carregar cada pacote e usa marcadores quando o pacote é recusado. |
 | [Servidor](app/UltimaServer.csproj) | Sessões, eventos, validação de comandos e edições, mapa compartilhado e catálogo de assets. A API atual está em `app/`. O diretório [app-python](app-python) guarda a implementação anterior. |
@@ -70,6 +70,14 @@ resultado até que ângulo, posição radial ou entrada mudem. A consulta de col
 O JavaScript recebe os eventos de entrada e despacha as marcas de animação para
 as ações do jogo.
 [Contrato de animações](docs/USAGE-ANIMACOES.md)
+
+### Texturas do terreno
+
+O C# calcula a cor de fundo, o grão, as máscaras de grama e terra e o material
+que a coleta identifica. Cada chunk recebe planos RGBA compactos em uma chamada.
+Pinturas são sincronizadas na ordem do journal quando mudam. O Babylon.js
+compõe os detalhes rasterizados com os WebP e envia a textura à GPU. O mesmo
+gerador entrega a cor procedural quando os WebP estão indisponíveis.
 
 ### Desempenho da migração
 

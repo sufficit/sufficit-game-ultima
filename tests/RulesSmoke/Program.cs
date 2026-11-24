@@ -294,6 +294,36 @@ var resumedAction = PlayerPose.AdvanceAction(pausedAction.Elapsed, 0.5, 0.15, fr
 Check("retomar ação cruza a marca de impacto uma vez",
     Ultima.AnimationTimeline.Crossed(resumedAction.Previous, resumedAction.Progress, false, [0.5]).SequenceEqual(new[] { 0 }));
 
+var paletteSurface = new TerrainSurface();
+var palette = new TerrainPalette(paletteSurface);
+var raster = palette.Rasterize(0, 0, 128, 4, detailed: false);
+uint hash = 2166136261;
+foreach (var value in raster) hash = unchecked((hash ^ value) * 16777619);
+Check("paleta procedural coincide com os pixels do build JavaScript", hash == 1797590622);
+
+var leftPalette = palette.Rasterize(0, 0, 128, 4, detailed: true);
+var rightPalette = palette.Rasterize(1, 0, 128, 4, detailed: true);
+const int paletteSide = 136;
+const int row = paletteSide * 4;
+var edgeMatches = true;
+for (var plane = 0; plane < 3; plane++)
+for (var j = 0; j < paletteSide; j++)
+{
+    var offset = (plane * paletteSide + j) * row;
+    edgeMatches &= leftPalette.AsSpan(offset + 128 * 4, 8 * 4).SequenceEqual(rightPalette.AsSpan(offset, 8 * 4));
+}
+Check("os três planos compartilham os texels da divisa", edgeMatches);
+
+palette.SetPaints([75, 75, 5, 3]);
+Check("pintura distante não altera a paleta do chunk", palette.Rasterize(0, 0, 128, 4, false).SequenceEqual(raster));
+palette.SetPaints([5, 0, 4, 3, 5, 0, 4, 5]);
+Check("a última pintura decide o material da coleta", palette.MaterialLabel(5, 0, 0) == "Água");
+palette.SetPaints([5, 0, 4, 3]);
+Check("ao retirar água, a coleta usa a pintura anterior", palette.MaterialLabel(5, 0, 0) == "Rocha");
+palette.SetPaints([]);
+paletteSurface.AddDig(5, 0);
+Check("a escavação expõe terra sob a grama", palette.MaterialLabel(5, paletteSurface.Height(5, 0), 0) == "Terra");
+
 Console.WriteLine(failures == 0 ? "\nTODOS OS TESTES PASSARAM" : $"\n{failures} FALHA(S)");
 return failures == 0 ? 0 : 1;
 
