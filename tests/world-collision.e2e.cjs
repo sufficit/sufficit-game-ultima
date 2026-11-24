@@ -296,7 +296,20 @@ async function wait(callback,label) {
             && Math.abs(label.position.y-remote.position.y-1.925)<1e-6;
     }),'o teleporte distante mantém o rótulo junto ao avatar');
     await wait(async()=>!(await hasRemoteShadow()),'avatar distante sai do mapa de sombras');
+    const behind = await renderer.evaluate(()=>{
+        const {activeCamera}=BABYLON.EngineStore.LastCreatedScene;
+        const {x,z}=activeCamera.getForwardRay().direction;
+        return {x:activeCamera.position.x-x*200,z:activeCamera.position.z-z*200};
+    });
+    await p.evaluate(({x,z})=>game.updateRemote('gesture-test', x, z, 0),behind);
+    const remoteEnabled = enabled => renderer.evaluate(expected=>{
+        const s=BABYLON.EngineStore.LastCreatedScene;
+        return s.getTransformNodeByName('remote-gesture-test')?.isEnabled()===expected
+            && s.getMeshByName('remote-label-gesture-test')?.isEnabled()===expected;
+    },enabled);
+    await wait(()=>remoteEnabled(false),'avatar e rótulo desativados atrás da câmera');
     await p.evaluate(()=>game.updateRemote('gesture-test', 1, 8, 0));
+    await wait(()=>remoteEnabled(true),'avatar e rótulo voltam ao se aproximar');
     await wait(hasRemoteShadow,'avatar que retorna volta a projetar sombra');
     await p.evaluate(()=>game.removeRemote('gesture-test'));
     await wait(()=>renderer.evaluate(()=>{

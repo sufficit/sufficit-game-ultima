@@ -81,6 +81,17 @@
     const REMOTE_FRAME_STRIDE = 18; // PlayerRemoteAvatars.Stride
     const REMOTE_POSE_READY = 1;
     const REMOTE_NEAR_PLAYER = 2;
+    const remoteViewProjection = new BABYLON.Matrix();
+    const remoteFrustum = Array.from({ length: 6 }, () => new BABYLON.Plane(0, 0, 0, 0));
+
+    function remoteInView(x, y, z, wasVisible) {
+        // Esfera conservadora envolvendo o corpo e o rótulo, com margem de saída.
+        const radius = wasVisible ? 2.5 : 2;
+        for (const { normal, d } of remoteFrustum) {
+            if (normal.x * x + normal.y * (y + 1) + normal.z * z + d < -radius) { return false; }
+        }
+        return true;
+    }
     const keys = Object.create(null);
 
     const gameCodes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
@@ -2664,7 +2675,7 @@
         labelMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
         labelMat.opacityTexture = texture;
         label.material = labelMat;
-        const entry = { serial, avatar, rig: characterRigs.get(avatar), label, texture, labelMat };
+        const entry = { serial, avatar, rig: characterRigs.get(avatar), label, texture, labelMat, visible: true };
         remotes.set(id, entry);
         remoteSlots.set(serial, entry);
         const { x, y, z } = avatar.position;
@@ -2696,8 +2707,10 @@
         if (!remoteSlots.size) { return; }
 
         const frame = terrain.UpdateRemoteAvatars(delta, player.position.x, player.position.z);
+        let hasFrustum = false;
         for (let i = 0; i < frame.length; i += REMOTE_FRAME_STRIDE) {
-            const { avatar, rig, label } = remoteSlots.get(frame[i]);
+            const entry = remoteSlots.get(frame[i]);
+            const { avatar, rig, label } = entry;
             const x = frame[i + 1], y = frame[i + 2], z = frame[i + 3], yaw = frame[i + 4];
             const position = avatar.position;
             if (x !== position.x || y !== position.y || z !== position.z) {
@@ -2706,7 +2719,19 @@
             }
             if (yaw !== avatar.rotation.y) { avatar.rotation.y = yaw; }
             const flags = frame[i + 5];
-            setCharacterShadows(rig, (flags & REMOTE_NEAR_PLAYER) !== 0);
+            const nearPlayer = (flags & REMOTE_NEAR_PLAYER) !== 0;
+            setCharacterShadows(rig, nearPlayer);
+            if (!nearPlayer && !hasFrustum) {
+                camera.getViewMatrix().multiplyToRef(camera.getProjectionMatrix(), remoteViewProjection);
+                BABYLON.Frustum.GetPlanesToRef(remoteViewProjection, remoteFrustum);
+                hasFrustum = true;
+            }
+            const visible = nearPlayer || remoteInView(x, y, z, entry.visible);
+            if (visible !== entry.visible) {
+                entry.visible = visible;
+                avatar.setEnabled(visible);
+                label.setEnabled(visible);
+            }
             if (!(flags & REMOTE_POSE_READY)) { continue; }
 
             rig.upper.rotation.x = frame[i + 6];
@@ -2911,12 +2936,12 @@
                     updateCharacterPose(player, delta, travelled);
                     ensureChunksAround(x, z);
                 }
-                updateOtherCharacters(delta);
-                checkNear();
-                updateNearbyObject();
                 camera.target.set(player.position.x, player.position.y + CAM_UP.y, player.position.z);
                 orbitEye.set(camera.target.x + cameraFrame[3], camera.target.y + cameraFrame[4], camera.target.z + cameraFrame[5]);
                 camera.radius = Math.min(traceWorld(camera.target, orbitEye), cameraFrame[6]);
+                updateOtherCharacters(delta);
+                checkNear();
+                updateNearbyObject();
                 if (crowdCount) { updateCrowd(delta); }
                 updateCollectionPreview(frameStart);
                 scene.render();

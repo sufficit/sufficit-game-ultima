@@ -73,6 +73,11 @@ do terreno coincidem. O adaptador Babylon.js aplica as transformações e
 acompanha a posição dos rótulos. O mesmo nível de detalhe determina se as
 malhas do avatar entram no mapa de sombras. A troca ocorre ao cruzar a faixa
 de distância e preserva a malha, a animação e o rótulo do avatar na cena.
+Com a câmera resolvida para o quadro, o Babylon.js testa uma esfera que cobre
+o corpo e o rótulo dos avatares distantes. Fora do volume visível, desativa
+ambos até que a câmera os alcance novamente ou que entrem no raio próximo.
+A simulação continua atualizando posições e poses. Avatares próximos podem
+projetar sombras na cena mesmo fora do campo de visão.
 [Simulação dos avatares remotos](engine/Ultima.Terrain/PlayerRemoteAvatars.cs)
 
 O C# calcula rotação, zoom, órbita e retorno suave da câmera. O Babylon.js
