@@ -1,6 +1,8 @@
 # PLAN-WORLD-STORE — Persistência durável do mundo (F1 do WORLD-BUILDER)
 
-**Status**: ✅ concluído em 22/11/2026 · **Decisão**: [decisions/world-store-v1.md](../decisions/world-store-v1.md)
+**Status**: base publicada em 22/11/2026. A correção da migração legada e o
+replay de undo foram validados em Release e aguardam publicação no Sufficit Run.
+**Decisão**: [decisions/world-store-v1.md](../decisions/world-store-v1.md)
 (arquivo-first + `IWorldStore`; MySQL só para dados relacionais futuros)
 
 ## Objetivo
@@ -40,11 +42,13 @@ cristalização IA, sculpt/carve).
       edição → ops no journal; asset → catálogo no volume; **pod deleto → novo pod
       restaura rev 2, tiles water/rock e catálogo de assets pelo replay do journal**.
 
-- [ ] Editar mapa → arquivo `world.journal.jsonl` com as ops `tile`; reiniciar o
+- [x] Editar mapa → arquivo `world.journal.jsonl` com as ops `tile`; reiniciar o
       servidor no mesmo dataDir → `/v1/game/map` devolve a mesma revisão/tiles.
-- [ ] `map.json` legado com tile+job → boot → snapshot criado, backup `.migrated`,
+- [x] `map.json` legado com tile+job → boot → snapshot criado, backup `.migrated`,
       job retomado (progresso por tempo de parede).
-- [ ] Replay == estado em memória (revisão, tiles, jobs) após N edições mistas.
+- [x] Replay == estado em memória (revisão, tiles, jobs) após edições mistas
+  e reversões. [Teste de integração](../tests/world-store.integration.py).
+- [ ] Publicar a correção no runtime Run e comprovar saúde e persistência.
 
 ## Fora de escopo (fases seguintes do WORLD-BUILDER)
 

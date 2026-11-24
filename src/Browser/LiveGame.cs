@@ -153,7 +153,7 @@ public sealed class LiveGame(HttpClient http, IJSRuntime js)
             case "npc" when string.IsNullOrEmpty(message.To) || message.To == _id:
                 Chat?.Invoke(message.Name ?? "Guardiã", message.Text ?? "");
                 break;
-            case "job_started" or "job_done" or "job_cancelled" or "map_edited":
+            case "job_started" or "job_done" or "job_cancelled" or "map_edited" or "world_edited":
                 _ = RefreshMapAsync();
                 break;
         }

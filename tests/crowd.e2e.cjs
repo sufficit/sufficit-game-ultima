@@ -37,11 +37,23 @@ const main = process.env.ULTIMA_MODE === 'main';
             const first = await sample(s => s?.types?.length === 2 && s.types.every(t => t.ready && t.visible[0] > 0));
             assert.equal(first.requested, count);
             assert.ok(first.frustumCulled > 0, 'instâncias atrás da câmera devem sair do desenho');
+            for (let retry = 0; retry < 100; retry++) {
+                if (await page.evaluate(async () => (await game.models.status()).queue === 0)) break;
+                if (retry === 99) throw Error('fila de assets não terminou');
+                await page.waitForTimeout(100);
+            }
+            const sustained = [];
+            for (let i = 0; i < 6; i++) {
+                await page.waitForTimeout(500);
+                sustained.push((await page.evaluate(() => game.crowdStatus())).fps);
+            }
+            sustained.sort((a, b) => a - b);
+            assert.ok(sustained[0] > 0 && sustained.every(Number.isFinite));
             assert.ok(first.types.every(t => t.vertices[1] < t.vertices[0]), 'modelo distante deve ter menos vértices');
             assert.equal(await page.evaluate(() => game.mode), main ? 'main' : 'worker');
             const renderer = main ? page : page.workers()[0];
             // Poucos pixels por personagem exercitam o segundo LOD sem depender da GPU.
-            await page.setViewportSize({ width: 720, height: 320 });
+            await page.setViewportSize({ width: 720, height: 180 });
             const small = await sample(s => s?.types?.some(t => t.visible[1] > 0) &&
                 s.types.every(t => t.ready && t.time > first.types[0].time));
             const shared = await renderer.evaluate(() => {
@@ -62,7 +74,7 @@ const main = process.env.ULTIMA_MODE === 'main';
             const far = await sample(s => s?.distanceCulled === count);
             assert.ok(far.types.every(type => type.visible.every(value => value === 0)));
             assert.deepEqual(errors, []);
-            console.log(JSON.stringify({ count, mode: main ? 'main' : 'worker', baseline: first, small, far: far.distanceCulled, shared }));
+            console.log(JSON.stringify({ count, mode: main ? 'main' : 'worker', fps: { min: sustained[0], median: (sustained[2] + sustained[3]) / 2, max: sustained[5] }, baseline: first, small, far: far.distanceCulled, shared }));
             await page.close();
         }
     } finally {

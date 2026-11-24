@@ -41,7 +41,9 @@
     const sceneryStyle = host.scenery === 'lowpoly' ? 'lowpoly' : 'procedural';
     // F7b: 'padrao' (StandardMaterial convertido, iluminação atual) ou 'pbr' (materiais
     // glTF originais + IBL de um env procedural). Padrão = padrao; troca pede recarga.
-    const graphicsStyle = host.graphics === 'pbr' ? 'pbr' : 'padrao';
+    const graphicsStyle = host.graphics || 'padrao';
+    const usePbr = graphicsStyle === 'pbr' || graphicsStyle === 'cinema';
+    const graphicsEffects = { csm: false, ssao: false, depthOfField: false };
     // id do modelo procedural -> id do asset GLB que o substitui no estilo lowpoly
     const SCENERY_ALT = { 'tree.pine': 'flora.pine', 'rock.boulder': 'rock.boulder2', 'scenery.grass': 'scenery.grass2' };
 
@@ -2054,7 +2056,7 @@
         if (!meshes.length) { throw new Error('nenhuma malha utilizável no GLB'); }
         for (const m of meshes) {
             m.setParent(null);   // preserva a transformada mundial nos valores locais
-            if (graphicsStyle !== 'pbr' || !envOk) { m.material = glbMaterialToStandard(m.material); }
+            if (!usePbr || !envOk) { m.material = glbMaterialToStandard(m.material); }
         }
         const merged = meshes.length === 1 ? meshes[0] : BABYLON.Mesh.MergeMeshes(meshes, true, true, undefined, false, true);
         if (!merged) { throw new Error('falha ao mesclar malhas'); }
@@ -2215,26 +2217,31 @@
     let envOk = false;
     function setupProceduralEnv() {
         try {
-            const faces = {};
-            const mk = function (top, mid, bottom) {
-                const c = document.createElement ? document.createElement('canvas') : new OffscreenCanvas(64, 64);
-                c.width = c.height = 64;
-                const ctx = c.getContext('2d');
-                const g = ctx.createLinearGradient(0, 0, 0, 64);
-                g.addColorStop(0, top); g.addColorStop(0.55, mid); g.addColorStop(1, bottom);
-                ctx.fillStyle = g;
-                ctx.fillRect(0, 0, 64, 64);
-                return c.toDataURL ? c.toDataURL('image/png') : '';
-            };
-            const sky = mk('#4d7dc4', '#9fc0e0', '#d3e2ee');
-            const ground = mk('#8a9a7a', '#5c6e4a', '#3f4d33');
-            faces.px = sky; faces.nx = sky; faces.pz = sky; faces.nz = sky;
-            faces.py = sky; faces.ny = ground;
-            const tex = new BABYLON.CubeTexture('', scene, faces, false);
+            const size = 32;
+            const horizon = [190, 208, 222];
+            const colors = [[77, 125, 196], [64, 77, 49]];
+            const faces = Array.from({ length: 6 }, (_, face) => {
+                const data = new Uint8Array(size * size * 4);
+                for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+                    const u = (2 * x + 1) / size - 1, v = (2 * y + 1) / size - 1;
+                    const height = (face === 2 ? 1 : face === 3 ? -1 : -v) / Math.hypot(1, u, v);
+                    const rgb = colors[Number(height < 0)];
+                    const offset = (y * size + x) * 4;
+                    for (let channel = 0; channel < 3; channel++) {
+                        data[offset + channel] = lerp(horizon[channel], rgb[channel], Math.abs(height));
+                    }
+                    data[offset + 3] = 255;
+                }
+                return data;
+            });
+            const tex = new BABYLON.RawCubeTexture(scene, faces, size,
+                BABYLON.Constants.TEXTUREFORMAT_RGBA, BABYLON.Constants.TEXTURETYPE_UNSIGNED_BYTE,
+                true, false, BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
+            tex.gammaSpace = true;
             tex.name = 'env-procedural';
             scene.environmentTexture = tex;
             scene.environmentIntensity = 0.65;
-            envOk = true;
+            envOk = tex.isReady();
         } catch (e) {
             console.warn('[graficos] env procedural indisponível, PBR sem IBL:', e && e.message);
         }
@@ -2348,7 +2355,27 @@
             const r = (glInfo && (glInfo.renderer || glInfo.vendor)) || '';
             softwareRenderer = /swiftshader|llvmpipe|softpipe|software/i.test(r);
         } catch (e) { /* info indisponível */ }
-        const shadows = new BABYLON.ShadowGenerator(softwareRenderer ? 1024 : 2048, sun);
+        camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 1.12, 7.5, CAM_UP.clone(), scene);
+        camera.lowerRadiusLimit = 0.12;
+        camera.upperRadiusLimit = 40;
+        camera.upperBetaLimit = Math.PI / 2.08;
+        camera.minZ = 0.06;
+        camera.fov = 0.85;
+
+        const advancedGraphics = graphicsStyle === 'cinema' && !softwareRenderer &&
+            (engine.isWebGPU || engine.webGLVersion >= 2);
+        let shadows;
+        if (advancedGraphics && BABYLON.CascadedShadowGenerator?.IsSupported) {
+            try {
+                shadows = new BABYLON.CascadedShadowGenerator(1024, sun, true, camera);
+                shadows.numCascades = 3;
+                shadows.shadowMaxZ = CHUNK;
+                shadows.stabilizeCascades = true;
+                shadows.cascadeBlendPercentage = 0.05;
+                graphicsEffects.csm = true;
+            } catch (error) { console.warn('[gráficos] CSM indisponível', error); }
+        }
+        shadows ??= new BABYLON.ShadowGenerator(softwareRenderer ? 1024 : 2048, sun);
         shadows.usePercentageCloserFiltering = true;       // sombra de bordas suaves (WebGL2)
         shadows.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM;
         shadows.bias = 0.0006;
@@ -2356,7 +2383,7 @@
         shadows.darkness = 0.5;
 
         const sky = skyDome();
-        if (graphicsStyle === 'pbr') { setupProceduralEnv(); }
+        if (usePbr) { setupProceduralEnv(); }
         buildTerrain();   // grade de chunks na fila com orçamento por frame
         void loadGroundMaterials();
         const updateWeather = weatherUpdate(sun, hemi, sky, horizon, softwareRenderer ? 240 : 520);
@@ -2399,12 +2426,16 @@
         marker.material = markerMat;
         scene.registerBeforeRender(() => { marker.rotation.y += 0.02; });
 
-        camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 1.12, 7.5, player.position.add(CAM_UP), scene);
-        camera.lowerRadiusLimit = 0.12;
-        camera.upperRadiusLimit = 40;
-        camera.upperBetaLimit = Math.PI / 2.08;
-        camera.minZ = 0.06;
-        camera.fov = 0.85;
+        camera.target.copyFrom(player.position).addInPlace(CAM_UP);
+        if (advancedGraphics && BABYLON.SSAO2RenderingPipeline?.IsSupported) {
+            try {
+                const ao = new BABYLON.SSAO2RenderingPipeline('contact-ao', scene, { ssaoRatio: 0.5, blurRatio: 0.5 }, [camera]);
+                ao.samples = 8;
+                ao.totalStrength = 0.4;
+                ao.radius = 0.8;
+                graphicsEffects.ssao = true;
+            } catch (error) { console.warn('[gráficos] SSAO indisponível', error); }
+        }
 
         // v3: pós-processamento (MSAA 4x, bloom discreto, nitidez) com recuo gracioso.
         try {
@@ -2412,11 +2443,21 @@
             if (softwareRenderer) {
                 pipeline.samples = 1;                 // software: efeitos fora, frames de volta
             } else {
-                pipeline.samples = 4;
-                pipeline.fxaaEnabled = false;
+                pipeline.samples = advancedGraphics ? 1 : 4;
+                pipeline.fxaaEnabled = advancedGraphics;
                 pipeline.bloomEnabled = true;
                 pipeline.bloomThreshold = 0.85; pipeline.bloomWeight = 0.22; pipeline.bloomKernel = 48; pipeline.bloomScale = 0.5;
                 pipeline.sharpenEnabled = true; pipeline.sharpen.edgeAmount = 0.22;
+            }
+            if (advancedGraphics) {
+                pipeline.depthOfFieldBlurLevel = BABYLON.DepthOfFieldEffectBlurLevel.Low;
+                pipeline.depthOfField.fStop = 5.6;
+                pipeline.depthOfField.focalLength = 45;
+                pipeline.depthOfFieldEnabled = true;
+                scene.onBeforeRenderObservable.add(() => {
+                    pipeline.depthOfField.focusDistance = Math.max(400, camera.radius * 1000);
+                });
+                graphicsEffects.depthOfField = true;
             }
         } catch (e) { console.warn('Pós-processamento indisponível:', e); }
 
@@ -3006,7 +3047,7 @@
             // falhar, o canvas está queimado — erro fatal limpo e o shell recarrega em
             // main com gpu=0 (canvas novo, direto WebGL).
             let adapter = null;
-            if (host.graphics !== 'webgl' && typeof navigator !== 'undefined' && navigator.gpu && BABYLON.WebGPUEngine) {
+            if (!host.gpuOff && typeof navigator !== 'undefined' && navigator.gpu && BABYLON.WebGPUEngine) {
                 try { adapter = await navigator.gpu.requestAdapter(); }
                 catch (e) { adapter = null; }
             }
@@ -3298,6 +3339,7 @@
             scatter(id, opts) { return scatterSeeded(id, opts); }
         },
         crowdStatus() { return crowd?.status() || { requested: crowdCount, error: crowdError }; },
+        graphicsStatus() { return { style: graphicsStyle, env: envOk, ...graphicsEffects }; },
         perf: {
             // Custo de CPU do loop de render (sem incluir a espera de GPU): amostras dos
             // últimos 600 frames, medianas e máximos para validar o orçamento dos modelos.

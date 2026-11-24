@@ -13,10 +13,12 @@ Reaproveitar entregas comprovadas e preservar os critérios pendentes de cada fr
    e a medição de regime estão no checkpoint 6.
 4. [concluído] Notifies de animação. RulesSmoke comprovou loop, pausa,
    transições e fila. A mochila comprovou impacto e som nos dois modos
-   locais. Produção no checkpoint 6.
-5. [em andamento] Revisar os checkpoints restantes de mundo, persistência e assets.
-   Resolver as pendências descritas nos planos com a validação correspondente.
-6. [pendente] Validar o conjunto no GitHub Pages, atualizar o índice e
+   no build de produção `f59bfde`.
+5. [parcialmente bloqueado] Oficina, undo, migração, catálogo por mundo, filtro
+   SHA-256, limpeza de órfãos e gráficos avançados implementados e verificados
+   localmente. A API exige publicação pelo Sufficit Run. A escavação volumétrica
+   em formas livres segue em aberto no plano de mundo.
+6. [em andamento] Validar o conjunto no GitHub Pages, atualizar o índice e
    converter os planos que tiverem todos os critérios comprovados.
 
 Validação por entrega: publish Release, testes relevantes do repositório,
@@ -26,8 +28,10 @@ O ensaio local reutilizou a câmera orbital e verificou recuo de 7,50 m para
 1,25 m diante de pinheiros, recuperação do zoom, arrasto, roda e descarte do
 chunk de origem nos dois renderizadores. A emenda e a mochila passaram.
 
-Próxima ação. Implementar undo autoritativo de pincéis, validar dois
-clientes e conferir o replay e a migração do journal.
+Próxima ação. Confirmar o perfil Cinemático e a proposta de variação na
+publicação estática. O publicador `workspace_app_publish` não foi exposto
+à sessão. O CLI respondeu que o shell não recebeu a ligação ao publicador;
+o endpoint atual do Run segue saudável com o volume existente.
 
 Referências da interface. O diálogo existente define a posição e a hierarquia
 de fala e ações. O Painel do jogo define o ponto de acesso do Diário e os

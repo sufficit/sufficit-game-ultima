@@ -210,6 +210,7 @@ sealed partial class GameWorld
                     res["queue"] = new JsonArray();
                     return (200, res);
                 }
+                case "undo_surface": return UndoSurfaceCmd(ch, data);
                 case "sculpt": return SculptCmd(ch, data, now);
                 case "paint": return PaintCmd(ch, data, now);
                 case "place": return PlaceCmd(ch, data, now);

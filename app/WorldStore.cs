@@ -109,19 +109,24 @@ sealed class JournalWorldStore : IWorldStore
     {
         lock (_lock)
         {
-            var obj = new JsonObject
-            {
-                ["opSeq"] = state.OpSeq,
-                ["revision"] = state.Revision,
-                ["tiles"] = state.Tiles.DeepClone(),
-                ["jobs"] = J.Arr(state.Jobs.Select(j => (JsonNode?)JobStored(j))),
-                ["edits"] = J.Arr(state.SurfaceEdits.Select(e => (JsonNode?)e.DeepClone())),
-                ["placements"] = J.Arr(state.Placements.Select(p => (JsonNode?)p.ToJson())),
-            };
-            WriteAtomic(_snapshot, obj.ToJsonString(J.Opts));
+            WriteSnapshot(state);
             WriteAtomic(_journal, "");   // ops consumidas pelo snapshot
             _log.LogInformation("world: snapshot gravado (opSeq {OpSeq}, rev {Rev})", state.OpSeq, state.Revision);
         }
+    }
+
+    void WriteSnapshot(WorldState state)
+    {
+        var obj = new JsonObject
+        {
+            ["opSeq"] = state.OpSeq,
+            ["revision"] = state.Revision,
+            ["tiles"] = state.Tiles.DeepClone(),
+            ["jobs"] = J.Arr(state.Jobs.Select(j => (JsonNode?)JobStored(j))),
+            ["edits"] = J.Arr(state.SurfaceEdits.Select(e => (JsonNode?)e.DeepClone())),
+            ["placements"] = J.Arr(state.Placements.Select(p => (JsonNode?)p.ToJson())),
+        };
+        WriteAtomic(_snapshot, obj.ToJsonString(J.Opts));
     }
 
     // ---------- internos ----------
@@ -180,6 +185,19 @@ sealed class JournalWorldStore : IWorldStore
                 break;
             case "jobCancel":
                 st.Jobs.RemoveAll(j => j.Id == J.Str(o["id"]));
+                break;
+            case "surface_batch":
+                if (o["changes"] is JsonArray changes)
+                    foreach (var change in changes.OfType<JsonObject>())
+                        st.SurfaceEdits.Add((JsonObject)change.DeepClone());
+                if (J.TryInt(o["rev"], out var batchRev) && batchRev > st.Revision)
+                    st.Revision = (int)Math.Min(int.MaxValue, batchRev);
+                break;
+            case "undo_surface":
+                var edit = J.Str(o["edit"]);
+                if (edit.Length != 0) st.SurfaceEdits.RemoveAll(change => J.Str(change["edit"]) == edit);
+                if (J.TryInt(o["rev"], out var undoRev) && undoRev > st.Revision)
+                    st.Revision = (int)Math.Min(int.MaxValue, undoRev);
                 break;
             case "sculpt":
             case "paint":
@@ -248,6 +266,9 @@ sealed class JournalWorldStore : IWorldStore
             };
             if (o["jobs"] is JsonArray jobs)
                 foreach (var j in jobs.OfType<JsonObject>()) st.Jobs.Add(JobFrom(j));
+            // Materializa a base antes de tocar no arquivo legado. Um journal já
+            // existente ainda deve ser reaplicado depois dessa migração.
+            WriteSnapshot(st);
             File.Move(_legacy, _legacy + ".migrated", overwrite: true);
             _log.LogInformation("world: map.json legado migrado para snapshot ({Tiles} tiles, {Jobs} jobs)",
                 st.Tiles.Count, st.Jobs.Count);
@@ -256,7 +277,7 @@ sealed class JournalWorldStore : IWorldStore
         catch (Exception ex)
         {
             _log.LogWarning("migração do map.json falhou: {Msg}", ex.Message);
-            return null;
+            return ReadSnapshot();
         }
     }
 

@@ -207,6 +207,23 @@
         }
     }
 
+    async function proposeScenery(model, request) {
+        if (!engine || state !== 'ready') return null;
+        try {
+            const output = await engine.chat.completions.create({
+                messages: [
+                    { role: 'system', content: 'Escolha uma semente inteira (0 a 2147483647) e um detalhe (0.5 a 1.6). Retorne somente JSON { "seed": 31, "detail": 1.2 }.' },
+                    { role: 'user', content: String(model) + ': ' + String(request).slice(0, 300) }
+                ],
+                max_tokens: 40, temperature: 0.2
+            });
+            const proposal = JSON.parse(output.choices[0].message.content);
+            if (!Number.isInteger(proposal.seed) || proposal.seed < 0 || proposal.seed > 2147483647 ||
+                !Number.isFinite(proposal.detail) || proposal.detail < 0.5 || proposal.detail > 1.6) return null;
+            return [proposal.seed, proposal.detail];
+        } catch { return null; }
+    }
+
     async function init(dotnetRef) {
         dotnet = dotnetRef;
         const ok = await probe(); // probe já emite 'unsupported' com o motivo quando falha
@@ -227,7 +244,7 @@
 
     window.game = window.game || {};
     window.game.ai = {
-        init: init, load: load, ask: ask, retry: retry, disable: disable,
+        init: init, load: load, ask: ask, proposeScenery, retry: retry, disable: disable,
         debug: function () { return JSON.parse(JSON.stringify(debug)); },
         status: function () {
             return {

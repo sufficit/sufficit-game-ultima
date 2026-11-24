@@ -22,6 +22,7 @@ sealed class Job
 sealed class Character
 {
     public string Id = "", Name = "", Token = "";
+    public readonly string EditOwner = J.Hex(16);
     public double X, Z = 8, Yaw, Last, Since;
     public double? LastPose;
     public Move? Move;

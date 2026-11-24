@@ -13,13 +13,13 @@ Prioritários:
 
 - [Execução dos planos do Ultima](PLAN-EXECUCAO-DO-BACKLOG.md)
 
-1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **concluído em 23/11/2026**
+1. ✅ [PLAN-WORLD-BUILDER.md](PLAN-WORLD-BUILDER.md) — **base entregue em 23/11/2026**
    (commit `70720cd`): persistência durável (journal+PVC), terreno em chunks com
    streaming, mundo que cresce ao andar com cristalização assistida, esculpir/pintar,
    passagens, **grutas com piso caminhável e colisão real (F5b)**, construção com
    assets e gráficos com **PBR+IBL opcional, vento e água com normais/fresnel (F7b)**
-   — tudo validado em produção (pod deletado, mundo intacto). Follow-ups registrados:
-   marching cubes p/ formas livres, CSM/SSAO/DoF. Decisões:
+   — tudo validado em produção (pod deletado, mundo intacto). Ainda em aberto: escavações volumétricas
+   livres e publicação do backend com undo. Decisões:
    [world-builder-v5](../decisions/world-builder-v5.md) e
    [world-store-v1](../decisions/world-store-v1.md).
 2. ✅ [PLAN-WORKER-OFFSCREEN-CANVAS.md](PLAN-WORKER-OFFSCREEN-CANVAS.md) —
@@ -27,7 +27,8 @@ Prioritários:
    OffscreenCanvas + fallback `?render=main`, loader glTF verificado por SHA-384 no
    worker. Atividade:
    [202611220130-motor-worker-offscreen.md](activities/202611220130-motor-worker-offscreen.md).
-2. ✅ [PLAN-PLAYER-ASSETS.md](PLAN-PLAYER-ASSETS.md) — **concluído em 22/11/2026**:
+2. ✅ [PLAN-PLAYER-ASSETS.md](PLAN-PLAYER-ASSETS.md) — **base entregue em 22/11/2026**.
+   O Run ainda precisa receber as extensões do catálogo. A entrega inicial inclui
    assets GLB CC0 com catálogo assinado por SHA-256, variação paramétrica do cenário,
    geração por prompt (gerador procedural local + adapter Meshy), upload dos jogadores
    com validação server-side e estilo do mundo procedural↔low-poly. Atividade:
@@ -45,19 +46,16 @@ Prioritários:
    `game.perf.report()`. Atividade:
    [202611212030-upload-amortizado-modelos.md](activities/202611212030-upload-amortizado-modelos.md).
 
-Futuros (bom ter na manga):
-
-8. [PLAN-CROWD-SKINNING.md](PLAN-CROWD-SKINNING.md) —
-   multidões: skeletons compartilhados, bone texture e LOD por tamanho em tela.
-10. [PLAN-ANIMATION-NOTIFIES.md](PLAN-ANIMATION-NOTIFIES.md) —
-   eventos de gameplay amarrados a pontos da timeline das animações.
-
 Fonte técnica das frentes 1–10: análise do repositório
 [w3nder/lineage-rust](https://github.com/w3nder/lineage-rust)
 (cliente Lineage II C4 em wgpu, web WASM + WebGPU; clone local de referência em
 `/mnt/sufficit/lineage-rust`). Cada plano cita os arquivos-fonte correspondentes.
 
 ## Atividades (`activities/`)
+
+- [Multidões esqueléticas](activities/202611232144-multidoes-esqueleticas.md)
+
+- [Marcas da animação](activities/202611232144-marcas-da-animacao.md)
 
 - [Diálogo e Diário em JSON](activities/202611232127-janelas-declarativas.md)
 

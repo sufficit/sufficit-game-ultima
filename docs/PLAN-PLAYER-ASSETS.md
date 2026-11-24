@@ -1,6 +1,7 @@
 # PLAN-PLAYER-ASSETS — Assets GLB CC0 e a evolução dos modelos do mundo
 
-**Status**: ✅ concluído em 22/11/2026 (fases 1–5) ·
+**Status**: fases 1–5 publicadas em 22/11/2026. Extensões do catálogo validadas
+localmente e pendentes de publicação no Sufficit Run ·
 [atividade](activities/202611220130-player-assets.md) ·
 [fase 1 (GLB CC0)](activities/) registrada no commit `94a2231`
 
@@ -50,8 +51,9 @@ permitindo trocas e acréscimos baratos conforme o jogo cresce.
       (`disposeModel`), re-registra e re-espalha dentro do orçamento normal.
 - [x] Painel **Oficina do mundo** no HUD (Index.razor): "Árvores novas/densas/jovens",
       "Pedras novas", "Grama exuberante" — o jogador vê o cenário responder na hora.
-- [ ] (futuro) Guardiã/Andarilho oferecerem variações conversando (WebLLM escolhe
-      seed/detalhe): a costura é a mesma `game.models.vary`.
+- [x] Guardiã e Andarilho oferecem variações sob pedido. A aplicação depende
+      do clique do jogador. Quando disponível, WebLLM escolhe semente e
+      detalhe com validação. O navegador tem proposta local de reserva.
 
 ## Fase 3 ✅ — Geração de modelos via API (concluída em 22/11/2026)
 
@@ -76,7 +78,9 @@ permitindo trocas e acréscimos baratos conforme o jogo cresce.
       sync do catálogo a cada 30 s (`js/workshop.js`).
 - [x] UI: input de arquivo + escala em metros na oficina; recusas do servidor viram
       mensagens claras.
-- [ ] (futuro) Catálogo por mundo (hoje global), moderação por whitelist e GC de órfãos.
+- [x] Catálogo por instalação de mundo, lista opcional de hashes aceitos
+      e coleta opcional de órfãos. [Configuração](USAGE-MUNDO.md).
+- [ ] Publicar as extensões de catálogo no Sufficit Run.
 
 ## Fase 5 ✅ — Substituição opcional dos modelos procedurais (concluída em 22/11/2026)
 

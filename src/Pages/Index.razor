@@ -219,6 +219,8 @@
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="arrow-right" Title="Dois cliques: início e fim" OnClick="@(() => BuildModeAsync("passage"))">Passagem</SUIButton>
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="inbox" Title="Cava uma gruta com paredão de rocha" OnClick="@(() => BuildModeAsync("cave"))">Gruta</SUIButton>
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="palette" OnClick="@(() => BuildModeAsync("paint"))">Pintar</SUIButton>
+                                                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined"
+                                                           Disabled="@(!WorkshopService.CanUndoSurface)" OnClick="UndoSurfaceAsync">Desfazer edição</SUIButton>
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="close" OnClick="@(() => BuildModeAsync("off"))">Sair do modo</SUIButton>
                                             </SUIStack>
                                             <SUISelect TValue="string" Id="paint-mat" Label="Material da pintura" Value="_paintMaterial" ValueChanged="OnPaintMaterialChanged">
@@ -263,8 +265,10 @@
                                                            aria-pressed="@(_gfxStyle == "padrao" ? "true" : "false")" OnClick="@(() => SetGfxAsync("padrao"))">Padrão (leve)</SUIButton>
                                                 <SUIButton SizeValue="SUISize.Small" VariantValue="@(_gfxStyle == "pbr" ? SUIVariant.Soft : SUIVariant.Outlined)"
                                                            aria-pressed="@(_gfxStyle == "pbr" ? "true" : "false")" OnClick="@(() => SetGfxAsync("pbr"))">PBR + IBL</SUIButton>
+                                                <SUIButton SizeValue="SUISize.Small" VariantValue="@(_gfxStyle == "cinema" ? SUIVariant.Soft : SUIVariant.Outlined)"
+                                                           aria-pressed="@(_gfxStyle == "cinema" ? "true" : "false")" OnClick="@(() => SetGfxAsync("cinema"))">Cinemático</SUIButton>
                                             </SUIStack>
-                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@(_gfxDirty ? "Recarregue para aplicar." : "Ativo: " + (_gfxStyle == "pbr" ? "PBR + IBL" : "padrão") + ".")</SUIText>
+                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@(_gfxDirty ? "Recarregue para aplicar." : "Ativo: " + (_gfxStyle == "cinema" ? "cinemático" : _gfxStyle == "pbr" ? "PBR + IBL" : "padrão") + ".")</SUIText>
                                             <SUISelect TValue="string" Id="weather-mode" Label="Clima" Value="_weatherMode" ValueChanged="OnWeatherChanged">
                                                 <SUISelectItem Value='@("clear")'>Céu limpo</SUISelectItem>
                                                 <SUISelectItem Value='@("rain")'>Chuva</SUISelectItem>
@@ -516,6 +520,8 @@
         if ((!_panelOpen || !_workshopOpen) && !string.IsNullOrWhiteSpace(message)) { Snackbar.Info(message); }
     }
 
+    private Task UndoSurfaceAsync() => WorkshopService.UndoSurfaceAsync(_browserLifetime.Token);
+
     private void OnWorkshopToggled(bool open) => _workshopOpen = open;
     private async Task BuildModeAsync(string? mode, object? options = null)
     {
@@ -559,13 +565,13 @@
         _workshopFileName = string.Empty;
     }
 
-    private async Task VaryAsync(string id, double? detail)
+    private async Task VaryAsync(string id, double? detail, int? proposedSeed = null)
     {
         SetWorkshopStatus("Remodelando…");
         StateHasChanged();
         try
         {
-            var seed = Random.Shared.Next();
+            var seed = proposedSeed ?? Random.Shared.Next();
             var ok = await JS.InvokeAsync<bool>("game.models.vary", id, new { seed, detail = detail ?? 1.0 });
             SetWorkshopStatus(ok ? "✓ cenário atualizado" : "Não foi possível trocar (modelo DLL ausente)");
         }
@@ -596,7 +602,7 @@
 
     private async Task SetGfxAsync(string style)
     {
-        _gfxStyle = await JS.InvokeAsync<string>("setGfx", style);
+        _gfxStyle = await JS.InvokeAsync<string>("game.graphics.set", style);
         _gfxDirty = true;
     }
     private async Task OnWeatherChanged(string? value)
@@ -756,7 +762,7 @@
         catch (JSException) { _playerName = string.Empty; }
         try { _sceneryStyle = await JS.InvokeAsync<string>("game.scenery.get") ?? "procedural"; }
         catch (JSException) { _sceneryStyle = "procedural"; }
-        try { _gfxStyle = await JS.InvokeAsync<string>("getGfx") is "pbr" ? "pbr" : "padrao"; }
+        try { _gfxStyle = await JS.InvokeAsync<string>("game.graphics.get"); }
         catch (JSException) { _gfxStyle = "padrao"; }
         try { _weatherMode = await JS.InvokeAsync<string>("game.weather.get"); }
         catch (JSException) { _weatherMode = "clear"; }
@@ -896,6 +902,8 @@
         return Task.CompletedTask;
     }
 
+    private SceneryProposal? _proposal;
+    private string? _proposalReply;
     private bool _journalOpen;
     private bool _windowContrast;
     private readonly WindowState _conversationState = new();
@@ -910,6 +918,7 @@
         values["line"] = line.Text;
         values["source"] = !view.Thinking && !string.IsNullOrEmpty(view.ReplySource) && line.Speaker != "Você"
             ? "✦ origem da resposta: " + view.ReplySource : "";
+        values["variation"] = line.Text == _proposalReply ? _proposal?.Label ?? "" : "";
         values["draft"] = _dialogDraft;
         values["dictation"] = _dictating ? "Parar ditado" : "Ditar";
         values["speechError"] = _speechError;
@@ -942,6 +951,9 @@
         {
             case "advance": return AdvanceAsync();
             case "speak": return SubmitDialogAsync();
+            case "vary" when _proposal is { } proposal:
+                _proposal = null;
+                return VaryAsync(proposal.Model, proposal.Detail, proposal.Seed);
             case "dictate": return ToggleDictationAsync();
             case "close":
                 if (_view is not null) CloseDialog();
@@ -967,6 +979,33 @@
         _turnStartedMs = NowMs();   // t50: base do tempo de resposta do turno registrado
         _ = JS.InvokeVoidAsync("game.characterDialogueLine", "Você", text.Length);
         Dispatch(new PlayerSpoke(NowMs(), text));
+        _proposal = null;
+        _proposalReply = null;
+        if (SceneryProposal.ForRequest(text, Random.Shared.Next()) is { } proposal)
+        {
+            var speaker = _view.Speaker;
+            var proposalSource = "oficina do mundo · versão procedural";
+            if (_aiState == "ready")
+            {
+                try
+                {
+                    var choice = await JS.InvokeAsync<double[]?>("game.ai.proposeScenery", TimeSpan.FromSeconds(20), proposal.Model, text);
+                    if (choice is [var seed, var detail] && seed >= 0 && seed <= int.MaxValue && seed == Math.Truncate(seed)
+                        && detail is >= 0.5 and <= 1.6)
+                    {
+                        proposal = proposal with { Seed = (int)seed, Detail = detail };
+                        proposalSource = "GPU do jogador · oficina do mundo";
+                    }
+                }
+                catch (JSException) { /* a proposta local segue disponível */ }
+                catch (OperationCanceledException) { /* tempo limite do produtor */ }
+            }
+            if (_view?.Speaker != speaker || !_view.Thinking) return;
+            _proposal = proposal;
+            _proposalReply = $"Posso preparar outra versão para você. Use “{proposal.Label}” para experimentar.";
+            Dispatch(new ReplyArrived(NowMs(), _proposalReply, proposalSource));
+            return;
+        }
         // Produtores caros (WebLLM na GPU, API do jogo, fallback local) correm fora do
         // tick; a resposta vira evento e o cérebro a aplica em um tick futuro. Os
         // produtores atuais têm a persona da Guardiã: o Andarilho responde com falas
@@ -1046,6 +1085,8 @@
         if (_view is null) return;
         _npc.Submit(new DialogClosedByPlayer(NowMs()));   // sincroniza o cérebro sem tick extra
         _view = null;
+        _proposal = null;
+        _proposalReply = null;
         _ = JS.InvokeVoidAsync("game.voice.stopDictation");
         _ = SetFrozen(false);
         StateHasChanged();

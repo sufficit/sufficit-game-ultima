@@ -46,6 +46,7 @@ self.addEventListener('message', function (e) {
                 pageBase: msg.pageBase,
                 scenery: msg.scenery,
                 graphics: msg.graphics,
+                gpuOff: msg.gpuOff,
                 weather: msg.weather,
                 size: msg.size || null,
                 terrainRuntime,

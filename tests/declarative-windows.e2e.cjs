@@ -51,6 +51,22 @@ const site = process.env.ULTIMA_SITE || 'https://sufficit.github.io/sufficit-gam
         await conversation.getByRole('button', { name: 'Enviar para a Guardiã' }).click();
         await conversation.getByText(/origem da resposta/).waitFor();
         const reply = await line.innerText();
+        const beforeProposals = await page.evaluate(async () => (await game.models.status()).timings
+            .filter(item => item.id === 'tree.pine').length);
+        await conversation.getByRole('textbox', { name: 'Escreva para a Guardiã' }).fill('Quero novas árvores');
+        await conversation.getByRole('button', { name: 'Enviar para a Guardiã' }).click();
+        const variation = conversation.getByRole('button', { name: 'Remodelar árvores' });
+        await variation.waitFor();
+        assert.equal(await page.evaluate(async () => (await game.models.status()).timings.filter(item => item.id === 'tree.pine').length), beforeProposals);
+        await variation.click();
+        await variation.waitFor({ state: 'hidden' });
+        let applied = false;
+        for (let attempt = 0; attempt < 100 && !applied; attempt++) {
+            applied = await page.evaluate(async previous => (await game.models.status()).timings
+                .filter(item => item.id === 'tree.pine').length > previous, beforeProposals);
+            if (!applied) await page.waitForTimeout(250);
+        }
+        assert.ok(applied, 'a proposta precisa reconstruir o modelo após a escolha do jogador');
         await conversation.getByRole('button', { name: 'Fechar · Esc' }).click();
         await conversation.waitFor({ state: 'hidden' });
         await panel.click();

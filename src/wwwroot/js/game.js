@@ -34,10 +34,12 @@
     }
 
     const GRAPHICS_PREF_KEY = 'ultima.graficos';
+    function graphicsStyle(value) {
+        return value === 'pbr' || value === 'cinema' ? value : 'padrao';
+    }
     function graphicsPref() {
-        if (GPU_OFF) { return 'webgl'; }   // gpu=0: sem tentativa WebGPU nesta carga
-        try { return localStorage.getItem(GRAPHICS_PREF_KEY) === 'pbr' ? 'pbr' : 'padrao'; }
-        catch (e) { return 'padrao'; }
+        try { return graphicsStyle(qs2.get('gfx') || localStorage.getItem(GRAPHICS_PREF_KEY)); }
+        catch (e) { return graphicsStyle(qs2.get('gfx')); }
     }
 
     const WEATHER_PREF_KEY = 'ultima.clima';
@@ -139,6 +141,7 @@
                     pageBase: location.href,
                     scenery: sceneryPref(),
                     graphics: graphicsPref(),
+                    gpuOff: GPU_OFF,
                     weather: weatherPref(),
                     global: window,
                     dom: true,
@@ -179,7 +182,7 @@
                 reject(new Error('worker: ' + (e && e.message || 'erro')));
             };
             worker.postMessage(
-                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), weather: weatherPref() },
+                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref() },
                 [off]);
         });
     }
@@ -549,6 +552,7 @@
         characterDialogueLine(speaker, length) { post('characterDialogueLine', [speaker, length]); },
         resetPlayer() { post('resetPlayer'); },
         crowdStatus() { return query('crowdStatus'); },
+        graphicsStatus() { return query('graphicsStatus'); },
         teleportToGuardian() { return query('teleportToGuardian'); },
         addRemote(id, name) { post('addRemote', [id, name]); },
         renameRemote(id, name) { post('renameRemote', [id, name]); },
@@ -599,7 +603,7 @@
             // F7b: PBR+IBL (materiais glTF originais) ou padrão (StandardMaterial).
             get() { return graphicsPref(); },
             set(style) {
-                const value = style === 'pbr' ? 'pbr' : 'padrao';
+                const value = graphicsStyle(style);
                 try { localStorage.setItem(GRAPHICS_PREF_KEY, value); } catch (e) { /* sem storage */ }
                 return value;
             }

@@ -1,6 +1,6 @@
 # PLAN-WORLD-BUILDER — Mundo expansível: edição 3D, geração assistida e persistência durável
 
-**Status**: ✅ plano concluído em 23/11/2026 — F1–F4, F5a, F5b (base com colisão real),
+**Status**: base entregue em 23/11/2026 — F1–F4, F5a, F5b (base com colisão real),
 F6, F7a e F7b (PBR+IBL/vento/água) entregues e validadas em produção; refinamentos
 futuros (marching cubes p/ formas livres, CSM/SSAO/DoF) registrados como follow-up ·
 absorve o escopo do [atividade de câmera e streaming](activities/202611232122-camera-e-streaming.md)
@@ -63,7 +63,9 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
 - [x] Pincéis no cliente (levantar/cavar/pintar via clique + raio ajustável) — aplicação local
       otimista + op autoritativa no servidor (rate limit, raio máximo, budget/jogador).
 - [x] Água pintável (rios = cavar o canal e pintar água; material real na F7) (base do F7).
-- [ ] Validação: edição persiste para todos; undo via replay do journal.
+- [x] Edição e undo confirmados em dois clientes com backend local. Lotes
+  atômicos e reaplicação do journal verificados após reiniciar o servidor.
+- [ ] Publicar o backend atualizado no Sufficit Run, com o volume durável atual.
 
 ### F5a ✅ — Passagens abertas **concluída em 23/11/2026**
 - [x] Action `passage` (dois cliques na Oficina): o servidor expande a linha em ops de
@@ -105,7 +107,8 @@ transmitida pelos eventos existentes (`world_edited`). SQLite quando passar de ~
       e brilho rasante do céu (FresnelParameters).
 - [x] Validação: PBR carrega com env ok e 0 erros; mediana 4,5 ms (vs 3,2 padrão),
       0 frames >33 ms; produção com toggle disponível.
-- [ ] Refinamentos futuros (precisam de QA em GPU real): sombras CSM, SSAO, DoF leve.
+- [x] Perfil Cinemático opcional, com CSM de três cascatas, SSAO em meia
+  resolução e DoF focado no personagem. Validado em GPU AMD via WebGL 2.
 
 ## Riscos e mitigações
 

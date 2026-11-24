@@ -15,6 +15,14 @@ var dataDir = Environment.GetEnvironmentVariable("ULTIMA_DATA_DIR");
 if (string.IsNullOrWhiteSpace(dataDir))
     dataDir = Path.Combine(baseDir, "data");
 
+var worldId = Environment.GetEnvironmentVariable("ULTIMA_WORLD_ID");
+if (!string.IsNullOrWhiteSpace(worldId))
+{
+    if (worldId.Length > 40 || !worldId.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-'))
+        throw new InvalidOperationException("ULTIMA_WORLD_ID aceita apenas a-z, 0-9 e hífen (até 40 caracteres).");
+    dataDir = Path.Combine(dataDir, "worlds", worldId);
+}
+
 // O dataDir precisa ser gravável (mapa persistido + assets do mundo). Na plataforma
 // run o diretório do app é montado read-only: em vez de falhar com
 // UnauthorizedAccessException em runtime, cai para o temporário gravável (emptyDir
@@ -30,6 +38,7 @@ try
 catch (Exception ex)
 {
     var fallback = Path.Combine(Path.GetTempPath(), "ultima-data");
+    if (!string.IsNullOrWhiteSpace(worldId)) fallback = Path.Combine(fallback, "worlds", worldId);
     log.LogWarning(ex, "dataDir {Dir} não é gravável — usando {Fallback}", dataDir, fallback);
     dataDir = fallback;
 }
@@ -42,6 +51,8 @@ var net = new Signaling();
 var assetsSvc = new WorldAssets(dataDir, game, log);
 game.AssetExists = id => (assetsSvc.Catalog()["assets"] as JsonArray)?.Any(a => a is JsonObject o && J.Str(o["id"]) == id) == true;
 game.Start(app.Lifetime.ApplicationStopping);
+if (int.TryParse(Environment.GetEnvironmentVariable("ULTIMA_ASSET_GC_DAYS"), out var days) && days >= 7)
+    _ = assetsSvc.PruneOrphansAsync(TimeSpan.FromDays(days), app.Lifetime.ApplicationStopping);
 
 var api = new Api(content, game, net, chat, assetsSvc, new DialogAnalytics(log), log);
 app.Run((RequestDelegate)api.HandleAsync);
