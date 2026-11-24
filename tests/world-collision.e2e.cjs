@@ -4,10 +4,8 @@ const {chromium}=require('playwright-core');
 const assert=require('node:assert/strict');
 const site=process.env.ULTIMA_SITE || 'https://sufficit.github.io/sufficit-game-ultima/';
 const main=process.env.ULTIMA_MODE==='main';
-// ULTIMA_WALK_SCALE alonga as janelas de caminhada/assentamento (padrão 1 = comportamento
-// original). Runners com renderização por software (SwiftShader sem GPU) podem rodar a poucos
-// quadros por segundo; segurar a tecla por mais tempo percorre a mesma distância sem alterar
-// as condições de colisão. ULTIMA_VIEWPORT reduz o custo de raster (padrão 1200x720).
+// ULTIMA_WALK_SCALE alonga as esperas de carregamento e assentamento (padrão 1).
+// As teclas de locomoção usam tempo de simulação. ULTIMA_VIEWPORT reduz o custo de raster.
 const walkScale=Number(process.env.ULTIMA_WALK_SCALE)||1;
 const T300=Math.round(300*walkScale);
 const [vw,vh]=(process.env.ULTIMA_VIEWPORT||'1200x720').split('x').map(Number);
@@ -60,14 +58,34 @@ async function wait(callback,label) {
         return {x:Number(match[1].replace(',','.')),z:Number(match[2].replace(',','.')),y:Number(match[3].replace(',','.'))};
     };
     const apply=op=>p.evaluate(op=>game.applyWorldOp(op),op);
-    async function walk(keys,ms,sprint=true){const hold=Math.round(ms*walkScale);
-        if(sprint) await p.keyboard.down('Shift');
-        for(const key of keys) await p.keyboard.down(key);
-        await p.waitForTimeout(hold);
-        for(const key of keys) await p.keyboard.up(key);
-        if(sprint) await p.keyboard.up('Shift');
-        await p.waitForTimeout(T300);
-        if(errors.length) throw Error(errors.join('\n'));
+    function afterGameTime(seconds) {
+        return renderer.evaluate(seconds => new Promise((resolve, reject) => {
+            const scene = BABYLON.EngineStore.LastCreatedScene;
+            let elapsed = 0;
+            const timeout = setTimeout(() => {
+                scene.onAfterRenderObservable.remove(observer);
+                reject(Error('tempo limite para avançar a simulação'));
+            }, 30000);
+            const observer = scene.onAfterRenderObservable.add(() => {
+                elapsed += Math.min(0.05, scene.getEngine().getDeltaTime() / 1000);
+                if (elapsed < seconds) return;
+                clearTimeout(timeout);
+                scene.onAfterRenderObservable.remove(observer);
+                resolve();
+            });
+        }), seconds);
+    }
+    async function walk(keys, ms, sprint = true) {
+        if (sprint) await p.keyboard.down('Shift');
+        for (const key of keys) await p.keyboard.down(key);
+        try {
+            await afterGameTime(ms / 1000);
+        } finally {
+            for (const key of keys) await p.keyboard.up(key);
+            if (sprint) await p.keyboard.up('Shift');
+        }
+        await afterGameTime(0.3);
+        if (errors.length) throw Error(errors.join('\n'));
         return pose();
     }
     async function walkGame(key, budget, axis, target) {
@@ -144,7 +162,7 @@ async function wait(callback,label) {
     // (game-core.js), então a distância percorrida em tempo de parede depende do FPS da janela.
     // A razão entre caminhada e corrida preserva a mesma condição em qualquer runner.
     async function speed(keys,ms,sprint=true,turn=null){
-        const hold=Math.round(ms*walkScale);
+        const hold=ms/1000;
         await renderer.evaluate(() => {
             const scene=BABYLON.EngineStore.LastCreatedScene, engine=BABYLON.EngineStore.LastCreatedEngine;
             const player=scene.getTransformNodeByName('player');
@@ -177,18 +195,18 @@ async function wait(callback,label) {
         for(const key of keys) await p.keyboard.down(key);
         try {
             if (turn) {
-                await p.waitForTimeout(hold/2);
+                await afterGameTime(hold/2);
                 for(const key of keys) await p.keyboard.up(key);
                 keys=[turn];
                 await p.keyboard.down(turn);
             }
-            await p.waitForTimeout(turn ? hold/2 : hold);
+            await afterGameTime(turn ? hold/2 : hold);
         }
         finally {
             for(const key of keys) await p.keyboard.up(key);
             if(sprint) await p.keyboard.up('Shift');
             // Curvas e inversões também medem o apoio depois da frenagem.
-            if (turn) await p.waitForTimeout(T300);
+            if (turn) await afterGameTime(0.3);
             samples=await renderer.evaluate(() => globalThis.stopMoveTrace());
         }
         await p.waitForTimeout(T300);

@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Inversão do jogador no próprio eixo](activities/202611241713-giro-no-proprio-eixo.md)
+
 - [Equilíbrio do jogador ao parar](activities/202611241654-equilibrio-ao-parar.md)
 
 - [Relógio GMT, céu de Greenwich e perfis de clima](activities/202611241645-relogio-ceu-clima.md)
