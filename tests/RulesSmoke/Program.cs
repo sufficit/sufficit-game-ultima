@@ -407,8 +407,9 @@ var avatars = new PlayerRemoteAvatars(remoteSurface, 0.03, 0.82, 0.39, 0.06, 0.1
 avatars.Add(7, 8, 0, baseHeight, 0, 0);
 Check("primeira pose remota ajusta posição imediatamente", avatars.Target(7, 0, 0, 0));
 var initialRemoteY = avatars.Tick(0.02, 0, 0)[2];
+var nearRemoteFlags = PlayerRemoteAvatars.PoseReady | PlayerRemoteAvatars.NearPlayer;
 Check("LOD remoto mantém a pose perto e dentro da faixa de histerese",
-    avatars.Tick(0.02, 29, 0)[5] == 1);
+    avatars.Tick(0.02, 29, 0)[5] == nearRemoteFlags);
 Check("LOD remoto longe conserva a pose entre atualizações",
     avatars.Tick(0.02, 33, 0)[5] == 0 && avatars.Tick(0.02, 29, 0)[5] == 0);
 Check("novo destino próximo interpola sem teleporte", !avatars.Target(7, 2, 0, 1));
@@ -416,13 +417,13 @@ var remoteMoving = avatars.Tick(0.02, 29, 0);
 Check("remoto distante interpola raiz sem recalcular a pose",
     remoteMoving[1] > 0 && remoteMoving[1] < 2 && remoteMoving[4] > 0 && remoteMoving[5] == 0);
 Check("LOD remoto atualiza pose depois de acumular 100 ms",
-    avatars.Tick(0.04, 29, 0)[5] == 1);
+    avatars.Tick(0.04, 31, 0)[5] == PlayerRemoteAvatars.PoseReady);
 remoteSurface.SetEdits([0, 0, 0, 4, 1.5]);
-var remoteAfterEdit = avatars.Tick(0.02, 33, 0);
+var remoteAfterEdit = avatars.Tick(0.02, 35, 0);
 Check("edição força o apoio remoto longe antes do próximo intervalo",
-    remoteAfterEdit[5] == 1 && remoteAfterEdit[2] > initialRemoteY);
+    remoteAfterEdit[5] == PlayerRemoteAvatars.PoseReady && remoteAfterEdit[2] > initialRemoteY);
 Check("remoto voltando ao raio de entrada retoma a pose por quadro",
-    avatars.Tick(0.02, 25, 0)[5] == 1 && avatars.Tick(0.02, 26, 0)[5] == 1);
+    avatars.Tick(0.02, 25, 0)[5] == nearRemoteFlags && avatars.Tick(0.02, 26, 0)[5] == nearRemoteFlags);
 Check("teleporte distante força uma pose nova",
     avatars.Target(7, 50, 0, 2) && avatars.Tick(0.02, 0, 0)[1] == 50 && avatars.Tick(0.02, 0, 0)[5] == 0);
 avatars.Add(20, 6, 2, baseHeight, 3, 0);

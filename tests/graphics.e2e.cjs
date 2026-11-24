@@ -38,7 +38,25 @@ const main = process.env.ULTIMA_MODE === 'main';
             return { cascades: shadow?.numCascades, fps: scene.getEngine().getFps(), gpu: scene.getEngine().getGlInfo().renderer };
         });
         assert.equal(detail.cascades, 3);
-        await page.waitForTimeout(400);
+        const countAvatarShadows = () => renderer.evaluate(() => {
+            const s = BABYLON.EngineStore.LastCreatedScene;
+            const map = s.getLightByName('sun').getShadowGenerator(s.activeCamera).getShadowMap();
+            return map.renderList.filter(mesh => mesh.name.includes('remote-shadow-cascade')).length;
+        });
+        await page.evaluate(() => {
+            game.addRemote('shadow-cascade', 'Teste CSM');
+            game.updateRemote('shadow-cascade', 1, 3, 0);
+        });
+        for (let attempt = 0; !(await countAvatarShadows()); attempt++) {
+            assert.ok(attempt < 30, 'avatar próximo deve projetar sombra em cascata');
+            await page.waitForTimeout(100);
+        }
+        await page.evaluate(() => game.updateRemote('shadow-cascade', 40, 3, 0));
+        for (let attempt = 0; await countAvatarShadows(); attempt++) {
+            assert.ok(attempt < 30, 'avatar distante deve sair do mapa de sombras em cascata');
+            await page.waitForTimeout(100);
+        }
+        await page.evaluate(() => game.removeRemote('shadow-cascade'));
         assert.deepEqual(errors, []);
         if (process.env.ULTIMA_CAPTURE) await page.screenshot({ path: process.env.ULTIMA_CAPTURE });
         console.log({ mode: main ? 'main' : 'worker', ...status, ...detail });

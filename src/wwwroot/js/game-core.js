@@ -79,6 +79,8 @@
     const remotes = new Map();
     const remoteSlots = new Map();
     const REMOTE_FRAME_STRIDE = 18; // PlayerRemoteAvatars.Stride
+    const REMOTE_POSE_READY = 1;
+    const REMOTE_NEAR_PLAYER = 2;
     const keys = Object.create(null);
 
     const gameCodes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
@@ -1519,15 +1521,16 @@
     // cada grupo vira clone visível filho do root. Se o modelo ainda não chegou, entra na
     // fila e usa o fallback JS imediatamente; quando o modelo chega, o fallback é
     // substituído. makeFallback deve devolver uma malha já posicionada (centro na origem).
-    function spawnFromModel(modelId, name, groundPos, rotationY, makeFallback) {
+    function spawnFromModel(modelId, name, groundPos, rotationY, makeFallback, castsShadow = true) {
         const root = new BABYLON.TransformNode(name, scene);
         root.position.copyFrom(groundPos);
         root.rotation.y = rotationY || 0;
-        const rig = createCharacterRig(root, modelId === 'character.guardian');
+        const rig = createCharacterRig(root, modelId === 'character.guardian', castsShadow);
         const entry = { root, rig, onFallback: null };
         root.onDisposeObservable.addOnce(() => {
             characterRigs.delete(root);
             disposeCharacterFallback(entry);
+            setCharacterShadows(rig, false);
             for (const material of rig.fallbackLegMaterials) { material.dispose(); }
         });
         if (modelRegistry.has(modelId) && !modelRegistry.get(modelId).placeholder) {
@@ -1537,7 +1540,7 @@
             fallback.parent = rig.legs.length ? rig.upper : root;
             if (rig.legs.length) { fallback.position.y -= HIP_HEIGHT; }
             entry.onFallback = fallback;
-            if (sceneShadows) { sceneShadows.addShadowCaster(fallback); }
+            trackCharacterShadow(rig, fallback);
             if (!modelRegistry.has(modelId)) {
                 const list = modelAwaiters.get(modelId) || [];
                 list.push({ entry });
@@ -1547,9 +1550,25 @@
         return root;
     }
 
+    function trackCharacterShadow(rig, mesh) {
+        rig.shadowMeshes.push(mesh);
+        if (rig.castsShadow) { sceneShadows?.addShadowCaster(mesh); }
+    }
+
+    function setCharacterShadows(rig, enabled) {
+        if (rig.castsShadow === enabled) { return; }
+        rig.castsShadow = enabled;
+        for (const mesh of rig.shadowMeshes) {
+            if (enabled) { sceneShadows?.addShadowCaster(mesh); }
+            else { sceneShadows?.removeShadowCaster(mesh); }
+        }
+    }
+
     function disposeCharacterFallback(entry) {
         if (!entry.onFallback) { return; }
-        sceneShadows?.removeShadowCaster(entry.onFallback);
+        const { rig, onFallback } = entry;
+        if (rig.castsShadow) { sceneShadows?.removeShadowCaster(onFallback); }
+        rig.shadowMeshes.splice(rig.shadowMeshes.indexOf(onFallback), 1);
         entry.onFallback.dispose(false, true);
         entry.onFallback = null;
     }
@@ -1579,7 +1598,7 @@
             clone.parent = pivot;
             clone.position.set(0, 0, 0);
             if (pivot !== entry.root) { clone.position.copyFrom(pivot.metadata.modelOffset); }
-            if (sceneShadows) { sceneShadows.addShadowCaster(clone); }
+            trackCharacterShadow(rig, clone);
         }
         for (const material of rig.fallbackLegMaterials.splice(0)) { material.dispose(); }
     }
@@ -2351,7 +2370,7 @@
     }
 
     let faceInk;
-    function createCharacterRig(root, guardian) {
+    function createCharacterRig(root, guardian, castsShadow) {
         function joint(name, parent, x, y) {
             const node = new BABYLON.TransformNode(root.name + '-' + name, scene);
             node.parent = parent;
@@ -2400,10 +2419,15 @@
         };
         const legs = guardian ? [] : buildCharacterLegs(root);
         const rig = {
-            root, upper, head, eyes, shoulders, face, brows, mouth, attachments,
+            root, upper, head, eyes, shoulders, face, brows, mouth, attachments, castsShadow, shadowMeshes: [],
             legs, fallbackLegMaterials: legs.length ? [legs[0].thigh.material, legs[0].shoe.material] : [],
             clock: 0, gaitPhase: 0, gaitWeight: 0, speaking: 0, action: null
         };
+        for (const { thigh, shin, shoe } of legs) {
+            trackCharacterShadow(rig, thigh);
+            trackCharacterShadow(rig, shin);
+            trackCharacterShadow(rig, shoe);
+        }
         characterRigs.set(root, rig);
         return rig;
     }
@@ -2539,7 +2563,6 @@
             shoe.material = shoes;
             for (const mesh of [thigh, shin, shoe]) {
                 mesh.isPickable = false;
-                if (sceneShadows) { sceneShadows.addShadowCaster(mesh); }
             }
             return { side, hip, knee, ankle, thigh, shin, shoe };
         });
@@ -2628,7 +2651,7 @@
         const serial = remoteSerial++;
         const avatar = spawnFromModel('character.wanderer', 'remote-' + id,
             new BABYLON.Vector3((serial % 5 - 2) * 1.5, terrainHeight(0, -2) + 0.03, -2 - Math.floor(serial / 5) * 2), 0,
-            () => { const m = buildHumanoid('remote-js-' + id, { shirt:new BABYLON.Color3(0.66,0.30,0.82), skin:new BABYLON.Color3(0.88,0.70,0.56) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
+            () => { const m = buildHumanoid('remote-js-' + id, { shirt:new BABYLON.Color3(0.66,0.30,0.82), skin:new BABYLON.Color3(0.88,0.70,0.56) }); m.position.y = PLAYER_HEIGHT / 2; return m; }, false);
 
         const label = BABYLON.MeshBuilder.CreatePlane('remote-label-' + id, { width: 1.8, height: 0.36 }, scene);
         label.position = avatar.position.add(new BABYLON.Vector3(0, 1.925, 0));
@@ -2682,7 +2705,9 @@
                 label.position.set(x, y + 1.925, z);
             }
             if (yaw !== avatar.rotation.y) { avatar.rotation.y = yaw; }
-            if (!frame[i + 5]) { continue; }
+            const flags = frame[i + 5];
+            setCharacterShadows(rig, (flags & REMOTE_NEAR_PLAYER) !== 0);
+            if (!(flags & REMOTE_POSE_READY)) { continue; }
 
             rig.upper.rotation.x = frame[i + 6];
             rig.upper.rotation.z = frame[i + 7];

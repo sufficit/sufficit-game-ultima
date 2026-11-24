@@ -70,7 +70,9 @@ passa a uma pose a cada 100 ms de simulação. A diferença entre os raios evita
 alternância na divisa. Teleportes e edições do solo antecipam a pose. As três
 amostras de altura de cada avatar são reutilizadas quando coordenadas e revisão
 do terreno coincidem. O adaptador Babylon.js aplica as transformações e
-acompanha a posição dos rótulos.
+acompanha a posição dos rótulos. O mesmo nível de detalhe determina se as
+malhas do avatar entram no mapa de sombras. A troca ocorre ao cruzar a faixa
+de distância e preserva a malha, a animação e o rótulo do avatar na cena.
 [Simulação dos avatares remotos](engine/Ultima.Terrain/PlayerRemoteAvatars.cs)
 
 O C# calcula rotação, zoom, órbita e retorno suave da câmera. O Babylon.js

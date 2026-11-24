@@ -85,8 +85,9 @@ async function collect(page, url) {
     }));
     for (const count of [12, 32, 64]) {
         for (const moving of [false, true]) {
-            const rows = await worker.evaluate(({ count, moving }) => new Promise((resolve, reject) => {
-                const engine = BABYLON.EngineStore.LastCreatedScene.getEngine();
+            const { rows, remoteShadowCasters } = await worker.evaluate(({ count, moving }) => new Promise((resolve, reject) => {
+                const scene = BABYLON.EngineStore.LastCreatedScene;
+                const engine = scene.getEngine();
                 const update = (i, step) => {
                     const near = i % 2 === 0;
                     const x = (near ? -7 : 34) + (Math.floor(i / 2) % 8) * 1.15;
@@ -117,8 +118,11 @@ async function collect(page, url) {
                     clearTimeout(timer);
                     const data = globalThis.__remotePerf.rows;
                     globalThis.__remotePerf = null;
+                    const sun = scene.getLightByName('sun');
+                    const map = (sun.getShadowGenerator(scene.activeCamera) ?? sun.getShadowGenerator()).getShadowMap();
+                    const remoteShadowCasters = map.renderList.filter(mesh => mesh.name.includes('remote-perf-')).length;
                     for (let i = 0; i < count; i++) { game.removeRemote('perf-' + i); }
-                    resolve(data);
+                    resolve({ rows: data, remoteShadowCasters });
                 });
             }), { count, moving });
             assert.deepEqual(errors, []);
@@ -127,7 +131,7 @@ async function collect(page, url) {
             console.log(JSON.stringify({ url, count, moving, samples: rows.length,
                 companionsMs: summarize(rows, 0), wasmMs: summarize(rows, 1),
                 sceneAdapterMs: summarize(rows.map(row => [Math.max(0, row[0] - row[1])]), 0),
-                calls: rows[0][2], renderLoopMs: summarize(rows, 3), frameIntervalMs: summarize(rows.slice(1), 4)
+                calls: rows[0][2], remoteShadowCasters, renderLoopMs: summarize(rows, 3), frameIntervalMs: summarize(rows.slice(1), 4)
             }));
         }
     }

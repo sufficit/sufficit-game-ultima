@@ -4,6 +4,8 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
     double legLength, double ankleOffset, double spacing, double shoeOffset)
 {
     internal const int Stride = 18;
+    internal const int PoseReady = 1;
+    internal const int NearPlayer = 2;
     internal const double NearEnter = 28;
     internal const double NearExit = 32;
     internal const double DistantInterval = 0.1;
@@ -32,7 +34,7 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
         return snap;
     }
 
-    // Identificador, transform, presença de pose, seis canais do tronco e seis das pernas.
+    // Identificador, transform, flags de pose e distância, seis canais do tronco e seis das pernas.
     internal double[] Tick(double delta, double playerX, double playerZ)
     {
         var size = _avatars.Count * Stride;
@@ -92,7 +94,7 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
             row[2] = actor.Y;
             row[3] = actor.Z;
             row[4] = actor.Yaw;
-            row[5] = poseReady ? 1 : 0;
+            row[5] = (poseReady ? PoseReady : 0) | (actor.Near ? NearPlayer : 0);
             offset += Stride;
         }
         return _frame;
