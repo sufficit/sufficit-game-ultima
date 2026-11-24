@@ -136,3 +136,5 @@ CSS ao `setSize` e deixava a tela 2× com metade da resolução). Diagnósticos 
 
 **Lição:** mudança em render/canvas se valida nos pixels (tamanho do buffer e
 razão de autorredução), não só em DOM e dados.
+
+[Plano original e checkpoints no histórico do GitHub](https://github.com/sufficit/sufficit-game-ultima/blob/781180f5648fac40e896a7dbd847d0399ec7caa9/docs/PLAN-WORKER-OFFSCREEN-CANVAS.md)

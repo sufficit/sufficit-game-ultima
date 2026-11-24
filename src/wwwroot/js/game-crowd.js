@@ -42,7 +42,7 @@
         return { mesh, matrices, animation, count: 0 };
     }
 
-    function create(scene, count, entries, buildCoarse, surface) {
+    function create(scene, count, entries, buildCoarse, terrain) {
         const engine = scene.getEngine();
         const textureKind = BABYLON.Constants.TEXTURETYPE_FLOAT;
         if (!engine.getCaps().textureFloat || !engine.getCaps().instancedArrays) {
@@ -76,46 +76,42 @@
             return { manager, levels, clip, height: desc.bounds.maxY };
         });
 
-        const people = [];
-        const columns = Math.ceil(Math.sqrt(count * 1.4));
-        const rows = Math.ceil(count / columns);
-        for (let id = 0; id < count; id++) {
-            const group = groups[id % groups.length];
-            const x = (id % columns - (columns - 1) / 2) * 2.2;
-            const z = 8 + (Math.floor(id / columns) - (rows - 1) / 2) * 2.2;
-            const y = surface(x, z);
-            people.push({
-                position: new BABYLON.Vector3(x, y + group.height / 2, z),
-                matrix: BABYLON.Matrix.RotationY(id * 2.39996).setTranslation(new BABYLON.Vector3(x, y, z)),
-                group, phase: id % group.clip.frames, low: false
-            });
-        }
+        const positions = terrain.CreateCrowd(count, Float64Array.from(groups, group => group.height));
+        const matrices = Array.from({ length: count }, (_, i) => BABYLON.Matrix.RotationY(i * 2.39996)
+            .setTranslationFromFloats(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]));
 
         const planes = BABYLON.Frustum.GetPlanes(BABYLON.Matrix.Identity());
+        const planeData = new Float64Array(24);
         let nextCull = 0, cutoff = 26, distanceCulled = 0, frustumCulled = 0;
         function update(camera, seconds) {
             for (const group of groups) { group.manager.time += seconds; }
             const now = performance.now();
             if (now < nextCull) { return; }
             nextCull = now + 90;
-            cutoff = Math.max(26, Math.min(64, cutoff + (engine.getFps() < 36 ? 3 : -1)));
-            distanceCulled = frustumCulled = 0;
             BABYLON.Frustum.GetPlanesToRef(camera.getTransformationMatrix(), planes);
+            for (let i = 0; i < planes.length; i++) {
+                const { normal, d } = planes[i], j = i * 4;
+                planeData[j] = normal.x;
+                planeData[j + 1] = normal.y;
+                planeData[j + 2] = normal.z;
+                planeData[j + 3] = d;
+            }
+            const { x, y, z } = camera.position;
+            const result = terrain.CullCrowd(x, y, z, planeData, engine.getRenderHeight(), camera.fov, engine.getFps());
+            const [visible, distant, hidden, threshold] = result;
+            distanceCulled = distant;
+            frustumCulled = hidden;
+            cutoff = threshold;
             for (const { levels } of groups) for (const level of levels) { level.count = 0; }
-            const pixels = engine.getRenderHeight() / (2 * Math.tan(camera.fov / 2));
-            for (const person of people) {
-                const d = BABYLON.Vector3.Distance(camera.position, person.position);
-                if (d > 75) { distanceCulled++; continue; }
-                if (planes.some(plane => plane.dotCoordinate(person.position) < -1.2)) { frustumCulled++; continue; }
-                const height = pixels * person.group.height / Math.max(1, d);
-                person.low = person.low ? height < cutoff + 6 : height < cutoff - 6;
-                const level = person.group.levels[Number(person.low)];
-                person.matrix.copyToArray(level.matrices, level.count * 16);
-                const { frames, fps } = person.group.clip;
+            for (let i = 4; i < visible + 4; i++) {
+                const id = result[i] >>> 1;
+                const { levels, clip } = groups[id % groups.length];
+                const level = levels[result[i] & 1];
+                matrices[id].copyToArray(level.matrices, level.count * 16);
                 const offset = level.count * 4;
-                level.animation[offset + 1] = frames - 1;
-                level.animation[offset + 2] = person.phase;
-                level.animation[offset + 3] = fps;
+                level.animation[offset + 1] = clip.frames - 1;
+                level.animation[offset + 2] = id % clip.frames;
+                level.animation[offset + 3] = clip.fps;
                 level.count++;
             }
             for (const { levels } of groups) for (const level of levels) {

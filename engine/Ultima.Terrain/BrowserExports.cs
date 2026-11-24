@@ -23,13 +23,7 @@ internal static partial class BrowserExports
     }
 
     [JSExport]
-    internal static double BaseHeight(double x, double z) => TerrainSurface.BaseHeight(x, z);
-
-    [JSExport]
     internal static double Height(double x, double z) => _surface.Height(x, z);
-
-    [JSExport]
-    internal static double Slope(double x, double z, bool natural) => _surface.Slope(x, z, natural);
 
     [JSExport]
     internal static void AddDig(double x, double z) => _surface.AddDig(x, z);

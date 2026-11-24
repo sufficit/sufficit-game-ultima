@@ -85,8 +85,8 @@
     }
 
     // Leitura: NotFound = miss normal; conteúdo inválido = erro + miss.
-    async function load(key) {
-        if (memory.has(key)) { return memory.get(key); }
+    async function load(key, remember = true) {
+        if (remember && memory.has(key)) { return memory.get(key); }
         if (!dir) { return null; }
         try {
             const fh = await dir.getFileHandle(key);
@@ -94,16 +94,16 @@
             const decoded = decode(await file.arrayBuffer());
             if (!decoded) {
                 stats.errors++;
-                memory.set(key, null);
+                if (remember) memory.set(key, null);
                 return null;
             }
             stats.hits++;
             stats.readBytes += file.size;
-            memory.set(key, decoded);
+            if (remember) memory.set(key, decoded);
             return decoded;
         } catch (e) {
             stats.misses++;
-            memory.set(key, null);
+            if (remember) memory.set(key, null);
             return null;
         }
     }

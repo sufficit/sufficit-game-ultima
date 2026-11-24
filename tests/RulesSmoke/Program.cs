@@ -114,7 +114,7 @@ stable.RecoverFromStable();
 Check("Estável não curado recupera 1 PV", stable.HitPoints == 1 && !stable.Stable);
 Check("1d4 horas de espera", Enumerable.Range(0, 50).Select(i => new Rng((ulong)i)).All(r2 => stable.RollStableRecoveryHours(r2) is >= 1 and <= 4));
 
-// IA de NPCs: decisões sobre snapshot com budget por tick (docs/PLAN-NPC-AI-DECISIONS.md)
+// IA de NPCs: decisões sobre snapshot com budget por tick (docs/activities/202611220040-ia-npcs-decisoes.md)
 WorldSnapshot Snap(bool near = true, bool open = false, bool ai = false, bool nearWanderer = false) => new(0, -12, near, nearWanderer, open, ai, 1000);
 var npc = new NpcScheduler();
 npc.Submit(new PlayerInteracted(1000));
@@ -323,6 +323,49 @@ Check("ao retirar água, a coleta usa a pintura anterior", palette.MaterialLabel
 palette.SetPaints([]);
 paletteSurface.AddDig(5, 0);
 Check("a escavação expõe terra sob a grama", palette.MaterialLabel(5, paletteSurface.Height(5, 0), 0) == "Terra");
+
+static uint Fingerprint(ReadOnlySpan<byte> bytes)
+{
+    uint value = 2166136261;
+    foreach (var b in bytes) value = unchecked((value ^ b) * 16777619);
+    return value;
+}
+
+const int textureSize = 128;
+const int colorBytes = textureSize * textureSize * 4;
+var bark = TerrainSceneryTextures.Bark(textureSize);
+Check("casca procedural preserva pixels do JavaScript", Fingerprint(bark.AsSpan(0, colorBytes)) == 2978609026);
+Check("folhagem procedural preserva pixels do JavaScript",
+    Fingerprint(TerrainSceneryTextures.Foliage(textureSize)) == 1901876341);
+Check("normais de água preservam pixels do JavaScript",
+    Fingerprint(TerrainSceneryTextures.Water(textureSize)) == 881805511);
+Check("relevo de casca preserva pixels do JavaScript",
+    Fingerprint(TerrainSceneryTextures.Bump(MemoryMarshal.Cast<byte, float>(bark.AsSpan(colorBytes)),
+        textureSize, 3.2)) == 2991320888);
+
+var vertices = new float[] { 1, -1, 0, 1, 2, 0 };
+var prepared = MemoryMarshal.Cast<byte, float>(TerrainMeshEffects.Prepare(
+    MemoryMarshal.AsBytes(vertices.AsSpan()), [1, 0.08, 123, 2, 0.38, 456]));
+Check("efeitos de malha preservam altura na estria e empacotam RGBA",
+    prepared.Length == 14 && prepared[1] == -1 && prepared[4] == 2 &&
+    prepared[9] == 1 && prepared[13] == 1 && prepared[6] < prepared[10]);
+
+var scatter = new double[TerrainScatter.Header + TerrainScatter.Batch * TerrainScatter.Channels];
+TerrainScatter.Fill(scatter, new TerrainSurface(), 123, 30, 1200, false, false, 0, -14, 5, 14, 0.55, 0.7, 1.5, 0);
+var firstScatter = (double[])scatter.Clone();
+TerrainScatter.Fill(scatter, new TerrainSurface(), 123, 30, 1200, false, false, 0, -14, 5, 14, 0.55, 0.7, 1.5, 0);
+Check("espalhamento em lote é determinístico", scatter.SequenceEqual(firstScatter) && scatter[2] == TerrainScatter.Batch);
+TerrainScatter.Fill(scatter, new TerrainSurface(), (uint)firstScatter[0], 6, (int)firstScatter[1],
+    false, false, 0, -14, 5, 14, 0.55, 0.7, 1.5, 0);
+Check("espalhamento retoma o estado e fecha a quantidade final", scatter[2] == 6 && scatter[1] < firstScatter[1]);
+
+var crowd = new TerrainCrowd(new TerrainSurface(), 4, [1.5, 1.8]);
+var inView = crowd.Cull(0, 0, 0, new double[24], 720, 0.85, 60);
+Check("multidão próxima preenche o LOD detalhado", inView[0] == 4 && (inView[4] & 1) == 0);
+var behindPlane = crowd.Cull(0, 0, 0, [0, 0, 0, -2], 720, 0.85, 60);
+Check("multidão fora do frustum sai do lote", behindPlane[0] == 0 && behindPlane[2] == 4);
+var far = crowd.Cull(100, 0, 0, new double[24], 720, 0.85, 60);
+Check("multidão distante preserva o contador de descarte", far[0] == 0 && far[1] == 4);
 
 Console.WriteLine(failures == 0 ? "\nTODOS OS TESTES PASSARAM" : $"\n{failures} FALHA(S)");
 return failures == 0 ? 0 : 1;

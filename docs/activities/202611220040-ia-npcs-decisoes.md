@@ -51,5 +51,5 @@ Dois commits na `main`:
   dele, resposta local marcada, diálogo da Guardiã preservado, Esc fecha.
   Caminho GPU (WebLLM pronto) preservado; em headless sem WebGPU a validação
   cobriu os produtores servidor/falas locais.
-- Plano convertido: [PLAN-NPC-AI-DECISIONS.md](../PLAN-NPC-AI-DECISIONS.md)
-  concluído nos 5 checkpoints.
+
+[Plano original e checkpoints no histórico do GitHub](https://github.com/sufficit/sufficit-game-ultima/blob/781180f5648fac40e896a7dbd847d0399ec7caa9/docs/PLAN-NPC-AI-DECISIONS.md)

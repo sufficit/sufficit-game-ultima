@@ -79,6 +79,35 @@ Pinturas são sincronizadas na ordem do journal quando mudam. O Babylon.js
 compõe os detalhes rasterizados com os WebP e envia a textura à GPU. O mesmo
 gerador entrega a cor procedural quando os WebP estão indisponíveis.
 
+### Preparação do cenário
+
+O C# calcula em lotes as posições e escalas do cenário e dos assets da
+Oficina. O adaptador cria as instâncias do Babylon.js e registra os IDs
+coletáveis e os colisores. O módulo C# também devolve as texturas procedurais
+de casca e folhagem, normais de água, relevo de texturas e efeitos sobre os
+vértices. A fila distribui a preparação e o envio à GPU entre os quadros.
+[Exportações do cenário](engine/Ultima.Terrain/BrowserExports.Scenery.cs)
+
+A multidão calcula a grade inicial, o descarte por distância e frustum e o nível
+de detalhe em C#. O Babylon.js fornece os planos da câmera e atualiza os
+buffers de instâncias e a animação esquelética na GPU.
+[Adaptador da multidão](src/wwwroot/js/game-crowd.js)
+
+A fronteira com JavaScript inclui Babylon.js e suas consultas às malhas, Canvas
+e DOM, WebRTC e Web Audio, armazenamento do navegador e os adaptadores de
+inferência WebLLM e Transformers.js. Os adaptadores ficam junto das APIs que
+consomem. A lógica própria que cruza essa fronteira passa dados em lote.
+[Inicialização do renderizador](src/wwwroot/js/game.js)
+
+### Cache de malhas
+
+O OPFS guarda o bloco binário da malha base por build e coordenadas do chunk.
+A fila lê e verifica o bloco fora do quadro. Uma leitura lenta ou inválida
+resulta em geração em C#. Edições que alteram a geometria usam a geração a
+partir do estado em memória. Os blocos de malha carregados do OPFS seguem
+direto para a criação da malha no Babylon.js.
+[Histórico do cache](docs/activities/202611212050-cache-opfs-preparados.md)
+
 ### Desempenho da migração
 
 Meça o caminho crítico do quadro antes e depois de cada migração. Compare
