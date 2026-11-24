@@ -16,6 +16,31 @@ bool Throws<T>(Action action) where T : Exception
     catch (T) { return true; }
 }
 
+WorldSky.Sample Sky(int month, int day, int hour, int minute = 0)
+    => WorldSky.At(new DateTimeOffset(2026, month, day, hour, minute, 0, TimeSpan.Zero).ToUnixTimeMilliseconds());
+
+var summerSky = Sky(6, 21, 12);
+var winterSky = Sky(12, 21, 12);
+var midnightSky = Sky(12, 21, 0);
+Check("solstícios mudam a altura do Sol em Greenwich",
+    summerSky.Sun.Up is > .87 and < .90 && winterSky.Sun.Up is > .24 and < .28);
+Check("o Sol nasce a leste, põe-se a oeste e fica abaixo do horizonte à meia-noite",
+    Sky(6, 21, 5).Sun.East > .6 && Sky(6, 21, 19).Sun.East < -.6
+    && midnightSky.Sun.Up < 0 && midnightSky.DirectSun == 0 && midnightSky.Daylight == 0);
+Check("o Sol permanece acima do horizonte por mais tempo no verão",
+    Sky(6, 21, 19).Sun.Up > 0 && Sky(12, 21, 17).Sun.Up < 0);
+// Instantes publicados pelo US Naval Observatory para as fases principais de 2026.
+Check("fases principais da Lua conferem com o almanaque",
+    Sky(1, 18, 19, 52) is { Phase: 0, Illumination: < .02 }
+    && Sky(1, 26, 4, 47) is { Phase: 2, Illumination: > .47 and < .53 }
+    && Sky(1, 3, 10, 3) is { Phase: 4, Illumination: > .98 }
+    && Sky(1, 10, 15, 48) is { Phase: 6, Illumination: > .47 and < .53 });
+Check("perfis de clima separam chuva de neblina e mantêm compatibilidade da preferência",
+    WorldWeather.Find("fog") is { Rain: 0, Fog: > 2 }
+    && WorldWeather.Find("rain").Rain == 1
+    && WorldWeather.Find("heavy-rain").Rain > 1
+    && WorldWeather.Find("inválido").Id == "clear");
+
 // RNG determinístico
 var a = new Rng(12345);
 var b = new Rng(12345);

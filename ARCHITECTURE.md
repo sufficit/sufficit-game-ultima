@@ -29,6 +29,7 @@ flowchart LR
 | [Ponte de entrada e cena](src/wwwroot/js/game.js) | Captura entrada do navegador e encaminha comandos. [GAME.JsInterop.cs](src/GAME.JsInterop.cs) recebe eventos do motor para o Blazor. [game-core.js](src/wwwroot/js/game-core.js) mantém a cena, aplica as poses e resolve os raios de câmera, apoio e seleção. |
 | [Terreno em C#](engine/Ultima.Terrain) | Calcula altura, superfície, malhas, escavação volumétrica e [paleta de materiais](engine/Ultima.Terrain/TerrainPalette.cs). [BrowserExports.cs](engine/Ultima.Terrain/BrowserExports.cs) entrega dados de geometria e textura em lote para a cena. |
 | [Simulação em C#](engine/Ultima.Terrain/PlayerMovement.cs) | Normaliza o analógico, resolve aceleração, colisão, deslizamento e passagem por volumes. [PlayerPose](engine/Ultima.Terrain/PlayerPose.cs) calcula marcha, expressão, apoio dos pés, tempo de ação e alcance de coleta. [PlayerCamera](engine/Ultima.Terrain/PlayerCamera.cs) resolve entrada, zoom e órbita. |
+| [Céu e clima](engine/Ultima.Terrain/WorldSky.cs) | Calcula as direções horizontal e vertical do Sol e da Lua e a fração iluminada em Greenwich. [WorldWeather](engine/Ultima.Terrain/WorldWeather.cs) define os perfis. O renderizador atualiza a efeméride a cada dez segundos e aplica as transições de clima. |
 | [Modelos em C#](models) | Pacotes de personagens, árvores, rochas e cenário. O [carregador](src/Models/ModelLoader.cs) confere SHA-256 antes de carregar cada pacote e usa marcadores quando o pacote é recusado. |
 | [Servidor](app/UltimaServer.csproj) | Sessões, eventos, validação de comandos e edições, mapa compartilhado e catálogo de assets. A API atual está em `app/`. O diretório [app-python](app-python) guarda a implementação anterior. |
 
@@ -153,6 +154,15 @@ recursos de GPU junto ao Babylon.js. Evite chamadas por vértice, osso ou
 amostra de terreno. Preserve a compatibilidade de mapas e dados persistidos.
 Valide regras com [RulesSmoke](tests/RulesSmoke) e exercite câmera, colisão,
 coleta e terreno em worker e main pelos [testes no navegador](tests).
+
+## Relógio e clima
+
+O painel de tempo usa o mesmo cálculo lunar em C#. A ponte do navegador
+detecta e formata fusos IANA via `Intl`. O instante UTC alimenta tanto
+a apresentação quanto o cálculo astronômico. O renderizador recebe um
+perfil de clima por vez. Na futura regionalização, a coordenada X/Z do
+jogador deve resolver o identificador do perfil, mantendo a transição
+existente entre os perfis.
 
 ## Publicação
 

@@ -1,0 +1,107 @@
+@using System.Globalization
+@using Sufficit.Blazor.UI.Components
+@using Ultima.Terrain
+@implements IDisposable
+@inject IJSRuntime JS
+
+<SUIStack Spacing="2">
+    <SUIStack Row="true" Wrap="true" Spacing="2">
+        <SUIText Id="world-time-gmt">GMT @_gmt</SUIText>
+        <SUIText Id="world-time-local">Local @_local</SUIText>
+    </SUIStack>
+    <SUIText Id="world-moon-phase" Typo="SUITypo.caption" Color="SUIColor.Secondary">@_moon</SUIText>
+    <SUIAutocomplete TValue="string" Id="world-time-zone" Label="Fuso horário local" Value="_zone" ValueChanged="SetZoneAsync"
+                     Placeholder="@($"Automático ({ZoneLabel(_deviceZone)})")" SearchFunc="SearchZonesAsync"
+                     ToStringFunc="ZoneLabel" Clearable="true" ClearText="Usar fuso automático" />
+    <SUISelect TValue="string" Id="weather-mode" Label="Clima" Value="_weather" ValueChanged="SetWeatherAsync">
+        @foreach (var profile in WorldWeather.Profiles)
+        {
+            <SUISelectItem Value="@profile.Id">@profile.Label</SUISelectItem>
+        }
+    </SUISelect>
+</SUIStack>
+
+@code {
+    private const string ZoneKey = "ultima.fuso";
+    private static readonly string[] Phases =
+    [
+        "Lua nova", "Lua crescente", "Quarto crescente", "Gibosa crescente",
+        "Lua cheia", "Gibosa minguante", "Quarto minguante", "Lua minguante"
+    ];
+
+    private readonly CancellationTokenSource _lifetime = new();
+    private string? _zone;
+    private string _deviceZone = "UTC", _weather = "clear";
+    private string _gmt = "—", _local = "—", _moon = string.Empty;
+    private string[] _zones = ["UTC"];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        var token = _lifetime.Token;
+        try
+        {
+            var saved = await JS.InvokeAsync<string?>("game.browser.read", token, ZoneKey);
+            _zones = await JS.InvokeAsync<string[]>("game.browser.timeZones", token, saved);
+            _deviceZone = _zones[0];
+            _zones = _zones.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            _zone = saved is not null && _zones.Contains(saved) ? saved : null;
+            _weather = WorldWeather.Find(await JS.InvokeAsync<string>("game.weather.get", token)).Id;
+            await RefreshAsync(token);
+            _ = RefreshClockAsync(token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
+
+    private async Task RefreshClockAsync(CancellationToken token)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+            while (await timer.WaitForNextTickAsync(token))
+                await InvokeAsync(() => RefreshAsync(token));
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
+
+    private async Task RefreshAsync(CancellationToken token)
+    {
+        var instant = DateTimeOffset.UtcNow;
+        var epoch = instant.ToUnixTimeMilliseconds();
+        _gmt = instant.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
+        _local = await JS.InvokeAsync<string>("game.browser.localTime", token, epoch, _zone ?? "auto");
+        var moon = WorldSky.At(epoch);
+        _moon = $"{Phases[moon.Phase]} · {moon.Illumination.ToString("P0", CultureInfo.GetCultureInfo("pt-BR"))} iluminada";
+        StateHasChanged();
+    }
+
+    private async Task SetZoneAsync(string? zone)
+    {
+        var token = _lifetime.Token;
+        _zone = zone is not null && _zones.Contains(zone) ? zone : null;
+        await JS.InvokeVoidAsync("game.browser.write", token, ZoneKey, _zone ?? "auto");
+        await RefreshAsync(token);
+    }
+
+    private Task SetWeatherAsync(string? mode)
+    {
+        _weather = WorldWeather.Find(mode).Id;
+        return JS.InvokeVoidAsync("game.weather.set", _lifetime.Token, _weather).AsTask();
+    }
+
+    private Task<IEnumerable<string>> SearchZonesAsync(string text)
+    {
+        var comparer = CultureInfo.InvariantCulture.CompareInfo;
+        var query = text.Trim().Replace('_', ' ');
+        return Task.FromResult(_zones.Where(zone => comparer.IndexOf(ZoneLabel(zone), query,
+            CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace) >= 0));
+    }
+
+    private static string ZoneLabel(string zone) => zone.Replace('_', ' ');
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

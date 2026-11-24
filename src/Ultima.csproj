@@ -22,6 +22,7 @@
     <Compile Include="../engine/Ultima.Terrain/Terrain*.cs" Link="Terrain/%(Filename)%(Extension)" />
     <Compile Include="../engine/Ultima.Terrain/BrowserExports*.cs" Link="Terrain/%(Filename)%(Extension)" />
     <Compile Include="../engine/Ultima.Terrain/Player*.cs" Link="Terrain/%(Filename)%(Extension)" />
+    <Compile Include="../engine/Ultima.Terrain/World*.cs" Link="Terrain/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!-- Contrato comum dos modelos 3D. Fica inteiro (sem trimming): os pacotes de modelos

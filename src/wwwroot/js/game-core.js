@@ -47,8 +47,10 @@
     let engine = null;
     let scene = null;
     let sceneShadows = null;
-    let weatherMode = host.weather === 'rain' ? 'rain' : 'clear';
-    let rainLevel = weatherMode === 'rain' ? 1 : 0;
+    let weatherMode = host.weather || 'clear';
+    let weatherTarget = null;
+    let rainLevel = 0, daylight = 1, windLevel = 0.06;
+    let skySample = null;
     let rainParticles = null;
     let player = null;
     let dialoguePartner = null;
@@ -440,8 +442,10 @@
     function applyGroundLight(mat) {
         // A base ambiente mantém ambos os materiais legíveis à sombra. O
         // albedo recebe luzes e sombras da cena, mais brilho discreto no molhado.
-        mat.emissiveColor.set(lerp(0.63, 0.48, rainLevel), lerp(0.65, 0.51, rainLevel), lerp(0.60, 0.55, rainLevel));
-        const glint = lerp(0.025, 0.18, rainLevel);
+        const wet = Math.min(1, rainLevel);
+        const light = lerp(0.55, 1, daylight);
+        mat.emissiveColor.set(lerp(0.63, 0.48, wet) * light, lerp(0.65, 0.51, wet) * light, lerp(0.60, 0.55, wet) * light);
+        const glint = lerp(0.025, 0.18, wet);
         mat.specularColor.set(glint, glint, glint);
     }
 
@@ -689,7 +693,7 @@
         }
         if (windInstances.length === 0) { return; }
         const t = performance.now() * 0.001;
-        const gust = lerp(0.06, 0.17, rainLevel) * (0.65 + 0.35 * Math.sin(t * 0.62));
+        const gust = windLevel * (0.65 + 0.35 * Math.sin(t * 0.62));
         const third = Math.ceil(windInstances.length / 3);
         for (let n = 0; n < third; n++) {
             const inst = windInstances[windCursor];
@@ -2144,21 +2148,87 @@
         return rain;
     }
 
+    function celestialDisc(name, diameter, color) {
+        const disc = BABYLON.MeshBuilder.CreateSphere(name, { diameter, segments: 12 }, scene);
+        disc.infiniteDistance = true;
+        disc.isPickable = false;
+        const material = new BABYLON.StandardMaterial(name + 'Mat', scene);
+        material.diffuseColor.copyFrom(color);
+        material.specularColor.set(0, 0, 0);
+        material.fogEnabled = false;
+        disc.material = material;
+        return disc;
+    }
+
     function weatherUpdate(sun, hemi, sky, horizon, capacity) {
         const overcast = new BABYLON.Color3(0.41, 0.48, 0.57);
-        let last = -1;
+        const twilight = new BABYLON.Color3(0.46, 0.30, 0.28);
+        const night = new BABYLON.Color3(0.036, 0.056, 0.10);
+        const baseFog = new BABYLON.Color3();
+        const cloudFog = new BABYLON.Color3();
+        const sunDisc = celestialDisc('sun-disc', 0.88, new BABYLON.Color3(1, 0.90, 0.68));
+        sunDisc.material.disableLighting = true;
+        sunDisc.material.emissiveColor.set(1, 0.82, 0.52);
+        const moon = celestialDisc('moon', 0.96, new BABYLON.Color3(0.88, 0.91, 0.96));
+        moon.material.emissiveColor.set(0.015, 0.02, 0.03);
+        // A mesma direção solar ilumina a face da Lua, mesmo quando o Sol está abaixo do horizonte.
+        const moonLight = new BABYLON.DirectionalLight('moon-phase-light', sun.direction.clone(), scene);
+        moonLight.intensity = 1.1;
+        moonLight.includedOnlyMeshes = [moon];
+        sun.excludedMeshes.push(moon);
+        hemi.excludedMeshes.push(moon);
+
+        weatherTarget = terrain.WeatherProfile(weatherMode);
+        const [, rain, , wind] = weatherTarget;
+        let [clouds, , fog] = weatherTarget;
+        rainLevel = rain;
+        windLevel = wind;
+        let nextSky = -Infinity;
         let emitting = false;
+        function approach(value, target, blend) {
+            return Math.abs(value - target) < 0.002 ? target : lerp(value, target, blend);
+        }
         return function () {
-            const target = weatherMode === 'rain' ? 1 : 0;
-            rainLevel = lerp(rainLevel, target, Math.min(1, engine.getDeltaTime() / 650));
-            if (Math.abs(rainLevel - target) < 0.012) { rainLevel = target; }
-            if (rainLevel !== last) {
-                last = rainLevel;
-                sun.intensity = lerp(0.95, 0.25, rainLevel);
-                hemi.intensity = lerp(0.55, 0.61, rainLevel);
-                sky.emissiveTexture.level = lerp(1, 0.61, rainLevel);
-                scene.fogDensity = lerp(0.46, 1.088, rainLevel) / (CHUNK * CHUNK_VIEW);
-                BABYLON.Color3.LerpToRef(horizon, overcast, rainLevel, scene.fogColor);
+            const now = performance.now();
+            let changed = false;
+            if (now >= nextSky) {
+                nextSky = now + 10000;
+                skySample = terrain.SampleSky(Date.now());
+                const [east, up, north, moonEast, moonUp, moonNorth] = skySample;
+                daylight = skySample[7];
+                sun.direction.set(-east, -up, -north);
+                sun.position.set(east * 75, up * 75, north * 75);
+                sunDisc.position.copyFrom(sun.position);
+                moon.position.set(moonEast * 75, moonUp * 75, moonNorth * 75);
+                moonLight.direction.copyFrom(sun.direction);
+                changed = true;
+            }
+            const [cloudTarget, rainTarget, fogTarget, windTarget] = weatherTarget;
+            if (clouds !== cloudTarget || rainLevel !== rainTarget || fog !== fogTarget || windLevel !== windTarget) {
+                const blend = Math.min(1, engine.getDeltaTime() / 650);
+                clouds = approach(clouds, cloudTarget, blend);
+                rainLevel = approach(rainLevel, rainTarget, blend);
+                fog = approach(fog, fogTarget, blend);
+                windLevel = approach(windLevel, windTarget, blend);
+                changed = true;
+            }
+            if (changed) {
+                const up = skySample[1], moonUp = skySample[4], illuminated = skySample[6], direct = skySample[8];
+                const dusk = 4 * daylight * (1 - daylight);
+                const moonGlow = Math.max(0, moonUp) * illuminated * (1 - daylight);
+                sun.intensity = 0.95 * direct * lerp(1, 0.27, clouds);
+                sun.diffuse.set(1, lerp(0.63, 0.95, direct), lerp(0.38, 0.85, direct));
+                hemi.intensity = (lerp(0.37, 0.56, daylight) + 0.15 * moonGlow) * lerp(1, 0.90, clouds);
+                sun.shadowEnabled = direct > 0.01;
+                scene.environmentIntensity = lerp(0.38, 1, daylight);
+                sky.emissiveTexture.level = lerp(0.12, 1, daylight) * lerp(1, 0.62, clouds);
+                sunDisc.visibility = Math.min(1, Math.max(0, (up + 0.012) * 40)) * lerp(1, 0.02, clouds);
+                moon.visibility = Math.min(1, Math.max(0, (moonUp + 0.012) * 40)) * lerp(1, 0.05, clouds);
+                scene.fogDensity = fog / (CHUNK * CHUNK_VIEW);
+                BABYLON.Color3.LerpToRef(night, horizon, daylight, baseFog);
+                BABYLON.Color3.LerpToRef(baseFog, twilight, dusk * 0.52, baseFog);
+                BABYLON.Color3.LerpToRef(night, overcast, daylight, cloudFog);
+                BABYLON.Color3.LerpToRef(baseFog, cloudFog, clouds, scene.fogColor);
                 scene.clearColor.set(scene.fogColor.r, scene.fogColor.g, scene.fogColor.b, 1);
                 for (const ch of chunkMap.values()) { applyGroundLight(ch.mesh.material); }
             }
@@ -3351,7 +3421,11 @@
         setPlacements(list) { setPlacements(list); },
         applyWorldOp(op) { return applyWorldOp(op); },
         setCollectedResources(entries) { setCollectedResources(entries); },
-        setWeather(mode) { weatherMode = mode === 'rain' ? 'rain' : 'clear'; },
+        setWeather(mode) {
+            weatherMode = mode;
+            if (terrain) weatherTarget = terrain.WeatherProfile(mode);
+        },
+        skyStatus() { return skySample && Array.from(skySample); },
         weatherStatus() {
             return { mode: weatherMode, rain: rainLevel, drops: rainParticles?.getActiveCount() ?? 0,
                 materials: groundMaterials.length, vegetation: windInstances.length };

@@ -47,6 +47,26 @@ Ela verifica o catálogo gravado e só remove arquivos de nomes gerados pelo
 servidor, fora do catálogo e após o prazo de retenção. Um catálogo ausente,
 parcial ou ilegível interrompe a limpeza.
 
+## Relógio, céu e clima
+
+Abra **Painel do jogo → Tempo e clima**. O primeiro relógio mostra
+GMT, referência do mundo. O segundo mostra a mesma data e hora no
+fuso local. O jogo usa o fuso do navegador no modo automático.
+Para escolher outro fuso, busque pelo nome da localidade
+(por exemplo, `London` ou `Sao Paulo`). Limpar o campo restaura
+o modo automático. A seleção fica salva no navegador e acompanha
+as regras de horário de verão do fuso escolhido.
+
+O ciclo tem duração real e usa a data e a hora UTC do equipamento.
+O céu é calculado para Greenwich. A latitude fixa determina o
+trajeto do Sol ao longo do ano e a duração do dia. A fase da Lua
+é aproximada e exibida com a fração iluminada. O fuso local muda
+apenas a leitura do horário.
+
+O painel permite escolher céu limpo, nublado, neblina, chuva e
+chuva forte. Durante esta etapa, o clima selecionado vale para a
+cena do jogador e fica salvo no mesmo navegador.
+
 ## Validação
 
 Com o app em Release, execute `python3 tests/world-store.integration.py`.

@@ -43,8 +43,10 @@
     }
 
     const WEATHER_PREF_KEY = 'ultima.clima';
+    const weatherModes = ['clear', 'cloudy', 'fog', 'rain', 'heavy-rain'];
+    function weatherMode(value) { return weatherModes.includes(value) ? value : 'clear'; }
     function weatherPref() {
-        try { return localStorage.getItem(WEATHER_PREF_KEY) === 'rain' ? 'rain' : 'clear'; }
+        try { return weatherMode(localStorage.getItem(WEATHER_PREF_KEY)); }
         catch (e) { return 'clear'; }
     }
 
@@ -622,13 +624,14 @@
         weather: {
             get() { return weatherPref(); },
             set(mode) {
-                const value = mode === 'rain' ? 'rain' : 'clear';
+                const value = weatherMode(mode);
                 try { localStorage.setItem(WEATHER_PREF_KEY, value); } catch (e) { /* sem storage */ }
                 post('setWeather', [value]);
                 return value;
             },
             status() { return query('weatherStatus'); }
         },
+        skyStatus() { return query('skyStatus'); },
         perf: {
             report() { return query('perf.report'); }
         },
