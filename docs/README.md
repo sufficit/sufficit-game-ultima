@@ -20,7 +20,8 @@ Futuros (bom ter na manga):
 
 - [PLAN-MOB-BRAIN.md](PLAN-MOB-BRAIN.md) — IA determinística de criaturas
   (MobBrain): percepção, perseguição, ataque e retorno decididos sobre
-  snapshot; proposta inicial, sem implementação.
+  snapshot; proposta com o mapeamento do código concluído (checkpoint 1), ainda
+  sem implementação.
 
 Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
