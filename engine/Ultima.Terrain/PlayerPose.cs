@@ -17,7 +17,7 @@ internal static class PlayerPose
 
     internal static void Animate(Span<double> output, double phase, double weight, double clock,
         double distance, double delta, int nameLength, bool listening, bool speaking,
-        double progress, double bend, double reach, double strideLength = StrideLength, bool opposedArms = false)
+        double progress, double bend, double reach, double strideLength = StrideLength, bool playerGait = false)
     {
         var speed = delta > 0 ? distance / delta : 0;
         var run = SmoothStep(PlayerMovement.WalkSpeed, PlayerMovement.RunSpeed, speed);
@@ -26,13 +26,13 @@ internal static class PlayerPose
 
         var gesture = Math.Sin(Math.PI * Math.Min(1, progress));
         var breath = Math.Sin(clock * 2.9) * 0.012;
-        var armPhase = opposedArms ? -Math.Sin(phase) : Math.Cos(phase);
+        var armPhase = playerGait ? -Math.Sin(phase) : Math.Cos(phase);
         var swing = armPhase * weight * Lerp(0.34, 0.74, run);
         var blink = (clock + nameLength % 7 * 0.43) % 4.7;
         output[0] = phase;
         output[1] = weight;
         output[2] = breath + 0.12 * run + gesture * bend;
-        output[3] = Math.Sin(phase) * 0.035 * weight;
+        output[3] = Math.Sin(phase) * (playerGait ? 0.02 : 0.035) * weight;
         output[4] = -0.06 * run + gesture * 0.14 + (speaking ? Math.Sin(clock * 9) * 0.036 : 0);
         output[5] = listening && !speaking ? 0.09 : 0;
         output[6] = 1 - 0.94 * (1 - SmoothStep(0.015, 0.085, Math.Abs(blink - 0.09)));

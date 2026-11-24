@@ -56,6 +56,11 @@ podem iniciar uma passada de
 reposicionamento. Teleportes liberam os contatos antigos. O terreno e
 os obstáculos continuam determinando a altura sob a sola.
 
+Em mudanças de rumo, o jogador progride conforme o corpo se alinha
+ao caminho permitido pela colisão. O controle usa a orientação visível
+e volta à velocidade de regime quando alinha. A passada local também
+usa uma oscilação lateral menor do tronco.
+
 O Andarilho e os avatares remotos continuam com o solucionador sagital.
 O solucionador local usa a altura de apoio e uma sola nivelada durante
 o contato. A inclinação pela normal do relevo depende de uma futura

@@ -268,6 +268,11 @@ Check("agendador entrega impacto mesmo fora de diálogo",
     animated.Tick(Snap()).Single().Commands.Single() is ResolveAnimationMark { Name: "hit", Payload: "collect" });
 
 // Regressões da simulação compartilhada com o navegador.
+Check("translação é integral quando rumo e corpo estão alinhados", PlayerMovement.TurnTravelScale(0) == 1);
+Check("mudança de rumo modera avanço lateral e inversão",
+    Math.Abs(PlayerMovement.TurnTravelScale(Math.PI / 4) - 0.25) < 1e-12
+    && PlayerMovement.TurnTravelScale(Math.PI / 2) < 1e-12
+    && PlayerMovement.TurnTravelScale(Math.PI) == 0);
 var movement = new PlayerMovement(1.75, 0.41, 0.03);
 movement.SetColliders([0, 2, 0.28, 0, 5, 0]);
 var blocked = movement.Sweep(0, 0.03, 0, 0, 5, 0);
@@ -362,7 +367,7 @@ var earlySwing = swingStart + Math.PI * .15;
 PlayerPose.FootTargets(feet, 0, earlySwing, 1, 3.5, .077, .06, playerStride);
 contacts.Apply(feet, alignment, earlySwing, .077, .06);
 Check("pé começa a avançar em relação ao corpo após a saída do apoio", feet[3] > toeOff);
-PlayerPose.Animate(gait, Math.PI / 2, 1, 0, 0, 0, 0, false, false, 0, 0, 0, playerStride, opposedArms: true);
+PlayerPose.Animate(gait, Math.PI / 2, 1, 0, 0, 0, 0, false, false, 0, 0, 0, playerStride, playerGait: true);
 Check("braço esquerdo avança quando a perna direita aterrissa", gait[10] < -.3 && gait[11] > .3);
 
 var camera = new PlayerCamera();

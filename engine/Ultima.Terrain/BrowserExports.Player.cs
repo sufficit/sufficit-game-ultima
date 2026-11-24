@@ -61,11 +61,11 @@ internal static partial class BrowserExports
     }
 
     [JSExport]
-    internal static double[] MovePlayer(double x, double y, double z, double forwardX, double forwardZ,
+    internal static double[] MovePlayer(double x, double y, double z, double facing, double forwardX, double forwardZ,
         double keyX, double keyZ, double analogX, double analogZ, bool sprint, double delta, bool hasTunnels)
     {
         (MovementResult[0], MovementResult[1], MovementResult[2], MovementResult[3]) = _movement.Advance(
-            x, y, z, forwardX, forwardZ, keyX, keyZ, analogX, analogZ, sprint, delta, _surface, _volumes, hasTunnels);
+            x, y, z, facing, forwardX, forwardZ, keyX, keyZ, analogX, analogZ, sprint, delta, _surface, _volumes, hasTunnels);
         return MovementResult;
     }
 
@@ -137,7 +137,7 @@ internal static partial class BrowserExports
         var strideLength = isPlayer ? PlayerFootContacts.StrideLength : PlayerPose.StrideLength;
         if (isPlayer) distance = PlayerFeet.Begin(x, z, yaw, distance);
         PlayerPose.Animate(result, phase, weight, clock, distance, delta, nameLength, listening,
-            speech > 0 && listening, progress, bend, reach, strideLength, opposedArms: isPlayer);
+            speech > 0 && listening, progress, bend, reach, strideLength, playerGait: isPlayer);
         result[12] = clock;
         result[13] = speech;
         result[14] = next;

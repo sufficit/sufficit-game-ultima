@@ -26,7 +26,7 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
         => maxY > ground && maxY - ground <= kneeHeight && minY <= ground + 0.10;
 
     internal (double X, double Z, double Yaw, double Distance) Advance(
-        double x, double y, double z, double forwardX, double forwardZ,
+        double x, double y, double z, double facing, double forwardX, double forwardZ,
         double keyX, double keyZ, double analogX, double analogZ, bool sprint, double delta,
         TerrainSurface surface, TerrainVolumes volumes, bool hasTunnels)
     {
@@ -50,18 +50,36 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
         var ground = hasTunnels ? volumes.Floor(x, z, y, kneeHeight) : surface.Height(x, z);
         var stepping = y - footGap > ground + 0.015;
         var distance = (stepping ? Math.Min(2.8, _speed) : _speed) * delta;
-        var (nextX, nextZ) = Sweep(x, y, z, _directionX * distance, _directionZ * distance, ground);
-        if (hasTunnels && !PassesVolume(volumes, x, z, nextX, nextZ, y, ground))
-        {
-            if (PassesVolume(volumes, x, z, nextX, z, y, ground)) nextZ = z;
-            else if (PassesVolume(volumes, x, z, x, nextZ, y, ground)) nextX = x;
-            else (nextX, nextZ) = (x, z);
-        }
+        var (nextX, nextZ) = ResolveMove(x, y, z, _directionX * distance, _directionZ * distance,
+            ground, volumes, hasTunnels);
         var actualX = nextX - x;
         var actualZ = nextZ - z;
         var travelled = double.Hypot(actualX, actualZ);
         var yaw = travelled > 0.001 ? Math.Atan2(actualX, actualZ) : Math.Atan2(_directionX, _directionZ);
+        var scale = TurnTravelScale(yaw - facing);
+        if (scale < 0.999 && travelled > 0)
+        {
+            // Mede a direção percorrível antes de virar. Revalida o trecho reduzido com os colisores.
+            (nextX, nextZ) = ResolveMove(x, y, z, actualX * scale, actualZ * scale, ground, volumes, hasTunnels);
+            travelled = double.Hypot(nextX - x, nextZ - z);
+        }
         return (nextX, nextZ, yaw, travelled);
+    }
+
+    internal static double TurnTravelScale(double difference)
+    {
+        var alignment = Math.Max(0, Math.Cos(difference));
+        var squared = alignment * alignment;
+        return squared * squared;
+    }
+
+    private (double X, double Z) ResolveMove(double x, double y, double z, double dx, double dz,
+        double ground, TerrainVolumes volumes, bool hasTunnels)
+    {
+        var (nextX, nextZ) = Sweep(x, y, z, dx, dz, ground);
+        if (!hasTunnels || PassesVolume(volumes, x, z, nextX, nextZ, y, ground)) return (nextX, nextZ);
+        if (PassesVolume(volumes, x, z, nextX, z, y, ground)) return (nextX, z);
+        return PassesVolume(volumes, x, z, x, nextZ, y, ground) ? (x, nextZ) : (x, z);
     }
 
     internal (double X, double Z) Sweep(double x, double y, double z, double dx, double dz, double ground)

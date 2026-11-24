@@ -119,15 +119,23 @@ async function wait(callback,label) {
         }
         // Descarta a rampa de aceleração (primeiros 0,3 s de jogo): numerador e denominador
         // precisam ser PARES — só contam os passos após a rampa (tempo gC = tempo dos passos medidos).
-        let g=0, gC=0, dist=0, n=0, plantedFrames=0, maxSlide=0, turningFrames=0, turnSlide=0, swingSamples=0, swingRetreat=0, swingRetreatAfterTakeoff=0;
+        let g=0, gC=0, dist=0, n=0, maxSideSpeed=0, maxBackSpeed=0, plantedFrames=0, maxSlide=0, turningFrames=0, turnSlide=0, swingSamples=0, swingRetreat=0, swingRetreatAfterTakeoff=0;
         const swingOrigins=[null,null];
         for(let i=1;i<samples.length;i++){
             const d=Math.hypot(samples[i].x-samples[i-1].x, samples[i].z-samples[i-1].z);
             if(g>0.3){
                 dist+=d; gC+=samples[i].g; n++;
+                const yaw=samples[i].yaw;
+                const side=(samples[i].x-samples[i-1].x)*Math.cos(yaw) -
+                    (samples[i].z-samples[i-1].z)*Math.sin(yaw);
+                const forward=(samples[i].x-samples[i-1].x)*Math.sin(yaw) +
+                    (samples[i].z-samples[i-1].z)*Math.cos(yaw);
+                if(samples[i].g>0){
+                    maxSideSpeed=Math.max(maxSideSpeed,Math.abs(side)/samples[i].g);
+                    maxBackSpeed=Math.max(maxBackSpeed,-forward/samples[i].g);
+                }
                 if(d>0.02) for(let foot=0;foot<2;foot++){
                     const a=samples[i-1].feet[foot], b=samples[i].feet[foot];
-                    const yaw=samples[i].yaw;
                     if(b.pitch<=1e-6 || Math.abs(yaw-samples[i-1].yaw)>=0.001) swingOrigins[foot]=null;
                     else if(a.planted) swingOrigins[foot]={sample:samples[i-1], allowance:d};
                     const origin=swingOrigins[foot];
@@ -171,8 +179,8 @@ async function wait(callback,label) {
             }
         }
         const pitches=samples.flatMap(sample=>sample.feet.map(foot=>foot.pitch));
-        return {v:gC>0?dist/gC:0,z:last?.z,frames:samples.length,plantedFrames,maxSlide,
-            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide,swingSamples,swingRetreat,swingRetreatAfterTakeoff};
+        return {v:gC>0?dist/gC:0,x:last?.x,z:last?.z,frames:samples.length,plantedFrames,maxSlide,
+            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide,swingSamples,swingRetreat,swingRetreatAfterTakeoff,maxSideSpeed,maxBackSpeed};
     }
     const walking=await speed(['w'],1800,false);
     assert.ok(walking.plantedFrames>=5 && walking.maxSlide<0.012,
@@ -191,16 +199,25 @@ async function wait(callback,label) {
     await p.waitForTimeout(T300);
     const turning=await speed(['w'],1500,false,'d');
     console.log(JSON.stringify({turning}));
+    assert.ok(turning.maxSideSpeed<1.1 && turning.v>2,
+        'corpo deve virar antes de acelerar lateralmente: '+JSON.stringify(turning));
     assert.ok(turning.turningFrames>=2 && turning.turnSlide<0.012,
         'pé de apoio deve ficar no mesmo lugar durante a curva: '+JSON.stringify(turning));
     await p.evaluate(()=>game.resetPlayer());
     await p.waitForTimeout(T300);
     const reversing=await speed(['w'],1500,false,'s');
     console.log(JSON.stringify({reversing}));
+    assert.ok(reversing.maxBackSpeed<0.1,'jogador deve girar antes de seguir na direção oposta');
     assert.ok(reversing.turningFrames>=2 && reversing.turnSlide<0.012,
         'pé de apoio deve ficar no mesmo lugar durante a inversão: '+JSON.stringify(reversing));
     assert.ok(reversing.stopFrames>=2 && reversing.stopSlide<0.012,
         'pé em apoio deve permanecer imóvel ao parar: '+JSON.stringify(reversing));
+    await p.evaluate(()=>game.resetPlayer());
+    await p.waitForTimeout(T300);
+    const diagonal=await speed(['w','d'],1600,false);
+    console.log(JSON.stringify({diagonal}));
+    assert.ok(diagonal.v>3.3 && diagonal.v<3.7 && diagonal.x>1 && Math.abs(diagonal.x-diagonal.z)<0.08,
+        'diagonal deve manter o rumo e a velocidade de caminhada: '+JSON.stringify(diagonal));
     await p.evaluate(()=>game.resetPlayer());
     await p.waitForTimeout(T300);
     const running=await speed(['w'],1400);
