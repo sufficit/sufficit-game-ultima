@@ -374,6 +374,30 @@ Check("pé começa a avançar em relação ao corpo após a saída do apoio", fe
 PlayerPose.Animate(gait, Math.PI / 2, 1, 0, 0, 0, 0, false, false, 0, 0, 0, playerStride, playerGait: true);
 Check("braço esquerdo avança quando a perna direita aterrissa", gait[10] < -.3 && gait[11] > .3);
 
+contacts.Reset();
+var midSwing = Math.PI * .75;
+contacts.Begin(0, 0, 0, .02);
+PlayerPose.FootTargets(feet, 0, midSwing, 1, 3.5, .091, .06, playerStride);
+contacts.Apply(feet, alignment, midSwing, .091, .06, .02);
+var swingHeight = feet[1];
+var swingAnchor = (feet[2], feet[3]);
+var restsWithoutDrift = true;
+for (var i = 0; i < 12; i++)
+{
+    contacts.Begin(0, 0, 0, 0);
+    PlayerPose.FootTargets(feet, 0, midSwing, 1, 0, .091, .06, playerStride);
+    restsWithoutDrift &= !contacts.Apply(feet, alignment, midSwing, .091, .06, .02)
+        && (feet[2], feet[3]) == swingAnchor;
+}
+Check("parar no meio do balanço nivela a sola sobre o mesmo ponto de apoio",
+    swingHeight > .05 && restsWithoutDrift && feet[1] == 0 && feet[5] == 0 && feet[8] == 0 && feet[9] == 0);
+contacts.Begin(0, .02, 0, .02);
+PlayerPose.FootTargets(feet, 0, midSwing, 1, 1, .091, .06, playerStride);
+contacts.Apply(feet, alignment, midSwing, .091, .06, .02);
+Check("voltar a andar eleva gradualmente a sola", feet[1] > 0 && feet[1] < swingHeight / 2);
+PlayerPose.Animate(gait, midSwing, 0, .5, 0, .02, 1, false, false, 0, 0, 0, playerStride, playerGait: true);
+Check("tronco em repouso mantém pose neutra", gait[2] == 0 && gait[3] == 0);
+
 const double minimumGap = PlayerCharacterSpace.TorsoDepth * 2;
 var occupied = new PlayerCharacterSpace();
 occupied.Set(PlayerCharacterSpace.Guardian, 0, 0, 2);

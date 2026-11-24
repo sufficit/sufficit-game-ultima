@@ -4,10 +4,11 @@ namespace Ultima.Terrain;
 internal sealed class PlayerFootContacts
 {
     internal const double StrideLength = 1.16;
+    private const double SettleDuration = 0.18;
 
     private readonly Contact[] _feet = new Contact[2];
-    private bool _ready;
-    private double _x, _z, _yaw;
+    private bool _ready, _moving;
+    private double _x, _z, _yaw, _airborneBlend;
 
     internal void Reset() => _ready = false;
 
@@ -16,7 +17,9 @@ internal sealed class PlayerFootContacts
         if (double.Hypot(x - _x, z - _z) > distance + 0.02) Reset();
         var turned = _ready ? Math.Abs(Math.IEEERemainder(yaw - _yaw, Math.Tau)) : 0;
         (_x, _z, _yaw) = (x, z, yaw);
-        return Math.Max(distance, turned * 0.28);
+        var travelled = Math.Max(distance, turned * 0.28);
+        _moving = travelled > 0.00001;
+        return travelled;
     }
 
     // feet mantém os canais da marcha. extra contém deslocamento lateral e giro de cada sola.
@@ -75,7 +78,20 @@ internal sealed class PlayerFootContacts
             extra[i] = localX - side;
             extra[2 + i] = yawDifference;
         }
+        if (!_ready) _airborneBlend = _moving ? 1 : 0;
         _ready = true;
+
+        // A fase congela sem avanço. Pousa o pé onde ele parou, sem deslocar
+        // as solas na horizontal nem reiniciar a animação de tropeço.
+        _airborneBlend = Math.Clamp(_airborneBlend + (_moving ? delta : -delta) / SettleDuration, 0, 1);
+        if (_airborneBlend < 1)
+        {
+            var blend = _airborneBlend * _airborneBlend * (3 - 2 * _airborneBlend);
+            feet[1] *= blend;
+            feet[5] *= blend;
+            feet[8] *= blend;
+            feet[9] *= blend;
+        }
         return KeepFeetApart(feet, extra, spacing, sin, cos);
     }
 
@@ -101,14 +117,14 @@ internal sealed class PlayerFootContacts
             contact.X += dx;
             contact.Z += dz;
         }
-        if (correction > 0.012)
+        if (_moving && correction > 0.012)
         {
             const double lift = 0.085;
             if (!contact.Swing) contact.RecoveryLift = lift;
             feet[offset + 1] = Math.Max(feet[offset + 1], lift);
             if (feet[8 + foot] == 0) feet[8 + foot] = 1.5 * lift;
         }
-        return correction > 0.025;
+        return _moving && correction > 0.025;
     }
 
     // Projeção lateral da sola elipsoidal.

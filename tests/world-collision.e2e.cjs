@@ -96,6 +96,41 @@ async function wait(callback,label) {
             return await renderer.evaluate(()=>globalThis.contactTraversal);
         } finally { await p.keyboard.up(key); await p.waitForTimeout(T300); }
     }
+    async function idlePose() {
+        return renderer.evaluate(() => new Promise((resolve, reject) => {
+            const scene = BABYLON.EngineStore.LastCreatedScene;
+            const player = scene.getTransformNodeByName('player');
+            const torso = scene.getTransformNodeByName('player-upper-body');
+            const ankles = ['left', 'right'].map(side => scene.getTransformNodeByName('player-ankle-' + side));
+            let elapsed = 0, frames = 0, first, rootDrift = 0, maxPitch = 0, verticalDrift = 0, sway = 0;
+            const timer = setTimeout(() => {
+                scene.onAfterRenderObservable.remove(observer);
+                reject(Error('tempo limite ao medir a postura em repouso'));
+            }, 20000);
+            const observer = scene.onAfterRenderObservable.add(() => {
+                elapsed += Math.min(0.05, scene.getEngine().getDeltaTime() / 1000);
+                if (elapsed < 0.7) return;
+                const { x, y, z } = player.position;
+                const bend = torso.rotation.x, roll = torso.rotation.z;
+                const heights = ankles.map(ankle => ankle.getAbsolutePosition().y);
+                first ??= { x, y, z, bend, roll, heights };
+                frames++;
+                rootDrift = Math.max(rootDrift, Math.hypot(x - first.x, y - first.y, z - first.z));
+                verticalDrift = Math.max(verticalDrift, ...heights.map((height, i) => Math.abs(height - first.heights[i])));
+                sway = Math.max(sway, Math.hypot(bend - first.bend, roll - first.roll));
+                maxPitch = Math.max(maxPitch, ...ankles.map(ankle => Math.abs(ankle.getDirection(BABYLON.Axis.Z).y)));
+                if (elapsed < 1.5) return;
+                clearTimeout(timer);
+                scene.onAfterRenderObservable.remove(observer);
+                resolve({ frames, rootDrift, verticalDrift, sway, maxPitch });
+            });
+        }));
+    }
+    function assertIdlePose(rests) {
+        assert.ok(rests.every(rest => rest.frames >= 15 && rest.rootDrift < 0.001 &&
+            rest.verticalDrift < 0.001 && rest.sway < 0.002 && rest.maxPitch < 0.001),
+        'o jogador deve ficar estável e apoiar as duas solas após parar: ' + JSON.stringify(rests));
+    }
     // Mede a velocidade em TEMPO DE JOGO (soma do delta truncado por quadro), não em tempo de parede:
     // sob renderização por software o runner faz ~1 quadro/s e cada quadro avança no máximo 0,05 s
     // (game-core.js), então a distância percorrida em tempo de parede depende do FPS da janela.
@@ -412,6 +447,15 @@ async function wait(callback,label) {
         'pé em apoio deve permanecer imóvel ao parar: '+JSON.stringify(reversing));
     await p.evaluate(()=>game.resetPlayer());
     await p.waitForTimeout(T300);
+    const rests = [];
+    for (const [key, axis, target] of [['w', 'z', 0.42], ['d', 'x', 0.93], ['w', 'z', 1.41]]) {
+        await walkGame(key, 1.3, axis, target);
+        rests.push(await idlePose());
+        await p.evaluate(() => game.resetPlayer());
+        await p.waitForTimeout(T300);
+    }
+    console.log(JSON.stringify({ rests }));
+    assertIdlePose(rests);
     const diagonal=await speed(['w','d'],1600,false);
     console.log(JSON.stringify({diagonal}));
     assert.ok(diagonal.v>3.3 && diagonal.v<3.7 && diagonal.x>1 && Math.abs(diagonal.x-diagonal.z)<0.08,
@@ -532,6 +576,9 @@ async function wait(callback,label) {
         assert.ok(contact.every(sample => sample.feet.every(foot => Math.abs(foot.gap)<0.04)),
             'cada sola deve ficar a menos de 4 cm do tronco ou do chão, mesmo nas bordas');
     }
+    const restOnLog = await idlePose();
+    console.log(JSON.stringify({ restOnLog }));
+    assertIdlePose([restOnLog]);
     await apply({kind:'remove',uid:'browser-log'});
     await p.evaluate(()=>game.resetPlayer());
     await apply({...fixture,uid:'browser-high-log',asset:'prop.log',scale:0.95});

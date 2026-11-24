@@ -22,10 +22,11 @@ internal static class PlayerPose
         var speed = delta > 0 ? distance / delta : 0;
         var run = SmoothStep(PlayerMovement.WalkSpeed, PlayerMovement.RunSpeed, speed);
         weight = Lerp(weight, Math.Min(1, speed / 1.1), 1 - Math.Exp(-13 * delta));
+        if (playerGait && distance == 0 && weight < 0.0001) weight = 0;
         phase = (phase + distance * Math.Tau / strideLength) % Math.Tau;
 
         var gesture = Math.Sin(Math.PI * Math.Min(1, progress));
-        var breath = Math.Sin(clock * 2.9) * 0.012;
+        var breath = playerGait ? 0 : Math.Sin(clock * 2.9) * 0.012;
         var armPhase = playerGait ? -Math.Sin(phase) : Math.Cos(phase);
         var swing = armPhase * weight * Lerp(0.34, 0.74, run);
         var blink = (clock + nameLength % 7 * 0.43) % 4.7;
