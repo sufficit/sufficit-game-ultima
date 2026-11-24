@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Contato junto à silhueta](activities/202611241249-colisao-junto-as-malhas.md)
+
 - [Contato corporal e tropeço](activities/202611241236-contato-de-personagens.md)
 
 - [Alinhamento da marcha ao mudar de direção](activities/202611241221-alinhamento-da-marcha.md)
