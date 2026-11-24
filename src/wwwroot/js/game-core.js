@@ -27,6 +27,8 @@
     // Alvo da câmera fica na altura do peito (o root do personagem agora é os pés).
     const CAM_UP = new BABYLON.Vector3(0, PLAYER_HEIGHT / 2, 0);
     const TICK_MS = 200;
+    // Zona morta radial dos sticks virtuais de toque (o gamepad usa a mesma em PlayerMovement.Stick, C#).
+    const DEADZONE = 0.18;
     // Orçamento de CPU por frame para subir modelos (texturas, malhas, scatter). Referência:
     // lineage-rust amortiza a entrada de personagens com 4 ms/frame (CHARACTER_BUDGET_MS).
     const MODEL_BUDGET_MS = 4.0;
@@ -54,10 +56,10 @@
     let camera = null;
     const G = host.global;
     const dom = !!host.dom;
-    const CAM_POINTER_SENS = 0.01;    // rad/px do arrasto no worker — mesma medida do attachControl na main (200 px ≈ 2,0 rad)
     const camPending = { dx: 0, dy: 0, wheel: 0 };
+    let cameraFrame = null;
+    let cameraGeometryRevision = 0;
     let zoomTarget = 7.5;    // zoom escolhido pelo jogador, independente do recuo por colisão
-    let orbitRadius = 7.5;
     const padState = { x: 0, y: 0, lookX: 0, lookY: 0 };
     // Eventos para fora (UI C#, rede) saem todos por aqui — idêntico nos dois modos.
     const dotnet = { invokeMethodAsync: function (name) { host.postEvent(name, Array.prototype.slice.call(arguments, 1)); } };
@@ -346,22 +348,14 @@
     const worldPaints = [];
     const worldTunnels = [];
     const worldCarves = [];   // F5b base: grutas {x,z,r,y0,y1} — piso absoluto + rocha
-    const PAINT_COLORS = {
-        grass: [0.30, 0.46, 0.16], dirt: [0.47, 0.36, 0.23], sand: [0.78, 0.70, 0.50],
-        rock: [0.46, 0.45, 0.44], snow: [0.93, 0.95, 0.97], water: [0.16, 0.42, 0.62],
-    };
-
-    function brushWeight(x, z, op) {
-        const t = 1 - Math.hypot(x - op.x, z - op.z) / op.r;
-        return t <= 0 ? 0 : t * t * (3 - 2 * t);   // falloff suave na borda do pincel
-    }
-
-    const SOIL_DEPTH = 0.48;
+    const paletteMaterials = ['grass', 'dirt', 'sand', 'rock', 'snow', 'water'];
+    let paletteDirty = false;
     const SOIL_RADIUS = 1;
     const collectedIds = new Set();
     function surfaceResourceId(kind, op) { return kind + ':' + (op.rev ?? [op.x, op.z, op.r].join(',')); }
 
     function syncTerrainEdits() {
+        cameraGeometryRevision++;
         const values = [];
         for (const op of worldSculpts) { values.push(0, op.x, op.z, op.r, op.dh); }
         for (const op of worldCarves) { values.push(1, op.x, op.z, op.r, op.y0); }
@@ -374,77 +368,16 @@
         terrain.SetVolumes(new Float64Array(volumes));
     }
 
-    // Paleta do solo (mesma lógica do gerador original), agora pintável por material.
-    function terrainColorAt(x, y, z, slope = slopeAt(x, z), soilDepth = terrain.Depth(x, z)) {
-        const grassDark = [0.10, 0.27, 0.09], grassLight = [0.25, 0.44, 0.13], grassDry = [0.44, 0.42, 0.18];
-        const dirt = [0.47, 0.36, 0.23], dirtLight = [0.58, 0.47, 0.32];
-        const rock = [0.42, 0.41, 0.40], rockLight = [0.55, 0.54, 0.52], snow = [0.93, 0.95, 0.97];
-        const patch = noise(x * 0.11 + 100, z * 0.11 - 60);
-        const fine = noise(x * 0.85 - 13.7, z * 0.85 + 77.1) * 0.5 + 0.5;
-        const t = Math.max(0, Math.min(1, y * 0.16 + 0.42 + patch * 0.45 + (fine - 0.5) * 0.18));
-        let r = lerp(lerp(grassDark[0], grassLight[0], t), grassDry[0], Math.max(0, patch - 0.35) * 1.4);
-        let g = lerp(lerp(grassDark[1], grassLight[1], t), grassDry[1], Math.max(0, patch - 0.35) * 1.4);
-        let b = lerp(lerp(grassDark[2], grassLight[2], t), grassDry[2], Math.max(0, patch - 0.35) * 1.4);
-        const fringe = noise(x * 0.67 + 4.2, z * 0.67 - 3.1) * 0.55 + (fine - 0.5) * 0.35;
-        const distanceToPath = Math.abs(x - pathOffset(z)) + fringe;
-        const path = smoothstep(1.3, 3.6, distanceToPath);
-        const core = 1 - smoothstep(0.4, 2.6, distanceToPath);
-        const dr = lerp(dirtLight[0], dirt[0], path), dg = lerp(dirtLight[1], dirt[1], path), db = lerp(dirtLight[2], dirt[2], path);
-        r = lerp(dr, r, path); g = lerp(dg, g, path); b = lerp(db, b, path);
-        r = lerp(r, dr * 1.08, (1 - path) * core * 0.5);
-        g = lerp(g, dg * 1.08, (1 - path) * core * 0.5);
-        b = lerp(b, db * 1.08, (1 - path) * core * 0.5);
-        const rocky = smoothstep(0.44, 1.22, slope + fringe * 0.35);
-        let exposedRock = 0;
-        for (const op of worldCarves) {
-            const inset = op.r - Math.hypot(x - op.x, z - op.z);
-            exposedRock = Math.max(exposedRock, smoothstep(-0.5, 0.35, inset + fine * 0.18 - 0.09));
-        }
-        const rockU = x * 1.15 + z * 0.36, rockV = z * 0.8 + y * 1.3;
-        let mineral;
-        const mineralCover = 1 - (1 - exposedRock) * (1 - rocky);
-        if (mineralCover > 0) {
-            mineral = rockRelief(rockU, rockV);
-            const shade = 1 + mineral * 0.4;
-            r = lerp(r, lerp(rock[0], rockLight[0], fine) * shade, mineralCover);
-            g = lerp(g, lerp(rock[1], rockLight[1], fine) * shade, mineralCover);
-            b = lerp(b, lerp(rock[2], rockLight[2], fine) * shade, mineralCover);
-        }
-        const snowLine = 8.5 + noise(x * 0.18 + 7.7, z * 0.18 - 3.3) * 1.6 - rocky * 1.2;
-        const snowy = smoothstep(snowLine, snowLine + 1.6, y);
-        r = lerp(r, snow[0], snowy); g = lerp(g, snow[1], snowy); b = lerp(b, snow[2], snowy);
-        let material = path >= 0.5 ? 'grass' : 'dirt';
-        if (rocky >= 0.5 || exposedRock >= 0.5) { material = 'rock'; }
-        if (snowy >= 0.5) { material = 'snow'; }
-        const cover = (1 - mineralCover) * (1 - snowy);
-        let grassDetail = path * cover, dirtDetail = (1 - path) * cover;
-        for (let i = 0; i < worldPaints.length; i++) {
-            const op = worldPaints[i];
+    function syncPalette() {
+        if (!paletteDirty) { return; }
+        const values = [];
+        for (const op of worldPaints) {
             if (op.mat === 'water' && collectedIds.has(surfaceResourceId('water', op))) { continue; }
-            const w = brushWeight(x + (op.mat === 'water' ? 0 : fringe * 0.32), z, op);
-            if (w > 0) {
-                const c = PAINT_COLORS[op.mat];
-                if (w >= 0.5) { material = op.mat; }
-                grassDetail = lerp(grassDetail, op.mat === 'grass' ? 1 : 0, w);
-                dirtDetail = lerp(dirtDetail, op.mat === 'dirt' ? 1 : 0, w);
-                // Pinturas de rocha do journal também recebem o relevo mineral.
-                if (op.mat === 'rock') { mineral ??= rockRelief(rockU, rockV); }
-                const relief = op.mat === 'rock' ? 1 + mineral * 0.36 : 1;
-                r = lerp(r, c[0] * relief, w);
-                g = lerp(g, c[1] * relief, w);
-                b = lerp(b, c[2] * relief, w);
-            }
+            const material = paletteMaterials.indexOf(op.mat);
+            if (material >= 0) { values.push(op.x, op.z, op.r, material); }
         }
-        if (grassDetail > 0 && soilDepth > 0) {
-            const exposedSoil = Math.min(1, soilDepth / SOIL_DEPTH) * 0.85 * grassDetail;
-            r = lerp(r, dirt[0], exposedSoil);
-            g = lerp(g, dirt[1], exposedSoil);
-            b = lerp(b, dirt[2], exposedSoil);
-            grassDetail = lerp(grassDetail, 0, exposedSoil);
-            dirtDetail = lerp(dirtDetail, 1, exposedSoil);
-            if (material === 'grass' && exposedSoil >= 0.5) { material = 'dirt'; }
-        }
-        return [r, g, b, grassDetail, dirtDetail, material];
+        terrain.SetPaints(new Float64Array(values));
+        paletteDirty = false;
     }
 
     function chunkKey(cx, cz) { return cx + ',' + cz; }
@@ -489,16 +422,6 @@
     const DETAIL_GUTTER = PALETTE_GUTTER * DETAIL_TEX / CHUNK_TEX;
     const MATERIAL_TILE = DETAIL_TEX / 8;   // uma repetição a cada 4 m, alinhada entre chunks
     let groundMaterials = [];
-    const groundGrain = makeNoise(9090);
-    const rockNoise = makeNoise(577);
-
-    function rockRelief(u, v) {
-        const coarse = rockNoise(u * 0.8, v * 0.8);
-        const fine = rockNoise(u * 3.3 + 19, v * 2.6 - 7);
-        const strata = rockNoise(u * 0.46, (v + coarse * 0.38) * 3.8);
-        return coarse * 0.55 + fine * 0.25 + strata * 0.55;
-    }
-
     async function loadGroundMaterials() {
         try {
             const tiles = await Promise.all(['grass', 'dirt'].map(async name => {
@@ -543,41 +466,23 @@
         const ctx = tex.getContext();
         // As bordas usam texels dos dois lados da divisa, na mesma grade mundial.
         const samples = CHUNK_TEX + 2 * PALETTE_GUTTER;
-        const img = ctx.createImageData(samples, samples);
-        const masks = groundMaterials.map(() => ctx.createImageData(samples, samples));
-        const x0 = cx * CHUNK - CHUNK / 2, z0 = cz * CHUNK - CHUNK / 2;
-        const detailed = masks.length > 0;
-        const paletteSamples = terrain.SamplePalette(cx, cz, CHUNK_TEX, PALETTE_GUTTER);
-        for (let ty = 0; ty < samples; ty++) for (let tx = 0; tx < samples; tx++) {
-            const x = x0 + (tx - PALETTE_GUTTER + 0.5) * CHUNK / CHUNK_TEX;
-            const z = z0 + (ty - PALETTE_GUTTER + 0.5) * CHUNK / CHUNK_TEX;
-            const sample = 3 * (ty * samples + tx);
-            const [r, g, b, grass, dirt] = terrainColorAt(x, paletteSamples[sample], z,
-                paletteSamples[sample + 1], paletteSamples[sample + 2]);
-            const mottling = groundGrain(x * 0.94, z * 0.94);
-            const grit = groundGrain(x * 2.1 + 13, z * 2.1 - 17);
-            const relief = detailed ? 1 - (grass + dirt) * 0.52 : 1;
-            const grain = 1.07 + (mottling * 0.25 + grit * 0.22) * relief;
-            const i = (ty * samples + tx) * 4;
-            img.data[i] = r * grain * 255;
-            img.data[i + 1] = g * grain * 255;
-            img.data[i + 2] = b * grain * 255;
-            img.data[i + 3] = 255;
-            if (detailed) {
-                masks[0].data[i + 3] = grass * 196;
-                masks[1].data[i + 3] = dirt * 184;
-            }
-        }
+        const detailed = groundMaterials.length > 0;
+        syncPalette();
+        const pixels = terrain.RasterizePalette(cx, cz, CHUNK_TEX, PALETTE_GUTTER, detailed);
+        const planeSize = samples * samples * 4;
+        const image = plane => new ImageData(
+            new Uint8ClampedArray(pixels.buffer, pixels.byteOffset + plane * planeSize, planeSize), samples, samples);
+        const img = image(0);
         if (detailed) {
             const palette = terrainPalette.canvas;
             const size = terrainBlend.canvas.width;
             terrainPalette.putImageData(img, 0, 0);
             ctx.drawImage(palette, 0, 0, size, size);
-            for (let i = 0; i < masks.length; i++) {
+            for (let i = 0; i < groundMaterials.length; i++) {
                 terrainBlend.globalCompositeOperation = 'copy';
                 terrainBlend.fillStyle = groundMaterials[i];
                 terrainBlend.fillRect(0, 0, size, size);
-                terrainPalette.putImageData(masks[i], 0, 0);
+                terrainPalette.putImageData(image(i + 1), 0, 0);
                 terrainBlend.globalCompositeOperation = 'destination-in';
                 terrainBlend.drawImage(palette, 0, 0, size, size);
                 ctx.drawImage(terrainBlend.canvas, 0, 0);
@@ -627,6 +532,7 @@
     // O módulo C# entrega a malha em um bloco binário. O Babylon consome
     // as vistas tipadas no próprio contexto que executa o renderizador.
     function buildChunkMesh(cx, cz, mesh = new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene)) {
+        cameraGeometryRevision++;
         const bytes = terrain.Build(cx, cz);
         const words = new Uint32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
         const values = new Float32Array(bytes.buffer, bytes.byteOffset, words.length);
@@ -693,6 +599,7 @@
             if (Math.abs(ch.cx - ccx) > CHUNK_VIEW + 1 || Math.abs(ch.cz - ccz) > CHUNK_VIEW + 1) {
                 ch.mesh.dispose(false, true);
                 chunkMap.delete(k);
+                cameraGeometryRevision++;
             }
         }
     }
@@ -706,7 +613,10 @@
     // ---------- Aplicação de edições e objetos plantados (F4/F6) ----------
     function recordSurfaceEdit(op) {
         if (op.kind === 'sculpt') { worldSculpts.push(op); }
-        else if (op.kind === 'paint') { worldPaints.push(op); }
+        else if (op.kind === 'paint') {
+            worldPaints.push(op);
+            paletteDirty = true;
+        }
         else if (op.kind === 'carve') { worldCarves.push(op); }
         else if (op.kind === 'tunnel' && Array.isArray(op.points) && op.points.length >= 2) { worldTunnels.push(op); }
         else { return false; }
@@ -859,6 +769,7 @@
     const carveRoofs = [];
     let carveRock = null;
     function syncCarveRoofs() {
+        cameraGeometryRevision++;
         for (const roof of carveRoofs.splice(0)) { roof.dispose(); }
         for (const op of worldCarves) {
             const segments = 24;
@@ -900,6 +811,7 @@
         }
         terrain.SetColliders(new Float64Array(values));
         collidersDirty = false;
+        cameraGeometryRevision++;
     }
     const solidAssets = new Map([
         ['flora.pine', 'Pinheiro'], ['rock.boulder2', 'Pedra'],
@@ -952,6 +864,8 @@
     const cameraRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), BABYLON.Vector3.Zero());
     const orbitEye = BABYLON.Vector3.Zero();
     const cameraClearance = 0.28;
+    // Colisores são estáticos entre edições, construção/remoção de chunks e trocas de visibilidade.
+    const cameraTrace = { from: BABYLON.Vector3.Zero(), to: BABYLON.Vector3.Zero(), revision: -1, limit: 0 };
 
     function playerFloor(x, z) {
         return worldTunnels.length && player
@@ -960,6 +874,9 @@
     }
 
     function traceWorld(from, to) {
+        if (cameraTrace.revision === cameraGeometryRevision && cameraTrace.from.equals(from) && cameraTrace.to.equals(to)) {
+            return cameraTrace.limit;
+        }
         const direction = cameraRay.direction;
         to.subtractToRef(from, direction);
         const length = direction.length();
@@ -993,20 +910,27 @@
                 break;
             }
         }
-        return distance < length ? Math.max(0.12, distance - cameraClearance) : length;
+        cameraTrace.from.copyFrom(from);
+        cameraTrace.to.copyFrom(to);
+        cameraTrace.revision = cameraGeometryRevision;
+        cameraTrace.limit = distance < length ? Math.max(0.12, distance - cameraClearance) : length;
+        return cameraTrace.limit;
     }
 
-    function updateOrbit(delta, trace) {
-        camera.target.set(player.position.x, player.position.y + PLAYER_HEIGHT / 2, player.position.z);
-        orbitRadius = lerp(orbitRadius, zoomTarget, 1 - Math.exp(-14 * delta));
-        const horizontal = orbitRadius * Math.sin(camera.beta);
-        orbitEye.set(
-            camera.target.x + horizontal * Math.cos(camera.alpha),
-            camera.target.y + orbitRadius * Math.cos(camera.beta),
-            camera.target.z + horizontal * Math.sin(camera.alpha));
-        const limit = trace(camera.target, orbitEye);
-        // Recolher imediatamente evita entrar no obstáculo; a volta é amortecida.
-        camera.radius = Math.min(limit, lerp(camera.radius, orbitRadius, 1 - Math.exp(-12 * delta)));
+    function advanceCamera(delta, pad) {
+        const lookX = frozen ? 0 : pad.lookX + lookStick.x;
+        const lookY = frozen ? 0 : pad.lookY + lookStick.y;
+        const { dx, dy, wheel } = camPending;
+        if (cameraFrame?.[7] && !lookX && !lookY && !dx && !dy && !wheel &&
+            camera.alpha === cameraFrame[0] && camera.beta === cameraFrame[1] && camera.radius === cameraFrame[6]) {
+            return;
+        }
+        cameraFrame = terrain.AdvanceCamera(camera.alpha, camera.beta, camera.radius, camera.upperRadiusLimit,
+            delta, frozen, lookX, lookY, dx, dy, wheel);
+        camera.alpha = cameraFrame[0];
+        camera.beta = cameraFrame[1];
+        zoomTarget = cameraFrame[2];
+        camPending.dx = camPending.dy = camPending.wheel = 0;
     }
 
     function stepSurfaceAt(x, z, ground) {
@@ -1042,7 +966,6 @@
         ['prop.log', 'Tronco caído'], ['prop.stump', 'Toco'],
         ['material.water', 'Água'], ['material.rock', 'Rocha']
     ]);
-    const soilLabels = { grass: 'Solo com grama', dirt: 'Terra', sand: 'Areia', rock: 'Rocha', snow: 'Neve', water: 'Água' };
 
     function trackGatherable(mesh, id, asset, scattered, brush) {
         const resource = { id, item: resourceLabels.get(asset) || asset, scattered, brush };
@@ -1058,6 +981,7 @@
         if (mesh.isEnabled(false) !== enabled) {
             mesh.setEnabled(enabled);
             if (obstacles.has(mesh)) { collidersDirty = true; }
+            if (carveRoofs.includes(mesh)) { cameraGeometryRevision++; }
         }
     }
 
@@ -1070,9 +994,11 @@
         for (const entry of entries) {
             if (collectedIds.has(entry.id)) { continue; }
             collectedIds.add(entry.id);
+            if (entry.id?.startsWith('water:')) { paletteDirty = true; }
             if (entry.kind === 'soil') {
                 const cut = { x: entry.x, z: entry.z, r: SOIL_RADIUS, geometryChanged: true };
                 terrain.AddDig(cut.x, cut.z);
+                cameraGeometryRevision++;
                 newCuts.push(cut);
             } else if (entry.brush) {
                 newCuts.push(entry.brush);
@@ -1112,8 +1038,8 @@
         if (target) {
             resource = { id: target.id, item: target.item, kind: 'object', brush: target.brush };
         } else {
-            const material = terrainColorAt(p.x, p.y, p.z)[5];
-            resource = { item: soilLabels[material], kind: 'soil', x: p.x, z: p.z };
+            syncPalette();
+            resource = { item: terrain.SoilItem(p.x, p.y, p.z), kind: 'soil', x: p.x, z: p.z };
         }
         if (collectedIds.has(resource.id)) {
             dotnet.invokeMethodAsync('OnBackpackStatus', 'Esse recurso já foi coletado.');
@@ -1298,6 +1224,7 @@
         const dirty = [...worldSculpts, ...worldPaints, ...worldCarves, ...worldTunnels];
         worldSculpts.length = 0;
         worldPaints.length = 0;
+        paletteDirty = true;
         worldCarves.length = 0;
         worldTunnels.length = 0;
         for (const op of edits || []) {
@@ -1498,21 +1425,13 @@
 
     // Rocha compartilhada entre pedregulhos e tetos, com padrão repetível nas duas direções.
     function makeRockTexture() {
-        return proceduralTexture('rock', 128, function (N) {
-            const img = new ImageData(N, N);
-            const hgt = new Float32Array(N * N);
-            for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-                const u = x / N * 2 * Math.PI, v = y / N * 2 * Math.PI;
-                const relief = rockRelief(Math.cos(u) * 5 + Math.sin(v) * 3, Math.sin(u) * 3 + Math.cos(v) * 5);
-                const value = 0.42 + relief * 0.25;
-                const i = y * N + x;
-                hgt[i] = value;
-                img.data[i * 4] = value * 268;
-                img.data[i * 4 + 1] = value * 255;
-                img.data[i * 4 + 2] = value * 233;
-                img.data[i * 4 + 3] = 255;
-            }
-            return { rgba: img.data, h: hgt };
+        return proceduralTexture('rock', 128, function (size) {
+            const pixels = terrain.RasterizeRock(size);
+            const bytes = size * size * 4;
+            return {
+                rgba: new Uint8ClampedArray(pixels.buffer, pixels.byteOffset, bytes),
+                h: new Float32Array(pixels.buffer, pixels.byteOffset + bytes, size * size)
+            };
         });
     }
 
@@ -2646,34 +2565,31 @@
     function updateCharacterPose(root, delta, distance) {
         const rig = characterRigs.get(root);
         if (!rig) { return; }
-        rig.clock += delta;
-        const speed = delta > 0 ? distance / delta : 0;
         const listening = frozen && (root === player || root === dialoguePartner);
-        rig.speaking = Math.max(0, rig.speaking - delta);
-        const speaking = rig.speaking > 0 && listening;
         const action = rig.action;
-        const previous = action ? action.elapsed / action.duration : 0;
-        if (action && !frozen) { action.elapsed += delta; }
-        const progress = action ? action.elapsed / action.duration : 0;
-        const [phase, weight, torsoX, torsoZ, headX, headZ, eyesY, mouthX, mouthY, browZ, leftArm, rightArm] =
-            terrain.AnimatePlayer(rig.gaitPhase, rig.gaitWeight, rig.clock, distance, delta,
-                root.name.length, listening, speaking, progress, action?.bend ?? 0, action?.reach ?? 0);
+        const { x, y, z } = root.position;
+        const frame = terrain.AnimateCharacter(x, y, z, root.rotation.y,
+            rig.gaitPhase, rig.gaitWeight, rig.clock, rig.speaking, action?.elapsed ?? 0, action?.duration ?? 0,
+            distance, delta, root.name.length, listening, frozen, action?.bend ?? 0, action?.reach ?? 0,
+            rig.legs.length > 0, root === player, worldTunnels.length > 0);
+        const [phase, weight, torsoX, torsoZ, headX, headZ, eyesY, mouthX, mouthY, browZ, leftArm, rightArm,
+            clock, speech, elapsed, previous, progress] = frame;
         rig.gaitPhase = phase;
         rig.gaitWeight = weight;
-        if (rig.legs.length) {
-            const { x, z } = root.position;
-            updateCharacterLegs(rig, delta, speed, root === player ? playerFloor(x, z) : terrainHeight(x, z));
-        }
+        rig.clock = clock;
+        rig.speaking = speech;
+        if (rig.legs.length) { applyCharacterLegs(rig, frame, delta); }
 
         if (listening) {
             const other = root === player ? dialoguePartner : player;
             if (other) { turnCharacter(root, Math.atan2(other.position.x - root.position.x, other.position.z - root.position.z), delta, 7); }
         }
         if (action) {
-            if (action.point && speed < 0.4) {
+            action.elapsed = elapsed;
+            if (action.point && (delta === 0 || distance < 0.4 * delta)) {
                 turnCharacter(root, Math.atan2(action.point.x - root.position.x, action.point.z - root.position.z), delta, 13);
             }
-            if (action.target && action.times.length > 0) {
+            if (action.target && action.times.length > 0 && progress > previous) {
                 const crossed = terrain.CrossedAnimationMarks(previous, progress, false, action.times);
                 for (const index of crossed) {
                     const mark = action.markers[index];
@@ -2753,28 +2669,29 @@
         });
     }
 
-    function updateCharacterLegs(rig, delta, speed, ground) {
-        const { root, gaitPhase, gaitWeight } = rig;
-        const { x, y, z } = root.position;
-        const [leftForward, leftLift, lx, lz, rightForward, rightLift, rx, rz] =
-            terrain.FootTargets(root.rotation.y, gaitPhase, gaitWeight, speed, LEG_SPACING, SHOE_OFFSET);
-        const isPlayer = root === player;
-        const leftFloor = isPlayer ? playerFloor(x + lx, z + lz) : terrainHeight(x + lx, z + lz);
-        const rightFloor = isPlayer ? playerFloor(x + rx, z + rz) : terrainHeight(x + rx, z + rz);
-        const leftSupport = isPlayer ? stepSurfaceAt(x + lx, z + lz, leftFloor) : leftFloor;
-        const rightSupport = isPlayer ? stepSurfaceAt(x + rx, z + rz, rightFloor) : rightFloor;
-        const [bodyY, leftHip, leftKnee, leftAnkle, rightHip, rightKnee, rightAnkle] =
-            terrain.SolveLegs(ground, y, delta, FOOT_GAP, HIP_HEIGHT, LEG_SEGMENT, ANKLE_HEIGHT + SOLE_CLEARANCE,
-                leftForward, leftLift, leftSupport, leftSupport > leftFloor,
-                rightForward, rightLift, rightSupport, rightSupport > rightFloor);
-        root.position.y = bodyY;
+    function applyCharacterLegs(rig, frame, delta) {
+        const { root } = rig;
+        let angles = frame;
+        let i = 17;
+        if (root === player) {
+            const ground = frame[24];
+            const leftFloor = frame[27], rightFloor = frame[32];
+            const leftSupport = stepSurfaceAt(frame[25], frame[26], leftFloor);
+            const rightSupport = stepSurfaceAt(frame[30], frame[31], rightFloor);
+            if (leftSupport > leftFloor || rightSupport > rightFloor) {
+                angles = terrain.SolveSupportedLegs(ground, root.position.y, delta,
+                    frame[28], frame[29], leftFloor, leftSupport, frame[33], frame[34], rightFloor, rightSupport);
+                i = 0;
+            }
+        }
         const [left, right] = rig.legs;
-        left.hip.rotation.x = leftHip;
-        left.knee.rotation.x = leftKnee;
-        left.ankle.rotation.x = leftAnkle;
-        right.hip.rotation.x = rightHip;
-        right.knee.rotation.x = rightKnee;
-        right.ankle.rotation.x = rightAnkle;
+        root.position.y = angles[i];
+        left.hip.rotation.x = angles[i + 1];
+        left.knee.rotation.x = angles[i + 2];
+        left.ankle.rotation.x = angles[i + 3];
+        right.hip.rotation.x = angles[i + 4];
+        right.knee.rotation.x = angles[i + 5];
+        right.ankle.rotation.x = angles[i + 6];
     }
 
     // Tronco provisório enquanto o pacote de malhas do personagem é carregado.
@@ -3020,7 +2937,8 @@
                 terrain = await host.terrainRuntime;
             }
             terrain.Reset();
-            terrain.ConfigurePlayer(PLAYER_HEIGHT, KNEE_HEIGHT, FOOT_GAP);
+            terrain.ConfigurePlayer(PLAYER_HEIGHT, KNEE_HEIGHT, FOOT_GAP, HIP_HEIGHT, LEG_SEGMENT,
+                ANKLE_HEIGHT + SOLE_CLEARANCE, LEG_SPACING, SHOE_OFFSET);
             if (G.game && G.game.assets) {
                 await G.game.assets.init(host.build);
                 await warmTextures();   // chunks: aquecimento por aproximação (prefetchChunkCache)
@@ -3071,22 +2989,7 @@
                 const delta = Math.min(0.05, engine.getDeltaTime() / 1000);
                 if (dom) { pollGamepad(); }
                 const pad = padState;
-                if (!frozen) {
-                    camera.alpha -= (pad.lookX + lookStick.x) * delta * 2.2;
-                    camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + (pad.lookY + lookStick.y) * delta * 1.7));
-                }
-                if (camPending.dx || camPending.dy) {
-                    camera.alpha -= camPending.dx * CAM_POINTER_SENS;
-                    camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + camPending.dy * CAM_POINTER_SENS));
-                    camPending.dx = 0;
-                    camPending.dy = 0;
-                }
-                if (camPending.wheel) {
-                    const notches = -camPending.wheel / 120;
-                    zoomTarget *= notches > 0 ? Math.pow(0.9015, notches) : Math.pow(1.1212, -notches);
-                    zoomTarget = Math.max(2.4, Math.min(camera.upperRadiusLimit, zoomTarget));
-                    camPending.wheel = 0;
-                }
+                advanceCamera(delta, pad);
                 syncColliders();
                 const travelled = movePlayer(delta, pad);
                 if (player) {
@@ -3097,7 +3000,9 @@
                 updateOtherCharacters(delta);
                 checkNear();
                 updateNearbyObject();
-                updateOrbit(delta, traceWorld);
+                camera.target.set(player.position.x, player.position.y + CAM_UP.y, player.position.z);
+                orbitEye.set(camera.target.x + cameraFrame[3], camera.target.y + cameraFrame[4], camera.target.z + cameraFrame[5]);
+                camera.radius = Math.min(traceWorld(camera.target, orbitEye), cameraFrame[6]);
                 if (crowdCount) { updateCrowd(delta); }
                 updateCollectionPreview(frameStart);
                 scene.render();
@@ -3171,7 +3076,13 @@
         resetPlayer() {
             terrain?.StopPlayer();
             if (player) { player.position.set(0, terrainHeight(0, 0) + FOOT_GAP, 0); player.rotation.y = 0; }
-            if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = orbitRadius = zoomTarget = 7.5; }
+            if (camera) {
+                terrain.ResetCamera();
+                cameraFrame = null;
+                camera.alpha = -Math.PI / 2;
+                camera.beta = 1.12;
+                camera.radius = zoomTarget = 7.5;
+            }
         },
         teleportToGuardian() {
             if (!player || !camera) return false;

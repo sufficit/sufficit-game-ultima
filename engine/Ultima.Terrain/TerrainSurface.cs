@@ -1,3 +1,5 @@
+using static Ultima.Terrain.TerrainNoise;
+
 namespace Ultima.Terrain;
 
 internal sealed class TerrainSurface
@@ -10,7 +12,7 @@ internal sealed class TerrainSurface
     internal const double DigRadius = 1;
     internal const double DigDepth = 0.48;
 
-    private static readonly byte[] Permutations = CreateNoiseTable();
+    internal static readonly TerrainNoise Noise = new(20261115);
     private readonly List<Edit> _sculpts = [];
     private readonly List<Edit> _carves = [];
     private readonly Dictionary<(int X, int Z), List<int>> _buckets = [];
@@ -56,7 +58,9 @@ internal sealed class TerrainSurface
         return depth;
     }
 
-    internal double Height(double x, double z)
+    internal double Height(double x, double z) => Height(x, z, Depth(x, z));
+
+    internal double Height(double x, double z, double depth)
     {
         var sculpted = 0.0;
         foreach (var (brush, height) in _sculpts)
@@ -72,7 +76,7 @@ internal sealed class TerrainSurface
             if (inset > 0 && y > Math.Max(height, floor))
                 y = Lerp(y, floor, Smooth(0, Math.Min(1.2, brush.Radius / 4), inset));
         }
-        return y - Depth(x, z);
+        return y - depth;
     }
 
     internal double Slope(double x, double z, bool natural)
@@ -98,62 +102,44 @@ internal sealed class TerrainSurface
         }
     }
 
+    internal double CarveInset(double x, double z)
+    {
+        var inset = double.NegativeInfinity;
+        foreach (var (brush, _) in _carves)
+            inset = Math.Max(inset, brush.Radius - Length(x - brush.X, z - brush.Z));
+        return inset;
+    }
+
+    internal static double PathOffset(double z) => Noise.Sample(z * 0.09 + 3.1, 17.7) * 1.6;
+
     internal static double BaseHeight(double x, double z)
     {
         var radius = Length(x, z);
-        var edge = radius + Noise(x * 0.07 - 51.7, z * 0.07 + 91.3) * 5;
+        if (radius <= 3.2) return 0.05;
+
+        var edge = radius + Noise.Sample(x * 0.07 - 51.7, z * 0.07 + 91.3) * 5;
         var rim = Smooth(24, 45, edge);
-        var y = rim * Math.Sqrt(rim) * (21 + Noise(x * 0.04 + 5, z * 0.04 - 5) * 7);
-        y += rim * Math.Abs(Noise(x * 0.16 + 3, z * 0.16 - 8)) * 3.5;
-        y += Noise(x * 0.03, z * 0.03) * 2.2;
-        y += Noise(x * 0.085 + 40.2, z * 0.085 - 17.4) * 0.6;
-        y += Noise(x * 0.3 - 9.3, z * 0.3 + 23.8) * 0.15;
-        var path = Noise(z * 0.09 + 3.1, 17.7) * 1.6;
-        var flat = (1 - Smooth(1.5, 3.4, Math.Abs(x - path))) * (1 - Smooth(22, 34, radius));
-        y = Lerp(y, Math.Max(0, y * 0.12), flat * 0.9);
-        y = Lerp(0.05, y, Smooth(3.2, 9, radius));
-        return Lerp(y, 0.05, Smooth(6, 3, Length(x, z + 14)) * 0.9);
-    }
-
-    private static byte[] CreateNoiseTable()
-    {
-        uint seed = 20261115;
-        var table = new byte[512];
-        for (var i = 0; i < 256; i++) table[i] = (byte)i;
-        for (var i = 255; i > 0; i--)
+        var y = 0.0;
+        if (rim > 0)
         {
-            seed = unchecked(seed * 1664525 + 1013904223);
-            var j = (int)(((ulong)seed * (ulong)(i + 1)) >> 32);
-            (table[i], table[j]) = (table[j], table[i]);
+            y = rim * Math.Sqrt(rim) * (21 + Noise.Sample(x * 0.04 + 5, z * 0.04 - 5) * 7);
+            y += rim * Math.Abs(Noise.Sample(x * 0.16 + 3, z * 0.16 - 8)) * 3.5;
         }
-        Array.Copy(table, 0, table, 256, 256);
-        return table;
+        y += Noise.Sample(x * 0.03, z * 0.03) * 2.2;
+        y += Noise.Sample(x * 0.085 + 40.2, z * 0.085 - 17.4) * 0.6;
+        y += Noise.Sample(x * 0.3 - 9.3, z * 0.3 + 23.8) * 0.15;
+        if (radius < 34)
+        {
+            var flat = (1 - Smooth(1.5, 3.4, Math.Abs(x - PathOffset(z)))) * (1 - Smooth(22, 34, radius));
+            y = Lerp(y, Math.Max(0, y * 0.12), flat * 0.9);
+        }
+        if (radius < 9) y = Lerp(0.05, y, Smooth(3.2, 9, radius));
+        else y = Lerp(0.05, y, 1); // Mantém o arredondamento do gerador original.
+        return Math.Abs(x) < 6 && Math.Abs(z + 14) < 6
+            ? Lerp(y, 0.05, Smooth(6, 3, Length(x, z + 14)) * 0.9)
+            : y;
     }
 
-    private static double Noise(double x, double z)
-    {
-        var ix = (int)Math.Floor(x);
-        var iz = (int)Math.Floor(z);
-        var a = Permutations[ix & 255] + (iz & 255);
-        var b = Permutations[(ix & 255) + 1] + (iz & 255);
-        var u = x - ix;
-        var v = z - iz;
-        var fade = u * u * (3 - 2 * u);
-        return Lerp(
-            Lerp(Gradient(Permutations[a], u, v), Gradient(Permutations[b], u - 1, v), fade),
-            Lerp(Gradient(Permutations[a + 1], u, v - 1), Gradient(Permutations[b + 1], u - 1, v - 1), fade),
-            v * v * (3 - 2 * v));
-    }
-
-    private static double Gradient(int bits, double x, double z)
-        => ((bits & 1) != 0 ? x : -x) + ((bits & 2) != 0 ? z : -z);
     private static int Bucket(double value) => (int)Math.Floor(value / 2);
     private static double Length(double x, double z) => Math.Sqrt(x * x + z * z);
-    private static double Lerp(double a, double b, double t) => a + (b - a) * t;
-
-    private static double Smooth(double a, double b, double value)
-    {
-        var t = Math.Clamp((value - a) / (b - a), 0, 1);
-        return t * t * (3 - 2 * t);
-    }
 }

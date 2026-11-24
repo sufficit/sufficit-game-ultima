@@ -276,6 +276,54 @@ PlayerPose.SolveLegs(legs, 0, 0.03, 0.03, 0.03, 0.77, 0.364, 0.051,
 Check("desnível eleva quadril com limite e mantém as solas niveladas", legs[0] > 0.03 && legs[0] <= 0.12
     && Math.Abs(legs[1] + legs[2] + legs[3]) < 1e-12 && Math.Abs(legs[4] + legs[5] + legs[6]) < 1e-12);
 
+var camera = new PlayerCamera();
+Span<double> orbit = stackalloc double[8];
+camera.Advance(orbit, -Math.PI / 2, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0);
+Check("órbita conserva o raio e o sentido inicial",
+    Math.Abs(double.Hypot(double.Hypot(orbit[3], orbit[4]), orbit[5]) - 7.5) < 1e-12 && orbit[5] < 0 && orbit[7] == 1);
+camera.Advance(orbit, 0, 1.12, 1.25, 40, 0.04, true, 1, 1, 20, -200, -12000);
+Check("câmera congelada mantém arrasto, limita zoom e amortece retorno",
+    orbit[0] == -0.20 && orbit[1] == 0.18 && orbit[2] == 2.4 && orbit[6] > 1.25 && orbit[6] < 7.5 && orbit[7] == 0);
+camera.Reset();
+camera.Advance(orbit, 0, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0);
+Check("reiniciar restaura o zoom da câmera", orbit[2] == 7.5 && orbit[6] == 7.5);
+
+var pausedAction = PlayerPose.AdvanceAction(0.125, 0.5, 0.15, frozen: true);
+Check("diálogo congela o avanço das ações", pausedAction == (0.125, 0.25, 0.25));
+var resumedAction = PlayerPose.AdvanceAction(pausedAction.Elapsed, 0.5, 0.15, frozen: false);
+Check("retomar ação cruza a marca de impacto uma vez",
+    Ultima.AnimationTimeline.Crossed(resumedAction.Previous, resumedAction.Progress, false, [0.5]).SequenceEqual(new[] { 0 }));
+
+var paletteSurface = new TerrainSurface();
+var palette = new TerrainPalette(paletteSurface);
+var raster = palette.Rasterize(0, 0, 128, 4, detailed: false);
+uint hash = 2166136261;
+foreach (var value in raster) hash = unchecked((hash ^ value) * 16777619);
+Check("paleta procedural coincide com os pixels do build JavaScript", hash == 1797590622);
+
+var leftPalette = palette.Rasterize(0, 0, 128, 4, detailed: true);
+var rightPalette = palette.Rasterize(1, 0, 128, 4, detailed: true);
+const int paletteSide = 136;
+const int row = paletteSide * 4;
+var edgeMatches = true;
+for (var plane = 0; plane < 3; plane++)
+for (var j = 0; j < paletteSide; j++)
+{
+    var offset = (plane * paletteSide + j) * row;
+    edgeMatches &= leftPalette.AsSpan(offset + 128 * 4, 8 * 4).SequenceEqual(rightPalette.AsSpan(offset, 8 * 4));
+}
+Check("os três planos compartilham os texels da divisa", edgeMatches);
+
+palette.SetPaints([75, 75, 5, 3]);
+Check("pintura distante não altera a paleta do chunk", palette.Rasterize(0, 0, 128, 4, false).SequenceEqual(raster));
+palette.SetPaints([5, 0, 4, 3, 5, 0, 4, 5]);
+Check("a última pintura decide o material da coleta", palette.MaterialLabel(5, 0, 0) == "Água");
+palette.SetPaints([5, 0, 4, 3]);
+Check("ao retirar água, a coleta usa a pintura anterior", palette.MaterialLabel(5, 0, 0) == "Rocha");
+palette.SetPaints([]);
+paletteSurface.AddDig(5, 0);
+Check("a escavação expõe terra sob a grama", palette.MaterialLabel(5, paletteSurface.Height(5, 0), 0) == "Terra");
+
 Console.WriteLine(failures == 0 ? "\nTODOS OS TESTES PASSARAM" : $"\n{failures} FALHA(S)");
 return failures == 0 ? 0 : 1;
 

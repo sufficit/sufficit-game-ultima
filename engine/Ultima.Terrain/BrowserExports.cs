@@ -8,6 +8,7 @@ internal static partial class BrowserExports
 {
     private static TerrainSurface _surface = new();
     private static TerrainVolumes _volumes = new(_surface);
+    private static TerrainPalette _palette = new(_surface);
 
     [JSExport]
     internal static int[] CrossedAnimationMarks(double previous, double current, bool loops, double[] marks)
@@ -18,6 +19,7 @@ internal static partial class BrowserExports
     {
         _surface = new TerrainSurface();
         _volumes = new(_surface);
+        _palette = new(_surface);
     }
 
     [JSExport]
@@ -25,9 +27,6 @@ internal static partial class BrowserExports
 
     [JSExport]
     internal static double Height(double x, double z) => _surface.Height(x, z);
-
-    [JSExport]
-    internal static double Depth(double x, double z) => _surface.Depth(x, z);
 
     [JSExport]
     internal static double Slope(double x, double z, bool natural) => _surface.Slope(x, z, natural);
@@ -64,22 +63,15 @@ internal static partial class BrowserExports
         => _volumes.Floor(x, z, foot, reach);
 
     [JSExport]
-    internal static double[] SamplePalette(int cx, int cz, int samples, int gutter)
-    {
-        var side = samples + 2 * gutter;
-        var data = new double[side * side * 3];
-        var x0 = cx * TerrainSurface.Chunk - TerrainSurface.Chunk / 2;
-        var z0 = cz * TerrainSurface.Chunk - TerrainSurface.Chunk / 2;
-        var index = 0;
-        for (var j = 0; j < side; j++)
-        for (var i = 0; i < side; i++)
-        {
-            var x = x0 + (i - gutter + 0.5) * TerrainSurface.Chunk / samples;
-            var z = z0 + (j - gutter + 0.5) * TerrainSurface.Chunk / samples;
-            data[index++] = _surface.Height(x, z);
-            data[index++] = _surface.Slope(x, z, false);
-            data[index++] = _surface.Depth(x, z);
-        }
-        return data;
-    }
+    internal static void SetPaints(double[] values) => _palette.SetPaints(values);
+
+    [JSExport]
+    internal static string SoilItem(double x, double y, double z) => _palette.MaterialLabel(x, y, z);
+
+    [JSExport]
+    internal static byte[] RasterizePalette(int cx, int cz, int samples, int gutter, bool detailed)
+        => _palette.Rasterize(cx, cz, samples, gutter, detailed);
+
+    [JSExport]
+    internal static byte[] RasterizeRock(int size) => TerrainPalette.RockTexture(size);
 }

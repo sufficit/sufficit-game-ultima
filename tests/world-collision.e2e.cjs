@@ -182,7 +182,10 @@ async function wait(callback,label) {
     });
     await p.keyboard.down('w');
     try {
-        await p.waitForTimeout(Math.round(1050*walkScale));
+        // Espera por posição (main remota 2bb2efe), não por tempo de parede: independe do FPS do runner.
+        await wait(()=>renderer.evaluate(() =>
+            BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('player').position.z > 3.2),
+            'o jogador não passou do tronco');
     } finally {
         await p.keyboard.up('w');
     }

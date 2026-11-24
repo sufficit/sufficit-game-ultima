@@ -26,7 +26,9 @@ const procedural = process.env.ULTIMA_PROCEDURAL === '1';
                 return (await game.weather.status())?.materials === materials &&
                     (await game.models.status())?.queue === 0 && (await game.build.state())?.chunks >= 25;
             }, procedural ? 0 : 2)) break;
-            if (attempt === 100) throw new Error('O terreno detalhado não carregou');
+            // ULTIMA_WAIT_TRIES amplia a janela (padrão 100 = 25 s); bancadas com renderização por
+            // software e carga alta levam ~2 min para o terreno WASM e a fila de modelos esvaziarem.
+            if (attempt === (Number(process.env.ULTIMA_WAIT_TRIES) || 100)) throw new Error('O terreno detalhado não carregou');
             await page.waitForTimeout(250);
         }
         const renderer = main ? page : page.workers()[0];
