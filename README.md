@@ -1,39 +1,29 @@
 # Ultima
 
-Jogo open source escrito em **C#**, rodando inteiramente no **navegador** via
-**Blazor WebAssembly**, com mundo 3D renderizado pela GPU através do **Babylon.js**.
-Sem servidor centralizado de jogo — tudo acontece no cliente.
+Jogo de exploração 3D de código aberto. O cliente executa C# no navegador
+com **Blazor WebAssembly** e renderiza o mundo com **Babylon.js**. A API
+em **ASP.NET Core** oferece sessões e persistência no mundo compartilhado.
 
-- **Jogue agora:** https://sufficit.github.io/sufficit-game-ultima/ (GitHub Pages, deploy automático a cada push em `main`).
-- **Licença:** MIT (veja [LICENSE](LICENSE)).
-- **Marco atual (M1):** mundo 3D andável (WASD) e uma Guardiã com diálogo.
-- **Marcos futuros:** multiplayer P2P (WebRTC DataChannels) e conversas do NPC com
-  LLM executada localmente na GPU do jogador (WebGPU + WebLLM).
+- [Jogar no GitHub Pages](https://sufficit.github.io/sufficit-game-ultima/)
+- [Design e uso da Sufficit.Blazor.UI](DESIGN.md)
+- [Arquitetura e evolução do C# no cliente](ARCHITECTURE.md)
+- [Licença MIT](LICENSE)
 
-## Publicação (GitHub Pages)
+## Publicação
 
-O workflow [` .github/workflows/pages.yml`](.github/workflows/pages.yml) publica
-automaticamente a cada push em `main`:
+O GitHub Pages publica o cliente a cada push em `main`. O workflow compila
+os modelos e o terreno, prepara o catálogo de assets e publica o Blazor
+WebAssembly. A API tem implantação própria no Sufficit Run.
+[Workflow do GitHub Pages](.github/workflows/pages.yml) · [Configuração da API](app.json)
 
-1. compila o módulo C# do terrain worker com `bash scripts/build-terrain.sh`;
-2. executa `dotnet publish src/Ultima.csproj -c Release`;
-3. ajusta o `base href` para `/sufficit-game-ultima/` (caminho do Pages);
-4. gera `404.html` e `.nojekyll`;
-5. publica o artefato em https://sufficit.github.io/sufficit-game-ultima/.
+## API e conteúdo do mundo
 
-## API de conteúdo dinâmico (opcional)
-
-A API pública em
-`https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br/` fornece conteúdo
-atualizável sem republicar o jogo. O cliente busca as falas da Guardiã em
-`/v1/npcs/guardia` e avisos em `/v1/announcements` depois que o mundo já começou
-a renderizar. Cada resposta tem limite de três segundos; indisponibilidade,
-timeout, CORS ou conteúdo inválido preserva as falas fixas embutidas e não impede
-o jogo de funcionar. O HUD indica se o conteúdo veio da API ou do fallback local.
-
-A API também expõe `/health`, `/v1/manifest`, `/v1/worlds/ultima` e `/v1/quests`.
-O conteúdo editável fica em `app/content.json`; serviço implementado em Python
-stdlib em `app/main.py`.
+A API fornece o mapa compartilhado, comandos, catálogo de assets e conteúdo
+atualizável, como falas da Guardiã e avisos. O jogo inicia sem a API e usa o
+conteúdo embutido quando o conteúdo remoto está indisponível. Use `?live=0`
+para desativar a conexão com o mundo compartilhado.
+[Uso do mundo](docs/USAGE-MUNDO.md) ·
+[Saúde da API](https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br/health)
 
 ## Como rodar localmente
 
@@ -47,6 +37,8 @@ Passos:
 
 ```bash
 dotnet workload install wasm-tools
+bash scripts/build-models.sh
+bash scripts/build-assets.sh
 bash scripts/build-terrain.sh
 cd src
 dotnet run
@@ -54,18 +46,18 @@ dotnet run
 
 O comando acima sobe o servidor de desenvolvimento do Blazor WASM e abre o jogo
 (normalmente em `https://localhost:7xxx`; a URL exata é impressa no terminal).
-Alternativa sem servidor de desenvolvimento:
+Com os artefatos já preparados, para servir o build estático execute na raiz
+do repositório:
 
 ```bash
-bash scripts/build-terrain.sh
-cd src
-dotnet publish -c Release -o publish
+dotnet publish src/Ultima.csproj -c Release -o publish
 python3 -m http.server -d publish/wwwroot 8080
 # abra http://localhost:8080
 ```
 
-> Nota: o Babylon.js é carregado de CDN com versão fixa e hash SRI
-> (`src/wwwroot/index.html`), então a primeira execução precisa de internet.
+O Babylon.js é carregado de CDN com versão fixada. O fallback na thread
+principal verifica a integridade do script com SRI.
+[Inicialização do cliente](src/wwwroot/js/game.js)
 
 ## Controles
 
@@ -83,23 +75,11 @@ na clareira para medir animação, LOD e culling.
 
 ## Estrutura
 
-```
-PROJECT.md          objetivos, premissas e marcos
-LICENSE             MIT
-.github/workflows/  deploy automático no GitHub Pages
-app/                API Python e conteúdo remoto opcional
-src/                projeto Blazor WebAssembly (Ultima)
-  Pages/Index.razor HUD, diálogo e cliente opcional da API
-  GAME.JsInterop.cs ponte C# ↔ JS (JSInvokable)
-  wwwroot/js/game.js   Babylon.js: cena, câmera, movimento, gatilhos
-  wwwroot/index.html   HTML raiz (Babylon.js com SRI)
-  wwwroot/css/app.css  estilos do HUD e do diálogo
-```
-
-## Arquitetura em uma frase
-
-C# cuida do estado do jogo e da UI; JavaScript é apenas a fina camada de
-renderização 3D e entrada; a ponte usa JSInterop com chamadas unidirecionais
-(`game.init`, `game.setFrozen`, `game.resetPlayer` de C#→JS; `OnEngineReady`,
-`OnNearChanged`, `OnInteract`, `OnClose`, `OnMoveTick` de JS→C#). A API HTTP é
-opcional e não faz parte do caminho crítico de inicialização do jogo.
+| Diretório | Conteúdo |
+| --- | --- |
+| [src/](src) | Cliente Blazor WebAssembly, interface e integração com Babylon.js |
+| [engine/Ultima.Terrain/](engine/Ultima.Terrain) | Geração de terreno em C# para WebAssembly |
+| [models/](models) | Pacotes de modelos 3D em C# |
+| [app/](app) | API em ASP.NET Core e conteúdo remoto |
+| [tests/](tests) | Testes de regras, integração e navegador |
+| [docs/](docs/README.md) | Guias, planos e histórico de atividades |
