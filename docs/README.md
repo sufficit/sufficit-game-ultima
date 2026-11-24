@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Apoio mundial dos pés do jogador](activities/202611241138-apoio-mundial-dos-pes.md)
+
 - [Marcha e base anatômica dos personagens](activities/202611241125-anatomia-e-marcha.md)
 
 - [Visibilidade dos avatares remotos distantes](activities/202611241114-visibilidade-avatares-remotos.md)
