@@ -57,7 +57,11 @@ Para escolher outro fuso, busque pelo nome da localidade
 o modo automático. A seleção fica salva no navegador e acompanha
 as regras de horário de verão do fuso escolhido.
 
-O ciclo tem duração real e usa a data e a hora UTC do equipamento.
+O ciclo tem duração real e começa com a data e a hora UTC do
+equipamento. Ao abrir o jogo e a cada hora, o cliente consulta
+`/v1/worlds/ultima/time` no servidor do Ultima. Se a API ficar
+indisponível, o relógio segue contando a partir da última sincronização.
+Na primeira visita sem acesso à API, vale o UTC do equipamento.
 O céu é calculado para Greenwich. A latitude fixa determina o
 trajeto do Sol ao longo do ano e a duração do dia. A fase da Lua
 é aproximada e exibida com a fração iluminada. O fuso local muda

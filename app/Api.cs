@@ -18,7 +18,7 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
 
     static readonly string[] Endpoints =
     [
-        "/v1/worlds/ultima", "/v1/npcs/guardia", "POST /v1/npcs/guardia/chat",
+        "/v1/worlds/ultima", "/v1/worlds/ultima/time", "/v1/npcs/guardia", "POST /v1/npcs/guardia/chat",
         "/v1/quests", "/v1/announcements",
         "/v1/net/rooms", "/v1/net/{room}/join", "/v1/net/{room}/signal", "/v1/net/{room}/poll/{peer}",
         "POST /v1/game/sessions", "/v1/game/sessions", "/v1/game/state",
@@ -148,6 +148,9 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
                     ["status"] = "ok", ["apiVersion"] = ApiVersion, ["uptime"] = game.Uptime,
                     ["runtime"] = "aspnet", ["modelsCoreApi"] = ModelCore.ApiVersion,
                 });
+                return;
+            case "/v1/worlds/ultima/time":
+                await Json(ctx, new JsonObject { ["utcMs"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }, 200, NoStore);
                 return;
             case "/v1/net/rooms": await Json(ctx, new JsonObject { ["rooms"] = net.Rooms() }, 200, NoStore); return;
             case "/v1/analytics/dialogs":

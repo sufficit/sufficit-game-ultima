@@ -3,6 +3,7 @@
 @using Ultima.Terrain
 @implements IDisposable
 @inject IJSRuntime JS
+@inject Ultima.Browser.WorldTime Clock
 
 <SUIStack Spacing="2">
     <SUIStack Row="true" Wrap="true" Spacing="2">
@@ -66,7 +67,7 @@
 
     private async Task RefreshAsync(CancellationToken token)
     {
-        var instant = DateTimeOffset.UtcNow;
+        var instant = Clock.UtcNow;
         var epoch = instant.ToUnixTimeMilliseconds();
         _gmt = instant.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
         _local = await JS.InvokeAsync<string>("game.browser.localTime", token, epoch, _zone ?? "auto");

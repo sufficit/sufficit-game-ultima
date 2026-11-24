@@ -159,7 +159,11 @@ coleta e terreno em worker e main pelos [testes no navegador](tests).
 
 O painel de tempo usa o mesmo cálculo lunar em C#. A ponte do navegador
 detecta e formata fusos IANA via `Intl`. O instante UTC alimenta tanto
-a apresentação quanto o cálculo astronômico. O renderizador recebe um
+a apresentação quanto o cálculo astronômico. O serviço `WorldTime` consulta
+a API na abertura e a cada hora, acrescenta metade do tempo da ida e volta
+à amostra e mantém o instante por um relógio monotônico. O renderizador
+recebe uma atualização por amostra válida e recalcula o céu no próximo
+quadro. O renderizador recebe um
 perfil de clima por vez. Na futura regionalização, a coordenada X/Z do
 jogador deve resolver o identificador do perfil, mantendo a transição
 existente entre os perfis.

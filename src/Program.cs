@@ -22,5 +22,6 @@ builder.Services.AddTransient<Ultima.Browser.Workshop>();
 builder.Services.AddTransient<Ultima.Browser.GameUpdate>();
 builder.Services.AddTransient<Ultima.Browser.DialogLog>();
 builder.Services.AddTransient<Ultima.Browser.LiveGame>();
+builder.Services.AddScoped<Ultima.Browser.WorldTime>();
 
 await builder.Build().RunAsync();

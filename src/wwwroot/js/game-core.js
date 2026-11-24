@@ -51,6 +51,7 @@
     let weatherTarget = null;
     let rainLevel = 0, daylight = 1, windLevel = 0.06;
     let skySample = null;
+    let worldTimeAnchor = null;
     let rainParticles = null;
     let player = null;
     let dialoguePartner = null;
@@ -2191,9 +2192,10 @@
         return function () {
             const now = performance.now();
             let changed = false;
-            if (now >= nextSky) {
+            if (!skySample || now >= nextSky) {
                 nextSky = now + 10000;
-                skySample = terrain.SampleSky(Date.now());
+                const epoch = worldTimeAnchor ? worldTimeAnchor.epoch + now - worldTimeAnchor.monotonic : Date.now();
+                skySample = terrain.SampleSky(epoch);
                 const [east, up, north, moonEast, moonUp, moonNorth] = skySample;
                 daylight = skySample[7];
                 sun.direction.set(-east, -up, -north);
@@ -3426,6 +3428,11 @@
         setWeather(mode) {
             weatherMode = mode;
             if (terrain) weatherTarget = terrain.WeatherProfile(mode);
+        },
+        syncWorldTime(epoch) {
+            if (!Number.isFinite(epoch)) return;
+            worldTimeAnchor = { epoch, monotonic: performance.now() };
+            skySample = null;
         },
         skyStatus() { return skySample && Array.from(skySample); },
         weatherStatus() {

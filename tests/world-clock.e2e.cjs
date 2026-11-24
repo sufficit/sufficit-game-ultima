@@ -16,19 +16,25 @@ async function waitForWorld(page, predicate, message) {
     throw Error(message);
 }
 
-async function open(browser, date) {
+async function open(browser, date, serverClock) {
     const page = await browser.newPage({ viewport, timezoneId: 'America/Sao_Paulo' });
     const errors = [];
     const diagnostics = [];
     page.on('console', message => { if (message.type() === 'warning') diagnostics.push(message.text()); });
     page.on('pageerror', error => errors.push(error.message));
-    await page.clock.setFixedTime(date);
+    if (serverClock) {
+        await page.clock.install({ time: date });
+        await page.route('**/v1/worlds/ultima/time', route =>
+            route.fulfill(serverClock()));
+    } else {
+        await page.clock.setFixedTime(date);
+    }
     if (!main) {
         await page.route('**/js/game-core.js*', async route => {
             const response = await route.fetch();
             // A emulação do relógio da página não chega ao worker de renderização.
-            const body = (await response.text()).replace('terrain.SampleSky(Date.now())',
-                `terrain.SampleSky(${date.getTime()})`);
+            const body = (await response.text()).replace('worldTimeAnchor.monotonic : Date.now()',
+                `worldTimeAnchor.monotonic : ${date.getTime()}`);
             await route.fulfill({ response, body });
         });
     }
@@ -49,6 +55,41 @@ async function openPanel(page) {
     await page.getByRole('button', { name: menu, exact: true }).click();
     await page.getByRole('button', { name: 'Tempo e clima' }).click();
     await page.waitForFunction(() => document.getElementById('world-time-local')?.textContent.includes('GMT'));
+}
+
+async function testSynchronization(browser) {
+    let requests = 0;
+    const device = new Date('2026-06-21T03:00:00Z');
+    const { page, errors } = await open(browser, device, () => {
+        requests++;
+        if (requests === 2) return { status: 503, body: 'temporariamente indisponível' };
+        return { json: { utcMs: (requests === 1 ? day : night).getTime() } };
+    });
+    try {
+        await waitForWorld(page, async () => (await game.skyStatus())?.[1] > .87,
+            'o céu deve seguir o servidor com relógio do dispositivo adiantado ou atrasado');
+        await openPanel(page);
+        await page.waitForFunction(() => document.getElementById('world-time-gmt')?.textContent.includes('12:00'));
+        assert.match(await page.locator('#world-time-local').innerText(), /09:00 GMT-3/);
+        assert.equal(requests, 1);
+
+        await page.clock.fastForward('00:59:00');
+        assert.equal(requests, 1, 'não consulta novamente antes de completar uma hora');
+        await page.clock.fastForward('00:02:00');
+        await page.waitForFunction(() => document.getElementById('world-time-gmt')?.textContent.includes('13:01'));
+        assert.equal(requests, 2);
+        assert.ok((await page.evaluate(() => game.skyStatus()))?.[1] > .8,
+            'na falha, o céu mantém a calibração anterior');
+
+        await page.clock.fastForward('01:00:00');
+        await waitForWorld(page, async () => (await game.skyStatus())?.[1] < 0, 'o céu aplica a amostra seguinte');
+        await page.clock.fastForward('00:00:10');
+        await page.waitForFunction(() => document.getElementById('world-time-gmt')?.textContent.includes('00:30'));
+        assert.equal(requests, 3);
+        assert.deepEqual(errors, []);
+    } finally {
+        await page.close();
+    }
 }
 
 const renderState = renderer => renderer.evaluate(() => {
@@ -124,7 +165,9 @@ const renderState = renderer => renderer.evaluate(() => {
         assert.match(await dark.page.locator('#world-time-local').innerText(), /23\/11\/2026.*21:30 GMT-3/);
         assert.match(await dark.page.locator('#world-moon-phase').innerText(), /Lua cheia/);
         assert.deepEqual(dark.errors, []);
-        console.log(JSON.stringify({ mode: main ? 'main' : 'worker', clear, nightLight, moon: lunar[6], viewport }));
+        await dark.page.close();
+        await testSynchronization(browser);
+        console.log(JSON.stringify({ synchronized: true, mode: main ? 'main' : 'worker', clear, nightLight, moon: lunar[6], viewport }));
     } finally {
         await browser.close();
     }

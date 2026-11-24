@@ -9,6 +9,7 @@
 @inject GameUpdate GameUpdates
 @inject DialogLog Dialogs
 @inject LiveGame Live
+@inject WorldTime WorldTime
 @using Sufficit.Blazor.UI.Components
 @using Sufficit.Blazor.UI.Services
 @inject IJSRuntime JS
@@ -827,6 +828,7 @@
         await JS.InvokeVoidAsync("game.net.init", _bridge);
         await JS.InvokeVoidAsync("game.live.init", _bridge);
         _ = Live.RunAsync(_browserLifetime.Token);
+        _ = WorldTime.RunAsync(_browserLifetime.Token);
         await JS.InvokeVoidAsync("game.voice.init", _bridge);
         await JS.InvokeVoidAsync("game.ai.init", _bridge);
         await JS.InvokeVoidAsync("game.aiCpu.init", _bridge);

@@ -631,6 +631,7 @@
             },
             status() { return query('weatherStatus'); }
         },
+        syncWorldTime(epoch) { post('syncWorldTime', [epoch]); },
         skyStatus() { return query('skyStatus'); },
         perf: {
             report() { return query('perf.report'); }
