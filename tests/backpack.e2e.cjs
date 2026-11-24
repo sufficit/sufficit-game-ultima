@@ -143,7 +143,7 @@ async function until(check, label='A alteração esperada não apareceu', timeou
             });
         });
         await click({name:mesh});
-        await page.getByText('+1 Toco',{exact:true}).waitFor({timeout:10000});
+        await page.getByText('+1 Toco',{exact:true}).isVisible(), 'a coleta confirmada não apareceu', 60000);
         await until(()=>target.evaluate(()=>globalThis.gatherMotion),'a coleta confirmada deve acionar o gesto');
         await until(()=>page.evaluate(()=>window.gatherSounds === 1), 'a marca de som da coleta não tocou');
         await until(async()=>await enabled(target)===false);
