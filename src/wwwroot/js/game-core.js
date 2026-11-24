@@ -77,6 +77,8 @@
     let lookStick = { x: 0, y: 0 };
     let remoteSerial = 0;
     const remotes = new Map();
+    const remoteSlots = new Map();
+    const REMOTE_FRAME_STRIDE = 18; // PlayerRemoteAvatars.Stride
     const keys = Object.create(null);
 
     const gameCodes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
@@ -2424,22 +2426,21 @@
         }
     }
 
-    function updateCharacterPose(root, delta, distance, patrol = false, target = null) {
+    function updateCharacterPose(root, delta, distance, patrol = false) {
         const rig = characterRigs.get(root);
         if (!rig) { return; }
         const listening = frozen && (root === player || root === dialoguePartner);
         const action = rig.action;
         const { x, y, z } = root.position;
         let frame;
-        if (patrol || target) {
-            const destination = patrol ? WANDERER_HOME : target;
+        if (patrol) {
             frame = terrain.AnimateCompanion(x, y, z, root.rotation.y,
                 rig.gaitPhase, rig.gaitWeight, rig.clock, rig.speaking, delta, root.name.length,
-                patrol, destination.x, destination.z, patrol ? wanderT : target.yaw);
+                WANDERER_HOME.x, WANDERER_HOME.z, wanderT);
             root.position.x = frame[24];
             root.position.z = frame[25];
             root.rotation.y = frame[26];
-            if (patrol) { wanderT = frame[27]; }
+            wanderT = frame[27];
             distance = frame[28];
         } else {
             frame = terrain.AnimateCharacter(x, y, z, root.rotation.y,
@@ -2640,7 +2641,11 @@
         labelMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
         labelMat.opacityTexture = texture;
         label.material = labelMat;
-        remotes.set(id, { avatar: avatar, label: label, texture: texture, labelMat: labelMat });
+        const entry = { serial, avatar, rig: characterRigs.get(avatar), label, texture, labelMat };
+        remotes.set(id, entry);
+        remoteSlots.set(serial, entry);
+        const { x, y, z } = avatar.position;
+        terrain.AddRemoteAvatar(serial, avatar.name.length, x, y, z, avatar.rotation.y);
         if (dotnet) { dotnet.invokeMethodAsync('OnRemoteCount', remotes.size); }
     }
 
@@ -2652,13 +2657,12 @@
 
     function updateRemote(id, x, z, ry) {
         const p = remotes.get(id);
-        if (!p || ![x, z, ry].every(Number.isFinite)) { return; }
-        const firstPose = !p.target;
-        p.target = { x: clampWorld(x), z: clampWorld(z), yaw: ry };
-        const position = p.avatar.position;
-        if (firstPose || Math.hypot(p.target.x - position.x, p.target.z - position.z) > 5) {
-            position.x = p.target.x;
-            position.z = p.target.z;
+        if (!p || !Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(ry)) { return; }
+        x = clampWorld(x);
+        z = clampWorld(z);
+        if (terrain.SetRemoteAvatarTarget(p.serial, x, z, ry)) {
+            p.avatar.position.x = p.label.position.x = x;
+            p.avatar.position.z = p.label.position.z = z;
             p.avatar.rotation.y = ry;
         }
     }
@@ -2666,17 +2670,43 @@
     function updateOtherCharacters(delta) {
         updateCharacterPose(wandererRoot, delta, 0, dialoguePartner !== wandererRoot);
         updateCharacterPose(guardianRoot, delta, 0);
-        for (const { avatar, label, target } of remotes.values()) {
-            updateCharacterPose(avatar, delta, 0, false, target);
-            label.position.set(avatar.position.x, avatar.position.y + 1.925, avatar.position.z);
+        if (!remoteSlots.size) { return; }
+
+        const frame = terrain.UpdateRemoteAvatars(delta, player.position.x, player.position.z);
+        for (let i = 0; i < frame.length; i += REMOTE_FRAME_STRIDE) {
+            const { avatar, rig, label } = remoteSlots.get(frame[i]);
+            const x = frame[i + 1], y = frame[i + 2], z = frame[i + 3], yaw = frame[i + 4];
+            const position = avatar.position;
+            if (x !== position.x || y !== position.y || z !== position.z) {
+                position.set(x, y, z);
+                label.position.set(x, y + 1.925, z);
+            }
+            if (yaw !== avatar.rotation.y) { avatar.rotation.y = yaw; }
+            if (!frame[i + 5]) { continue; }
+
+            rig.upper.rotation.x = frame[i + 6];
+            rig.upper.rotation.z = frame[i + 7];
+            rig.head.rotation.x = frame[i + 8];
+            rig.eyes.scaling.y = frame[i + 9];
+            rig.shoulders[0].rotation.x = frame[i + 10];
+            rig.shoulders[1].rotation.x = frame[i + 11];
+            const [left, right] = rig.legs;
+            left.hip.rotation.x = frame[i + 12];
+            left.knee.rotation.x = frame[i + 13];
+            left.ankle.rotation.x = frame[i + 14];
+            right.hip.rotation.x = frame[i + 15];
+            right.knee.rotation.x = frame[i + 16];
+            right.ankle.rotation.x = frame[i + 17];
         }
     }
 
     function removeRemote(id) {
         const p = remotes.get(id);
         if (!p) { return; }
-        p.avatar.dispose(); p.label.dispose(); p.texture.dispose(); p.labelMat.dispose();
+        terrain.RemoveRemoteAvatar(p.serial);
+        remoteSlots.delete(p.serial);
         remotes.delete(id);
+        p.avatar.dispose(); p.label.dispose(); p.texture.dispose(); p.labelMat.dispose();
         if (dotnet) { dotnet.invokeMethodAsync('OnRemoteCount', remotes.size); }
     }
 

@@ -21,7 +21,13 @@ internal static class PlayerCompanionMotion
         var blend = 1 - Math.Exp(-12 * delta);
         var nextX = x + (targetX - x) * blend;
         var nextZ = z + (targetZ - z) * blend;
-        return new(nextX, nextZ, Turn(yaw, targetYaw, blend), 0, Distance(nextX - x, nextZ - z));
+        if ((targetX - nextX) * (targetX - nextX) + (targetZ - nextZ) * (targetZ - nextZ) < 1e-8)
+            (nextX, nextZ) = (targetX, targetZ);
+
+        var nextYaw = Turn(yaw, targetYaw, blend);
+        if (Math.Abs(nextYaw - targetYaw) < 1e-5 || Math.Abs(Math.Abs(nextYaw - targetYaw) - Math.Tau) < 1e-5)
+            nextYaw = targetYaw;
+        return new(nextX, nextZ, nextYaw, 0, Distance(nextX - x, nextZ - z));
     }
 
     private static double Turn(double yaw, double target, double blend)

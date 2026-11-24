@@ -280,7 +280,19 @@ async function wait(callback,label) {
         const arm=s.getTransformNodeByName('remote-gesture-test-shoulder-right');
         return remote?.position.z>8 && remote.position.z<9.999 && Math.abs(arm.rotation.x)>0.03;
     }),'o remoto interpola a posição e move os braços');
+    await p.evaluate(()=>game.updateRemote('gesture-test', 40, 8, 0));
+    await wait(()=>renderer.evaluate(()=>{
+        const s=BABYLON.EngineStore.LastCreatedScene;
+        const remote=s.getTransformNodeByName('remote-gesture-test');
+        const label=s.getMeshByName('remote-label-gesture-test');
+        return remote?.position.x===40 && label?.position.x===40
+            && Math.abs(label.position.y-remote.position.y-1.925)<1e-6;
+    }),'o teleporte distante mantém o rótulo junto ao avatar');
     await p.evaluate(()=>game.removeRemote('gesture-test'));
+    await wait(()=>renderer.evaluate(()=>{
+        const s=BABYLON.EngineStore.LastCreatedScene;
+        return !s.getTransformNodeByName('remote-gesture-test') && !s.getMeshByName('remote-label-gesture-test');
+    }),'a desconexão remove o avatar e seu rótulo');
     assert.deepEqual(errors,[]);
     console.log(JSON.stringify({slide,free,soft,stump,rock,highLog,nativeTree,conversation,remoteMotion:true}));
  }finally{await browser.close();}

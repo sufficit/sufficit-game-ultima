@@ -21,8 +21,11 @@ internal sealed class TerrainSurface
     internal readonly record struct Brush(double X, double Z, double Radius);
     private readonly record struct Edit(Brush Brush, double Height);
 
+    internal int Revision { get; private set; }
+
     internal void SetEdits(double[] values)
     {
+        Revision++;
         _sculpts.Clear();
         _carves.Clear();
         for (var i = 0; i + 4 < values.Length; i += 5)
@@ -34,6 +37,7 @@ internal sealed class TerrainSurface
 
     internal void AddDig(double x, double z)
     {
+        Revision++;
         var cut = new Brush(x, z, DigRadius);
         var index = _cuts.Count;
         _cuts.Add(cut);

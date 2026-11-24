@@ -393,6 +393,48 @@ Check("remoto interpola deslocamento e atravessa pi pelo arco curto",
 Check("remoto no destino mantém a pose e percorre zero",
     PlayerCompanionMotion.Follow(1, 2, 3, 1, 2, 3, 0.05) == new PlayerCompanionMotion.Frame(1, 2, 3, 0, 0));
 
+var remoteSurface = new TerrainSurface();
+var sample = new PlayerRemoteAvatars.GroundSample();
+var baseHeight = sample.Sample(remoteSurface, 0, 0);
+Check("amostra de remoto distingue coordenadas exatas",
+    sample.Sample(remoteSurface, 0.25, 0.5) == remoteSurface.Height(0.25, 0.5));
+sample.Sample(remoteSurface, 0, 0);
+remoteSurface.AddDig(0, 0);
+Check("amostra de remoto invalida após escavação",
+    sample.Sample(remoteSurface, 0, 0) < baseHeight && sample.Sample(remoteSurface, 0, 0) == remoteSurface.Height(0, 0));
+
+var avatars = new PlayerRemoteAvatars(remoteSurface, 0.03, 0.82, 0.39, 0.06, 0.16, 0.05);
+avatars.Add(7, 8, 0, baseHeight, 0, 0);
+Check("primeira pose remota ajusta posição imediatamente", avatars.Target(7, 0, 0, 0));
+var initialRemoteY = avatars.Tick(0.02, 0, 0)[2];
+Check("LOD remoto mantém a pose perto e dentro da faixa de histerese",
+    avatars.Tick(0.02, 29, 0)[5] == 1);
+Check("LOD remoto longe conserva a pose entre atualizações",
+    avatars.Tick(0.02, 33, 0)[5] == 0 && avatars.Tick(0.02, 29, 0)[5] == 0);
+Check("novo destino próximo interpola sem teleporte", !avatars.Target(7, 2, 0, 1));
+var remoteMoving = avatars.Tick(0.02, 29, 0);
+Check("remoto distante interpola raiz sem recalcular a pose",
+    remoteMoving[1] > 0 && remoteMoving[1] < 2 && remoteMoving[4] > 0 && remoteMoving[5] == 0);
+Check("LOD remoto atualiza pose depois de acumular 100 ms",
+    avatars.Tick(0.04, 29, 0)[5] == 1);
+remoteSurface.SetEdits([0, 0, 0, 4, 1.5]);
+var remoteAfterEdit = avatars.Tick(0.02, 33, 0);
+Check("edição força o apoio remoto longe antes do próximo intervalo",
+    remoteAfterEdit[5] == 1 && remoteAfterEdit[2] > initialRemoteY);
+Check("remoto voltando ao raio de entrada retoma a pose por quadro",
+    avatars.Tick(0.02, 25, 0)[5] == 1 && avatars.Tick(0.02, 26, 0)[5] == 1);
+Check("teleporte distante força uma pose nova",
+    avatars.Target(7, 50, 0, 2) && avatars.Tick(0.02, 0, 0)[1] == 50 && avatars.Tick(0.02, 0, 0)[5] == 0);
+avatars.Add(20, 6, 2, baseHeight, 3, 0);
+var remoteBatch = avatars.Tick(0.02, 0, 0);
+Check("lote tem uma linha por avatar e mantém o mesmo buffer entre quadros",
+    remoteBatch.Length == 2 * PlayerRemoteAvatars.Stride && remoteBatch[0] == 7
+    && remoteBatch[PlayerRemoteAvatars.Stride] == 20 && ReferenceEquals(remoteBatch, avatars.Tick(0.02, 0, 0)));
+avatars.Remove(7);
+var remainingRemote = avatars.Tick(0.02, 0, 0);
+Check("desconexão remove somente a linha do avatar",
+    remainingRemote.Length == PlayerRemoteAvatars.Stride && remainingRemote[0] == 20);
+
 Console.WriteLine(failures == 0 ? "\nTODOS OS TESTES PASSARAM" : $"\n{failures} FALHA(S)");
 return failures == 0 ? 0 : 1;
 

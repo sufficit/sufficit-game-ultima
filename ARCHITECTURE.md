@@ -56,18 +56,22 @@ flowchart LR
 O Babylon.js envia ao C# centros, raios e limites de altura dos colisores
 quando muda o conjunto de obstáculos ativos. A cada quadro, o C# devolve
 posição, orientação desejada e distância percorrida. Uma chamada por personagem
-calcula o avanço da ação, a expressão, o apoio no terreno e a pose. Se um pé do
+local calcula o avanço da ação, a expressão, o apoio no terreno e a pose. Se um pé do
 jogador encontra uma malha de apoio acima do solo, uma segunda chamada ajusta a
 articulação com essa altura. A prévia e o clique de coleta compartilham a
 resolução do alvo e o limite de alcance.
 [Exportações da simulação](engine/Ultima.Terrain/BrowserExports.Player.cs)
 
-O Andarilho e os avatares remotos recebem movimento e pose na mesma chamada
-C#. A patrulha fornece a distância percorrida ao cálculo da marcha. Avatares
-remotos interpolam posição e orientação até a última pose recebida. O
-adaptador da cena aplica o resultado, posiciona os rótulos e trata a chegada
-dos eventos de rede.
-[Movimento de NPCs e avatares](engine/Ultima.Terrain/PlayerCompanionMotion.cs)
+A pose do Andarilho usa a distância percorrida durante a patrulha. Para os
+avatares de rede, uma única chamada C# por quadro interpola posição horizontal
+e orientação e entrega as poses em lote. O cálculo completo dos ossos e do
+apoio dos pés roda por quadro até 28 m do jogador. Ao sair de 32 m, a cadência
+passa a uma pose a cada 100 ms de simulação. A diferença entre os raios evita
+alternância na divisa. Teleportes e edições do solo antecipam a pose. As três
+amostras de altura de cada avatar são reutilizadas quando coordenadas e revisão
+do terreno coincidem. O adaptador Babylon.js aplica as transformações e
+acompanha a posição dos rótulos.
+[Simulação dos avatares remotos](engine/Ultima.Terrain/PlayerRemoteAvatars.cs)
 
 O C# calcula rotação, zoom, órbita e retorno suave da câmera. O Babylon.js
 consulta a geometria visível, aplica o recuo imediato em caso de colisão e

@@ -12,6 +12,8 @@ internal static partial class BrowserExports
     private static readonly double[] CameraResult = new double[8];
     private static double _kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset;
 
+    private static PlayerRemoteAvatars? _remoteAvatars;
+
     [JSExport]
     internal static void ConfigurePlayer(double height, double kneeHeight, double footGap,
         double hipHeight, double legLength, double ankleOffset, double spacing, double shoeOffset)
@@ -19,6 +21,7 @@ internal static partial class BrowserExports
         _movement = new(height, kneeHeight, footGap);
         (_kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset) =
             (kneeHeight, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset);
+        _remoteAvatars = new(_surface, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset);
         Camera.Reset();
     }
 
@@ -85,11 +88,9 @@ internal static partial class BrowserExports
     [JSExport]
     internal static double[] AnimateCompanion(double x, double y, double z, double yaw,
         double phase, double weight, double clock, double speech, double delta, int nameLength,
-        bool patrol, double destinationX, double destinationZ, double heading)
+        double homeX, double homeZ, double heading)
     {
-        var motion = patrol
-            ? PlayerCompanionMotion.Patrol(x, z, yaw, destinationX, destinationZ, heading, delta)
-            : PlayerCompanionMotion.Follow(x, z, yaw, destinationX, destinationZ, heading, delta);
+        var motion = PlayerCompanionMotion.Patrol(x, z, yaw, homeX, homeZ, heading, delta);
         AnimateCharacterFrame(CompanionFrame, motion.X, y, motion.Z, motion.Yaw, phase, weight, clock, speech,
             0, 0, motion.Distance, delta, nameLength, false, false, 0, 0, true, false, false);
         CompanionFrame[24] = motion.X;
@@ -99,6 +100,21 @@ internal static partial class BrowserExports
         CompanionFrame[28] = motion.Distance;
         return CompanionFrame;
     }
+
+    [JSExport]
+    internal static void AddRemoteAvatar(int id, int nameLength, double x, double y, double z, double yaw)
+        => _remoteAvatars!.Add(id, nameLength, x, y, z, yaw);
+
+    [JSExport]
+    internal static void RemoveRemoteAvatar(int id) => _remoteAvatars!.Remove(id);
+
+    [JSExport]
+    internal static bool SetRemoteAvatarTarget(int id, double x, double z, double yaw)
+        => _remoteAvatars!.Target(id, x, z, yaw);
+
+    [JSExport]
+    internal static double[] UpdateRemoteAvatars(double delta, double playerX, double playerZ)
+        => _remoteAvatars!.Tick(delta, playerX, playerZ);
 
     private static void AnimateCharacterFrame(Span<double> result, double x, double y, double z, double yaw,
         double phase, double weight, double clock, double speech, double elapsed, double duration,
