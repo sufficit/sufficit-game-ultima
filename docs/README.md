@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Resposta articulada ao contato](activities/202611241603-contatos-articulados.md)
+
 - [Não sobreposição dos corpos durante a animação](activities/202611241300-nao-sobreposicao-dos-corpos.md)
 
 - [Contato junto à silhueta](activities/202611241249-colisao-junto-as-malhas.md)

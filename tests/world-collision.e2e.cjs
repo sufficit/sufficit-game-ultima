@@ -70,30 +70,31 @@ async function wait(callback,label) {
         if(errors.length) throw Error(errors.join('\n'));
         return pose();
     }
-    async function walkGame(key, budget, axis, target, sign = 1) {
-        // Conta o tempo usado pelo motor, inclusive quando há quadros longos.
-        await renderer.evaluate(({budget,axis,target,sign})=>{
-            const scene=BABYLON.EngineStore.LastCreatedScene;
-            const player=scene.getTransformNodeByName('player');
-            globalThis.contactTraversal=new Promise((resolve,reject)=>{
-                let elapsed=0;
-                const timer=setTimeout(()=>{
-                    scene.onAfterRenderObservable.remove(observe);
-                    reject(Error('tempo limite no percurso de contato'));
-                },15000);
-                const observe=scene.onAfterRenderObservable.add(()=>{
-                    elapsed+=Math.min(0.05,scene.getEngine().getDeltaTime()/1000);
-                    if(sign*player.position[axis]<=sign*target && elapsed<budget) return;
-                    scene.onAfterRenderObservable.remove(observe);
-                    clearTimeout(timer);
-                    const {x,y,z}=player.position;
-                    resolve({x,y,z,elapsed});
-                });
-            });
-        },{budget,axis,target,sign});
+    async function walkGame(key, budget, axis, target) {
+        // Conta o tempo usado pelo motor depois de enviar o comando.
         await p.keyboard.down(key);
-        try { return await renderer.evaluate(()=>globalThis.contactTraversal); }
-        finally { await p.keyboard.up(key); await p.waitForTimeout(T300); }
+        try {
+            await renderer.evaluate(({budget,axis,target})=>{
+                const scene=BABYLON.EngineStore.LastCreatedScene;
+                const player=scene.getTransformNodeByName('player');
+                globalThis.contactTraversal=new Promise((resolve,reject)=>{
+                    let elapsed=0;
+                    const timer=setTimeout(()=>{
+                        scene.onAfterRenderObservable.remove(observe);
+                        reject(Error('tempo limite no percurso de contato'));
+                    },15000);
+                    const observe=scene.onAfterRenderObservable.add(()=>{
+                        elapsed+=Math.min(0.05,scene.getEngine().getDeltaTime()/1000);
+                        if(player.position[axis]<=target && elapsed<budget) return;
+                        scene.onAfterRenderObservable.remove(observe);
+                        clearTimeout(timer);
+                        const {x,y,z}=player.position;
+                        resolve({x,y,z,yaw:player.rotation.y,elapsed});
+                    });
+                });
+            },{budget,axis,target});
+            return await renderer.evaluate(()=>globalThis.contactTraversal);
+        } finally { await p.keyboard.up(key); await p.waitForTimeout(T300); }
     }
     // Mede a velocidade em TEMPO DE JOGO (soma do delta truncado por quadro), não em tempo de parede:
     // sob renderização por software o runner faz ~1 quadro/s e cada quadro avança no máximo 0,05 s
@@ -318,9 +319,9 @@ async function wait(callback,label) {
         await p.keyboard.up('w');
         await p.keyboard.up('Shift');
     }
-    const beside=await walkGame('a',0.95,'x',-0.85,-1);
-    const around=await walkGame('w',0.95,'z',3.7);
-    assert.ok(beside.x<-0.8 && around.z>3.7,'é possível contornar os personagens: '+JSON.stringify({beside,around}));
+    const beside=await walkGame('d',1.3,'x',0.85);
+    const around=await walkGame('w',1.1,'z',3.7);
+    assert.ok(beside.x>0.8 && around.z>3.7,'é possível contornar os personagens: '+JSON.stringify({beside,around}));
     await p.evaluate(()=>{
         game.removeRemote('contact-a');
         game.resetPlayer();
