@@ -74,7 +74,7 @@ async function wait(callback,label) {
     // sob renderização por software o runner faz ~1 quadro/s e cada quadro avança no máximo 0,05 s
     // (game-core.js), então a distância percorrida em tempo de parede depende do FPS da janela.
     // A razão entre caminhada e corrida preserva a mesma condição em qualquer runner.
-    async function speed(keys,ms,sprint=true){
+    async function speed(keys,ms,sprint=true,turn=null){
         const hold=Math.round(ms*walkScale);
         await renderer.evaluate(() => {
             const scene=BABYLON.EngineStore.LastCreatedScene, engine=BABYLON.EngineStore.LastCreatedEngine;
@@ -83,23 +83,33 @@ async function wait(callback,label) {
             const ankles=['left','right'].map(side=>scene.getTransformNodeByName('player-ankle-'+side));
             const observer=scene.onAfterRenderObservable.add(() => {
                 const feet=ankles.map(ankle=>{
-                    const {x,z}=ankle.getAbsolutePosition();
-                    const pitch=ankle.rotation.x+ankle.parent.rotation.x+ankle.parent.parent.rotation.x;
-                    return {x,z,pitch,planted:Math.abs(pitch)<1e-8};
+                    const direction=ankle.getDirection(BABYLON.Axis.Z);
+                    const shoe=scene.getMeshByName(ankle.name.replace('ankle','shoe'));
+                    const {x,z}=shoe.getAbsolutePosition();
+                    const pitch=Math.asin(Math.max(-1,Math.min(1,-direction.y)));
+                    return {x,z,pitch,planted:Math.abs(pitch)<1e-6};
                 });
-                samples.push({x:player.position.x,z:player.position.z,g:Math.min(0.05,engine.getDeltaTime()/1000),feet});
+                samples.push({x:player.position.x,z:player.position.z,g:Math.min(0.05,engine.getDeltaTime()/1000),yaw:player.rotation.y,feet});
             });
             globalThis.stopMoveTrace=() => { scene.onAfterRenderObservable.remove(observer); return samples; };
         });
         if(sprint) await p.keyboard.down('Shift');
         let samples=null;
         for(const key of keys) await p.keyboard.down(key);
-        try { await p.waitForTimeout(hold); }
+        try {
+            if (turn) {
+                await p.waitForTimeout(hold/2);
+                for(const key of keys) await p.keyboard.up(key);
+                keys=[turn];
+                await p.keyboard.down(turn);
+            }
+            await p.waitForTimeout(turn ? hold/2 : hold);
+        }
         finally {
             for(const key of keys) await p.keyboard.up(key);
             if(sprint) await p.keyboard.up('Shift');
-            // Para o rastreio JUNTO com a solta da tecla: o assentamento (T300) desacelera
-            // o personagem (−26 m/s²) e contaminaria a velocidade de regime.
+            // Curvas e inversões também medem o apoio depois da frenagem.
+            if (turn) await p.waitForTimeout(T300);
             samples=await renderer.evaluate(() => globalThis.stopMoveTrace());
         }
         await p.waitForTimeout(T300);
@@ -109,7 +119,7 @@ async function wait(callback,label) {
         }
         // Descarta a rampa de aceleração (primeiros 0,3 s de jogo): numerador e denominador
         // precisam ser PARES — só contam os passos após a rampa (tempo gC = tempo dos passos medidos).
-        let g=0, gC=0, dist=0, n=0, plantedFrames=0, maxSlide=0;
+        let g=0, gC=0, dist=0, n=0, plantedFrames=0, maxSlide=0, turningFrames=0, turnSlide=0;
         for(let i=1;i<samples.length;i++){
             const d=Math.hypot(samples[i].x-samples[i-1].x, samples[i].z-samples[i-1].z);
             if(g>0.3){
@@ -118,7 +128,12 @@ async function wait(callback,label) {
                     const a=samples[i-1].feet[foot], b=samples[i].feet[foot];
                     if(a.planted && b.planted && d<0.2){
                         plantedFrames++;
-                        maxSlide=Math.max(maxSlide,Math.hypot(b.x-a.x,b.z-a.z));
+                        const slide=Math.hypot(b.x-a.x,b.z-a.z);
+                        maxSlide=Math.max(maxSlide,slide);
+                        if(Math.abs(samples[i].yaw-samples[i-1].yaw)>0.01){
+                            turningFrames++;
+                            turnSlide=Math.max(turnSlide,slide);
+                        }
                     }
                 }
             }
@@ -130,9 +145,20 @@ async function wait(callback,label) {
             const dAll=samples.length>1?Math.hypot(last.x-samples[0].x,last.z-samples[0].z):0;
             return {v:gAll>0?dAll/gAll:0,z:last?.z,frames:samples.length};
         }
+        let stopFrames=0, stopSlide=0;
+        for(let i=samples.length-1;i>0;i--){
+            const a=samples[i-1], b=samples[i];
+            if(Math.hypot(b.x-a.x,b.z-a.z)>1e-6) break;
+            for(let foot=0;foot<2;foot++){
+                if(a.feet[foot].planted && b.feet[foot].planted){
+                    stopFrames++;
+                    stopSlide=Math.max(stopSlide,Math.hypot(b.feet[foot].x-a.feet[foot].x,b.feet[foot].z-a.feet[foot].z));
+                }
+            }
+        }
         const pitches=samples.flatMap(sample=>sample.feet.map(foot=>foot.pitch));
         return {v:gC>0?dist/gC:0,z:last?.z,frames:samples.length,plantedFrames,maxSlide,
-            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches)};
+            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide};
     }
     const walking=await speed(['w'],1800,false);
     assert.ok(walking.plantedFrames>=5 && walking.maxSlide<0.012,
@@ -145,6 +171,20 @@ async function wait(callback,label) {
         return joint('ankle-left','knee-left') && joint('wrist-right','elbow-right') &&
             joint('toe-1-left-tip','toe-1-left');
     }),'jogador instancia o esqueleto humano');
+    await p.evaluate(()=>game.resetPlayer());
+    await p.waitForTimeout(T300);
+    const turning=await speed(['w'],1500,false,'d');
+    console.log(JSON.stringify({turning}));
+    assert.ok(turning.turningFrames>=2 && turning.turnSlide<0.012,
+        'pé de apoio deve ficar no mesmo lugar durante a curva: '+JSON.stringify(turning));
+    await p.evaluate(()=>game.resetPlayer());
+    await p.waitForTimeout(T300);
+    const reversing=await speed(['w'],1500,false,'s');
+    console.log(JSON.stringify({reversing}));
+    assert.ok(reversing.turningFrames>=2 && reversing.turnSlide<0.012,
+        'pé de apoio deve ficar no mesmo lugar durante a inversão: '+JSON.stringify(reversing));
+    assert.ok(reversing.stopFrames>=2 && reversing.stopSlide<0.012,
+        'pé em apoio deve permanecer imóvel ao parar: '+JSON.stringify(reversing));
     await p.evaluate(()=>game.resetPlayer());
     await p.waitForTimeout(T300);
     const running=await speed(['w'],1400);
@@ -232,6 +272,8 @@ async function wait(callback,label) {
     assert.ok(step.flex>0.55 && step.feetDifference>0.10,'joelho flexiona e os pés alternam apoio');
     {
         const contact = await renderer.evaluate(async () => {
+            // Mede a geometria do apoio com os dois pés na pose neutra.
+            game.resetPlayer();
             const scene = BABYLON.EngineStore.LastCreatedScene;
             const player = scene.getTransformNodeByName('player');
             const log = scene.getMeshByName('place-browser-log');

@@ -2481,6 +2481,13 @@
         if (!rig) { return; }
         const listening = frozen && (root === player || root === dialoguePartner);
         const action = rig.action;
+        if (listening) {
+            const other = root === player ? dialoguePartner : player;
+            if (other) { turnCharacter(root, Math.atan2(other.position.x - root.position.x, other.position.z - root.position.z), delta, 7); }
+        }
+        if (action?.point && (delta === 0 || distance < 0.4 * delta)) {
+            turnCharacter(root, Math.atan2(action.point.x - root.position.x, action.point.z - root.position.z), delta, 13);
+        }
         const { x, y, z } = root.position;
         let frame;
         if (patrol) {
@@ -2506,15 +2513,8 @@
         rig.speaking = speech;
         if (rig.legs.length) { applyCharacterLegs(rig, frame, delta); }
 
-        if (listening) {
-            const other = root === player ? dialoguePartner : player;
-            if (other) { turnCharacter(root, Math.atan2(other.position.x - root.position.x, other.position.z - root.position.z), delta, 7); }
-        }
         if (action) {
             action.elapsed = elapsed;
-            if (action.point && (delta === 0 || distance < 0.4 * delta)) {
-                turnCharacter(root, Math.atan2(action.point.x - root.position.x, action.point.z - root.position.z), delta, 13);
-            }
             if (action.target && action.times.length > 0 && progress > previous) {
                 const crossed = terrain.CrossedAnimationMarks(previous, progress, false, action.times);
                 for (const index of crossed) {
@@ -2579,6 +2579,15 @@
                 ankle.position.y = -LEG_SEGMENT;
             }
 
+            let hipRoll = null;
+            if (joints) {
+                hipRoll = new BABYLON.TransformNode(root.name + '-hip-roll-' + suffix, scene);
+                hipRoll.parent = hip.parent;
+                hipRoll.position.copyFrom(hip.position);
+                hip.parent = hipRoll;
+                hip.position.set(0, 0, 0);
+                ankle.rotationQuaternion = BABYLON.Quaternion.Identity();
+            }
             const options = { height: LEG_SEGMENT + 0.085, radius, subdivisions: 4 };
             const thigh = BABYLON.MeshBuilder.CreateCapsule(root.name + '-thigh-' + suffix, options, scene);
             const shin = BABYLON.MeshBuilder.CreateCapsule(root.name + '-shin-' + suffix, options, scene);
@@ -2595,8 +2604,28 @@
             for (const mesh of [thigh, shin, shoe]) {
                 mesh.isPickable = false;
             }
-            return { side, hip, knee, ankle, thigh, shin, shoe };
+            return { side, hip, hipRoll, knee, ankle, thigh, shin, shoe };
         });
+    }
+
+    const undoLegPitch = new BABYLON.Quaternion(), undoHipRoll = new BABYLON.Quaternion();
+    const soleRotation = new BABYLON.Quaternion(), ankleBase = new BABYLON.Quaternion();
+
+    function applyLeg(leg, angles, i, roll, yaw) {
+        const hip = angles[i], knee = angles[i + 1], ankle = angles[i + 2];
+        leg.hip.rotation.x = hip;
+        leg.knee.rotation.x = knee;
+        if (!leg.hipRoll) {
+            leg.ankle.rotation.x = ankle;
+            return;
+        }
+        leg.hipRoll.rotation.z = roll;
+        // Cancela quadril e joelho antes de aplicar o giro e a inclinação da sola.
+        BABYLON.Quaternion.RotationYawPitchRollToRef(0, -hip - knee, 0, undoLegPitch);
+        BABYLON.Quaternion.RotationYawPitchRollToRef(0, 0, -roll, undoHipRoll);
+        BABYLON.Quaternion.RotationYawPitchRollToRef(yaw, hip + knee + ankle, 0, soleRotation);
+        undoLegPitch.multiplyToRef(undoHipRoll, ankleBase);
+        ankleBase.multiplyToRef(soleRotation, leg.ankle.rotationQuaternion);
     }
 
     function applyCharacterLegs(rig, frame, delta) {
@@ -2611,18 +2640,14 @@
             if (leftSupport > leftFloor || rightSupport > rightFloor) {
                 angles = terrain.SolveSupportedLegs(ground, root.position.y, delta,
                     frame[28], frame[29], leftFloor, leftSupport, frame[33], frame[34], rightFloor, rightSupport,
-                    frame[35], frame[36]);
+                    frame[35], frame[36], frame[41], frame[42]);
                 i = 0;
             }
         }
         const [left, right] = rig.legs;
         root.position.y = angles[i];
-        left.hip.rotation.x = angles[i + 1];
-        left.knee.rotation.x = angles[i + 2];
-        left.ankle.rotation.x = angles[i + 3];
-        right.hip.rotation.x = angles[i + 4];
-        right.knee.rotation.x = angles[i + 5];
-        right.ankle.rotation.x = angles[i + 6];
+        applyLeg(left, angles, i + 1, i === 0 ? angles[7] : frame[37], frame[39]);
+        applyLeg(right, angles, i + 4, i === 0 ? angles[8] : frame[38], frame[40]);
     }
 
     // Tronco provisório enquanto o pacote de malhas do personagem é carregado.
@@ -3021,6 +3046,13 @@
     const CORE_ID = 'core-' + Math.random().toString(36).slice(2, 8);
 
     // Mescla em G.game (assets.js/net.js/... podem ter registrado antes).
+    function resetPlayerGait() {
+        terrain?.StopPlayer();
+        terrain?.ResetFootContacts();
+        const rig = characterRigs.get(player);
+        if (rig) { rig.gaitPhase = rig.gaitWeight = 0; }
+    }
+
     const api = {
         setFrozen(value, speaker) {
             frozen = !!value;
@@ -3034,7 +3066,7 @@
             if (rig) { rig.speaking = Math.max(0.65, Math.min(3.2, length * 0.038)); }
         },
         resetPlayer() {
-            terrain?.StopPlayer();
+            resetPlayerGait();
             if (player) { player.position.set(0, terrainHeight(0, 0) + FOOT_GAP, 0); player.rotation.y = 0; }
             if (camera) {
                 terrain.ResetCamera();
@@ -3046,7 +3078,7 @@
         },
         teleportToGuardian() {
             if (!player || !camera) return false;
-            terrain?.StopPlayer();
+            resetPlayerGait();
             player.position.x = NPC_POSITION.x;
             player.position.z = NPC_POSITION.z + 2.0;
             player.position.y = terrainHeight(player.position.x, player.position.z) + 0.03;

@@ -325,6 +325,30 @@ Check("humano liga tornozelo ao joelho e falanges aos punhos",
     human["ankle-left"].Parent == "knee-left" && human["finger-5-right"].Parent == "wrist-right"
     && human["toe-4-right-tip"].Parent == "toe-4-right");
 
+var contacts = new PlayerFootContacts();
+Span<double> alignment = stackalloc double[4];
+contacts.Begin(0, 0, 0, 0);
+PlayerPose.FootTargets(feet, 0, 0, 1, 3.5, 0.077, 0.06);
+contacts.Apply(feet, alignment, 0, 0.077, 0.06);
+var plantedX = feet[2];
+var plantedZ = feet[3];
+const double cornerYaw = 0.65;
+contacts.Begin(0.05, 0.07, cornerYaw, 0.09);
+PlayerPose.FootTargets(feet, cornerYaw, 0.6, 1, 3.5, 0.077, 0.06);
+contacts.Apply(feet, alignment, 0.6, 0.077, 0.06);
+Check("sola guarda posição e rumo mundiais na curva",
+    Math.Abs(0.05 + feet[2] - plantedX) < 1e-12 && Math.Abs(0.07 + feet[3] - plantedZ) < 1e-12
+    && Math.Abs(alignment[2] + cornerYaw) < 1e-12 && Math.Abs(alignment[0]) > 0.01);
+Span<double> legs3D = stackalloc double[9];
+PlayerPose.SolveLegs(legs3D, 0, .03, .02, .03, .77, .364, .051,
+    feet[0], feet[1], 0, false, feet[4], feet[5], 0, false, feet[8], feet[9], alignment[0], alignment[1]);
+var lateralReach = .364 * (Math.Cos(legs3D[1]) + Math.Cos(legs3D[1] + legs3D[2])) * Math.Sin(legs3D[7]);
+Check("inclinação do quadril alcança o alvo lateral sem mover o contato", Math.Abs(lateralReach - alignment[0]) < 1e-9);
+contacts.Begin(10, 20, 0, 0);
+PlayerPose.FootTargets(feet, 0, 0, 1, 3.5, 0.077, 0.06);
+contacts.Apply(feet, alignment, 0, 0.077, 0.06);
+Check("teleporte solta os apoios anteriores", Math.Abs(feet[2] - plantedX) < 1e-12 && Math.Abs(feet[3] - plantedZ) < 1e-12);
+
 var camera = new PlayerCamera();
 Span<double> orbit = stackalloc double[8];
 camera.Advance(orbit, -Math.PI / 2, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0);

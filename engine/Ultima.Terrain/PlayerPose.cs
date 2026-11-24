@@ -70,14 +70,14 @@ internal static class PlayerPose
         double footGap, double hipHeight, double legLength, double ankleOffset,
         double leftForward, double leftLift, double leftSupport, bool leftOnObstacle,
         double rightForward, double rightLift, double rightSupport, bool rightOnObstacle,
-        double leftPitch = 0, double rightPitch = 0)
+        double leftPitch = 0, double rightPitch = 0, double leftLateral = 0, double rightLateral = 0)
     {
         var leftAnkle = leftSupport + ankleOffset + leftLift;
         var rightAnkle = rightSupport + ankleOffset + rightLift;
         var bodyY = ground + footGap;
         var spanSquared = 4 * legLength * legLength;
-        var leftReach = leftAnkle + Math.Sqrt(Math.Max(0, spanSquared - leftForward * leftForward)) - hipHeight;
-        var rightReach = rightAnkle + Math.Sqrt(Math.Max(0, spanSquared - rightForward * rightForward)) - hipHeight;
+        var leftReach = leftAnkle + Math.Sqrt(Math.Max(0, spanSquared - leftForward * leftForward - leftLateral * leftLateral)) - hipHeight;
+        var rightReach = rightAnkle + Math.Sqrt(Math.Max(0, spanSquared - rightForward * rightForward - rightLateral * rightLateral)) - hipHeight;
         if (leftOnObstacle || rightOnObstacle)
         {
             var top = Math.Max(leftSupport, rightSupport) + footGap;
@@ -86,13 +86,19 @@ internal static class PlayerPose
         }
         bodyY = Math.Min(bodyY, Math.Min(leftReach, rightReach));
         output[0] = bodyY;
-        SetAngles(output[1..4], bodyY + hipHeight - leftAnkle, leftForward, legLength, leftPitch);
-        SetAngles(output[4..7], bodyY + hipHeight - rightAnkle, rightForward, legLength, rightPitch);
+        var leftDrop = Math.Max(0.16, bodyY + hipHeight - leftAnkle);
+        var rightDrop = Math.Max(0.16, bodyY + hipHeight - rightAnkle);
+        SetAngles(output[1..4], double.Hypot(leftDrop, leftLateral), leftForward, legLength, leftPitch);
+        SetAngles(output[4..7], double.Hypot(rightDrop, rightLateral), rightForward, legLength, rightPitch);
+        if (output.Length >= 9)
+        {
+            output[7] = Math.Atan2(leftLateral, leftDrop);
+            output[8] = Math.Atan2(rightLateral, rightDrop);
+        }
     }
 
     private static void SetAngles(Span<double> output, double drop, double forward, double legLength, double pitch)
     {
-        drop = Math.Max(0.16, drop);
         var extent = double.Hypot(drop, forward);
         var flex = Math.Acos(Math.Min(1, extent / (2 * legLength)));
         output[0] = -Math.Atan2(forward, drop) - flex;

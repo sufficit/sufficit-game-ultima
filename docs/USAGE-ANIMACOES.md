@@ -45,9 +45,15 @@ malhas precisam de grupos separados ou pesos de skinning. Os perfis
 animais fornecem a pose neutra para construir malhas e controladores
 próprios de locomoção.
 
-A fase da passada é proporcional à distância percorrida. Em linha reta,
-o recuo do pé em apoio compensa o avanço do corpo. O quadril respeita
-o alcance das pernas, a sola fica nivelada no apoio e o tornozelo
-inclina o pé entre a saída e o próximo contato. Em mudanças de direção,
-o apoio acompanha a rotação do corpo. Fixação mundial em curvas e
-contato orientado pela normal do terreno exigem um solucionador 3D.
+A fase da passada acompanha a distância percorrida. No jogador, o C#
+mantém a posição horizontal e o rumo de cada sola em coordenadas do
+mundo durante o apoio, inclusive quando o corpo gira. O quadril resolve
+também o alcance lateral. O tornozelo preserva o rumo do apoio e inclina
+o pé durante o balanço. Giros no lugar podem iniciar uma passada de
+reposicionamento. Teleportes liberam os contatos antigos. O terreno e
+os obstáculos continuam determinando a altura sob a sola.
+
+O Andarilho e os avatares remotos continuam com o solucionador sagital.
+O solucionador local usa a altura de apoio e uma sola nivelada durante
+o contato. A inclinação pela normal do relevo depende de uma futura
+sondagem da superfície em mais de um ponto.

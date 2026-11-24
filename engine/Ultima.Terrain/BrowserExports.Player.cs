@@ -9,6 +9,7 @@ internal static partial class BrowserExports
     private static readonly double[] MovementResult = new double[4];
     private static readonly double[] PadResult = new double[4];
 
+    private static readonly PlayerFootContacts PlayerFeet = new();
     private static readonly PlayerCamera Camera = new();
     private static readonly double[] CameraResult = new double[8];
     private static double _kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset;
@@ -28,7 +29,11 @@ internal static partial class BrowserExports
             (kneeHeight, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset);
         _remoteAvatars = new(_surface, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset);
         Camera.Reset();
+        PlayerFeet.Reset();
     }
+
+    [JSExport]
+    internal static void ResetFootContacts() => PlayerFeet.Reset();
 
     [JSExport]
     internal static void ResetCamera() => Camera.Reset();
@@ -70,11 +75,11 @@ internal static partial class BrowserExports
     [JSExport]
     internal static bool CanStepOn(double minY, double maxY, double ground) => _movement.CanStep(minY, maxY, ground);
 
-    // 12 pose channels, 5 timeline channels, 7 leg channels and 13 support-probe channels.
-    private static readonly double[] CharacterFrame = new double[37];
+    // 12 pose channels, 5 timeline channels, 7 leg channels and 13 support-probe channels, 2 hip rolls, 2 foot yaws, 2 lateral offsets.
+    private static readonly double[] CharacterFrame = new double[43];
     // 24 pose e pernas, seguidas de X, Z, orientação, fase da patrulha e distância.
     private static readonly double[] CompanionFrame = new double[29];
-    private static readonly double[] LegResult = new double[7];
+    private static readonly double[] LegResult = new double[9];
 
     [JSExport]
     internal static bool CanCollect(double dx, double dy, double dz) => PlayerPose.CanCollect(dx, dy, dz);
@@ -129,6 +134,7 @@ internal static partial class BrowserExports
         clock += delta;
         speech = Math.Max(0, speech - delta);
         var (next, previous, progress) = PlayerPose.AdvanceAction(elapsed, duration, delta, frozen);
+        if (isPlayer) distance = PlayerFeet.Begin(x, z, yaw, distance);
         PlayerPose.Animate(result, phase, weight, clock, distance, delta, nameLength, listening,
             speech > 0 && listening, progress, bend, reach);
         result[12] = clock;
@@ -140,6 +146,8 @@ internal static partial class BrowserExports
 
         Span<double> feet = stackalloc double[10];
         PlayerPose.FootTargets(feet, yaw, result[0], result[1], delta > 0 ? distance / delta : 0, _spacing, _shoeOffset);
+        Span<double> contact = stackalloc double[4];
+        if (isPlayer) PlayerFeet.Apply(feet, contact, result[0], _spacing, _shoeOffset);
         var leftX = x + feet[2];
         var leftZ = z + feet[3];
         var rightX = x + feet[6];
@@ -148,9 +156,17 @@ internal static partial class BrowserExports
         var ground = Floor(x, z, y, useVolume);
         var leftFloor = Floor(leftX, leftZ, y, useVolume);
         var rightFloor = Floor(rightX, rightZ, y, useVolume);
-        PlayerPose.SolveLegs(result[17..24], ground, y, delta, _footGap, _hipHeight, _legLength, _ankleOffset,
-            feet[0], feet[1], leftFloor, false, feet[4], feet[5], rightFloor, false, feet[8], feet[9]);
-        if (!isPlayer) return;
+        if (!isPlayer)
+        {
+            PlayerPose.SolveLegs(result[17..24], ground, y, delta, _footGap, _hipHeight, _legLength, _ankleOffset,
+                feet[0], feet[1], leftFloor, false, feet[4], feet[5], rightFloor, false, feet[8], feet[9]);
+            return;
+        }
+        Span<double> legs = stackalloc double[9];
+        PlayerPose.SolveLegs(legs, ground, y, delta, _footGap, _hipHeight, _legLength, _ankleOffset,
+            feet[0], feet[1], leftFloor, false, feet[4], feet[5], rightFloor, false,
+            feet[8], feet[9], contact[0], contact[1]);
+        legs[..7].CopyTo(result[17..24]);
         result[24] = ground;
         result[25] = leftX;
         result[26] = leftZ;
@@ -164,6 +180,12 @@ internal static partial class BrowserExports
         result[34] = feet[5];
         result[35] = feet[8];
         result[36] = feet[9];
+        result[37] = legs[7];
+        result[38] = legs[8];
+        result[39] = contact[2];
+        result[40] = contact[3];
+        result[41] = contact[0];
+        result[42] = contact[1];
     }
 
     private static double Floor(double x, double z, double y, bool useVolume)
@@ -172,11 +194,12 @@ internal static partial class BrowserExports
     [JSExport]
     internal static double[] SolveSupportedLegs(double ground, double previousY, double delta,
         double leftForward, double leftLift, double leftFloor, double leftSupport,
-        double rightForward, double rightLift, double rightFloor, double rightSupport, double leftPitch, double rightPitch)
+        double rightForward, double rightLift, double rightFloor, double rightSupport, double leftPitch, double rightPitch,
+        double leftLateral, double rightLateral)
     {
         PlayerPose.SolveLegs(LegResult, ground, previousY, delta, _footGap, _hipHeight, _legLength, _ankleOffset,
             leftForward, leftLift, leftSupport, leftSupport > leftFloor,
-            rightForward, rightLift, rightSupport, rightSupport > rightFloor, leftPitch, rightPitch);
+            rightForward, rightLift, rightSupport, rightSupport > rightFloor, leftPitch, rightPitch, leftLateral, rightLateral);
         return LegResult;
     }
 }
