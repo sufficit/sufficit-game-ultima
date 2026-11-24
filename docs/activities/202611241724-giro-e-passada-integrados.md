@@ -20,7 +20,7 @@ pouso na nova direção, e a perna oposta começa o próximo balanço.
   bloqueio por colisor durante essa transição.
 - O Chromium verificou quadros com rotação e avanço simultâneos,
   base compacta, apoio plantado, caminhada e corrida.
-  [Teste de mundo e marcha](../../tests/world-collision.e2e.cjs)
+  [Teste de mundo e marcha](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs)
 - Motor e cliente compilados em Release. O build `6da44a559b6ebd91487a00c5937a059a345a3788`
   passou no site publicado no worker e na thread principal.
   [Jogar Ultima](https://sufficit.github.io/sufficit-game-ultima/)

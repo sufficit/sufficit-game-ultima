@@ -22,7 +22,7 @@ continuam usando a marcha existente.
   alternância de apoio e largura da base.
 - Testes no Chromium de inversão, caminhada, corrida, repouso,
   colisão, apoio e encurtamento da passada.
-  [Teste de mundo e marcha](../../tests/world-collision.e2e.cjs)
+  [Teste de mundo e marcha](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs)
 - Motor e cliente compilados em Release. O build `3d324f6cada61aed91b591e0b7aa3ca37501090f`
   passou no site publicado no worker e na thread principal.
   [Jogar Ultima](https://sufficit.github.io/sufficit-game-ultima/)

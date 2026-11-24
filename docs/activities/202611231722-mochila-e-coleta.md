@@ -23,7 +23,7 @@ ficam no navegador, em uma camada local sobre o mapa compartilhado.
 ## Validação e entrega
 
 - O publish Release, a sintaxe JavaScript e o `git diff --check` passaram.
-  O [ensaio de colisão e passo articulado](../../tests/world-collision.e2e.cjs)
+  O [ensaio de colisão e passo articulado](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs)
   passou localmente nos modos main e worker.
 - O [ensaio da mochila](../../tests/backpack.e2e.cjs) passou localmente e no
   build publicado `ab016e7`, por clique em main e por toque em worker.

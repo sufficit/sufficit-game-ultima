@@ -155,6 +155,27 @@ amostra de terreno. Preserve a compatibilidade de mapas e dados persistidos.
 Valide regras com [RulesSmoke](tests/RulesSmoke) e exercite câmera, colisão,
 coleta e terreno em worker e main pelos [testes no navegador](tests).
 
+O [teste de colisão e marcha](tests/WorldCollisionE2E) usa Microsoft.Playwright
+para conduzir o Chromium em C#. As sondas JavaScript no renderizador coletam
+quadros e consultam as malhas do Babylon.js. O teste calcula as métricas e
+avalia os limites em C#.
+
+```bash
+dotnet build tests/WorldCollisionE2E -c Release
+pwsh tests/WorldCollisionE2E/bin/Release/net10.0/playwright.ps1 install chromium
+dotnet run --project tests/WorldCollisionE2E -c Release --no-build
+ULTIMA_MODE=main dotnet run --project tests/WorldCollisionE2E -c Release --no-build
+```
+
+A instalação do Chromium é feita uma vez por versão do Playwright. Defina
+`ULTIMA_CHROMIUM` para usar um executável já disponível. Por padrão, a suíte
+testa o site publicado. Use `ULTIMA_SITE` para apontar para outro endereço e
+`ULTIMA_BUILD` para exigir um SHA específico. Em bancadas lentas,
+`ULTIMA_WAIT_TRIES` amplia o orçamento de espera, `ULTIMA_WALK_SCALE`
+estende o assentamento e `ULTIMA_VIEWPORT` ajusta a resolução.
+`ULTIMA_CHROMIUM_ARGS` aceita os argumentos do navegador e `ULTIMA_TRACE`
+registra o tempo de jogo e a distância por quadro nas medições de marcha.
+
 ## Relógio e clima
 
 O painel de tempo usa o mesmo cálculo lunar em C#. A ponte do navegador

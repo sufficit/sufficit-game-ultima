@@ -23,7 +23,7 @@ corte para o centro de uma célula de 2 m e usava uma chave única por célula.
 ## Validação e entrega
 
 - Publish Release, sintaxe JavaScript, `git diff --check` e o
-  [ensaio de colisão](../../tests/world-collision.e2e.cjs) local passaram.
+  [ensaio de colisão](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs) local passaram.
 - O [ensaio da mochila](../../tests/backpack.e2e.cjs) verificou coleta de
   um toco, alcance, três cortes no mesmo ponto fora do centro da grade,
   acréscimo de três itens, recarga e extensão de um corte legado.

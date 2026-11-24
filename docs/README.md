@@ -28,6 +28,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Migração do teste de colisão do mundo para C#](activities/202611241746-colisao-e2e-csharp.md)
+
 - [Sincronização horária do relógio GMT](activities/202611241733-sincronizacao-horaria.md)
 
 - [Integração da virada à primeira passada](activities/202611241724-giro-e-passada-integrados.md)

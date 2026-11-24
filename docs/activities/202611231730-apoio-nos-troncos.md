@@ -20,7 +20,7 @@ distância entre uma sola e a superfície visível.
 
 - Publish Release concluído, com os avisos de nulabilidade já existentes em
   `Index.razor`. A sintaxe JavaScript e o `git diff --check` passaram.
-- O [ensaio de colisão](../../tests/world-collision.e2e.cjs) validou a subida,
+- O [ensaio de colisão](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs) validou a subida,
   o retorno ao solo e o bloqueio de um tronco alto. A medição das duas solas
   em sete pontos confirmou apoios no chão e no tronco, inclusive na borda.
 - Uma captura lateral local confirmou visualmente as duas alturas de apoio.

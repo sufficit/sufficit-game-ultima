@@ -23,7 +23,7 @@ a andar durante o ajuste, a marcha parte do último apoio calculado.
 - A versão anterior falhou na asserção de alinhamento em repouso.
   A correção passou nos cenários de parada, caminhada, corrida,
   inversão de rumo e apoio sobre tronco.
-  [Teste de mundo e marcha](../../tests/world-collision.e2e.cjs)
+  [Teste de mundo e marcha](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs)
 - Motor e cliente compilados em Release. Os testes passaram no
   worker e na thread principal no site publicado, no build
   `414711ebea360b8186b56bc71ebb4ded9e06f304`.

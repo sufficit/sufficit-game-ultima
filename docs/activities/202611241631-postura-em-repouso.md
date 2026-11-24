@@ -22,7 +22,7 @@ nova reação de tropeço enquanto o jogador se desloca ou gira.
   balanço, a retomada gradual do passo e a pose neutra do tronco.
 - A versão anterior falhou na medição de oscilação após três paradas.
   A correção passou nessas três posições e no repouso sobre um tronco.
-  [Teste de mundo e marcha](../../tests/world-collision.e2e.cjs)
+  [Teste de mundo e marcha](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs)
 - Motor WASM e cliente Blazor compilados em Release. Os testes de
   colisão e contato do pé passaram no Chromium no worker e na thread
   principal, incluindo o build `d1023d17081ee557950dabda88453c23f2e75620` no site publicado.

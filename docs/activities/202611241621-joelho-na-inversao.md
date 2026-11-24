@@ -24,7 +24,7 @@ animação já transmitido ao renderizador e se aplica ao jogador.
 - A asserção de alinhamento falhou na versão de referência e passou
   com a correção. O teste mede a flexão durante a inversão, o
   deslocamento da sola plantada, a separação entre os pés e o apoio
-  ao parar. [Teste de mundo e marcha](../../tests/world-collision.e2e.cjs)
+  ao parar. [Teste de mundo e marcha](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs)
 - As baterias de mundo e de passo bloqueado passaram no Chromium com
   o motor no worker e na thread principal, incluindo o build
   `b0b3425389d781256f98c221f332d91ff1cda7d5` no site publicado.

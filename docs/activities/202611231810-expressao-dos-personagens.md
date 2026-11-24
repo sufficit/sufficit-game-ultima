@@ -29,7 +29,7 @@ curtos ligados a uma ação.
 
 - Geração dos pacotes de modelos, publish Release, sintaxe JavaScript,
   `git diff --check` e RulesSmoke passaram.
-- O [ensaio de movimento](../../tests/world-collision.e2e.cjs) verificou
+- O [ensaio de movimento](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs) verificou
   caminhada e corrida, colisão, apoio dos pés, gesto de exame, expressão
   de diálogo e interpolação remota. A mesma janela de 700 ms de teclado
   produziu cerca de 2,4 m em caminhada e 4,4 m em corrida.

@@ -28,7 +28,7 @@ revelou uma escala de 1,9 cm onde o catálogo indicava 1,9 m.
 
 - Publish Release, RulesSmoke, quatro testes Node, sintaxe JS e
   `git diff --check` passaram. Permanecem os avisos prévios de nulabilidade.
-- O ensaio [world-collision.e2e.cjs](../../tests/world-collision.e2e.cjs)
+- O ensaio [world-collision.e2e.cjs](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs)
   reproduziu o defeito antigo e passou em Chromium WebGL2 no worker e main
   do build `20367e4`. No main, o pinheiro a 2 m parou a corrida em 1,469 m.
   No desvio, o jogador passou de 3,34 m em Z. Remoção, samambaia, toco, pedra,

@@ -23,7 +23,7 @@ parava a corrida em Z = 1,1 m, com o tronco a 2 m e sem ganho de altura.
 
 - Publish Release, RulesSmoke, quatro testes Node, sintaxe JS e
   `git diff --check` passaram.
-- O [ensaio de colisão](../../tests/world-collision.e2e.cjs) reproduziu a
+- O [ensaio de colisão](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs) reproduziu a
   falha anterior e passou no Chromium WebGL2 em worker e main do build
   `fe14382`. No main, a altura do corpo subiu de 0,08 para 0,39 m, um
   joelho chegou a 1,27 rad de flexão e a diferença entre as alturas dos
