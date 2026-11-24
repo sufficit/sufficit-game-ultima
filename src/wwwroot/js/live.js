@@ -8,6 +8,7 @@
     const enabled = query.get('live') !== '0';
     let token = null;
     let bridge;
+    let mapRevision = -1;
 
     window.addEventListener('pagehide', () => {
         if (!token) { return; }
@@ -25,6 +26,7 @@
             return { api, enabled, token: stored };
         },
         setSession(value) {
+            if (!value) mapRevision = -1;
             token = value;
             try {
                 if (token) { sessionStorage.setItem('ultima-live-token', token); }
@@ -43,6 +45,10 @@
             }
         },
         paintMap(map) {
+            if (Number.isSafeInteger(map?.revision)) {
+                if (map.revision < mapRevision) return;
+                mapRevision = map.revision;
+            }
             game.setMapTiles(map?.tiles || {});
             game.setMapJobs(map?.jobs || []);
             game.setWorldEdits(map?.edits || [], map?.revision ?? undefined);

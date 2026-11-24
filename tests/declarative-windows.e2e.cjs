@@ -47,28 +47,11 @@ const site = process.env.ULTIMA_SITE || 'https://sufficit.github.io/sufficit-gam
         const first = await line.innerText();
         await conversation.getByRole('button', { name: 'Continuar · E/A' }).click();
         await page.waitForFunction(initial => document.querySelector('.ultima-dialog__line')?.textContent !== initial, first);
-        await conversation.getByRole('textbox', { name: 'Escreva para a Guardiã' }).fill('Onde fica o jardim?');
-        await conversation.getByRole('button', { name: 'Enviar para a Guardiã' }).click();
-        await conversation.getByText(/origem da resposta/).waitFor();
-        const reply = await line.innerText();
-        const beforeProposals = await page.evaluate(async () => (await game.models.status()).timings
-            .filter(item => item.id === 'tree.pine').length);
+        // Este cenário abre com live=0. A edição pela IA é exercitada no cenário C# garden.
         await conversation.getByRole('textbox', { name: 'Escreva para a Guardiã' }).fill('Quero novas árvores');
         await conversation.getByRole('button', { name: 'Enviar para a Guardiã' }).click();
-        const variation = conversation.getByRole('button', { name: 'Remodelar árvores' });
-        await variation.waitFor();
-        assert.equal(await page.evaluate(async () => (await game.models.status()).timings.filter(item => item.id === 'tree.pine').length), beforeProposals);
-        await variation.click();
-        await variation.waitFor({ state: 'hidden' });
-        let applied = false;
-        // ULTIMA_WAIT_TRIES amplia a janela (padrão 100 = 25 s): reconstruir o modelo em C#
-        // sem AOT demora mais numa bancada com renderização por software.
-        for (let attempt = 0; attempt < (Number(process.env.ULTIMA_WAIT_TRIES) || 100) && !applied; attempt++) {
-            applied = await page.evaluate(async previous => (await game.models.status()).timings
-                .filter(item => item.id === 'tree.pine').length > previous, beforeProposals);
-            if (!applied) await page.waitForTimeout(250);
-        }
-        assert.ok(applied, 'a proposta precisa reconstruir o modelo após a escolha do jogador');
+        await conversation.getByText(/Conecte-se ao servidor do jogo/).waitFor();
+        const reply = await line.innerText();
         await conversation.getByRole('button', { name: 'Fechar · Esc' }).click();
         await conversation.waitFor({ state: 'hidden' });
         await panel.click();

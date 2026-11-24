@@ -192,6 +192,15 @@ resolução.
 `ULTIMA_CHROMIUM_ARGS` aceita os argumentos do navegador e `ULTIMA_TRACE`
 registra o tempo de jogo e a distância por quadro nas medições de marcha.
 
+## Guardiã e edição por API
+
+A Guardiã usa o provedor pronto na GPU ou CPU do jogador ou a IA configurada
+no servidor. O provedor devolve um plano de ações a partir do catálogo de
+famílias e das colocações do jardim. O servidor valida toda a composição e
+grava um registro no journal antes de compartilhar a nova revisão. O navegador
+aplica o mapa confirmado no mesmo turno. Falhas do provedor e planos inválidos
+preservam o mundo. [Contratos e exemplos](docs/USAGE-API-JARDIM.md)
+
 ## Relógio e clima
 
 O painel de tempo usa o mesmo cálculo lunar em C#. A ponte do navegador

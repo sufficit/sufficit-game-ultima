@@ -753,7 +753,7 @@
     }
     const solidAssets = new Map([
         ['flora.pine', 'Pinheiro'], ['rock.boulder2', 'Pedra'],
-        ['prop.log', 'Tronco caído'], ['prop.stump', 'Toco']
+        ['prop.log', 'Tronco caído'], ['prop.stump', 'Toco'], ['prop.lantern', 'Luminária']
     ]);
     const softAssets = new Set(['scenery.bush', 'flora.flowers', 'flora.mushroom', 'flora.fern', 'scenery.grass2']);
 
@@ -902,8 +902,8 @@
         ['rock.boulder', 'Pedra'], ['rock.boulder2', 'Pedra'],
         ['scenery.grass', 'Tufo de grama'], ['scenery.grass2', 'Tufo de grama'],
         ['scenery.bush', 'Arbusto'], ['flora.flowers', 'Flores'],
-        ['flora.mushroom', 'Cogumelo'], ['flora.fern', 'Samambaia'],
-        ['prop.log', 'Tronco caído'], ['prop.stump', 'Toco'],
+        ['flora.mushroom', 'Cogumelo'], ['flora.fern', 'Samambaia'], ['prop.lantern', 'Luminária'],
+        ['prop.log', 'Tronco caído'], ['prop.stump', 'Toco'], ['prop.lantern', 'Luminária'],
         ['material.water', 'Água'], ['material.rock', 'Rocha']
     ]);
 
@@ -1184,19 +1184,75 @@
     const placements = new Map();       // uid -> InstancedMesh
     const pendingPlacements = [];       // à espera do asset carregar
 
+    const gardenLanterns = new Set();
+    const gardenLights = [];
+    let lanternPrototype;
+
+    function gardenLantern(p) {
+        if (!lanternPrototype) {
+            const metal = new BABYLON.StandardMaterial('garden-lantern-metal', scene);
+            metal.diffuseColor = new BABYLON.Color3(0.16, 0.13, 0.09);
+            const glass = new BABYLON.StandardMaterial('garden-lantern-glass', scene);
+            glass.diffuseColor = new BABYLON.Color3(1, 0.77, 0.36);
+            glass.emissiveColor = new BABYLON.Color3(1, 0.58, 0.17);
+            const base = BABYLON.MeshBuilder.CreateCylinder('lantern-base', { height: 0.14, diameter: 0.34, tessellation: 8 }, scene);
+            const post = BABYLON.MeshBuilder.CreateCylinder('lantern-post', { height: 1.4, diameter: 0.10, tessellation: 8 }, scene);
+            const globe = BABYLON.MeshBuilder.CreateBox('lantern-glass', { width: 0.26, height: 0.32, depth: 0.26 }, scene);
+            const roof = BABYLON.MeshBuilder.CreateCylinder('lantern-roof', { height: 0.13, diameterTop: 0.10, diameterBottom: 0.42, tessellation: 4 }, scene);
+            base.position.y = 0.07; post.position.y = 0.77; globe.position.y = 1.57; roof.position.y = 1.79;
+            base.material = post.material = roof.material = metal;
+            globe.material = glass;
+            // Reúne o poste e o vidro em um protótipo compartilhado.
+            lanternPrototype = BABYLON.Mesh.MergeMeshes([base, post, globe, roof], true, true, undefined, false, true);
+            lanternPrototype.name = 'garden-lantern-prototype';
+            lanternPrototype.isVisible = false;
+            lanternPrototype.isPickable = false;
+        }
+        const mesh = lanternPrototype.createInstance('place-' + p.uid);
+        mesh.isVisible = true;
+        mesh.isPickable = true;
+        gardenLanterns.add(mesh);
+        mesh.onDisposeObservable.addOnce(() => gardenLanterns.delete(mesh));
+        return { mesh, proto: lanternPrototype };
+    }
+
+    function updateGardenLights() {
+        if (!gardenLanterns.size && !gardenLights.length) return;
+        const nearest = Array.from(gardenLanterns, mesh => {
+            const dx = mesh.position.x - player.position.x, dz = mesh.position.z - player.position.z;
+            return { mesh, distance: dx * dx + dz * dz };
+        }).filter(item => item.distance < 400).sort((a, b) => a.distance - b.distance).slice(0, 2);
+        for (let i = 0; i < 2; i++) {
+            let light = gardenLights[i];
+            if (!nearest[i]) { light?.setEnabled(false); continue; }
+            if (!light) {
+                light = new BABYLON.PointLight('garden-light-' + i, BABYLON.Vector3.Zero(), scene);
+                light.diffuse = new BABYLON.Color3(1, 0.67, 0.30);
+                light.intensity = 1.05;
+                light.range = 7;
+                gardenLights[i] = light;
+            }
+            const mesh = nearest[i].mesh;
+            light.position.copyFrom(mesh.position);
+            light.position.y += 1.57 * mesh.scaling.y;
+            light.setEnabled(true);
+        }
+    }
+
     function spawnPlacement(p) {
         if (!p || !p.uid || placements.has(p.uid)) { return; }
+        const lantern = p.asset === 'prop.lantern' ? gardenLantern(p) : null;
         const g = glbRegistry.get(p.asset);
-        if (!g) {
+        if (!lantern && !g) {
             if (!pendingPlacements.some(function (q) { return q.uid === p.uid; })) { pendingPlacements.push(p); }
             return;
         }
-        const inst = g.proto.createInstance('place-' + p.uid);
+        const inst = lantern?.mesh ?? g.proto.createInstance('place-' + p.uid);
         inst.position.set(p.x, (p.y || terrainHeight(p.x, p.z)) - 0.02, p.z);
         inst.rotation.y = p.rot || 0;
         inst.scaling.setAll(p.scale || 1);
         if (sceneShadows) { try { sceneShadows.addShadowCaster(inst); } catch (e) { /* já fora */ } }
-        trackGlbObstacle(inst, g.proto, p.asset, true);
+        trackGlbObstacle(inst, lantern?.proto ?? g.proto, p.asset, true);
         trackGatherable(inst, 'placed:' + p.uid, p.asset, false);
         placements.set(p.uid, inst);
     }
@@ -3225,7 +3281,10 @@
             const fin = (v) => (Number.isFinite(v) ? v : 0);
             dotnet.invokeMethodAsync('OnMoveTick', fin(player.position.x), fin(player.position.y), fin(player.position.z), fin(engine.getFps()));
         }
-        if (player) { host.sendPose(player.position.x, player.position.z, player.rotation.y); }
+        if (player) {
+            updateGardenLights();
+            host.sendPose(player.position.x, player.position.z, player.rotation.y);
+        }
     }
 
     // Boot do motor: cache local (OPFS) aquece antes da cena; GLB do catálogo assinado

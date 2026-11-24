@@ -162,6 +162,8 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
             }
             case "/v1/game/sessions": await Json(ctx, game.Sessions(), 200, NoStore); return;
             case "/v1/game/state": await Json(ctx, game.State(Token(ctx))); return;
+            case GameWorld.GardenRoute: await Json(ctx, game.GardenCatalog()); return;
+            case GameWorld.GardenRoute + "/context": await Json(ctx, game.GardenContext(Token(ctx))); return;
             case "/v1/game/map": await Json(ctx, game.Map(), 200, NoStore); return;
             case "/v1/game/events":
             {
@@ -226,6 +228,21 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
     // ---------- POST ----------
     async Task PostAsync(HttpContext ctx, string path)
     {
+        if (path.StartsWith(GameWorld.GardenRoute + "/", StringComparison.Ordinal))
+        {
+            var family = path[(GameWorld.GardenRoute.Length + 1)..];
+            if (family is not ("dialog" or "edits" or "terrain" or "plants" or "decor"))
+            { await Json(ctx, J.Err("not_found"), 404, NoStore); return; }
+            var data = await Body(ctx);
+            if (data is null) { await Json(ctx, J.Err("bad_request"), 400, NoStore); return; }
+            var token = Token(ctx, data);
+            if (family == "dialog")
+                await Json(ctx, await game.GardenDialogAsync(token, data, Ip(ctx), ctx.RequestAborted));
+            else
+                await Json(ctx, game.GardenEdit(token, data["actions"], family: family == "edits" ? null : family));
+            return;
+        }
+
         // Geração por prompt (fase 3): corpo JSON {prompt}.
         if (path == "/v1/assets/generate")
         {

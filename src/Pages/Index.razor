@@ -524,7 +524,6 @@
 
     private const string ContentApi = "https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br";
     private sealed record NpcDto(string? DisplayName, string[]? Lines);
-    private readonly string _chatSession = Guid.NewGuid().ToString("N");
     private string _aiState = "off";
     private double _aiProgress;
     private string _aiDetail = string.Empty;
@@ -670,7 +669,7 @@
         _aiCpuModel = key;
         return JS.InvokeVoidAsync("game.aiCpu.setModel", key).AsTask();
     }
-    private string ActiveEngine() => _aiState == "ready" ? "webgpu" : _aiCpuState == "ready" ? "cpu-wllama" : "servidor (regras)";
+    private string ActiveEngine() => _aiState == "ready" ? "webgpu" : _aiCpuState == "ready" ? "cpu-wllama" : "IA do servidor, se disponível";
 
     // --- Rótulos compactos da interface SUI ---
     private readonly CancellationTokenSource _browserLifetime = new();
@@ -986,8 +985,7 @@
         return Task.CompletedTask;
     }
 
-    private SceneryProposal? _proposal;
-    private string? _proposalReply;
+    private CancellationTokenSource? _guardianTurn;
     private bool _journalOpen;
     private bool _windowContrast;
     private readonly WindowState _conversationState = new();
@@ -1002,7 +1000,6 @@
         values["line"] = line.Text;
         values["source"] = !view.Thinking && !string.IsNullOrEmpty(view.ReplySource) && line.Speaker != "Você"
             ? "✦ origem da resposta: " + view.ReplySource : "";
-        values["variation"] = line.Text == _proposalReply ? _proposal?.Label ?? "" : "";
         values["draft"] = _dialogDraft;
         values["dictation"] = _dictating ? "Parar ditado" : "Ditar";
         values["speechError"] = _speechError;
@@ -1035,9 +1032,6 @@
         {
             case "advance": return AdvanceAsync();
             case "speak": return SubmitDialogAsync();
-            case "vary" when _proposal is { } proposal:
-                _proposal = null;
-                return VaryAsync(proposal.Model, proposal.Detail, proposal.Seed);
             case "dictate": return ToggleDictationAsync();
             case "close":
                 if (_view is not null) CloseDialog();
@@ -1058,110 +1052,30 @@
         var text = _dialogDraft.Trim();
         if (_view is null || _view.Thinking || text.Length == 0) return;
         if (text.Length > 300) text = text[..300];
+        var recent = string.Join("\n", _view.Lines.TakeLast(4).Select(line => $"{line.Speaker}: {line.Text}"));
         _dialogDraft = string.Empty;
         _speechError = string.Empty;
         _turnStartedMs = NowMs();   // t50: base do tempo de resposta do turno registrado
         _ = JS.InvokeVoidAsync("game.characterDialogueLine", "Você", text.Length);
         Dispatch(new PlayerSpoke(NowMs(), text));
-        _proposal = null;
-        _proposalReply = null;
-        if (SceneryProposal.ForRequest(text, Random.Shared.Next()) is { } proposal)
+        if (_view?.Speaker == "Andarilho")
         {
-            var speaker = _view.Speaker;
-            var proposalSource = "oficina do mundo · versão procedural";
-            if (_aiState == "ready")
-            {
-                try
-                {
-                    var choice = await JS.InvokeAsync<double[]?>("game.ai.proposeScenery", TimeSpan.FromSeconds(20), proposal.Model, text);
-                    if (choice is [var seed, var detail] && seed >= 0 && seed <= int.MaxValue && seed == Math.Truncate(seed)
-                        && detail is >= 0.5 and <= 1.6)
-                    {
-                        proposal = proposal with { Seed = (int)seed, Detail = detail };
-                        proposalSource = "GPU do jogador · oficina do mundo";
-                    }
-                }
-                catch (JSException) { /* a proposta local segue disponível */ }
-                catch (OperationCanceledException) { /* tempo limite do produtor */ }
-            }
-            if (_view?.Speaker != speaker || !_view.Thinking) return;
-            _proposal = proposal;
-            _proposalReply = $"Posso preparar outra versão para você. Use “{proposal.Label}” para experimentar.";
-            Dispatch(new ReplyArrived(NowMs(), _proposalReply, proposalSource));
+            Dispatch(new ReplyArrived(NowMs(), "Sobre o jardim, fale com a Guardiã.", "falas locais do andarilho"));
             return;
         }
-        // Produtores caros (WebLLM na GPU, API do jogo, fallback local) correm fora do
-        // tick; a resposta vira evento e o cérebro a aplica em um tick futuro. Os
-        // produtores atuais têm a persona da Guardiã: o Andarilho responde com falas
-        // locais próprias até existir um produtor para ele.
-        var (reply, source) = _view.Speaker == "Andarilho"
-            ? ("Hm… sigo pensando nisso enquanto caminho. Sobre o jardim, pergunte à Guardiã; das trilhas, eu conto.", "falas locais do andarilho")
-            : await AskGuardianAsync(text);
-        Dispatch(new ReplyArrived(NowMs(), reply, source));
-    }
-
-    // A Guardiã responde pela API do jogo (IA quando configurada, regras caso contrário);
-    // sem rede, cai numa resposta local para o diálogo nunca travar. Cada origem é marcada.
-    private async Task<(string Reply, string Source)> AskGuardianAsync(string text)
-    {
-        // Cadeia de resposta local: GPU (WebGPU/WebLLM) → CPU (wllama WASM) → servidor (regras).
-        // O motor efetivamente usado aparece na origem marcada de cada resposta.
-        if (_aiState == "ready")
-        {
-            try
-            {
-                var local = await JS.InvokeAsync<string?>("game.ai.ask", TimeSpan.FromSeconds(60), text, _playerName ?? string.Empty);
-                if (!string.IsNullOrWhiteSpace(local))
-                {
-                    return (local!.Length > 500 ? local[..500] : local, "GPU do jogador (modelo local)");
-                }
-            }
-            catch (Exception ex) { Console.WriteLine($"[ia] local falhou: {ex.GetType().Name}: {ex.Message}"); }
-        }
-        if (_aiCpuState == "ready")
-        {
-            try
-            {
-                var localCpu = await JS.InvokeAsync<string?>("game.aiCpu.ask", TimeSpan.FromSeconds(120), text, _playerName ?? string.Empty);
-                if (!string.IsNullOrWhiteSpace(localCpu))
-                {
-                    return (localCpu!.Length > 500 ? localCpu[..500] : localCpu, "CPU do jogador (modelo local WASM)");
-                }
-            }
-            catch (Exception ex) { Console.WriteLine($"[ia-cpu] local falhou: {ex.GetType().Name}: {ex.Message}"); }
-        }
+        using var turn = CancellationTokenSource.CreateLinkedTokenSource(_browserLifetime.Token);
+        _guardianTurn = turn;
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            // JSON montado/lido sem reflexão: imune ao trimming do build Release.
-            var payload = new Dictionary<string, string>
-            {
-                ["message"] = text,
-                ["session"] = _chatSession,
-                ["player"] = _playerName ?? string.Empty
-            };
-            var json = System.Text.Json.JsonSerializer.Serialize(payload);
-            using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-            using var res = await Http.PostAsync($"{ContentApi}/v1/npcs/guardia/chat", content, cts.Token);
-            var raw = await res.Content.ReadAsStringAsync(cts.Token);
-            using var doc = System.Text.Json.JsonDocument.Parse(raw);
-            if (doc.RootElement.TryGetProperty("reply", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.String)
-            {
-                var reply = r.GetString();
-                if (!string.IsNullOrWhiteSpace(reply))
-                {
-                    var origin = "servidor do jogo";
-                    if (doc.RootElement.TryGetProperty("source", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.String)
-                    {
-                        var src = s.GetString();
-                        origin = src == "rules" ? "servidor · regras" : $"servidor · {src}";
-                    }
-                    return (reply!.Length > 500 ? reply[..500] : reply, origin);
-                }
-            }
+            var (reply, source) = await WorkshopService.TalkToGuardianAsync(text, recent, _aiState == "ready", _aiCpuState == "ready", turn.Token);
+            if (!turn.IsCancellationRequested && _view?.Thinking == true)
+                Dispatch(new ReplyArrived(NowMs(), reply, source));
         }
-        catch (Exception ex) { Console.WriteLine($"[npc] chat falhou: {ex.GetType().Name}: {ex.Message}"); }
-        return ("Os ventos do jardim estão agitados e mal ouço você. Tente de novo em instantes, caminhante.", "falas locais do jogo (sem rede)");
+        catch (OperationCanceledException) when (turn.IsCancellationRequested) { }
+        finally
+        {
+            if (ReferenceEquals(_guardianTurn, turn)) _guardianTurn = null;
+        }
     }
 
     private void CloseDialog()
@@ -1169,8 +1083,7 @@
         if (_view is null) return;
         _npc.Submit(new DialogClosedByPlayer(NowMs()));   // sincroniza o cérebro sem tick extra
         _view = null;
-        _proposal = null;
-        _proposalReply = null;
+        _guardianTurn?.Cancel();
         _ = JS.InvokeVoidAsync("game.voice.stopDictation");
         _ = SetFrozen(false);
         StateHasChanged();

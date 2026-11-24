@@ -42,8 +42,11 @@ try
         case "terrain-seams":
             await TerrainSeams.RunAsync(browser);
             break;
+        case "garden":
+            await Garden.RunAsync(browser);
+            break;
         default:
-            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, terrain-cache, terrain-seams.");
+            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, terrain-cache, terrain-seams, garden.");
     }
     return 0;
 }

@@ -186,6 +186,27 @@ sealed class JournalWorldStore : IWorldStore
             case "jobCancel":
                 st.Jobs.RemoveAll(j => j.Id == J.Str(o["id"]));
                 break;
+            case "garden_batch":
+                if (o["changes"] is JsonArray garden)
+                    foreach (var change in garden.OfType<JsonObject>())
+                    {
+                        switch (J.Str(change["kind"]))
+                        {
+                            case "place":
+                                var placement = Placement.FromJson(change);
+                                if (st.Placements.All(p => p.Uid != placement.Uid)) st.Placements.Add(placement);
+                                break;
+                            case "remove":
+                                st.Placements.RemoveAll(p => p.Uid == J.Str(change["uid"]));
+                                break;
+                            case "paint" or "sculpt":
+                                st.SurfaceEdits.Add((JsonObject)change.DeepClone());
+                                break;
+                        }
+                    }
+                if (J.TryInt(o["rev"], out var gardenRev) && gardenRev > st.Revision)
+                    st.Revision = (int)Math.Min(int.MaxValue, gardenRev);
+                break;
             case "surface_batch":
                 if (o["changes"] is JsonArray changes)
                     foreach (var change in changes.OfType<JsonObject>())

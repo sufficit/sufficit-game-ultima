@@ -1,6 +1,6 @@
 // IA local da Guardiã: modelo de linguagem rodando na GPU do jogador (WebGPU + WebLLM).
 // Nada sai do navegador: o modelo é baixado uma vez (cache do navegador) e executado localmente.
-// Sem WebGPU, ou se o jogador não ativar, a Guardiã responde pela API do jogo (regras).
+// A CPU ou a IA configurada no servidor podem atender quando a GPU estiver indisponível.
 // Todos os estados são reportados ao painel via OnAiState e ficam visíveis em window.game.ai.status().
 // Estados: checking, unsupported, off, model, downloading, compiling, stalled, ready, thinking, error.
 (function () {
@@ -54,13 +54,13 @@
         try {
             if (!navigator.gpu) {
                 adapterOk = false; adapterInfo = 'navigator.gpu ausente';
-                emit('unsupported', 0, 'Este navegador não tem WebGPU (use Chrome/Edge 113+). A Guardiã responde pelas regras do servidor.');
+                emit('unsupported', 0, 'Este navegador não tem WebGPU (use Chrome/Edge 113+). Você pode usar outro provedor de IA.');
                 return false;
             }
             const a = await navigator.gpu.requestAdapter();
             if (!a) {
                 adapterOk = false; adapterInfo = 'requestAdapter devolveu nulo (nenhuma placa aceitou)';
-                emit('unsupported', 0, 'O navegador tem WebGPU, mas nenhuma placa de vídeo aceitou o trabalho. A Guardiã responde pelas regras do servidor.');
+                emit('unsupported', 0, 'O navegador tem WebGPU, mas nenhuma placa de vídeo aceitou o trabalho. Você pode usar outro provedor de IA.');
                 return false;
             }
             adapterOk = true;
@@ -71,7 +71,7 @@
             log('adaptador', adapterInfo);
         } catch (e) {
             adapterOk = false; adapterInfo = 'exceção ao consultar a placa: ' + (e && e.message || e);
-            emit('unsupported', 0, 'Não consegui consultar sua placa de vídeo. A Guardiã responde pelas regras do servidor.');
+            emit('unsupported', 0, 'Não consegui consultar sua placa de vídeo. Você pode usar outro provedor de IA.');
             return false;
         }
         return true;
@@ -207,21 +207,20 @@
         }
     }
 
-    async function proposeScenery(model, request) {
+    async function garden(prompt, text) {
         if (!engine || state !== 'ready') return null;
+        emit('thinking', progress, 'Guardiã planejando o jardim na sua GPU…');
         try {
             const output = await engine.chat.completions.create({
-                messages: [
-                    { role: 'system', content: 'Escolha uma semente inteira (0 a 2147483647) e um detalhe (0.5 a 1.6). Retorne somente JSON { "seed": 31, "detail": 1.2 }.' },
-                    { role: 'user', content: String(model) + ': ' + String(request).slice(0, 300) }
-                ],
-                max_tokens: 40, temperature: 0.2
+                messages: [{ role: 'system', content: prompt }, { role: 'user', content: text }],
+                max_tokens: 1200, temperature: 0.2
             });
-            const proposal = JSON.parse(output.choices[0].message.content);
-            if (!Number.isInteger(proposal.seed) || proposal.seed < 0 || proposal.seed > 2147483647 ||
-                !Number.isFinite(proposal.detail) || proposal.detail < 0.5 || proposal.detail > 1.6) return null;
-            return [proposal.seed, proposal.detail];
-        } catch { return null; }
+            return output?.choices?.[0]?.message?.content || null;
+        } catch {
+            return null;
+        } finally {
+            if (engine && state === 'thinking') emit('ready', 1, modelLabel + ' pronta na sua GPU');
+        }
     }
 
     async function init(dotnetRef) {
@@ -239,12 +238,12 @@
         localStorage.removeItem(PREF);
         if (engine) { try { engine.unload(); } catch { } }
         engine = null; history.length = 0; fromCache = false; loadedMB = 0; speed = '';
-        emit('off', 0, 'IA local desligada. A Guardiã responde pelo servidor (regras).');
+        emit('off', 0, 'IA na GPU desligada.');
     }
 
     window.game = window.game || {};
     window.game.ai = {
-        init: init, load: load, ask: ask, proposeScenery, retry: retry, disable: disable,
+        init: init, load: load, ask: ask, garden, retry: retry, disable: disable,
         debug: function () { return JSON.parse(JSON.stringify(debug)); },
         status: function () {
             return {

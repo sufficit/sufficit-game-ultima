@@ -39,7 +39,7 @@ sealed partial class GameWorld
     // passarem pelo catálogo dinâmico do servidor.
     static readonly string[] BuiltinAssets =
         ["scenery.bush", "flora.flowers", "flora.mushroom", "flora.fern", "prop.log", "prop.stump",
-         "flora.pine", "rock.boulder2", "scenery.grass2"];
+         "flora.pine", "rock.boulder2", "scenery.grass2", "prop.lantern"];
 
     static readonly string[] PaintMaterials = ["grass", "dirt", "sand", "rock", "snow", "water"];
 

@@ -1,6 +1,6 @@
 // t50 — validação local do registro de conversas (dialog-log) com Playwright via node.
 // Uso: node tests/dialog-log.e2e.js <URL do site> <URL da API>
-// Fluxo: abre o jogo, anda até a Guardiã, E → pergunta → resposta por regras,
+// Fluxo: abre o jogo, anda até a Guardiã, E → pergunta → retorno da Guardiã,
 // confere a fila em localStorage, flush() → POST 200, GET traz o lote,
 // pagehide envia e limpa a fila.
 // t56: esperas por polling (headless+swiftshader engasga o rAF — lição dos runs 7-9
@@ -85,7 +85,7 @@ const ok = (label, cond, extra) => console.log((cond ? 'ok  ' : 'FALHOU ') + lab
         await page.waitForSelector('#dialog-input', { timeout: 10000, state: 'visible' });
         await page.fill('#dialog-input', 'Onde fica o santuário?');
         await page.press('#dialog-input', 'Enter');
-        // Resposta por regras substitui as reticências — por polling.
+        // A resposta ou o aviso de indisponibilidade substitui as reticências.
         let reply = null;
         for (let t = 0; t < 30 && !reply; t++) {
             reply = await page.evaluate(() => { const el = document.querySelector('.ultima-dialog__line'); return el && el.textContent && !el.textContent.includes('…') ? el.textContent : null; }).catch(() => null);

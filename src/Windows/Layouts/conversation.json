@@ -11,7 +11,6 @@
       { "type": "button", "bind": "dictation", "icon": "audio", "style": "outline", "action": "dictate" }
     ] },
     { "type": "note", "bind": "speechError", "when": "speechError", "style": "error" },
-    { "type": "button", "bind": "variation", "when": "variation", "style": "outline", "action": "vary" },
     { "type": "row", "children": [
       { "type": "button", "bind": "advance", "action": "advance" },
       { "type": "button", "text": "Fechar · Esc", "style": "outline", "action": "close" }

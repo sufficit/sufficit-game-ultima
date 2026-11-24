@@ -1,5 +1,6 @@
 # Documentação do Ultima
 
+- [API do jardim e da Guardiã](USAGE-API-JARDIM.md) — contratos e famílias de ações.
 - [PROJECT.md](../PROJECT.md) — visão, premissas e marcos do jogo.
 - [decisions/](../decisions/) — registros de decisão históricos (input, visual, API-first).
 
@@ -27,6 +28,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Guardiã e API do jardim](activities/202611241828-guardia-api-jardim.md)
 
 - [Migração dos testes de câmera e terreno para C#](activities/202611241813-testes-camera-terreno-csharp.md)
 

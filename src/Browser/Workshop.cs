@@ -8,7 +8,7 @@ using Microsoft.JSInterop;
 
 namespace Ultima.Browser;
 
-public sealed class Workshop(HttpClient http, IJSRuntime js)
+public sealed partial class Workshop(HttpClient http, IJSRuntime js)
 {
     public const int MaxUploadBytes = 2 * 1024 * 1024;
     private readonly HashSet<string> _known = new(StringComparer.Ordinal);

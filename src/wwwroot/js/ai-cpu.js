@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     // IA local da Guardiã — motor CPU (wllama/llama.cpp WASM, sem WebGPU).
-    // Segundo motor do jogo: complementa o WebGPU (ai.js) e cai antes das regras do servidor.
+    // Segundo motor do jogo: complementa o WebGPU (ai.js).
     // GitHub Pages não envia COOP/COEP => SharedArrayBuffer indisponível => sempre 1 thread
     // (decisão registrada em decisions/ia-cpu-wllama.md; coi-serviceworker ficou como pendência).
     const WLLAMA_ESM = 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.13.0/esm/index.min.js';
@@ -172,6 +172,22 @@
             if (inst && state === 'thinking') emit('ready', 1, modelLabel + ' pronta na sua CPU' + (tokensPerSec ? ' · ' + tokensPerSec + ' tok/s' : ''));
         }
     }
+    async function garden(prompt, text) {
+        if (!inst || state !== 'ready') return null;
+        emit('thinking', progress, 'Guardiã planejando o jardim na sua CPU…');
+        try {
+            const output = await inst.createChatCompletion({
+                messages: [{ role: 'system', content: prompt }, { role: 'user', content: text }],
+                max_tokens: 1200, temperature: 0.2
+            });
+            return output?.choices?.[0]?.message?.content || null;
+        } catch {
+            return null;
+        } finally {
+            if (inst && state === 'thinking') emit('ready', 1, modelLabel + ' pronta na sua CPU');
+        }
+    }
+
     // Troca de modelo pelo painel: grava a escolha e descarrega o modelo anterior.
     async function setModel(key) {
         if (!MODELS[key]) return false;
@@ -195,12 +211,12 @@
         localStorage.removeItem(PREF);
         try { if (inst) inst.exit(); } catch { }
         inst = null; history.length = 0; loadedMB = 0; speed = ''; tokensPerSec = null;
-        emit('off', 0, 'IA na CPU desligada. A Guardiã responde pelo servidor (regras).');
+        emit('off', 0, 'IA na CPU desligada.');
     }
 
     window.game = window.game || {};
     window.game.aiCpu = {
-        init: init, load: load, ask: ask, retry: retry, disable: disable, setModel: setModel,
+        init: init, load: load, ask: ask, garden, retry: retry, disable: disable, setModel: setModel,
         debug: function () { return JSON.parse(JSON.stringify(debug)); },
         status: function () {
             return {
