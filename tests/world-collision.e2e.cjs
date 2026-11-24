@@ -107,13 +107,20 @@ async function wait(callback,label) {
             const player=scene.getTransformNodeByName('player');
             const samples=[];
             const ankles=['left','right'].map(side=>scene.getTransformNodeByName('player-ankle-'+side));
+            const knees=['left','right'].map(side=>scene.getTransformNodeByName('player-knee-'+side));
             const observer=scene.onAfterRenderObservable.add(() => {
-                const feet=ankles.map(ankle=>{
+                const feet=ankles.map((ankle,i)=>{
+                    const knee=knees[i], hip=knee.parent;
+                    const upper=knee.getAbsolutePosition().subtract(hip.getAbsolutePosition());
+                    const lower=ankle.getAbsolutePosition().subtract(knee.getAbsolutePosition());
+                    const bend=upper.subtract(lower).scaleInPlace(0.5);
+                    const lateral=bend.dot(hip.parent.getDirection(BABYLON.Axis.X));
+                    const kneeSwivel=bend.length()>0.025 ? lateral/bend.length() : 0;
                     const direction=ankle.getDirection(BABYLON.Axis.Z);
                     const shoe=scene.getMeshByName(ankle.name.replace('ankle','shoe'));
                     const {x,z}=shoe.getAbsolutePosition();
                     const pitch=Math.asin(Math.max(-1,Math.min(1,-direction.y)));
-                    return {x,z,pitch,planted:Math.abs(pitch)<1e-6};
+                    return {x,z,pitch,kneeSwivel,toeSide: direction.x*Math.cos(player.rotation.y)-direction.z*Math.sin(player.rotation.y),planted:Math.abs(pitch)<1e-6};
                 });
                 samples.push({x:player.position.x,z:player.position.z,g:Math.min(0.05,engine.getDeltaTime()/1000),yaw:player.rotation.y,feet});
             });
@@ -207,10 +214,13 @@ async function wait(callback,label) {
             }
         }
         const pitches=samples.flatMap(sample=>sample.feet.map(foot=>foot.pitch));
+        const swivels=samples.flatMap(sample=>sample.feet.filter(foot=>Math.abs(foot.toeSide)>0.45)
+            .map(foot=>foot.kneeSwivel*Math.sign(foot.toeSide)));
+        const kneeAlignment=Math.max(0,...swivels);
         const closestGap=Math.min(...samples.map(({yaw,feet:[left,right]})=>
             (right.x-left.x)*Math.cos(yaw)-(right.z-left.z)*Math.sin(yaw)));
         return {v:gC>0?dist/gC:0,x:last?.x,z:last?.z,frames:samples.length,plantedFrames,maxSlide,
-            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide,swingSamples,swingRetreat,swingRetreatAfterTakeoff,maxSideSpeed,maxBackSpeed,closestGap};
+            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide,swingSamples,swingRetreat,swingRetreatAfterTakeoff,maxSideSpeed,maxBackSpeed,closestGap,kneeAlignment};
     }
     await p.evaluate(()=>{
         game.addRemote('pose-arm','Contato em repouso');
@@ -392,6 +402,8 @@ async function wait(callback,label) {
     await p.waitForTimeout(T300);
     const reversing=await speed(['w'],1500,false,'s');
     console.log(JSON.stringify({reversing}));
+    assert.ok(reversing.kneeAlignment>0.2,
+        'o plano de flexão deve acompanhar a sola na inversão: '+JSON.stringify(reversing));
     assert.ok(reversing.closestGap>=0.14,'os sapatos não devem cruzar sob o corpo: '+JSON.stringify(reversing));
     assert.ok(reversing.maxBackSpeed<0.1,'jogador deve girar antes de seguir na direção oposta');
     assert.ok(reversing.turningFrames>=2 && reversing.turnSlide<0.012,

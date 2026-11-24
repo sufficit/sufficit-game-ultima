@@ -344,6 +344,10 @@ contacts.Apply(feet, alignment, 0.6, 0.091, 0.06);
 Check("sola guarda posição e rumo mundiais na curva",
     Math.Abs(0.13 + feet[2] - plantedX) < 1e-12 && Math.Abs(0.025 + feet[3] - plantedZ) < 1e-12
     && Math.Abs(alignment[2] + cornerYaw) < 1e-12 && Math.Abs(alignment[0]) > 0.01);
+Check("o plano do joelho acompanha a sola sem inverter na fronteira angular",
+    PlayerPose.KneeSwivel(0) == 0 && PlayerPose.KneeSwivel(alignment[2]) < -0.3
+    && PlayerPose.KneeSwivel(-alignment[2]) > 0.3
+    && Math.Abs(PlayerPose.KneeSwivel(Math.PI - 0.001) - PlayerPose.KneeSwivel(-Math.PI + 0.001)) < 0.002);
 Span<double> legs3D = stackalloc double[9];
 PlayerPose.SolveLegs(legs3D, 0, .03, .02, .03, .77, .364, .051,
     feet[0], feet[1], 0, false, feet[4], feet[5], 0, false, feet[8], feet[9], alignment[0], alignment[1]);

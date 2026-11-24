@@ -2633,6 +2633,7 @@
                 hipRoll.position.copyFrom(hip.position);
                 hip.parent = hipRoll;
                 hip.position.set(0, 0, 0);
+                hip.rotationQuaternion = BABYLON.Quaternion.Identity();
                 ankle.rotationQuaternion = BABYLON.Quaternion.Identity();
             }
             const options = { height: LEG_SEGMENT + 0.085, radius, subdivisions: 4 };
@@ -2651,27 +2652,46 @@
             for (const mesh of [thigh, shin, shoe]) {
                 mesh.isPickable = false;
             }
-            return { side, hip, hipRoll, knee, ankle, thigh, shin, shoe, stride: new Float64Array(5) };
+            return { side, hip, hipRoll, knee, ankle, thigh, shin, shoe, stride: new Float64Array(6) };
         });
     }
 
     const undoLegPitch = new BABYLON.Quaternion(), undoHipRoll = new BABYLON.Quaternion();
     const soleRotation = new BABYLON.Quaternion(), ankleBase = new BABYLON.Quaternion();
 
-    function applyLeg(leg, angles, i, roll, yaw) {
+    const hipPitch = new BABYLON.Quaternion(), kneeTwist = new BABYLON.Quaternion();
+    const undoKneeTwist = new BABYLON.Quaternion(), undoLegAxes = new BABYLON.Quaternion();
+    const legAxis = new BABYLON.Vector3();
+
+    function applyLeg(leg, angles, i, roll, yaw, swivel) {
         const hip = angles[i], knee = angles[i + 1], ankle = angles[i + 2];
-        leg.hip.rotation.x = hip;
         leg.knee.rotation.x = knee;
         if (!leg.hipRoll) {
+            leg.hip.rotation.x = hip;
             leg.ankle.rotation.x = ankle;
             return;
         }
         leg.hipRoll.rotation.z = roll;
-        // Cancela quadril e joelho antes de aplicar o giro e a inclinação da sola.
-        BABYLON.Quaternion.RotationYawPitchRollToRef(0, -hip - knee, 0, undoLegPitch);
+        BABYLON.Quaternion.RotationYawPitchRollToRef(0, hip, 0, hipPitch);
         BABYLON.Quaternion.RotationYawPitchRollToRef(0, 0, -roll, undoHipRoll);
+        let undoAxes = undoHipRoll;
+        if (swivel) {
+            // Segmentos de mesmo comprimento: a bissetriz aponta ao longo do eixo da perna.
+            // Girar nesse eixo alinha o joelho sem alterar o alvo do tornozelo.
+            const axisPitch = hip + knee * 0.5;
+            legAxis.set(0, Math.cos(axisPitch), Math.sin(axisPitch));
+            BABYLON.Quaternion.RotationAxisToRef(legAxis, swivel, kneeTwist);
+            kneeTwist.multiplyToRef(hipPitch, leg.hip.rotationQuaternion);
+            undoKneeTwist.set(-kneeTwist.x, -kneeTwist.y, -kneeTwist.z, kneeTwist.w);
+            undoKneeTwist.multiplyToRef(undoHipRoll, undoLegAxes);
+            undoAxes = undoLegAxes;
+        } else {
+            leg.hip.rotationQuaternion.copyFrom(hipPitch);
+        }
+        // Cancela a rotação da perna antes de orientar a sola no rumo do apoio.
+        BABYLON.Quaternion.RotationYawPitchRollToRef(0, -hip - knee, 0, undoLegPitch);
         BABYLON.Quaternion.RotationYawPitchRollToRef(yaw, hip + knee + ankle, 0, soleRotation);
-        undoLegPitch.multiplyToRef(undoHipRoll, ankleBase);
+        undoLegPitch.multiplyToRef(undoAxes, ankleBase);
         ankleBase.multiplyToRef(soleRotation, leg.ankle.rotationQuaternion);
     }
 
@@ -2699,9 +2719,10 @@
             left.stride[2] = frame[29]; right.stride[2] = frame[34];
             left.stride[3] = frame[35]; right.stride[3] = frame[36];
             left.stride[4] = frame[39]; right.stride[4] = frame[40];
+            left.stride[5] = frame[43]; right.stride[5] = frame[44];
         }
-        applyLeg(left, angles, i + 1, i === 0 ? angles[7] : frame[37], frame[39]);
-        applyLeg(right, angles, i + 4, i === 0 ? angles[8] : frame[38], frame[40]);
+        applyLeg(left, angles, i + 1, i === 0 ? angles[7] : frame[37], frame[39], frame[43]);
+        applyLeg(right, angles, i + 4, i === 0 ? angles[8] : frame[38], frame[40], frame[44]);
     }
 
     // Tronco provisório enquanto o pacote de malhas do personagem é carregado.
@@ -2883,9 +2904,9 @@
     }
 
     function shortenStep(rig, limb) {
-        const leg = rig.legs[limb - 3], [forward, lateral, lift, pitch, yaw] = leg.stride;
+        const leg = rig.legs[limb - 3], [forward, lateral, lift, pitch, yaw, swivel] = leg.stride;
         if (lift < 0.02 || Math.abs(forward) < 0.04) return;
-        const hip = leg.hip.rotation.x, knee = leg.knee.rotation.x, roll = leg.hipRoll.rotation.z;
+        const hip = leg.hip.rotationQuaternion.clone(), knee = leg.knee.rotation.x, roll = leg.hipRoll.rotation.z;
         const ankle = leg.ankle.rotationQuaternion.clone();
         const { x, y, z } = player.position;
         const sin = Math.sin(player.rotation.y), cos = Math.cos(player.rotation.y);
@@ -2896,13 +2917,13 @@
             const wz = z - side * sin + shortened * cos + SHOE_OFFSET * Math.cos(player.rotation.y + yaw);
             const ground = worldTunnels.length ? terrain.VolumeFloor(wx, wz, y, KNEE_HEIGHT) : terrainHeight(wx, wz);
             const angles = terrain.SolveShortenedFoot(y, stepSurfaceAt(wx, wz, ground), shortened, lateral, lift, pitch);
-            applyLeg(leg, angles, 0, angles[3], yaw);
+            applyLeg(leg, angles, 0, angles[3], yaw, swivel);
             if (tryLimbPose(-1, rig, limb)) {
                 terrain.OnFootContact(Math.abs(forward - shortened));
                 return;
             }
         }
-        leg.hip.rotation.x = hip;
+        leg.hip.rotationQuaternion.copyFrom(hip);
         leg.knee.rotation.x = knee;
         leg.hipRoll.rotation.z = roll;
         leg.ankle.rotationQuaternion.copyFrom(ankle);

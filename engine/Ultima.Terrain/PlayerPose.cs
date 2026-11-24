@@ -76,6 +76,10 @@ internal static class PlayerPose
         }
     }
 
+    // Giro da perna em torno do eixo quadril–tornozelo. A resposta é contínua
+    // na passagem por ±π e fica limitada mesmo quando a sola cruza a direção do corpo.
+    internal static double KneeSwivel(double footYaw) => 0.65 * Math.Sin(footYaw);
+
     internal static void SolveLegs(Span<double> output, double ground, double previousY, double delta,
         double footGap, double hipHeight, double legLength, double ankleOffset,
         double leftForward, double leftLift, double leftSupport, bool leftOnObstacle,
