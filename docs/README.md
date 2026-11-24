@@ -36,6 +36,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 
 ## Atividades (`activities/`)
 
+- [Simulação do jogador em C# no navegador](activities/202611232327-simulacao-csharp-navegador.md)
+
 - [Publicação do backend no Sufficit Run](activities/202611232303-publicacao-do-backend-no-run.md)
 
 - [Mundo expansível](activities/202611232303-mundo-expansivel.md)

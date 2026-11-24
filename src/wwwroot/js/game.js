@@ -280,13 +280,7 @@
 
         // Gamepad (não existe em worker): o poll roda aqui, os eixos vão pela ponte.
         let actionWasDown = false, cancelWasDown = false;
-        const DEADZONE = 0.18;
-        function radial(x, y) {
-            const m = Math.hypot(x, y);
-            if (m < DEADZONE) { return { x: 0, y: 0 }; }
-            const scaled = Math.min(1, (m - DEADZONE) / (1 - DEADZONE));
-            return { x: (x / m) * scaled, y: (y / m) * scaled };
-        }
+        let hadPad = false;
         (function pollPad() {
             window.requestAnimationFrame(pollPad);
             let pad = null;
@@ -294,16 +288,20 @@
                 const pads = navigator.getGamepads ? navigator.getGamepads() : [];
                 pad = Array.from(pads || []).find(function (p) { return p && p.connected; });
             } catch (e) { /* Gamepad API indisponível */ }
-            if (!pad) { return; }
-            const l = radial(pad.axes[0] || 0, pad.axes[1] || 0);
-            const r = radial(pad.axes[2] || 0, pad.axes[3] || 0);
-            let x = l.x, y = -l.y;
-            const down = function (i) { return !!(pad.buttons[i] && pad.buttons[i].pressed); };
-            if (down(14)) { x -= 1; } if (down(15)) { x += 1; }
-            if (down(12)) { y += 1; } if (down(13)) { y -= 1; }
-            if (x || y || r.x || r.y) { deliver('inputMode', ['gamepad']); }
-            deliver('pad', [x, y, r.x, r.y]);
-            const action = down(0), cancel = down(1) || down(9);
+            if (!pad) {
+                if (hadPad) {
+                    deliver('pad', [0, 0, 0, 0, 0, 0]);
+                    deliver('inputMode', ['keyboard']);
+                }
+                hadPad = actionWasDown = cancelWasDown = false;
+                return;
+            }
+            hadPad = true;
+            const down = (i) => Number(!!pad.buttons[i]?.pressed);
+            deliver('pad', [pad.axes[0] || 0, pad.axes[1] || 0, pad.axes[2] || 0, pad.axes[3] || 0,
+                down(15) - down(14), down(12) - down(13)]);
+            const action = !!down(0), cancel = !!(down(1) || down(9));
+            if (action || cancel) { deliver('inputMode', ['gamepad']); }
             if (action && !actionWasDown) { deliver('action', []); }
             if (cancel && !cancelWasDown) { postEventToDotnet('OnClose', []); }
             actionWasDown = action; cancelWasDown = cancel;

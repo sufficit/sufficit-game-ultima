@@ -14,8 +14,6 @@
     const WANDERER_HOME = { x: 5.0, z: 0.0 };    // Andarilho: circula pela clareira inicial
     // Escala realista: personagem com ~1,75 m; os olhos ficam a ~1,62 m do chão.
     const NEAR_RADIUS = 3.2;
-    const WALK_SPEED = 3.5;   // m/s (caminhada rápida)
-    const RUN_SPEED = 6.5;    // m/s (corrida leve, Shift ou analógico no fim do curso)
     const PLAYER_HEIGHT = 1.75;
     const FOOT_GAP = 0.03;
     const HIP_HEIGHT = PLAYER_HEIGHT * 0.44;
@@ -28,9 +26,7 @@
     const LEG_SPACING = PLAYER_HEIGHT * 0.044;
     // Alvo da câmera fica na altura do peito (o root do personagem agora é os pés).
     const CAM_UP = new BABYLON.Vector3(0, PLAYER_HEIGHT / 2, 0);
-    const PLAYER_RADIUS = 0.25;
     const TICK_MS = 200;
-    const DEADZONE = 0.18;
     // Orçamento de CPU por frame para subir modelos (texturas, malhas, scatter). Referência:
     // lineage-rust amortiza a entrada de personagens com 4 ms/frame (CHARACTER_BUDGET_MS).
     const MODEL_BUDGET_MS = 4.0;
@@ -54,8 +50,6 @@
     let rainLevel = weatherMode === 'rain' ? 1 : 0;
     let rainParticles = null;
     let player = null;
-    let movementSpeed = 0;
-    let movementX = 0, movementZ = 0;
     let dialoguePartner = null;
     let camera = null;
     const G = host.global;
@@ -362,7 +356,6 @@
         return t <= 0 ? 0 : t * t * (3 - 2 * t);   // falloff suave na borda do pincel
     }
 
-    const COLLECT_REACH = 3.5;
     const SOIL_DEPTH = 0.48;
     const SOIL_RADIUS = 1;
     const collectedIds = new Set();
@@ -891,6 +884,23 @@
 
     // A base sólida acompanha a instância, inclusive quando uma escavação a oculta.
     const obstacles = new Map();
+    let collidersDirty = false;
+    let colliderLabels = [];
+
+    function syncColliders() {
+        if (!collidersDirty) { return; }
+        const values = [];
+        colliderLabels = [];
+        for (const [mesh, obstacle] of obstacles) {
+            if (!mesh.isEnabled()) { continue; }
+            const labelIndex = colliderLabels.push(obstacle.label) - 1;
+            for (const { x, z, radius } of obstacle.circles) {
+                values.push(x, z, radius, obstacle.minY, obstacle.maxY, labelIndex);
+            }
+        }
+        terrain.SetColliders(new Float64Array(values));
+        collidersDirty = false;
+    }
     const solidAssets = new Map([
         ['flora.pine', 'Pinheiro'], ['rock.boulder2', 'Pedra'],
         ['prop.log', 'Tronco caído'], ['prop.stump', 'Toco']
@@ -924,7 +934,11 @@
         mesh.computeWorldMatrix(true);
         const { minimumWorld, maximumWorld } = mesh.getBoundingInfo().boundingBox;
         obstacles.set(mesh, { circles, minY, maxY, minimumWorld, maximumWorld, label });
-        mesh.onDisposeObservable.addOnce(() => obstacles.delete(mesh));
+        collidersDirty = true;
+        mesh.onDisposeObservable.addOnce(() => {
+            obstacles.delete(mesh);
+            collidersDirty = true;
+        });
     }
 
     function trackGlbObstacle(mesh, proto, id, planted = false) {
@@ -932,15 +946,6 @@
         if (!label && (!planted || softAssets.has(id))) { return; }
         const trunkRadius = id === 'flora.pine' ? 0.28 * Math.abs(mesh.scaling.x) : 0;
         trackObstacle(mesh, proto, label || 'Objeto plantado', trunkRadius);
-    }
-
-    function touchesPlayerHeight(position, obstacle) {
-        return position.y + PLAYER_HEIGHT > obstacle.minY && position.y < obstacle.maxY;
-    }
-
-    function canStepOn(obstacle, ground) {
-        const rise = obstacle.maxY - ground;
-        return rise > 0 && rise <= KNEE_HEIGHT && obstacle.minY <= ground + 0.10;
     }
 
     const supportRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, -1, 0), KNEE_HEIGHT + 0.01);
@@ -952,19 +957,6 @@
         return worldTunnels.length && player
             ? terrain.VolumeFloor(x, z, player.position.y, KNEE_HEIGHT)
             : terrainHeight(x, z);
-    }
-
-    function passesVolume(x, z, dx, dz, originalFloor) {
-        if (!terrain.NearVolume(x, z) && !terrain.NearVolume(x - dx, z - dz)) { return true; }
-        const floor = playerFloor(x, z);
-        if (floor - originalFloor > KNEE_HEIGHT) { return false; }
-        const length = Math.hypot(dx, dz);
-        if (length < 1e-5) { return true; }
-        const y = floor + PLAYER_HEIGHT - 0.10;
-        const sideX = -dz * PLAYER_RADIUS / length, sideZ = dx * PLAYER_RADIUS / length;
-        return !terrain.TerrainBlocks(x, y, z, 0.06) &&
-            !terrain.TerrainBlocks(x + sideX, y, z + sideZ, 0.03) &&
-            !terrain.TerrainBlocks(x - sideX, y, z - sideZ, 0.03);
     }
 
     function traceWorld(from, to) {
@@ -1023,80 +1015,17 @@
         for (const [mesh, obstacle] of obstacles) {
             const { minimumWorld: min, maximumWorld: max } = obstacle;
             if (x < min.x || x > max.x || z < min.z || z > max.z) { continue; }
-            if (!canStepOn(obstacle, ground) || !mesh.isEnabled()) { continue; }
+            if (!terrain.CanStepOn(obstacle.minY, obstacle.maxY, ground) || !mesh.isEnabled()) { continue; }
             const hit = supportRay.intersectsMesh(mesh);
             if (hit.pickedPoint) { top = Math.max(top, hit.pickedPoint.y); }
         }
         return top;
     }
 
-    function firstContact(position, dx, dz, lengthSquared, ground) {
-        let first = null;
-        let best = 1;
-        const distance = Math.sqrt(lengthSquared);
-        for (const [mesh, obstacle] of obstacles) {
-            if (!mesh.isEnabled() || !touchesPlayerHeight(position, obstacle) || canStepOn(obstacle, ground)) { continue; }
-            for (const circle of obstacle.circles) {
-                const x = position.x - circle.x, z = position.z - circle.z;
-                const radius = PLAYER_RADIUS + circle.radius;
-                const reach = distance + radius;
-                if (Math.abs(x) > reach || Math.abs(z) > reach) { continue; }
-                const toward = x * dx + z * dz;
-                if (toward >= 0) { continue; }
-                const gap = x * x + z * z - radius * radius;
-                const discriminant = toward * toward - lengthSquared * gap;
-                if (discriminant <= 0) { continue; }
-                const t = gap <= 0 ? 0 : (-toward - Math.sqrt(discriminant)) / lengthSquared;
-                if (t >= best) { continue; }
-                best = t;
-                const nx = x + dx * t, nz = z + dz * t;
-                const normalLength = Math.hypot(nx, nz);
-                first = { t, nx: nx / normalLength, nz: nz / normalLength };
-            }
-        }
-        return first;
-    }
-
-    function moveWithObstacles(position, dx, dz, ground) {
-        // Varre todo o percurso para evitar atravessar troncos mesmo com quadros longos.
-        // Depois do contato, tenta só a parcela tangente do deslocamento restante.
-        for (let i = 0; i < 3; i++) {
-            dx = clampWorld(position.x + dx) - position.x;
-            dz = clampWorld(position.z + dz) - position.z;
-            const lengthSquared = dx * dx + dz * dz;
-            if (lengthSquared < 1e-10) { return; }
-            const hit = firstContact(position, dx, dz, lengthSquared, ground);
-            if (!hit) {
-                position.x += dx;
-                position.z += dz;
-                return;
-            }
-            const t = Math.max(0, hit.t - 0.001 / Math.sqrt(lengthSquared));
-            position.x += dx * t;
-            position.z += dz * t;
-            const inward = dx * hit.nx + dz * hit.nz;
-            dx = (dx - inward * hit.nx) * (1 - hit.t);
-            dz = (dz - inward * hit.nz) * (1 - hit.t);
-        }
-    }
-
     let nearbyObject = null;
     function updateNearbyObject() {
-        let label = null;
-        let best = 1.15;
-        for (const [mesh, obstacle] of obstacles) {
-            if (!mesh.isEnabled() || !touchesPlayerHeight(player.position, obstacle)) { continue; }
-            for (const circle of obstacle.circles) {
-                const x = player.position.x - circle.x, z = player.position.z - circle.z;
-                const reach = best + circle.radius;
-                if (Math.abs(x) > reach || Math.abs(z) > reach) { continue; }
-                const distance = Math.hypot(x, z) - circle.radius;
-                if (distance < best) {
-                    label = obstacle.label;
-                    best = distance;
-                }
-            }
-        }
+        const { x, y, z } = player.position;
+        const label = colliderLabels[terrain.NearbyObstacle(x, y, z)] ?? null;
         if (label !== nearbyObject) {
             nearbyObject = label;
             dotnet.invokeMethodAsync('OnObjectNear', label);
@@ -1125,7 +1054,11 @@
     function updateGatherableVisibility(mesh, resource) {
         const { x, z } = mesh.position;
         const cut = resource.scattered && worldCarves.some(op => Math.hypot(x - op.x, z - op.z) < op.r);
-        mesh.setEnabled(!cut && !collectedIds.has(resource.id));
+        const enabled = !cut && !collectedIds.has(resource.id);
+        if (mesh.isEnabled(false) !== enabled) {
+            mesh.setEnabled(enabled);
+            if (obstacles.has(mesh)) { collidersDirty = true; }
+        }
     }
 
     function syncCarveScenery() {
@@ -1154,24 +1087,27 @@
         }
     }
 
-    function pickCollectionTarget(sx, sy) {
-        return scene.pick(sx, sy, mesh => mesh.isEnabled() && mesh.isVisible &&
+    function collectionTarget(sx, sy) {
+        const hit = scene.pick(sx, sy, mesh => mesh.isEnabled() && mesh.isVisible &&
             (gatherableMeshes.has(mesh) || mesh.name.startsWith('ground-')));
-    }
+        if (!hit?.hit || !hit.pickedPoint) { return null; }
 
-    function withinCollectionReach(point) {
-        return BABYLON.Vector3.Distance(player.position.add(CAM_UP), point) <= COLLECT_REACH;
+        const point = hit.pickedPoint, origin = player.position;
+        return {
+            point,
+            object: gatherableMeshes.get(hit.pickedMesh),
+            reachable: terrain.CanCollect(point.x - origin.x, point.y - origin.y - CAM_UP.y, point.z - origin.z)
+        };
     }
 
     function collectAt(sx, sy) {
-        const hit = pickCollectionTarget(sx, sy);
-        if (!hit?.hit || !hit.pickedPoint) { return; }
-        const p = hit.pickedPoint;
-        if (!withinCollectionReach(p)) {
+        const hit = collectionTarget(sx, sy);
+        if (!hit) { return; }
+        if (!hit.reachable) {
             dotnet.invokeMethodAsync('OnBackpackStatus', 'Aproxime-se para coletar.');
             return;
         }
-        const target = gatherableMeshes.get(hit.pickedMesh);
+        const { point: p, object: target } = hit;
         let resource;
         if (target) {
             resource = { id: target.id, item: target.item, kind: 'object', brush: target.brush };
@@ -1332,19 +1268,18 @@
     function updateCollectionPreview(now) {
         if (!collectionPointer || now < nextPreviewAt) { return; }
         nextPreviewAt = now + 35;
-        const hit = pickCollectionTarget(...collectionPointer);
-        if (!hit?.pickedPoint || !withinCollectionReach(hit.pickedPoint)) {
+        const hit = collectionTarget(...collectionPointer);
+        if (!hit?.reachable) {
             clearGroundPreview();
             clearObjectPreview();
             return;
         }
-        const object = gatherableMeshes.get(hit.pickedMesh);
-        if (object) {
+        if (hit.object) {
             clearGroundPreview();
-            highlightCollectionObject(object.id);
+            highlightCollectionObject(hit.object.id);
         } else {
             clearObjectPreview();
-            highlightCollectionGround(hit.pickedPoint);
+            highlightCollectionGround(hit.point);
         }
     }
 
@@ -2569,14 +2504,6 @@
         } catch (e) { console.warn('Partículas indisponíveis:', e); }
     }
 
-    // Deadzone radial (skill input-systems): preserva direção diagonal e reescala a magnitude restante.
-    function radialDeadzone(x, y) {
-        const m = Math.hypot(x, y);
-        if (m < DEADZONE) { return { x: 0, y: 0 }; }
-        const scaled = Math.min(1, (m - DEADZONE) / (1 - DEADZONE));
-        return { x: (x / m) * scaled, y: (y / m) * scaled };
-    }
-
     // Dispositivo ativo mais recente: a dica de controles na tela acompanha (body[data-input]).
     let activeInput = 'keyboard';
     function setActiveInput(kind) {
@@ -2586,70 +2513,52 @@
     }
     let cancelWasDown = false;
 
+    function applyGamepadAxes(x, y, lookX, lookY, dpadX, dpadY) {
+        if (!terrain) { return; }
+        if (x || y || lookX || lookY) {
+            [x, y, lookX, lookY] = terrain.GamepadAxes(x, y, lookX, lookY);
+        }
+        padState.x = x + dpadX;
+        padState.y = -y + dpadY;
+        padState.lookX = lookX;
+        padState.lookY = lookY;
+        if (padState.x || padState.y || lookX || lookY) { setActiveInput('gamepad'); }
+    }
+
     function pollGamepad() {
-        let x = 0, y = 0, lookX = 0, lookY = 0, action = false, cancel = false;
+        let action = false, cancel = false, connected = false;
         try {
             const pads = navigator.getGamepads ? navigator.getGamepads() : [];
             const pad = Array.from(pads || []).find((p) => p && p.connected);
             if (pad) {
-                const l = radialDeadzone(pad.axes[0] || 0, pad.axes[1] || 0);
-                const r = radialDeadzone(pad.axes[2] || 0, pad.axes[3] || 0);
-                x = l.x; y = -l.y; lookX = r.x; lookY = r.y;
-                const down = (i) => !!(pad.buttons[i] && pad.buttons[i].pressed);
-                action = down(0);                 // A / Cruz
-                cancel = down(1) || down(9);      // B / Círculo ou Start
-                // D-pad como alternativa ao stick esquerdo.
-                if (down(14)) { x -= 1; } if (down(15)) { x += 1; }
-                if (down(12)) { y += 1; } if (down(13)) { y -= 1; }
-                if (x || y || lookX || lookY || action || cancel) { setActiveInput('gamepad'); }
+                connected = true;
+                const down = (i) => Number(!!pad.buttons[i]?.pressed);
+                applyGamepadAxes(pad.axes[0] || 0, pad.axes[1] || 0, pad.axes[2] || 0, pad.axes[3] || 0,
+                    down(15) - down(14), down(12) - down(13));
+                action = !!down(0);
+                cancel = !!(down(1) || down(9));
+                if (action || cancel) { setActiveInput('gamepad'); }
             }
         } catch (e) { /* Gamepad API indisponível */ }
+        if (!connected) { applyGamepadAxes(0, 0, 0, 0, 0, 0); }
         if (action && !actionWasDown) { interact(); }
-        if (cancel && !cancelWasDown && dotnet) { dotnet.invokeMethodAsync('OnClose'); }
+        if (cancel && !cancelWasDown) { dotnet.invokeMethodAsync('OnClose'); }
         actionWasDown = action;
         cancelWasDown = cancel;
-        return { x: x, y: y, lookX: lookX, lookY: lookY };
     }
 
-    function movePlayer(deltaSeconds, pad) {
+    function movePlayer(delta, pad) {
         if (frozen || !player) { return 0; }
-        let ix = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
-        let iz = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
-        ix += pad.x + moveStick.x;
-        iz += pad.y + moveStick.y;
-        const magnitude = Math.min(1, Math.hypot(ix, iz));
-        if (magnitude > 0) {
-            const { x: fx, z: fz } = camera.getForwardRay().direction;
-            const dx = fx * iz + fz * ix, dz = fz * iz - fx * ix;
-            const len = Math.hypot(dx, dz) || 1;
-            movementX = dx / len;
-            movementZ = dz / len;
-        }
-        const analogRun = Math.hypot(pad.x + moveStick.x, pad.y + moveStick.y) > 0.92;
-        const run = keys.ShiftLeft || keys.ShiftRight || analogRun;
-        const targetSpeed = (run ? RUN_SPEED : WALK_SPEED) * magnitude;
-        movementSpeed += Math.max(-26 * deltaSeconds, Math.min(22 * deltaSeconds, targetSpeed - movementSpeed));
-        if (movementSpeed <= 0) { return 0; }
-        const { x, z } = player.position;
-        const ground = playerFloor(x, z);
-        const stepping = player.position.y - FOOT_GAP > ground + 0.015;
-        const distance = (stepping ? Math.min(2.8, movementSpeed) : movementSpeed) * deltaSeconds;
-        moveWithObstacles(player.position, movementX * distance, movementZ * distance, ground);
-        if (worldTunnels.length && !passesVolume(player.position.x, player.position.z,
-            player.position.x - x, player.position.z - z, ground)) {
-            if (passesVolume(player.position.x, z, player.position.x - x, 0, ground)) {
-                player.position.z = z;
-            } else if (passesVolume(x, player.position.z, 0, player.position.z - z, ground)) {
-                player.position.x = x;
-            } else {
-                player.position.x = x;
-                player.position.z = z;
-            }
-        }
-        const actualX = player.position.x - x, actualZ = player.position.z - z;
-        const travelled = Math.hypot(actualX, actualZ);
-        const yaw = travelled > 0.001 ? Math.atan2(actualX, actualZ) : Math.atan2(movementX, movementZ);
-        turnCharacter(player, yaw, deltaSeconds, 16);
+        const ix = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+        const iz = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
+        const { x, y, z } = player.position;
+        const analogX = pad.x + moveStick.x, analogZ = pad.y + moveStick.y;
+        const { x: fx, z: fz } = ix || iz || analogX || analogZ ? camera.getForwardRay().direction : BABYLON.Vector3.ZeroReadOnly;
+        const [nextX, nextZ, yaw, travelled] = terrain.MovePlayer(x, y, z, fx, fz, ix, iz, analogX, analogZ,
+            !!(keys.ShiftLeft || keys.ShiftRight), delta, worldTunnels.length > 0);
+        player.position.x = nextX;
+        player.position.z = nextZ;
+        if (Number.isFinite(yaw)) { turnCharacter(player, yaw, delta, 16); }
         return travelled;
     }
 
@@ -2739,57 +2648,52 @@
         if (!rig) { return; }
         rig.clock += delta;
         const speed = delta > 0 ? distance / delta : 0;
-        const run = smoothstep(WALK_SPEED, RUN_SPEED, speed);
-        rig.gaitWeight = lerp(rig.gaitWeight, Math.min(1, speed / 1.1), 1 - Math.exp(-13 * delta));
-        rig.gaitPhase = (rig.gaitPhase + distance * Math.PI * 2 / lerp(1.1, 2.35, smoothstep(1.4, RUN_SPEED, speed))) % (Math.PI * 2);
-        if (rig.legs.length) {
-            const { x, z } = root.position;
-            updateCharacterLegs(rig, delta, distance, speed, root === player ? playerFloor(x, z) : terrainHeight(x, z));
-        }
-
         const listening = frozen && (root === player || root === dialoguePartner);
         rig.speaking = Math.max(0, rig.speaking - delta);
         const speaking = rig.speaking > 0 && listening;
+        const action = rig.action;
+        const previous = action ? action.elapsed / action.duration : 0;
+        if (action && !frozen) { action.elapsed += delta; }
+        const progress = action ? action.elapsed / action.duration : 0;
+        const [phase, weight, torsoX, torsoZ, headX, headZ, eyesY, mouthX, mouthY, browZ, leftArm, rightArm] =
+            terrain.AnimatePlayer(rig.gaitPhase, rig.gaitWeight, rig.clock, distance, delta,
+                root.name.length, listening, speaking, progress, action?.bend ?? 0, action?.reach ?? 0);
+        rig.gaitPhase = phase;
+        rig.gaitWeight = weight;
+        if (rig.legs.length) {
+            const { x, z } = root.position;
+            updateCharacterLegs(rig, delta, speed, root === player ? playerFloor(x, z) : terrainHeight(x, z));
+        }
+
         if (listening) {
             const other = root === player ? dialoguePartner : player;
             if (other) { turnCharacter(root, Math.atan2(other.position.x - root.position.x, other.position.z - root.position.z), delta, 7); }
         }
-        let gesture = 0;
-        const action = rig.action;
         if (action) {
             if (action.point && speed < 0.4) {
                 turnCharacter(root, Math.atan2(action.point.x - root.position.x, action.point.z - root.position.z), delta, 13);
             }
-            const previous = action.elapsed / action.duration;
-            if (!frozen) { action.elapsed += delta; }
             if (action.target && action.times.length > 0) {
-                const crossed = terrain.CrossedAnimationMarks(previous, action.elapsed / action.duration, false, action.times);
+                const crossed = terrain.CrossedAnimationMarks(previous, progress, false, action.times);
                 for (const index of crossed) {
                     const mark = action.markers[index];
                     dotnet.invokeMethodAsync('OnAnimationMarker', mark.name, mark.payload, action.target);
                 }
             }
-            gesture = Math.sin(Math.PI * Math.min(1, action.elapsed / action.duration));
-            if (action.elapsed >= action.duration) { rig.action = null; }
+            if (progress >= 1) { rig.action = null; }
         }
-        const breath = Math.sin(rig.clock * 2.9) * 0.012;
-        const swing = Math.cos(rig.gaitPhase) * rig.gaitWeight;
-        rig.upper.rotation.x = breath + 0.12 * run + gesture * (action?.bend ?? 0);
-        rig.upper.rotation.z = Math.sin(rig.gaitPhase) * 0.035 * rig.gaitWeight;
-        rig.head.rotation.x = -0.06 * run + gesture * 0.14 + (speaking ? Math.sin(rig.clock * 9) * 0.036 : 0);
-        rig.head.rotation.z = listening && !speaking ? 0.09 : 0;
-        const blink = (rig.clock + (root.name.length % 7) * 0.43) % 4.7;
-        rig.eyes.scaling.y = 1 - 0.94 * (1 - smoothstep(0.015, 0.085, Math.abs(blink - 0.09)));
-        rig.mouth.scaling.y = speaking ? 0.012 + Math.abs(Math.sin(rig.clock * 16)) * 0.021 : 0.008;
-        rig.mouth.scaling.x = listening ? 0.054 : 0.048;
-        rig.brows.forEach((brow, i) => {
-            brow.rotation.z = (i ? -1 : 1) * (0.26 * gesture - (listening ? 0.15 : 0));
-        });
+        rig.upper.rotation.x = torsoX;
+        rig.upper.rotation.z = torsoZ;
+        rig.head.rotation.x = headX;
+        rig.head.rotation.z = headZ;
+        rig.eyes.scaling.y = eyesY;
+        rig.mouth.scaling.y = mouthY;
+        rig.mouth.scaling.x = mouthX;
+        rig.brows[0].rotation.z = browZ;
+        rig.brows[1].rotation.z = -browZ;
         if (rig.shoulders.length) {
-            const strideSwing = swing * lerp(0.34, 0.74, run);
-            rig.shoulders[0].rotation.x = strideSwing - gesture * 0.16;
-            rig.shoulders[1].rotation.x = -strideSwing - gesture * (action?.reach ?? 0)
-                - (speaking ? 0.24 + 0.10 * Math.sin(rig.clock * 4.5) : 0);
+            rig.shoulders[0].rotation.x = leftArm;
+            rig.shoulders[1].rotation.x = rightArm;
         }
     }
 
@@ -2849,46 +2753,28 @@
         });
     }
 
-    function updateCharacterLegs(rig, delta, distance, speed, ground) {
+    function updateCharacterLegs(rig, delta, speed, ground) {
         const { root, gaitPhase, gaitWeight } = rig;
-        const { x, z } = root.position;
-        const yaw = root.rotation.y;
-        const run = smoothstep(WALK_SPEED, RUN_SPEED, speed);
-        const sine = Math.sin(yaw), cosine = Math.cos(yaw);
-        const feet = rig.legs.map(leg => {
-            const phase = gaitPhase + (leg.side < 0 ? 0 : Math.PI);
-            const forward = Math.cos(phase) * lerp(0.18, 0.27, run) * gaitWeight;
-            const lift = Math.max(0, -Math.sin(phase)) * lerp(0.11, 0.17, run) * gaitWeight;
-            const localX = leg.side * LEG_SPACING;
-            const footX = x + localX * cosine + (forward + SHOE_OFFSET) * sine;
-            const footZ = z - localX * sine + (forward + SHOE_OFFSET) * cosine;
-            const floor = root === player ? playerFloor(footX, footZ) : terrainHeight(footX, footZ);
-            const support = root === player ? stepSurfaceAt(footX, footZ, floor) : floor;
-            return { leg, forward, ankleY: support + ANKLE_HEIGHT + SOLE_CLEARANCE + lift, support, onObstacle: support > floor };
-        });
-        const baseY = ground + FOOT_GAP;
-        let bodyY = baseY;
-        if (feet.some(foot => foot.onObstacle)) {
-            const top = Math.max(...feet.map(foot => foot.support)) + FOOT_GAP;
-            // Na borda, limita a elevação ao que a perna mais estendida alcança.
-            const reachable = Math.min(...feet.map(({ ankleY, forward }) =>
-                ankleY + Math.sqrt(4 * LEG_SEGMENT ** 2 - forward ** 2) - HIP_HEIGHT));
-            const riseLimit = Math.max(baseY, root.position.y) + delta * 3;
-            bodyY = Math.min(Math.max(baseY, top), reachable, riseLimit);
-        }
+        const { x, y, z } = root.position;
+        const [leftForward, leftLift, lx, lz, rightForward, rightLift, rx, rz] =
+            terrain.FootTargets(root.rotation.y, gaitPhase, gaitWeight, speed, LEG_SPACING, SHOE_OFFSET);
+        const isPlayer = root === player;
+        const leftFloor = isPlayer ? playerFloor(x + lx, z + lz) : terrainHeight(x + lx, z + lz);
+        const rightFloor = isPlayer ? playerFloor(x + rx, z + rz) : terrainHeight(x + rx, z + rz);
+        const leftSupport = isPlayer ? stepSurfaceAt(x + lx, z + lz, leftFloor) : leftFloor;
+        const rightSupport = isPlayer ? stepSurfaceAt(x + rx, z + rz, rightFloor) : rightFloor;
+        const [bodyY, leftHip, leftKnee, leftAnkle, rightHip, rightKnee, rightAnkle] =
+            terrain.SolveLegs(ground, y, delta, FOOT_GAP, HIP_HEIGHT, LEG_SEGMENT, ANKLE_HEIGHT + SOLE_CLEARANCE,
+                leftForward, leftLift, leftSupport, leftSupport > leftFloor,
+                rightForward, rightLift, rightSupport, rightSupport > rightFloor);
         root.position.y = bodyY;
-
-        for (const { leg, forward, ankleY } of feet) {
-            const drop = Math.max(0.16, bodyY + HIP_HEIGHT - ankleY);
-
-            // Dois segmentos de mesmo comprimento. A perna fica no plano de
-            // avanço e o sapato compensa as duas rotações para pousar nivelado.
-            const extent = Math.hypot(drop, forward);
-            const flex = Math.acos(Math.min(1, extent / (2 * LEG_SEGMENT)));
-            leg.hip.rotation.x = -Math.atan2(forward, drop) - flex;
-            leg.knee.rotation.x = 2 * flex;
-            leg.ankle.rotation.x = -leg.hip.rotation.x - leg.knee.rotation.x;
-        }
+        const [left, right] = rig.legs;
+        left.hip.rotation.x = leftHip;
+        left.knee.rotation.x = leftKnee;
+        left.ankle.rotation.x = leftAnkle;
+        right.hip.rotation.x = rightHip;
+        right.knee.rotation.x = rightKnee;
+        right.ankle.rotation.x = rightAnkle;
     }
 
     // Tronco provisório enquanto o pacote de malhas do personagem é carregado.
@@ -3134,6 +3020,7 @@
                 terrain = await host.terrainRuntime;
             }
             terrain.Reset();
+            terrain.ConfigurePlayer(PLAYER_HEIGHT, KNEE_HEIGHT, FOOT_GAP);
             if (G.game && G.game.assets) {
                 await G.game.assets.init(host.build);
                 await warmTextures();   // chunks: aquecimento por aproximação (prefetchChunkCache)
@@ -3171,7 +3058,7 @@
                 window.addEventListener('keydown', onKeyDown);
                 window.addEventListener('keyup', onKeyUp);
                 window.addEventListener('blur', () => {
-                    movementSpeed = 0;
+                    terrain?.StopPlayer();
                     for (const k of Object.keys(keys)) { keys[k] = false; }
                     moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 };
                 });
@@ -3182,7 +3069,8 @@
                 const frameStart = performance.now();
                 drainModelQueue(frameStart);
                 const delta = Math.min(0.05, engine.getDeltaTime() / 1000);
-                const pad = dom ? pollGamepad() : padState;
+                if (dom) { pollGamepad(); }
+                const pad = padState;
                 if (!frozen) {
                     camera.alpha -= (pad.lookX + lookStick.x) * delta * 2.2;
                     camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + (pad.lookY + lookStick.y) * delta * 1.7));
@@ -3199,6 +3087,7 @@
                     zoomTarget = Math.max(2.4, Math.min(camera.upperRadiusLimit, zoomTarget));
                     camPending.wheel = 0;
                 }
+                syncColliders();
                 const travelled = movePlayer(delta, pad);
                 if (player) {
                     const { x, z } = player.position;
@@ -3237,13 +3126,13 @@
     const input = {
         key(code, down) { if (gameCodes.includes(code)) { keys[code] = !!down; } },
         stick(which, x, y) { if (which === 'move') { moveStick = { x: x, y: y }; } else if (which === 'look') { lookStick = { x: x, y: y }; } },
-        pad(x, y, lookX, lookY) { padState.x = x || 0; padState.y = y || 0; padState.lookX = lookX || 0; padState.lookY = lookY || 0; },
+        pad: applyGamepadAxes,
         camera(dx, dy, wheel, deltaMode) { camPending.dx += dx || 0; camPending.dy += dy || 0; camPending.wheel += (wheel || 0) * (deltaMode === 1 ? 40 : 1); },
         action() { interact(); },
         terrainClick(sx, sy) { terrainClickImpl(sx, sy); },
         terrainHover(point) { setCollectionPointer(point); },
         cancel() { dotnet.invokeMethodAsync('OnClose'); },
-        clear() { movementSpeed = 0; for (const k of Object.keys(keys)) { keys[k] = false; } moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 }; },
+        clear() { terrain?.StopPlayer(); for (const k of Object.keys(keys)) { keys[k] = false; } moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 }; },
         resize(w, h, dpr) {
             if (!engine) { return; }
             if (dom) { engine.resize(); } else { applySize(w, h, dpr || (host.size && host.size.dpr) || 1); }
@@ -3271,7 +3160,7 @@
         setFrozen(value, speaker) {
             frozen = !!value;
             dialoguePartner = !frozen ? null : speaker === 'Andarilho' ? wandererRoot : guardianRoot;
-            movementSpeed = 0;
+            terrain?.StopPlayer();
             if (frozen) { for (const k of Object.keys(keys)) { keys[k] = false; } }
         },
         characterAction: playCharacterAction,
@@ -3280,13 +3169,13 @@
             if (rig) { rig.speaking = Math.max(0.65, Math.min(3.2, length * 0.038)); }
         },
         resetPlayer() {
-            movementSpeed = 0;
+            terrain?.StopPlayer();
             if (player) { player.position.set(0, terrainHeight(0, 0) + FOOT_GAP, 0); player.rotation.y = 0; }
             if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = orbitRadius = zoomTarget = 7.5; }
         },
         teleportToGuardian() {
             if (!player || !camera) return false;
-            movementSpeed = 0;
+            terrain?.StopPlayer();
             player.position.x = NPC_POSITION.x;
             player.position.z = NPC_POSITION.z + 2.0;
             player.position.y = terrainHeight(player.position.x, player.position.z) + 0.03;
