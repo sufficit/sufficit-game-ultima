@@ -222,7 +222,7 @@ form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
         z-index: 8; touch-action: manipulation; -webkit-user-select: none; user-select: none;
     }
     /* Tela limpa por padrão no celular: status, oficina, painel e chat ficam atrás do menu */
-    .ultima-status, .ultima-corner, .ultima-panel, .ultima-panel-toggle,
+    .ultima-status, .ultima-panel, .ultima-panel-toggle,
     .ultima-chat-log, form.ultima-chat-compose { display: none; }
     /* Ao abrir o menu no celular, tudo dele vira uma folha sobre o mundo */
     .ultima-menu-backdrop {
@@ -255,7 +255,6 @@ form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
     }
     /* Dentro da folha, os blocos deixam de flutuar */
     .game-shell.ultima-menu-open .ultima-status,
-    .game-shell.ultima-menu-open .ultima-corner,
     .game-shell.ultima-menu-open .ultima-panel-toggle,
     .game-shell.ultima-menu-open .ultima-panel {
         position: static; width: auto; max-height: none; overflow: visible; z-index: auto;
@@ -263,7 +262,6 @@ form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
     .game-shell.ultima-menu-open .ultima-panel-toggle { display: none; } /* o próprio fab fecha a folha */
     .game-shell.ultima-menu-open .ultima-panel { display: block; }
     .game-shell.ultima-menu-open .ultima-status { display: block; }
-    .game-shell.ultima-menu-open .ultima-corner { display: flex; }
     /* alvos confortáveis dentro da folha */
     .game-shell.ultima-menu-open .ultima-menu button { min-height: 48px; min-width: 48px; } /* run 7: botão-ícone ↻ tinha 27px de largura */
     .game-shell.ultima-menu-open .ultima-menu input,
@@ -317,7 +315,6 @@ form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
 
 /* Telas estreitas: coluna e painéis mais finos (menus SUI origin/main + mobile local) */
 @media (max-width: 760px) {
-    .ultima-corner { width: calc(100vw - 8rem); }
     .ultima-status { max-width: min(240px, 100%); }
     .ultima-panel { top: 3.3rem; max-height: calc(100% - 4.5rem); }
     .ultima-dialog { bottom: .6rem; }

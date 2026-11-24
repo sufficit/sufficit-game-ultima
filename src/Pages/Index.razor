@@ -95,6 +95,22 @@
                         <SUIStatusBadge ToneValue="@NetTone()">@NetLabel()</SUIStatusBadge>
                     </MetaContent>
                 </SUICardHeader>
+                @{ var aiActivity = CurrentAiActivity(); }
+                @* O que a IA está fazendo agora (baixando, pensando, travada, erro) aparece mesmo com o
+                   cartão recolhido: o resumo do cabeçalho só diz qual motor responde. Os detalhes e o
+                   "Tentar de novo" continuam no painel. *@
+                @if (aiActivity is not null)
+                {
+                    <SUICardContent>
+                        <SUIStack Spacing="1">
+                            <SUIStatusBadge ToneValue="@aiActivity.Tone">@aiActivity.Label</SUIStatusBadge>
+                            @if (aiActivity.ShowProgress)
+                            {
+                                <SUIProgressLinear Value="@Math.Round(aiActivity.Progress * 100)" Rounded="true" AriaLabel="Progresso do modelo de IA" />
+                            }
+                        </SUIStack>
+                    </SUICardContent>
+                }
                 @if (_statusExpanded)
                 {
                     <SUICardContent>
@@ -484,6 +500,7 @@
     private double _posX, _posY, _posZ, _fps, _micLevel;
     private int _remoteCount;
     private string? _announcement;
+    private int _announcementVersion;   // cada aviso novo cancela o temporizador do anterior
     private string _contentSource = "Conteúdo local";
     private string _netStatus = "Conectando…";
     private string _micStatus = "Microfone desligado; o áudio só é transmitido quando você ativa a voz.";
@@ -689,8 +706,49 @@
     private string StatusSummary() => $"{ActiveEngine()} · {_remoteCount} jogador(es) remoto(s)";
     private string NetLabel()
     {
-        var label = string.IsNullOrEmpty(_renderer) ? _netStatus : _netStatus;
+        var label = _netStatus;
         return label.Length > 30 ? label[..30] + "…" : label;
+    }
+
+    // --- O que a IA está fazendo agora, resumido para o cartão de status (mesmo recolhido) ---
+    // Só aparece quando algo acontece ou dá errado; "off", "checking", "unsupported" e "ready"
+    // ficam só no painel de IA. Os detalhes e o "Tentar de novo" continuam no painel.
+    private sealed record AiActivity(string Label, double Progress, bool ShowProgress, Sufficit.Blazor.UI.Components.SUITone Tone);
+
+    private AiActivity? CurrentAiActivity()
+        => AiActivityOf(_aiState, _aiProgress, "GPU") ?? AiActivityOf(_aiCpuState, _aiCpuProgress, "CPU");
+
+    private static AiActivity? AiActivityOf(string state, double progress, string engine)
+    {
+        var pct = (int)Math.Round(progress * 100);
+        return state switch
+        {
+            "model" or "downloading" => new AiActivity($"Baixando IA ({engine}) · {pct}%", progress, true, SUITone.Info),
+            "loading" or "compiling" => new AiActivity($"Preparando IA ({engine})…", progress, true, SUITone.Info),
+            "thinking" => new AiActivity($"Guardiã pensando ({engine})…", progress, false, SUITone.Info),
+            "stalled" => new AiActivity($"IA travada em {pct}% ({engine})", progress, true, SUITone.Warning),
+            "error" => new AiActivity($"Erro na IA ({engine})", progress, false, SUITone.Danger),
+            _ => null,
+        };
+    }
+
+    // --- Avisos vindos do servidor são transitórios: somem sozinhos depois do tempo de leitura ---
+    // (6 s + 12 caracteres por segundo, entre 8 e 25 s)
+    private static TimeSpan AnnouncementTime(string text) => TimeSpan.FromSeconds(Math.Clamp(6 + text.Length / 12, 8, 25));
+    private void ShowAnnouncement(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        _ = InvokeAsync(async () =>
+        {
+            var version = ++_announcementVersion;
+            _announcement = text;
+            StateHasChanged();
+            try { await Task.Delay(AnnouncementTime(text), _browserLifetime.Token); }
+            catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException) { return; }
+            if (version != _announcementVersion) return;   // um aviso mais novo assumiu o lugar
+            _announcement = null;
+            StateHasChanged();
+        });
     }
     private Sufficit.Blazor.UI.Components.SUITone NetTone() => _netStatus.Contains("Conectad", StringComparison.OrdinalIgnoreCase) ? Sufficit.Blazor.UI.Components.SUITone.Success
         : _netStatus.Contains("Conectando", StringComparison.OrdinalIgnoreCase) ? Sufficit.Blazor.UI.Components.SUITone.Info
@@ -824,7 +882,7 @@
                         _npc.Submit(new IntroLinesChanged(NowMs(), name!, remoteLines));
                         RunNpcTick();
                     }
-                    _announcement = announcements?.Items?.FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Text) && item.Text.Length <= 300)?.Text;
+                    ShowAnnouncement(announcements?.Items?.FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Text) && item.Text.Length <= 300)?.Text);
                     _contentSource = "Conteúdo remoto";
                     StateHasChanged();
                 });
