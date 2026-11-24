@@ -251,6 +251,31 @@ animated.Submit(new AnimationMarked(3010, "hit", "collect", default));
 Check("agendador entrega impacto mesmo fora de diálogo",
     animated.Tick(Snap()).Single().Commands.Single() is ResolveAnimationMark { Name: "hit", Payload: "collect" });
 
+// Regressões da simulação compartilhada com o navegador.
+var movement = new PlayerMovement(1.75, 0.41, 0.03);
+movement.SetColliders([0, 2, 0.28, 0, 5, 0]);
+var blocked = movement.Sweep(0, 0.03, 0, 0, 5, 0);
+Check("varredura contínua para na frente do tronco", Math.Abs(blocked.Z - 1.469) < 0.0001);
+var slide = movement.Sweep(-0.40, 0.03, 0, 0, 3, 0);
+Check("colisão oblíqua conserva o deslizamento", slide.X < -0.55 && slide.Z > 1.7);
+Check("proximidade usa a mesma geometria da colisão", movement.NearbyObstacle(0, 0.03, 1) == 0);
+movement.SetColliders([0, 2, 0.28, 0, 0.30, 0]);
+Check("objeto abaixo do joelho permite avanço", movement.Sweep(0, 0.03, 0, 0, 5, 0).Z == 5);
+movement.SetColliders([]);
+Check("colisor removido também some da proximidade", movement.NearbyObstacle(0, 0.03, 1) == -1);
+var axes = PlayerMovement.Stick(0.8, -0.8);
+Check("zona morta radial preserva diagonal", PlayerMovement.Stick(0.1, 0.1) == (0, 0)
+    && Math.Abs(axes.X + axes.Y) < 1e-12
+    && Math.Abs(double.Hypot(axes.X, axes.Y) - 1) < 1e-12);
+Check("alcance de coleta considera os três eixos", PlayerPose.CanCollect(0, 2.1, 2.8)
+    && !PlayerPose.CanCollect(0, 2.2, 2.8));
+
+Span<double> legs = stackalloc double[7];
+PlayerPose.SolveLegs(legs, 0, 0.03, 0.03, 0.03, 0.77, 0.364, 0.051,
+    0.1, 0, 0.22, true, -0.1, 0, 0.04, true);
+Check("desnível eleva quadril com limite e mantém as solas niveladas", legs[0] > 0.03 && legs[0] <= 0.12
+    && Math.Abs(legs[1] + legs[2] + legs[3]) < 1e-12 && Math.Abs(legs[4] + legs[5] + legs[6]) < 1e-12);
+
 Console.WriteLine(failures == 0 ? "\nTODOS OS TESTES PASSARAM" : $"\n{failures} FALHA(S)");
 return failures == 0 ? 0 : 1;
 
