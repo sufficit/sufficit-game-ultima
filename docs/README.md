@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Sombras dos avatares remotos por distância](activities/202611241105-sombras-avatares-remotos.md)
+
 - [Desempenho dos avatares remotos em C#](activities/202611241052-desempenho-avatares-remotos.md)
 
 - [Consultas volumétricas em C#](activities/202611241032-consultas-volumetricas-csharp.md)
