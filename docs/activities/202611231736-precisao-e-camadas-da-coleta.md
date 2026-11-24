@@ -24,7 +24,7 @@ corte para o centro de uma célula de 2 m e usava uma chave única por célula.
 
 - Publish Release, sintaxe JavaScript, `git diff --check` e o
   [ensaio de colisão](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs) local passaram.
-- O [ensaio da mochila](../../tests/backpack.e2e.cjs) verificou coleta de
+- O [ensaio da mochila](https://github.com/sufficit/sufficit-game-ultima/blob/a7609116e65b74cc35707c54669ada5a2c5576a2/tests/backpack.e2e.cjs) verificou coleta de
   um toco, alcance, três cortes no mesmo ponto fora do centro da grade,
   acréscimo de três itens, recarga e extensão de um corte legado.
   A profundidade medida foi de cerca de 1,32 m após três cliques.

@@ -20,7 +20,7 @@ alvo.
 
 - RulesSmoke verificou fronteira, pausa, loop, reinício da ação e
   encaminhamento do impacto pelo agendador fora de diálogo.
-- O [teste da mochila](../../tests/backpack.e2e.cjs) confirmou a pose,
+- O [teste da mochila](https://github.com/sufficit/sufficit-game-ultima/blob/a7609116e65b74cc35707c54669ada5a2c5576a2/tests/backpack.e2e.cjs) confirmou a pose,
   o impacto, o efeito sonoro, três camadas de escavação, persistência,
   restauração de dados legados e deduplicação entre abas.
 - Passou localmente e no build `f59bfde` com renderização no worker

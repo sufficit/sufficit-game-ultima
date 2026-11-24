@@ -28,5 +28,5 @@ distância entre uma sola e a superfície visível.
   com WebGL em main e worker. O vão máximo foi de 4,7 mm. Durante a
   passagem, o ensaio mede a subida do tornozelo, pois o quadril pode
   ficar baixo quando o outro pé ainda está apoiado no chão.
-- O [ensaio da mochila](../../tests/backpack.e2e.cjs) também passou em
+- O [ensaio da mochila](https://github.com/sufficit/sufficit-game-ultima/blob/a7609116e65b74cc35707c54669ada5a2c5576a2/tests/backpack.e2e.cjs) também passou em
   produção por toque. [Workflow de publicação](https://github.com/sufficit/sufficit-game-ultima/actions/runs/45259641716).

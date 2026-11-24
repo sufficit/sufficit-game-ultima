@@ -26,7 +26,7 @@ máxima entre a altura desenhada e a superfície calculada foi de 1,14 m.
 - A captura comparativa mostrou uma parede mais arredondada. O teste
   removeu uma escultura compartilhada e confirmou a volta à malha base.
 - Publish Release, sintaxe JavaScript, `git diff --check`, modo procedural,
-  [mochila](../../tests/backpack.e2e.cjs) e [colisão](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs)
+  [mochila](https://github.com/sufficit/sufficit-game-ultima/blob/a7609116e65b74cc35707c54669ada5a2c5576a2/tests/backpack.e2e.cjs) e [colisão](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs)
   passaram localmente.
 - O build `02e41e0` passou em produção nos renderizadores main e worker.
   O teste de coleta confirmou a mira alinhada em escala 2× e a recarga de

@@ -25,7 +25,7 @@ ficam no navegador, em uma camada local sobre o mapa compartilhado.
 - O publish Release, a sintaxe JavaScript e o `git diff --check` passaram.
   O [ensaio de colisão e passo articulado](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs)
   passou localmente nos modos main e worker.
-- O [ensaio da mochila](../../tests/backpack.e2e.cjs) passou localmente e no
+- O [ensaio da mochila](https://github.com/sufficit/sufficit-game-ultima/blob/a7609116e65b74cc35707c54669ada5a2c5576a2/tests/backpack.e2e.cjs) passou localmente e no
   build publicado `ab016e7`, por clique em main e por toque em worker.
   Confirmou a remoção do toco, o desbaste de 0,48 m na malha, o alcance, a
   rejeição de duplicatas, a recarga e o registro único em duas abas.

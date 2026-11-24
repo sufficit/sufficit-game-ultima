@@ -1,3 +1,5 @@
+using static BrowserTest;
+
 internal sealed partial class WorldCollision
 {
     private async Task GaitAsync()

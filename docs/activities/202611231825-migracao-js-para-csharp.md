@@ -35,7 +35,7 @@ dentro do motor, com o Blazor recebendo eventos em vez de chamadas por quadro.
   usou uma API isolada para validar sessão e mapa, presença, chat, edição,
   criação e upload de GLB, rejeição por SHA-256, convite, aviso de atualização
   e confirmação da fila anterior após uma falha de envio.
-- Os ensaios de [mochila](../../tests/backpack.e2e.cjs) e
+- Os ensaios de [mochila](https://github.com/sufficit/sufficit-game-ultima/blob/a7609116e65b74cc35707c54669ada5a2c5576a2/tests/backpack.e2e.cjs) e
   [movimento](https://github.com/sufficit/sufficit-game-ultima/blob/85d587cc3ae9b2cda02888721b52df8e072c478d/tests/world-collision.e2e.cjs) cobriram as regressões do jogo.
 - O build `2746bd2` passou no GitHub Pages com os três ensaios. Os testes
   de sessão e Oficina usaram endpoints simulados no navegador.

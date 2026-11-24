@@ -33,7 +33,7 @@ worker de renderização.
   nas duas divisas medidas, incluindo após escavar. O chunk passou de
   4.225 para 4.335 vértices com o refinamento local. O worker passou
   também com as imagens dos materiais bloqueadas.
-- O [teste de mochila](../../tests/backpack.e2e.cjs) passou com escala 2×.
+- O [teste de mochila](https://github.com/sufficit/sufficit-game-ultima/blob/a7609116e65b74cc35707c54669ada5a2c5576a2/tests/backpack.e2e.cjs) passou com escala 2×.
   A mira, a coleta de três camadas, a restauração após recarregar,
   o registro legado e a coleta concorrente entre abas foram verificados.
 - Os quatro ensaios de navegador passaram no build `1dcb83e` em produção.

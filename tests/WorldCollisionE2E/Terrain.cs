@@ -1,3 +1,5 @@
+using static BrowserTest;
+
 using System.Text.Json;
 
 internal sealed partial class WorldCollision

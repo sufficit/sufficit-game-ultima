@@ -33,7 +33,7 @@ curtos ligados a uma ação.
   caminhada e corrida, colisão, apoio dos pés, gesto de exame, expressão
   de diálogo e interpolação remota. A mesma janela de 700 ms de teclado
   produziu cerca de 2,4 m em caminhada e 4,4 m em corrida.
-- O [ensaio da mochila](../../tests/backpack.e2e.cjs) verificou o gesto
+- O [ensaio da mochila](https://github.com/sufficit/sufficit-game-ultima/blob/a7609116e65b74cc35707c54669ada5a2c5576a2/tests/backpack.e2e.cjs) verificou o gesto
   após a coleta confirmada, o destaque e a escavação em camadas.
 - Um ensaio local adicional observou o Andarilho parar de caminhar
   durante a conversa e voltar ao trajeto após o fechamento do diálogo.

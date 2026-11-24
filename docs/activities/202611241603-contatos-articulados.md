@@ -29,7 +29,7 @@ parados, o braço liberava a interseção ao custo de afastar um deles.
   oito quadros de gestos repetidos.
 - A fixture do pé em balanço posicionou uma malha remota na trajetória
   de um passo de 38 cm. O solver recolheu os 38 cm sem deslocar a raiz.
-  [Teste de passo articulado](../../tests/articulated-step.e2e.cjs)
+  [Teste de passo articulado](https://github.com/sufficit/sufficit-game-ultima/blob/a7609116e65b74cc35707c54669ada5a2c5576a2/tests/articulated-step.e2e.cjs)
 - Caminhada, contorno, diálogo e choque corporal passaram nos dois
   modos. Os testes em produção verificaram o commit `e7aa93126ba29173237cfccb66e12bc6643a0408`
   no worker e na thread principal. [Jogar Ultima](https://sufficit.github.io/sufficit-game-ultima/)

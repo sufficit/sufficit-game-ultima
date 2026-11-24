@@ -24,7 +24,7 @@ O relógio precisa funcionar também fora de uma sessão multiplayer.
   antes de uma hora, a manutenção da calibração após HTTP 503 e a
   aplicação da amostra seguinte já disponível. O céu e o painel
   usaram a mesma referência no worker e na thread principal.
-  [Teste de relógio](../../tests/world-clock.e2e.cjs)
+  [Teste de relógio](https://github.com/sufficit/sufficit-game-ultima/blob/a7609116e65b74cc35707c54669ada5a2c5576a2/tests/world-clock.e2e.cjs)
 - Uma resposta simulada com 1,2 s de atraso produziu 648 ms de ajuste
   na hora enviada ao motor, incluindo o tempo de processamento.
 - O site publicado no build `78b135e8411d9d1d974f86d209f3c254a859015c` recebeu a hora do servidor

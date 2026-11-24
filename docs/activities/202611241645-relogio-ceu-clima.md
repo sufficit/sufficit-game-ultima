@@ -43,5 +43,5 @@ evitar cartões redundantes da referência anti-ai-slop da skill Refero.
 - Build Release do motor e do cliente. O build `edd3ae602dc4ff714a56ba2cb4bc680a56f7b416` foi
   verificado no site publicado em worker (desktop) e thread principal
   (tela estreita).
-  [Teste de relógio, céu e clima](../../tests/world-clock.e2e.cjs)
+  [Teste de relógio, céu e clima](https://github.com/sufficit/sufficit-game-ultima/blob/a7609116e65b74cc35707c54669ada5a2c5576a2/tests/world-clock.e2e.cjs)
   · [Jogar Ultima](https://sufficit.github.io/sufficit-game-ultima/)

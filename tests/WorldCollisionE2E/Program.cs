@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Playwright;
+using static BrowserTest;
 
 try
 {
@@ -13,12 +14,28 @@ try
         Args = (Environment.GetEnvironmentVariable("ULTIMA_CHROMIUM_ARGS") ?? "")
             .Split(' ', StringSplitOptions.RemoveEmptyEntries)
     });
-    var size = (Environment.GetEnvironmentVariable("ULTIMA_VIEWPORT") ?? "1200x720").Split('x');
-    var page = await browser.NewPageAsync(new()
+    switch (args.SingleOrDefault() ?? "collision")
     {
-        ViewportSize = new() { Width = int.Parse(size[0]), Height = int.Parse(size[1]) }
-    });
-    await new WorldCollision(page).RunAsync();
+        case "collision":
+            var size = (Environment.GetEnvironmentVariable("ULTIMA_VIEWPORT") ?? "1200x720").Split('x');
+            var page = await browser.NewPageAsync(new()
+            {
+                ViewportSize = new() { Width = int.Parse(size[0]), Height = int.Parse(size[1]) }
+            });
+            await new WorldCollision(page).RunAsync();
+            break;
+        case "step":
+            await ArticulatedStep.RunAsync(browser);
+            break;
+        case "clock":
+            await new WorldClock(browser).RunAsync();
+            break;
+        case "backpack":
+            await new Backpack(browser).RunAsync();
+            break;
+        default:
+            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack.");
+    }
     return 0;
 }
 catch (Exception failure)
@@ -29,9 +46,6 @@ catch (Exception failure)
 
 internal sealed partial class WorldCollision(IPage page)
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-    private static readonly bool MainThread = Environment.GetEnvironmentVariable("ULTIMA_MODE") == "main";
-    private static readonly string Mode = MainThread ? "main" : "worker";
     private static readonly double WaitScale = double.TryParse(Environment.GetEnvironmentVariable("ULTIMA_WALK_SCALE"),
         CultureInfo.InvariantCulture, out var scale) && scale > 0 ? scale : 1;
     private static readonly int WaitTries = int.TryParse(Environment.GetEnvironmentVariable("ULTIMA_WAIT_TRIES"),
@@ -44,15 +58,11 @@ internal sealed partial class WorldCollision(IPage page)
     internal async Task RunAsync()
     {
         page.PageError += (_, error) => _errors.Enqueue(error);
-        var site = Environment.GetEnvironmentVariable("ULTIMA_SITE") ?? "https://sufficit.github.io/sufficit-game-ultima/";
-        var url = site + "?live=0&rede=0&api=http%3A%2F%2F127.0.0.1%3A19999" + (MainThread ? "&render=main&gpu=0" : "");
-        await page.GotoAsync(url, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
-        var build = await page.Locator("meta[name=ultima-build]").GetAttributeAsync("content");
-        var expected = Environment.GetEnvironmentVariable("ULTIMA_BUILD");
-        Check(string.IsNullOrEmpty(expected) || build == expected, "build publicado esperado", new { build, expected });
+        await page.GotoAsync(GameUrl(), new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+        var build = await CheckBuildAsync(page);
         await WaitAsync(async () =>
         {
-            var world = await ReadAsync<WorldState?>("""
+            var world = await ReadAsync<WorldState?>(page, """
                 async () => {
                     if (!window.game?.glb?.status || !window.game?.build?.state) return null;
                     return { map: await game.build.state(), glb: await game.glb.status(), models: await game.models.status() };
@@ -77,18 +87,7 @@ internal sealed partial class WorldCollision(IPage page)
         CheckPageErrors();
     }
 
-    private Task<T> RenderAsync<T>(string expression, object? arg = null) => ReadAsync<T>(expression, arg, _worker);
-
-    private async Task<T> ReadAsync<T>(string expression, object? arg = null, IWorker? worker = null)
-    {
-        // O conversor de EvaluateAsync exige construtor sem parâmetros para objetos.
-        // Serializar uma vez por lote permite usar os registros posicionais no C#.
-        var script = $"async arg => JSON.stringify((await ({expression})(arg)) ?? null)";
-        var data = worker is null
-            ? await page.EvaluateAsync<string>(script, arg)
-            : await worker.EvaluateAsync<string>(script, arg);
-        return JsonSerializer.Deserialize<T>(data, Json)!;
-    }
+    private Task<T> RenderAsync<T>(string expression, object? arg = null) => ReadAsync<T>(page, expression, arg, _worker);
 
     private Task<T> Probe<T>(string name, object? arg = null) =>
         RenderAsync<T>($"arg => globalThis.ultimaCollisionProbes.{name}(arg)", arg);
@@ -102,14 +101,6 @@ internal sealed partial class WorldCollision(IPage page)
         }
         throw new InvalidOperationException(description);
     }
-
-    private static void Check(bool passed, string description, object? evidence = null)
-    {
-        if (!passed)
-            throw new InvalidOperationException(evidence is null ? description : $"{description}: {JsonSerializer.Serialize(evidence, Json)}");
-    }
-
-    private static void Log(object value) => Console.WriteLine(JsonSerializer.Serialize(value, Json));
 
     private void CheckPageErrors() => Check(_errors.IsEmpty, "erros no navegador", _errors);
     private static Task SettleAsync(int milliseconds = 300) => Task.Delay((int)Math.Round(milliseconds * WaitScale));
