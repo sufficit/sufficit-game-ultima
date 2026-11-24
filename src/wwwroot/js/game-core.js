@@ -2427,16 +2427,29 @@
         }
     }
 
-    function updateCharacterPose(root, delta, distance) {
+    function updateCharacterPose(root, delta, distance, patrol = false, target = null) {
         const rig = characterRigs.get(root);
         if (!rig) { return; }
         const listening = frozen && (root === player || root === dialoguePartner);
         const action = rig.action;
         const { x, y, z } = root.position;
-        const frame = terrain.AnimateCharacter(x, y, z, root.rotation.y,
-            rig.gaitPhase, rig.gaitWeight, rig.clock, rig.speaking, action?.elapsed ?? 0, action?.duration ?? 0,
-            distance, delta, root.name.length, listening, frozen, action?.bend ?? 0, action?.reach ?? 0,
-            rig.legs.length > 0, root === player, worldTunnels.length > 0);
+        let frame;
+        if (patrol || target) {
+            const destination = patrol ? WANDERER_HOME : target;
+            frame = terrain.AnimateCompanion(x, y, z, root.rotation.y,
+                rig.gaitPhase, rig.gaitWeight, rig.clock, rig.speaking, delta, root.name.length,
+                patrol, destination.x, destination.z, patrol ? wanderT : target.yaw);
+            root.position.x = frame[24];
+            root.position.z = frame[25];
+            root.rotation.y = frame[26];
+            if (patrol) { wanderT = frame[27]; }
+            distance = frame[28];
+        } else {
+            frame = terrain.AnimateCharacter(x, y, z, root.rotation.y,
+                rig.gaitPhase, rig.gaitWeight, rig.clock, rig.speaking, action?.elapsed ?? 0, action?.duration ?? 0,
+                distance, delta, root.name.length, listening, frozen, action?.bend ?? 0, action?.reach ?? 0,
+                rig.legs.length > 0, root === player, worldTunnels.length > 0);
+        }
         const [phase, weight, torsoX, torsoZ, headX, headZ, eyesY, mouthX, mouthY, browZ, leftArm, rightArm,
             clock, speech, elapsed, previous, progress] = frame;
         rig.gaitPhase = phase;
@@ -2654,26 +2667,10 @@
     }
 
     function updateOtherCharacters(delta) {
-        let distance = 0;
-        if (dialoguePartner !== wandererRoot) {
-            const { x, z } = wandererRoot.position;
-            wanderT = (wanderT + delta * 0.65) % (2 * Math.PI);
-            wandererRoot.position.x = WANDERER_HOME.x + Math.sin(wanderT) * 1.4;
-            wandererRoot.position.z = WANDERER_HOME.z + Math.cos(wanderT) * 1.4;
-            turnCharacter(wandererRoot, wanderT + Math.PI / 2, delta, 7);
-            distance = Math.hypot(wandererRoot.position.x - x, wandererRoot.position.z - z);
-        }
-        updateCharacterPose(wandererRoot, delta, distance);
+        updateCharacterPose(wandererRoot, delta, 0, dialoguePartner !== wandererRoot);
         updateCharacterPose(guardianRoot, delta, 0);
         for (const { avatar, label, target } of remotes.values()) {
-            const { x, z } = avatar.position;
-            if (target) {
-                const blend = 1 - Math.exp(-12 * delta);
-                avatar.position.x = lerp(x, target.x, blend);
-                avatar.position.z = lerp(z, target.z, blend);
-                turnCharacter(avatar, target.yaw, delta, 12);
-            }
-            updateCharacterPose(avatar, delta, Math.hypot(avatar.position.x - x, avatar.position.z - z));
+            updateCharacterPose(avatar, delta, 0, false, target);
             label.position.set(avatar.position.x, avatar.position.y + 1.925, avatar.position.z);
         }
     }

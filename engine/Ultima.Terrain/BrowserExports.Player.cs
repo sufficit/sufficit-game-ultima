@@ -64,6 +64,8 @@ internal static partial class BrowserExports
 
     // 12 pose channels, 5 timeline channels, 7 leg channels and 11 support-probe channels.
     private static readonly double[] CharacterFrame = new double[35];
+    // 24 pose e pernas, seguidas de X, Z, orientação, fase da patrulha e distância.
+    private static readonly double[] CompanionFrame = new double[29];
     private static readonly double[] LegResult = new double[7];
 
     [JSExport]
@@ -75,7 +77,34 @@ internal static partial class BrowserExports
         double distance, double delta, int nameLength, bool listening, bool frozen, double bend, double reach,
         bool hasLegs, bool isPlayer, bool hasTunnels)
     {
-        var result = CharacterFrame.AsSpan();
+        AnimateCharacterFrame(CharacterFrame, x, y, z, yaw, phase, weight, clock, speech, elapsed, duration,
+            distance, delta, nameLength, listening, frozen, bend, reach, hasLegs, isPlayer, hasTunnels);
+        return CharacterFrame;
+    }
+
+    [JSExport]
+    internal static double[] AnimateCompanion(double x, double y, double z, double yaw,
+        double phase, double weight, double clock, double speech, double delta, int nameLength,
+        bool patrol, double destinationX, double destinationZ, double heading)
+    {
+        var motion = patrol
+            ? PlayerCompanionMotion.Patrol(x, z, yaw, destinationX, destinationZ, heading, delta)
+            : PlayerCompanionMotion.Follow(x, z, yaw, destinationX, destinationZ, heading, delta);
+        AnimateCharacterFrame(CompanionFrame, motion.X, y, motion.Z, motion.Yaw, phase, weight, clock, speech,
+            0, 0, motion.Distance, delta, nameLength, false, false, 0, 0, true, false, false);
+        CompanionFrame[24] = motion.X;
+        CompanionFrame[25] = motion.Z;
+        CompanionFrame[26] = motion.Yaw;
+        CompanionFrame[27] = motion.Phase;
+        CompanionFrame[28] = motion.Distance;
+        return CompanionFrame;
+    }
+
+    private static void AnimateCharacterFrame(Span<double> result, double x, double y, double z, double yaw,
+        double phase, double weight, double clock, double speech, double elapsed, double duration,
+        double distance, double delta, int nameLength, bool listening, bool frozen, double bend, double reach,
+        bool hasLegs, bool isPlayer, bool hasTunnels)
+    {
         clock += delta;
         speech = Math.Max(0, speech - delta);
         var (next, previous, progress) = PlayerPose.AdvanceAction(elapsed, duration, delta, frozen);
@@ -86,7 +115,7 @@ internal static partial class BrowserExports
         result[14] = next;
         result[15] = previous;
         result[16] = progress;
-        if (!hasLegs) return CharacterFrame;
+        if (!hasLegs) return;
 
         Span<double> feet = stackalloc double[8];
         PlayerPose.FootTargets(feet, yaw, result[0], result[1], delta > 0 ? distance / delta : 0, _spacing, _shoeOffset);
@@ -100,6 +129,7 @@ internal static partial class BrowserExports
         var rightFloor = Floor(rightX, rightZ, y, useVolume);
         PlayerPose.SolveLegs(result[17..24], ground, y, delta, _footGap, _hipHeight, _legLength, _ankleOffset,
             feet[0], feet[1], leftFloor, false, feet[4], feet[5], rightFloor, false);
+        if (!isPlayer) return;
         result[24] = ground;
         result[25] = leftX;
         result[26] = leftZ;
@@ -111,7 +141,6 @@ internal static partial class BrowserExports
         result[32] = rightFloor;
         result[33] = feet[4];
         result[34] = feet[5];
-        return CharacterFrame;
     }
 
     private static double Floor(double x, double z, double y, bool useVolume)

@@ -62,6 +62,13 @@ articulação com essa altura. A prévia e o clique de coleta compartilham a
 resolução do alvo e o limite de alcance.
 [Exportações da simulação](engine/Ultima.Terrain/BrowserExports.Player.cs)
 
+O Andarilho e os avatares remotos recebem movimento e pose na mesma chamada
+C#. A patrulha fornece a distância percorrida ao cálculo da marcha. Avatares
+remotos interpolam posição e orientação até a última pose recebida. O
+adaptador da cena aplica o resultado, posiciona os rótulos e trata a chegada
+dos eventos de rede.
+[Movimento de NPCs e avatares](engine/Ultima.Terrain/PlayerCompanionMotion.cs)
+
 O C# calcula rotação, zoom, órbita e retorno suave da câmera. O Babylon.js
 consulta a geometria visível, aplica o recuo imediato em caso de colisão e
 atualiza a câmera da cena. Quando a órbita estabiliza, o adaptador reutiliza o

@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Movimento de NPC e avatares remotos em C#](activities/202611241023-movimento-npc-remotos-csharp.md)
+
 - [Preparação do cenário em C#](activities/202611240032-preparacao-cenario-csharp.md)
 
 - [Auditoria dos planos e recuperação do cache de malhas](activities/202611240018-auditoria-planos-e-cache-do-terreno.md)

@@ -367,6 +367,16 @@ Check("multidão fora do frustum sai do lote", behindPlane[0] == 0 && behindPlan
 var far = crowd.Cull(100, 0, 0, new double[24], 720, 0.85, 60);
 Check("multidão distante preserva o contador de descarte", far[0] == 0 && far[1] == 4);
 
+var patrol = PlayerCompanionMotion.Patrol(5, 1.4, Math.PI / 2, 5, 0, 0, 0.05);
+Check("Andarilho conserva raio e velocidade angular da patrulha",
+    Math.Abs(double.Hypot(patrol.X - 5, patrol.Z) - 1.4) < 1e-12 && patrol.Phase == 0.0325 && patrol.Distance > 0);
+var turnAcrossPi = PlayerCompanionMotion.Follow(1, 2, 3, 2, 4, -3, 0.05);
+Check("remoto interpola deslocamento e atravessa pi pelo arco curto",
+    turnAcrossPi.X > 1 && turnAcrossPi.X < 2 && turnAcrossPi.Yaw > 3
+    && Math.Abs(turnAcrossPi.Distance - double.Hypot(turnAcrossPi.X - 1, turnAcrossPi.Z - 2)) < 1e-12);
+Check("remoto no destino mantém a pose e percorre zero",
+    PlayerCompanionMotion.Follow(1, 2, 3, 1, 2, 3, 0.05) == new PlayerCompanionMotion.Frame(1, 2, 3, 0, 0));
+
 Console.WriteLine(failures == 0 ? "\nTODOS OS TESTES PASSARAM" : $"\n{failures} FALHA(S)");
 return failures == 0 ? 0 : 1;
 
