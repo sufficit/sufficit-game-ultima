@@ -9,32 +9,19 @@ Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
-Planos históricos:
+As quatro frentes históricas estão registradas nas atividades de entrega.
 
-1. ✅ [PLAN-WORKER-OFFSCREEN-CANVAS.md](PLAN-WORKER-OFFSCREEN-CANVAS.md) —
-   **concluído em 22/11/2026**: motor em `game-core.js` sem DOM, shell com worker
-   OffscreenCanvas + fallback `?render=main`, loader glTF verificado por SHA-384 no
-   worker. Atividade:
-   [202611220130-motor-worker-offscreen.md](activities/202611220130-motor-worker-offscreen.md).
-2. ✅ [PLAN-DLL-OPFS-CACHE.md](PLAN-DLL-OPFS-CACHE.md) — **concluído em 21/11/2026**:
-   OPFS com chave SHA-256 de build+escopo; texturas e terreno prontos nas revisitas
-   (init 106→41 ms em produção). Atividade:
-   [202611212050-cache-opfs-preparados.md](activities/202611212050-cache-opfs-preparados.md).
-3. ✅ [PLAN-NPC-AI-DECISIONS.md](PLAN-NPC-AI-DECISIONS.md) — **concluído em
-   22/11/2026**: cérebros por NPC (Guardiã e Andarilho), agendador com budget por
-   tick, WebLLM/API como produtores externos; 34 testes. Atividade:
-   [202611220040-ia-npcs-decisoes.md](activities/202611220040-ia-npcs-decisoes.md).
-4. ✅ [PLAN-ASSET-UPLOAD-BUDGET.md](PLAN-ASSET-UPLOAD-BUDGET.md) — **concluído em
-   21/11/2026**: fila com orçamento de 4 ms/frame, scatter em lotes e
-   `game.perf.report()`. Atividade:
-   [202611212030-upload-amortizado-modelos.md](activities/202611212030-upload-amortizado-modelos.md).
+- [OffscreenCanvas com fallback na thread principal](activities/202611220130-motor-worker-offscreen.md)
+- [Cache OPFS de assets preparados](activities/202611212050-cache-opfs-preparados.md)
+- [Decisões dos NPCs em C#](activities/202611220040-ia-npcs-decisoes.md)
+- [Upload amortizado de modelos](activities/202611212030-upload-amortizado-modelos.md)
 
-Fonte técnica das frentes 1–10: análise do repositório
-[w3nder/lineage-rust](https://github.com/w3nder/lineage-rust)
-(cliente Lineage II C4 em wgpu, web WASM + WebGPU; clone local de referência em
-`/mnt/sufficit/lineage-rust`). Cada plano cita os arquivos-fonte correspondentes.
+Os registros preservam as referências técnicas do estudo do lineage-rust e
+as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Auditoria dos planos e recuperação do cache de malhas](activities/202611240018-auditoria-planos-e-cache-do-terreno.md)
 
 - [Paleta do terreno em C#](activities/202611240008-paleta-terreno-csharp.md)
 

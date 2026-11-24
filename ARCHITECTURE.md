@@ -79,6 +79,15 @@ Pinturas são sincronizadas na ordem do journal quando mudam. O Babylon.js
 compõe os detalhes rasterizados com os WebP e envia a textura à GPU. O mesmo
 gerador entrega a cor procedural quando os WebP estão indisponíveis.
 
+### Cache de malhas
+
+O OPFS guarda o bloco binário da malha base por build e coordenadas do chunk.
+A fila lê e verifica o bloco fora do quadro. Uma leitura lenta ou inválida
+resulta em geração em C#. Edições que alteram a geometria usam a geração a
+partir do estado em memória. Os blocos de malha carregados do OPFS seguem
+direto para a criação da malha no Babylon.js.
+[Histórico do cache](docs/activities/202611212050-cache-opfs-preparados.md)
+
 ### Desempenho da migração
 
 Meça o caminho crítico do quadro antes e depois de cada migração. Compare

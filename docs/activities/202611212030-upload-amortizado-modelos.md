@@ -32,7 +32,6 @@ todos nos primeiros ~3 s, a janela de entrada das DLLs.
   - Monitor `game.perf.report()`: custo de CPU do loop de render (mediana/p95/p99/
     máx dos últimos 600 frames, contagem > 33 ms) e `modelStatus` ganha `queue` e
     `timings` por modelo (cpuMs, passos, pior passo, enfileirado/concluído em ms).
-- `docs/PLAN-ASSET-UPLOAD-BUDGET.md` atualizado com os checkpoints.
 
 ## Validação e entrega
 
@@ -55,3 +54,9 @@ todos nos primeiros ~3 s, a janela de entrada das DLLs.
   medido por rAF; a evidência válida do orçamento é o custo de CPU do loop e o
   pior passo por modelo, ambos dentro do orçamento. Recusa de DLL adulterada e
   fallback de marcador não foram tocados (permanecem como em `86ada31`).
+
+A carga de pacotes DLL é sequencial no cliente C#. O orçamento por quadro e o
+lote de 24 se aplicam ao processamento dos descritores na fila do motor.
+[Carregador de modelos](../../src/Models/ModelLoader.cs)
+
+[Plano original e checkpoints no histórico do GitHub](https://github.com/sufficit/sufficit-game-ultima/blob/781180f5648fac40e896a7dbd847d0399ec7caa9/docs/PLAN-ASSET-UPLOAD-BUDGET.md)

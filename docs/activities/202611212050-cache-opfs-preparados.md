@@ -66,3 +66,8 @@ OPFS com chave de hash de build+opções e publicação atômica
 - Decisão registrada: `?v=sha256` + Cache API para as DLLs descartado por ora
   (o loader C# já usa `?h=<sha256>` e o Pages serve por commit); reabrir se as
   DLLs crescerem.
+
+[Plano original e checkpoints no histórico do GitHub](https://github.com/sufficit/sufficit-game-ultima/blob/781180f5648fac40e896a7dbd847d0399ec7caa9/docs/PLAN-DLL-OPFS-CACHE.md)
+
+A auditoria de 24/11 restaurou a reutilização de malhas após a migração para C#.
+[Validação da recuperação](202611240018-auditoria-planos-e-cache-do-terreno.md)

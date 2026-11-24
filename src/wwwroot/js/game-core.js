@@ -336,7 +336,7 @@
     const CHUNK_STEP = CHUNK / CHUNK_SUB;
     const CHUNK_VIEW = 2;                  // janela 5×5 ao redor do jogador (streaming F3)
     const chunkMap = new Map();            // "cx,cz" -> { mesh, cx, cz }
-    const chunkCacheHits = new Map();      // "cx,cz" -> { positions, colors, normals }
+    let hasSoilCuts = false;
     let editsAppliedRev = -1;              // revisão do servidor já refletida no terreno
 
     // Ops de edição (F4): esculturas somam altura com falloff suave; pinturas trocam o
@@ -380,38 +380,31 @@
 
     function chunkKey(cx, cz) { return cx + ',' + cz; }
 
-    // Aquecimento por aproximação: a janela de streaming enfileira o chunk ~32 m
-    // antes de o jogador chegar — o OPFS lê nesse intervalo (com teto de memória).
-    function prefetchChunkCache(cx, cz) {
-        if (!(G.game && G.game.assets && G.game.assets.report().opfs)) { return; }
-        if (chunkCacheHits.has(chunkKey(cx, cz))) { return; }
-        if (chunkCacheHits.size > 64) {
-            chunkCacheHits.delete(chunkCacheHits.keys().next().value);   // mais antigo fora
-        }
-        game.assets.digest(['chunk-v2', host.build, cx, cz]).then(function (key) {
-            return game.assets.load(key).then(function (hit) {
-                if (hit && hit.parts && hit.parts.length === 2) {
-                    chunkCacheHits.set(chunkKey(cx, cz), {
-                        positions: new Float32Array(hit.parts[0]),
-                        normals: new Float32Array(hit.parts[1]),
-                    });
-                }
-            });
-        }).catch(function () { /* cache é otimização */ });
+    const BASE_MESH_VERTICES = (CHUNK_SUB + 1) ** 2;
+    const BASE_MESH_INDICES = CHUNK_SUB * CHUNK_SUB * 6;
+    const BASE_MESH_BYTES = (3 + BASE_MESH_VERTICES * 8 + BASE_MESH_INDICES) * 4;
+    const CHUNK_CACHE_WAIT_MS = 250;
+
+    function usesBaseMesh() {
+        return !hasSoilCuts && !worldSculpts.length && !worldCarves.length && !worldTunnels.length;
     }
 
-    // O cache é do TERRENO BASE: nunca grava depois que edições são conhecidas.
-    function saveChunk(cx, cz, positions, colors, normals) {
-        if (!(G.game && G.game.assets) || worldSculpts.length || worldPaints.length) { return; }
-        game.assets.digest(['chunk-v1', host.build, cx, cz]).then(function (key) {
-            return game.assets.save(key,
-                // O formato do cache (game.assets) declara cada parte em BYTES — como
-                // fazem os outros saves (byteLength). Em elementos (¼ dos bytes de um
-                // Float32Array) a leitura rejeitava o chunk e ele era regravado errado a
-                // cada visita.
-                { v: 1, kind: 'chunk', cx: cx, cz: cz, parts: [positions.byteLength, colors.byteLength, normals.byteLength] },
-                [positions.buffer, colors.buffer, normals.buffer]);
-        }).catch(function () { /* cache é otimização */ });
+    async function loadBaseMesh(cx, cz) {
+        const key = await assetsReal.digest(['terrain-mesh-v1', cx, cz]);
+        const cached = await assetsReal.load(key, false);
+        const part = cached?.parts[0];
+        if (cached?.meta.kind !== 'terrain-mesh' || cached.meta.cx !== cx || cached.meta.cz !== cz ||
+            cached.parts.length !== 1 || part?.byteLength !== BASE_MESH_BYTES) return null;
+        const [vertices, indices, cells] = new Uint32Array(part, 0, 3);
+        if (vertices !== BASE_MESH_VERTICES || indices !== BASE_MESH_INDICES || cells !== 0) return null;
+        const bytes = new Uint8Array(part);
+        return await sha256Hex(bytes) === cached.meta.sha256 ? bytes : null;
+    }
+
+    async function saveBaseMesh(cx, cz, bytes) {
+        const key = await assetsReal.digest(['terrain-mesh-v1', cx, cz]);
+        const sha256 = await sha256Hex(bytes);
+        await assetsReal.save(key, { kind: 'terrain-mesh', cx, cz, sha256, parts: [bytes.byteLength] }, [bytes]);
     }
 
     const CHUNK_TEX = 128;   // 0,25 m por texel útil
@@ -529,9 +522,13 @@
 
     // O módulo C# entrega a malha em um bloco binário. O Babylon consome
     // as vistas tipadas no próprio contexto que executa o renderizador.
-    function buildChunkMesh(cx, cz, mesh = new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene)) {
+    function buildChunkMesh(cx, cz, mesh = null, cached = null) {
+        const newChunk = mesh === null;
+        mesh ??= new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene);
         cameraGeometryRevision++;
-        const bytes = terrain.Build(cx, cz);
+        const base = usesBaseMesh();
+        const fromCache = base && cached;
+        const bytes = fromCache || terrain.Build(cx, cz);
         const words = new Uint32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
         const values = new Float32Array(bytes.buffer, bytes.byteOffset, words.length);
         const [vertices, count, cellCount] = words;
@@ -543,10 +540,13 @@
         const indices = words.subarray(indexStart, indexStart + count);
         vd.indices = vertices > 65535 ? indices : Uint16Array.from(indices);
         const volume = worldTunnels.length > 0 && terrain.HasVolume(cx, cz);
-        mesh.metadata = { volume, terrainCells: cellCount ? words.subarray(indexStart + count) : null };
+        mesh.metadata = { volume, terrainCells: cellCount ? words.subarray(indexStart + count) : null,
+            meshSource: fromCache ? 'opfs' : 'generated' };
         vd.applyToMesh(mesh, true);
         mesh.refreshBoundingInfo();
-        if (!cellCount && !volume) { saveChunk(cx, cz, vd.positions, vd.normals); }
+        if (newChunk && base && !fromCache && assetsReal?.report().opfs) {
+            void saveBaseMesh(cx, cz, bytes).catch(() => {});
+        }
         return mesh;
     }
 
@@ -559,7 +559,30 @@
         const key = chunkKey(cx, cz);
         if (queuedChunks.has(key)) { return; }
         queuedChunks.add(key);
-        prefetchChunkCache(cx, cz);
+        if (!usesBaseMesh() || !assetsReal?.report().opfs) {
+            queueChunkBuild(cx, cz, key);
+            return;
+        }
+        // O prazo começa após o trabalho síncrono da cena. Uma leitura que
+        // terminar enquanto o chunk ainda está na fila também pode ser usada.
+        queueMicrotask(() => {
+            let cached = null;
+            let enqueued = false;
+            const fallback = setTimeout(enqueue, CHUNK_CACHE_WAIT_MS);
+            function enqueue() {
+                if (enqueued) return;
+                enqueued = true;
+                clearTimeout(fallback);
+                queueChunkBuild(cx, cz, key, () => cached);
+            }
+            loadBaseMesh(cx, cz).then(bytes => {
+                cached = bytes;
+                enqueue();
+            }, enqueue);
+        });
+    }
+
+    function queueChunkBuild(cx, cz, key, cachedMesh) {
         const label = 'chunk ' + key;
         modelQueue.push({
             terrainChunk: true,
@@ -570,7 +593,7 @@
                     run: function () {
                         queuedChunks.delete(key);
                         if (Math.abs(cx - chunkCenterX) > CHUNK_VIEW || Math.abs(cz - chunkCenterZ) > CHUNK_VIEW) { return; }
-                        const mesh = buildChunkMesh(cx, cz);
+                        const mesh = buildChunkMesh(cx, cz, undefined, cachedMesh?.());
                         mesh.material = chunkMaterial(cx, cz);
                         mesh.receiveShadows = true;
                         mesh.isPickable = true;
@@ -996,6 +1019,7 @@
             if (entry.kind === 'soil') {
                 const cut = { x: entry.x, z: entry.z, r: SOIL_RADIUS, geometryChanged: true };
                 terrain.AddDig(cut.x, cut.z);
+                hasSoilCuts = true;
                 cameraGeometryRevision++;
                 newCuts.push(cut);
             } else if (entry.brush) {
@@ -3135,6 +3159,7 @@
                 activeMeshCount: scene.getActiveMeshes().length,
                 totalVertices: ch.mesh.getTotalVertices(),
                 terrainEngine: "csharp-wasm",
+                meshSource: ch.mesh.metadata?.meshSource,
                 volume: ch.mesh.metadata?.volume === true,
                 indicesCount: ch.mesh.getTotalIndices ? ch.mesh.getTotalIndices() : null,
                 depthFunc: ch.mesh.material && ch.mesh.material.needDepthPrePass,

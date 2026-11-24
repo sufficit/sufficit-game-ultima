@@ -114,7 +114,7 @@ stable.RecoverFromStable();
 Check("Estável não curado recupera 1 PV", stable.HitPoints == 1 && !stable.Stable);
 Check("1d4 horas de espera", Enumerable.Range(0, 50).Select(i => new Rng((ulong)i)).All(r2 => stable.RollStableRecoveryHours(r2) is >= 1 and <= 4));
 
-// IA de NPCs: decisões sobre snapshot com budget por tick (docs/PLAN-NPC-AI-DECISIONS.md)
+// IA de NPCs: decisões sobre snapshot com budget por tick (docs/activities/202611220040-ia-npcs-decisoes.md)
 WorldSnapshot Snap(bool near = true, bool open = false, bool ai = false, bool nearWanderer = false) => new(0, -12, near, nearWanderer, open, ai, 1000);
 var npc = new NpcScheduler();
 npc.Submit(new PlayerInteracted(1000));
