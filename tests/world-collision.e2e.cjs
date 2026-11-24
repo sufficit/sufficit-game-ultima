@@ -304,7 +304,31 @@ async function wait(callback,label) {
         return s.getTransformNodeByName('remote-contact-gap-left')?.position.z===2.65 &&
             s.getTransformNodeByName('remote-contact-gap-right')?.position.z===2.65;
     }),'passagem entre personagens pronta');
-    const throughGap=await walk(['w'],1370,false);
+    // O motor limita o delta por quadro. Meça a passagem em tempo de jogo.
+    await renderer.evaluate(()=>{
+        const scene=BABYLON.EngineStore.LastCreatedScene;
+        const player=scene.getTransformNodeByName('player');
+        globalThis.gapTraversal=new Promise((resolve,reject)=>{
+            let elapsed=0;
+            const timer=setTimeout(()=>{
+                scene.onAfterRenderObservable.remove(observe);
+                reject(Error('tempo limite da passagem entre personagens'));
+            },15000);
+            const observe=scene.onAfterRenderObservable.add(()=>{
+                elapsed+=Math.min(0.05,scene.getEngine().getDeltaTime()/1000);
+                if(player.position.z<=3.45 && elapsed<1.37) return;
+                scene.onAfterRenderObservable.remove(observe);
+                clearTimeout(timer);
+                const {x,z}=player.position;
+                resolve({x,z,elapsed});
+            });
+        });
+    });
+    await p.keyboard.down('w');
+    let throughGap;
+    try { throughGap=await renderer.evaluate(()=>globalThis.gapTraversal); }
+    finally { await p.keyboard.up('w'); }
+    await p.waitForTimeout(T300);
     assert.ok(throughGap.z>3.45 && Math.abs(throughGap.x)<0.15,
         'passa entre dois corpos com espaço livre: '+JSON.stringify(throughGap));
     console.log(JSON.stringify({sideContact,sideGap,beside,around,throughGap}));

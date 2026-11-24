@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Não sobreposição dos corpos durante a animação](activities/202611241300-nao-sobreposicao-dos-corpos.md)
+
 - [Contato junto à silhueta](activities/202611241249-colisao-junto-as-malhas.md)
 
 - [Contato corporal e tropeço](activities/202611241236-contato-de-personagens.md)
