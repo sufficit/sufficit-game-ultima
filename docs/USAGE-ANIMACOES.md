@@ -65,3 +65,19 @@ O Andarilho e os avatares remotos continuam com o solucionador sagital.
 O solucionador local usa a altura de apoio e uma sola nivelada durante
 o contato. A inclinação pela normal do relevo depende de uma futura
 sondagem da superfície em mais de um ponto.
+
+## Contato entre personagens
+
+O núcleo C# varre volumes corporais de raio 0,54 m com intervalo vertical
+durante o deslocamento do jogador, do Andarilho e dos avatares remotos.
+Poses que chegam em um local ocupado são projetadas para um ponto livre.
+Um choque que corta a passada do jogador ou de um avatar remoto aciona
+a animação cinemática de tropeço e recuperação. No jogador, o choque
+também reduz o impulso da marcha.
+
+Na pose local, o solucionador verifica a distância lateral entre os
+tornozelos e a largura projetada das solas. Quando as pernas iriam se
+cruzar, desloca prioritariamente o pé no ar e levanta o pé corretivo
+quando necessário. Os braços usam pivôs levemente abertos na pose neutra.
+O volume entre personagens é conservador, com resolução corporal em vez
+de resposta dinâmica individual entre malhas articuladas.

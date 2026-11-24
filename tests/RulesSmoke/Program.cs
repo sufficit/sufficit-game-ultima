@@ -333,16 +333,16 @@ Check("humano liga tornozelo ao joelho e falanges aos punhos",
 var contacts = new PlayerFootContacts();
 Span<double> alignment = stackalloc double[4];
 contacts.Begin(0, 0, 0, 0);
-PlayerPose.FootTargets(feet, 0, 0, 1, 3.5, 0.077, 0.06);
-contacts.Apply(feet, alignment, 0, 0.077, 0.06);
+PlayerPose.FootTargets(feet, 0, 0, 1, 3.5, 0.091, 0.06);
+contacts.Apply(feet, alignment, 0, 0.091, 0.06);
 var plantedX = feet[2];
 var plantedZ = feet[3];
 const double cornerYaw = 0.65;
-contacts.Begin(0.05, 0.07, cornerYaw, 0.09);
-PlayerPose.FootTargets(feet, cornerYaw, 0.6, 1, 3.5, 0.077, 0.06);
-contacts.Apply(feet, alignment, 0.6, 0.077, 0.06);
+contacts.Begin(0.13, 0.025, cornerYaw, 0.14);
+PlayerPose.FootTargets(feet, cornerYaw, 0.6, 1, 3.5, 0.091, 0.06);
+contacts.Apply(feet, alignment, 0.6, 0.091, 0.06);
 Check("sola guarda posição e rumo mundiais na curva",
-    Math.Abs(0.05 + feet[2] - plantedX) < 1e-12 && Math.Abs(0.07 + feet[3] - plantedZ) < 1e-12
+    Math.Abs(0.13 + feet[2] - plantedX) < 1e-12 && Math.Abs(0.025 + feet[3] - plantedZ) < 1e-12
     && Math.Abs(alignment[2] + cornerYaw) < 1e-12 && Math.Abs(alignment[0]) > 0.01);
 Span<double> legs3D = stackalloc double[9];
 PlayerPose.SolveLegs(legs3D, 0, .03, .02, .03, .77, .364, .051,
@@ -350,25 +350,48 @@ PlayerPose.SolveLegs(legs3D, 0, .03, .02, .03, .77, .364, .051,
 var lateralReach = .364 * (Math.Cos(legs3D[1]) + Math.Cos(legs3D[1] + legs3D[2])) * Math.Sin(legs3D[7]);
 Check("inclinação do quadril alcança o alvo lateral sem mover o contato", Math.Abs(lateralReach - alignment[0]) < 1e-9);
 contacts.Begin(10, 20, 0, 0);
-PlayerPose.FootTargets(feet, 0, 0, 1, 3.5, 0.077, 0.06);
-contacts.Apply(feet, alignment, 0, 0.077, 0.06);
+PlayerPose.FootTargets(feet, 0, 0, 1, 3.5, 0.091, 0.06);
+contacts.Apply(feet, alignment, 0, 0.091, 0.06);
 Check("teleporte solta os apoios anteriores", Math.Abs(feet[2] - plantedX) < 1e-12 && Math.Abs(feet[3] - plantedZ) < 1e-12);
 
 const double swingStart = Math.PI / 2;
 var playerStride = PlayerFootContacts.StrideLength;
 contacts.Reset();
 contacts.Begin(0, 0, 0, 0);
-PlayerPose.FootTargets(feet, 0, swingStart, 1, 3.5, .077, .06, playerStride);
-contacts.Apply(feet, alignment, swingStart, .077, .06);
+PlayerPose.FootTargets(feet, 0, swingStart, 1, 3.5, .091, .06, playerStride);
+contacts.Apply(feet, alignment, swingStart, .091, .06);
 var toeOff = feet[3];
 var advance = playerStride * .075;
 contacts.Begin(0, advance, 0, advance);
 var earlySwing = swingStart + Math.PI * .15;
-PlayerPose.FootTargets(feet, 0, earlySwing, 1, 3.5, .077, .06, playerStride);
-contacts.Apply(feet, alignment, earlySwing, .077, .06);
+PlayerPose.FootTargets(feet, 0, earlySwing, 1, 3.5, .091, .06, playerStride);
+contacts.Apply(feet, alignment, earlySwing, .091, .06);
 Check("pé começa a avançar em relação ao corpo após a saída do apoio", feet[3] > toeOff);
 PlayerPose.Animate(gait, Math.PI / 2, 1, 0, 0, 0, 0, false, false, 0, 0, 0, playerStride, playerGait: true);
 Check("braço esquerdo avança quando a perna direita aterrissa", gait[10] < -.3 && gait[11] > .3);
+
+const double minimumGap = PlayerCharacterSpace.Radius * 2;
+var occupied = new PlayerCharacterSpace();
+occupied.Set(PlayerCharacterSpace.Guardian, 0, 0, 2);
+var blockedByActor = occupied.Move(PlayerCharacterSpace.Player, 0, 0, 0, 0, 6);
+Check("varredura impede atravessar personagem em alta velocidade",
+    blockedByActor.Blocked && Math.Abs(blockedByActor.Z - (2 - minimumGap - 0.002)) < 1e-9);
+Check("atores acima do alcance vertical podem se cruzar no plano",
+    !occupied.Move(PlayerCharacterSpace.Player, 0, 3, 0, 0, 6).Blocked);
+var actorSpawn = occupied.Place(3, 0, 0, 2);
+Check("pose de rede sobreposta é separada", double.Hypot(actorSpawn.X, actorSpawn.Z - 2) >= minimumGap);
+var recovering = new PlayerMovement(1.75, .41, .03);
+recovering.Trip(1);
+Check("tropeço tem reação e recuperação finita", recovering.Recover(.16) > 0.8 && recovering.Recover(.48) == 0);
+
+contacts.Reset();
+contacts.Begin(0, 0, 0, 0);
+PlayerPose.FootTargets(feet, 0, 0, 1, 0, .091, .06, playerStride);
+contacts.Apply(feet, alignment, 0, .091, .06);
+contacts.Begin(0, 0, Math.PI, 0);
+PlayerPose.FootTargets(feet, Math.PI, 0, 1, 0, .091, .06, playerStride);
+Check("cruzamento de pernas levanta o pé e separa o apoio",
+    contacts.Apply(feet, alignment, 0, .091, .06, .016) && feet[5] > 0.05 && alignment[1] - alignment[0] + 0.182 >= 0.17);
 
 var camera = new PlayerCamera();
 Span<double> orbit = stackalloc double[8];

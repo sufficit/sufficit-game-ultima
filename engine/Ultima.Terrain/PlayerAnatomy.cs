@@ -29,7 +29,7 @@ internal static class PlayerAnatomy
                 {
                     var sign = side == "left" ? -1 : 1;
                     var arm = sign * (.088 + .026 * 1.3);
-                    var leg = sign * .044;
+                    var leg = sign * .052;
                     Add("clavicle-" + side, "chest", sign * .025, .80, 0);
                     Add("shoulder-" + side, "clavicle-" + side, arm, .80, 0);
                     Add("elbow-" + side, "shoulder-" + side, arm, .63, 0, "hinge");

@@ -5,7 +5,9 @@ namespace Ultima.Terrain;
 
 internal static partial class BrowserExports
 {
+    private static PlayerCharacterSpace _characters = new();
     private static PlayerMovement _movement = new(0, 0, 0);
+    private static readonly double[] SpawnResult = new double[2];
     private static readonly double[] MovementResult = new double[4];
     private static readonly double[] PadResult = new double[4];
 
@@ -24,16 +26,38 @@ internal static partial class BrowserExports
     internal static void ConfigurePlayer(double height, double kneeHeight, double footGap,
         double hipHeight, double legLength, double ankleOffset, double spacing, double shoeOffset)
     {
-        _movement = new(height, kneeHeight, footGap);
+        _characters = new();
+        _movement = new(height, kneeHeight, footGap, _characters);
         (_kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset) =
             (kneeHeight, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset);
-        _remoteAvatars = new(_surface, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset);
+        _remoteAvatars = new(_surface, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset, _characters);
         Camera.Reset();
         PlayerFeet.Reset();
     }
 
     [JSExport]
-    internal static void ResetFootContacts() => PlayerFeet.Reset();
+    internal static void ResetFootContacts()
+    {
+        PlayerFeet.Reset();
+        _movement.ResetRecovery();
+    }
+
+    [JSExport]
+    internal static double[] PlacePlayer(double x, double y, double z)
+    {
+        (SpawnResult[0], SpawnResult[1]) = _characters.Place(PlayerCharacterSpace.Player, x, y, z);
+        _characters.Set(PlayerCharacterSpace.Player, SpawnResult[0], y, SpawnResult[1]);
+        return SpawnResult;
+    }
+
+    [JSExport]
+    internal static void SetCharacterPositions(
+        double px, double py, double pz, double gx, double gy, double gz, double wx, double wy, double wz)
+    {
+        _characters.Set(PlayerCharacterSpace.Player, px, py, pz);
+        _characters.Set(PlayerCharacterSpace.Guardian, gx, gy, gz);
+        _characters.Set(PlayerCharacterSpace.Wanderer, wx, wy, wz);
+    }
 
     [JSExport]
     internal static void ResetCamera() => Camera.Reset();
@@ -101,13 +125,16 @@ internal static partial class BrowserExports
         double homeX, double homeZ, double heading)
     {
         var motion = PlayerCompanionMotion.Patrol(x, z, yaw, homeX, homeZ, heading, delta);
-        AnimateCharacterFrame(CompanionFrame, motion.X, y, motion.Z, motion.Yaw, phase, weight, clock, speech,
-            0, 0, motion.Distance, delta, nameLength, false, false, 0, 0, true, false, false);
-        CompanionFrame[24] = motion.X;
-        CompanionFrame[25] = motion.Z;
+        var allowed = _characters.Move(PlayerCharacterSpace.Wanderer, x, y, z, motion.X, motion.Z);
+        var travelled = double.Hypot(allowed.X - x, allowed.Z - z);
+        AnimateCharacterFrame(CompanionFrame, allowed.X, y, allowed.Z, motion.Yaw, phase, weight, clock, speech,
+            0, 0, travelled, delta, nameLength, false, false, 0, 0, true, false, false);
+        _characters.Set(PlayerCharacterSpace.Wanderer, allowed.X, CompanionFrame[17], allowed.Z);
+        CompanionFrame[24] = allowed.X;
+        CompanionFrame[25] = allowed.Z;
         CompanionFrame[26] = motion.Yaw;
-        CompanionFrame[27] = motion.Phase;
-        CompanionFrame[28] = motion.Distance;
+        CompanionFrame[27] = allowed.Blocked ? heading : motion.Phase;
+        CompanionFrame[28] = travelled;
         return CompanionFrame;
     }
 
@@ -148,7 +175,11 @@ internal static partial class BrowserExports
         Span<double> feet = stackalloc double[10];
         PlayerPose.FootTargets(feet, yaw, result[0], result[1], delta > 0 ? distance / delta : 0, _spacing, _shoeOffset, strideLength);
         Span<double> contact = stackalloc double[4];
-        if (isPlayer) PlayerFeet.Apply(feet, contact, result[0], _spacing, _shoeOffset);
+        if (isPlayer)
+        {
+            if (PlayerFeet.Apply(feet, contact, result[0], _spacing, _shoeOffset, delta)) _movement.Trip(0.7);
+            PlayerPose.Brace(result, _movement.Recover(delta));
+        }
         var leftX = x + feet[2];
         var leftZ = z + feet[3];
         var rightX = x + feet[6];

@@ -43,6 +43,14 @@ internal static class PlayerPose
         output[11] = -swing - gesture * reach - (speaking ? 0.24 + 0.10 * Math.Sin(clock * 4.5) : 0);
     }
 
+    internal static void Brace(Span<double> pose, double impact)
+    {
+        pose[2] += 0.5 * impact;
+        pose[4] -= 0.14 * impact;
+        pose[10] -= 0.62 * impact;
+        pose[11] -= 0.62 * impact;
+    }
+
     internal static void FootTargets(Span<double> output, double yaw, double phase, double weight,
         double speed, double spacing, double shoeOffset, double strideLength = StrideLength)
     {

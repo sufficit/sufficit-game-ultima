@@ -1,6 +1,6 @@
 namespace Ultima.Terrain;
 
-internal sealed class PlayerMovement(double height, double kneeHeight, double footGap)
+internal sealed class PlayerMovement(double height, double kneeHeight, double footGap, PlayerCharacterSpace? characters = null)
 {
     internal const double WalkSpeed = 3.5;
     internal const double RunSpeed = 6.5;
@@ -10,6 +10,25 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
     internal const int ColliderStride = 6;
     private double[] _colliders = [];
     private double _speed, _directionX, _directionZ;
+    private double _stumble, _strength;
+    private const double RecoveryTime = 0.48;
+
+    internal void Trip(double strength)
+    {
+        if (_stumble > 0) return;
+        _stumble = RecoveryTime;
+        _strength = strength;
+        _speed *= 0.45;
+    }
+
+    internal double Recover(double delta)
+    {
+        _stumble = Math.Max(0, _stumble - delta);
+        var t = 1 - _stumble / RecoveryTime;
+        return _stumble > 0 ? Math.Sin(Math.PI * t) * _strength : 0;
+    }
+
+    internal void ResetRecovery() => _stumble = 0;
 
     internal void SetColliders(double[] values) => _colliders = values;
     internal void Stop() => _speed = 0;
@@ -62,6 +81,22 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
             // Mede a direção percorrível antes de virar. Revalida o trecho reduzido com os colisores.
             (nextX, nextZ) = ResolveMove(x, y, z, actualX * scale, actualZ * scale, ground, volumes, hasTunnels);
             travelled = double.Hypot(nextX - x, nextZ - z);
+        }
+        if (characters is not null)
+        {
+            var permitted = characters.Move(PlayerCharacterSpace.Player, x, y, z, nextX, nextZ);
+            (nextX, nextZ) = (permitted.X, permitted.Z);
+            if (permitted.Blocked && (nextX != x || nextZ != z))
+            {
+                // O ponto interrompido pode estar no segmento que contornou um obstáculo.
+                (nextX, nextZ) = ResolveMove(x, y, z, nextX - x, nextZ - z, ground, volumes, hasTunnels);
+                var validated = characters.Move(PlayerCharacterSpace.Player, x, y, z, nextX, nextZ);
+                (nextX, nextZ) = (validated.X, validated.Z);
+            }
+            var actualDistance = double.Hypot(nextX - x, nextZ - z);
+            if (permitted.Blocked && delta > 0 && (travelled - actualDistance) / delta > 1.8) Trip(1);
+            travelled = actualDistance;
+            characters.Set(PlayerCharacterSpace.Player, nextX, y, nextZ);
         }
         return (nextX, nextZ, yaw, travelled);
     }

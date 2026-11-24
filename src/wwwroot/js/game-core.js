@@ -22,7 +22,7 @@
     const SOLE_CLEARANCE = 0.004;
     const LEG_SEGMENT = (HIP_HEIGHT - ANKLE_HEIGHT + 0.004) / 2;
     const KNEE_HEIGHT = HIP_HEIGHT - LEG_SEGMENT;
-    const LEG_SPACING = PLAYER_HEIGHT * 0.044;
+    const LEG_SPACING = PLAYER_HEIGHT * 0.052;
     // Alvo da câmera fica na altura do peito (o root do personagem agora é os pés).
     const CAM_UP = new BABYLON.Vector3(0, PLAYER_HEIGHT / 2, 0);
     const TICK_MS = 200;
@@ -2413,6 +2413,10 @@
         const shoulders = guardian ? [] : [-1, 1].map(side =>
             joints?.get(side < 0 ? 'shoulder-left' : 'shoulder-right') ??
                 createCharacterJoint(root, side < 0 ? 'shoulder-left' : 'shoulder-right', upper, side * armX, PLAYER_HEIGHT * 0.80));
+        if (shoulders.length) {
+            shoulders[0].rotation.z = -0.055;
+            shoulders[1].rotation.z = 0.055;
+        }
         const face = new BABYLON.TransformNode(root.name + '-expression', scene);
         face.parent = head;
         face.setEnabled(false);
@@ -2740,11 +2744,7 @@
         if (!p || !Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(ry)) { return; }
         x = clampWorld(x);
         z = clampWorld(z);
-        if (terrain.SetRemoteAvatarTarget(p.serial, x, z, ry)) {
-            p.avatar.position.x = p.label.position.x = x;
-            p.avatar.position.z = p.label.position.z = z;
-            p.avatar.rotation.y = ry;
-        }
+        terrain.SetRemoteAvatarTarget(p.serial, x, z, ry);
     }
 
     function updateOtherCharacters(delta) {
@@ -2976,6 +2976,8 @@
                 const pad = padState;
                 advanceCamera(delta, pad);
                 syncColliders();
+                const p = player.position, g = guardianRoot.position, w = wandererRoot.position;
+                terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
                 const travelled = movePlayer(delta, pad);
                 if (player) {
                     const { x, z } = player.position;
@@ -3053,6 +3055,11 @@
         if (rig) { rig.gaitPhase = rig.gaitWeight = 0; }
     }
 
+    function placePlayer(x, z) {
+        const [clearX, clearZ] = terrain.PlacePlayer(x, terrainHeight(x, z) + FOOT_GAP, z);
+        player.position.set(clearX, terrainHeight(clearX, clearZ) + FOOT_GAP, clearZ);
+    }
+
     const api = {
         setFrozen(value, speaker) {
             frozen = !!value;
@@ -3067,7 +3074,7 @@
         },
         resetPlayer() {
             resetPlayerGait();
-            if (player) { player.position.set(0, terrainHeight(0, 0) + FOOT_GAP, 0); player.rotation.y = 0; }
+            if (player) { placePlayer(0, 0); player.rotation.y = 0; }
             if (camera) {
                 terrain.ResetCamera();
                 cameraFrame = null;
@@ -3079,9 +3086,7 @@
         teleportToGuardian() {
             if (!player || !camera) return false;
             resetPlayerGait();
-            player.position.x = NPC_POSITION.x;
-            player.position.z = NPC_POSITION.z + 2.0;
-            player.position.y = terrainHeight(player.position.x, player.position.z) + 0.03;
+            placePlayer(NPC_POSITION.x, NPC_POSITION.z + 2.0);
             player.rotation.y = Math.PI;
             camera.target.set(player.position.x, player.position.y + PLAYER_HEIGHT / 2, player.position.z);
             checkNear();

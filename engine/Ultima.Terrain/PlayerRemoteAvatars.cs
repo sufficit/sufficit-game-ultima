@@ -1,7 +1,7 @@
 namespace Ultima.Terrain;
 
 internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap, double hipHeight,
-    double legLength, double ankleOffset, double spacing, double shoeOffset)
+    double legLength, double ankleOffset, double spacing, double shoeOffset, PlayerCharacterSpace? characters = null)
 {
     internal const int Stride = 18;
     internal const int PoseReady = 1;
@@ -13,9 +13,20 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
     private double[] _frame = [];
 
     internal void Add(int id, int nameLength, double x, double y, double z, double yaw)
-        => _avatars.Add(id, new(nameLength, x, y, z, yaw));
+    {
+        if (characters is not null)
+        {
+            (x, z) = characters.Place(id, x, y, z);
+            characters.Set(id, x, y, z);
+        }
+        _avatars.Add(id, new(nameLength, x, y, z, yaw));
+    }
 
-    internal void Remove(int id) => _avatars.Remove(id);
+    internal void Remove(int id)
+    {
+        _avatars.Remove(id);
+        characters?.Remove(id);
+    }
 
     internal bool Target(int id, double x, double z, double yaw)
     {
@@ -24,10 +35,13 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
         var dz = z - actor.Z;
         var snap = !actor.HasTarget || dx * dx + dz * dz > 25;
         actor.HasTarget = true;
+        var destinationY = snap ? surface.Height(x, z) + footGap : actor.Y;
+        (x, z) = characters?.Place(id, x, destinationY, z) ?? (x, z);
         (actor.TargetX, actor.TargetZ, actor.TargetYaw) = (x, z, yaw);
         if (snap)
         {
-            (actor.X, actor.Z, actor.Yaw) = (x, z, yaw);
+            (actor.X, actor.Y, actor.Z, actor.Yaw) = (x, destinationY, z, yaw);
+            characters?.Set(id, x, destinationY, z);
             actor.Travel = 0;
             actor.ForcePose = true;
         }
@@ -49,9 +63,15 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
             {
                 var motion = PlayerCompanionMotion.Follow(actor.X, actor.Z, actor.Yaw,
                     actor.TargetX, actor.TargetZ, actor.TargetYaw, delta);
-                (actor.X, actor.Z, actor.Yaw) = (motion.X, motion.Z, motion.Yaw);
-                actor.Travel += motion.Distance;
+                var allowed = characters?.Move(id, actor.X, actor.Y, actor.Z, motion.X, motion.Z)
+                    ?? (motion.X, motion.Z, Blocked: false);
+                var travelled = double.Hypot(allowed.X - actor.X, allowed.Z - actor.Z);
+                (actor.X, actor.Z, actor.Yaw) = (allowed.X, allowed.Z, motion.Yaw);
+                actor.Travel += travelled;
+                if (allowed.Blocked && delta > 0 && (motion.Distance - travelled) / delta > 1.8 && actor.Stumble <= 0)
+                    actor.Stumble = 0.48;
             }
+            actor.Stumble = Math.Max(0, actor.Stumble - delta);
             actor.Clock += delta;
             actor.Elapsed += delta;
 
@@ -67,6 +87,7 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
                 if (actor.Travel == 0 && actor.Weight < 0.0001) actor.Weight = 0;
                 PlayerPose.Animate(pose, actor.Phase, actor.Weight, actor.Clock, actor.Travel, actor.Elapsed,
                     actor.NameLength, false, false, 0, 0, 0);
+                if (actor.Stumble > 0) PlayerPose.Brace(pose, Math.Sin(Math.PI * actor.Stumble / 0.48));
                 actor.Phase = pose[0];
                 actor.Weight = pose[1];
                 var speed = actor.Elapsed > 0 ? actor.Travel / actor.Elapsed : 0;
@@ -89,6 +110,7 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
                 row[11] = pose[11];
                 legs[1..].CopyTo(row[12..]);
             }
+            characters?.Set(id, actor.X, actor.Y, actor.Z);
             row[0] = id;
             row[1] = actor.X;
             row[2] = actor.Y;
@@ -123,7 +145,7 @@ internal sealed class PlayerRemoteAvatars(TerrainSurface surface, double footGap
         internal readonly int NameLength = nameLength;
         internal double X = x, Y = y, Z = z, Yaw = yaw;
         internal double TargetX, TargetZ, TargetYaw;
-        internal double Phase, Weight, Clock, Elapsed, Travel;
+        internal double Phase, Weight, Clock, Elapsed, Travel, Stumble;
         internal bool HasTarget, ForcePose = true, Near;
         internal int Revision = -1;
         internal GroundSample Ground, Left, Right;

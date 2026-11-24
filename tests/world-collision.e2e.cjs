@@ -134,12 +134,12 @@ async function wait(callback,label) {
                     maxSideSpeed=Math.max(maxSideSpeed,Math.abs(side)/samples[i].g);
                     maxBackSpeed=Math.max(maxBackSpeed,-forward/samples[i].g);
                 }
-                if(d>0.02) for(let foot=0;foot<2;foot++){
+                for(let foot=0;foot<2;foot++){
                     const a=samples[i-1].feet[foot], b=samples[i].feet[foot];
                     if(b.pitch<=1e-6 || Math.abs(yaw-samples[i-1].yaw)>=0.001) swingOrigins[foot]=null;
                     else if(a.planted) swingOrigins[foot]={sample:samples[i-1], allowance:d};
                     const origin=swingOrigins[foot];
-                    if(origin){
+                    if(origin && d>0.02){
                         const forwardX=Math.sin(yaw), forwardZ=Math.cos(yaw);
                         const retreat=((samples[i].x-origin.sample.x)-(b.x-origin.sample.feet[foot].x))*forwardX +
                             ((samples[i].z-origin.sample.z)-(b.z-origin.sample.feet[foot].z))*forwardZ;
@@ -149,9 +149,11 @@ async function wait(callback,label) {
                         swingSamples++;
                     }
                     if(a.planted && b.planted && d<0.2){
-                        plantedFrames++;
                         const slide=Math.hypot(b.x-a.x,b.z-a.z);
-                        maxSlide=Math.max(maxSlide,slide);
+                        if(d>0.02){
+                            plantedFrames++;
+                            maxSlide=Math.max(maxSlide,slide);
+                        }
                         if(Math.abs(samples[i].yaw-samples[i-1].yaw)>0.01){
                             turningFrames++;
                             turnSlide=Math.max(turnSlide,slide);
@@ -179,9 +181,46 @@ async function wait(callback,label) {
             }
         }
         const pitches=samples.flatMap(sample=>sample.feet.map(foot=>foot.pitch));
+        const closestGap=Math.min(...samples.map(({yaw,feet:[left,right]})=>
+            (right.x-left.x)*Math.cos(yaw)-(right.z-left.z)*Math.sin(yaw)));
         return {v:gC>0?dist/gC:0,x:last?.x,z:last?.z,frames:samples.length,plantedFrames,maxSlide,
-            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide,swingSamples,swingRetreat,swingRetreatAfterTakeoff,maxSideSpeed,maxBackSpeed};
+            minPitch:Math.min(...pitches),maxPitch:Math.max(...pitches),turningFrames,turnSlide,stopFrames,stopSlide,swingSamples,swingRetreat,swingRetreatAfterTakeoff,maxSideSpeed,maxBackSpeed,closestGap};
     }
+    await p.evaluate(()=>{
+        game.addRemote('contact-a', 'Contato A');
+        game.updateRemote('contact-a', 0, 3, 0);
+        game.addRemote('contact-b', 'Contato B');
+        game.updateRemote('contact-b', 0, 3, 0);
+    });
+    const avatarGap=await wait(()=>renderer.evaluate(()=>{
+        const scene=BABYLON.EngineStore.LastCreatedScene;
+        const a=scene.getTransformNodeByName('remote-contact-a');
+        const b=scene.getTransformNodeByName('remote-contact-b');
+        if(a?.position.z!==3 || b?.position.z!==3) return 0;
+        const gap=Math.hypot(a.position.x-b.position.x,a.position.z-b.position.z);
+        return gap>=1.079 ? gap : 0;
+    }), 'dois avatares na mesma coordenada ficam separados');
+    await p.keyboard.down('Shift');
+    await p.keyboard.down('w');
+    try {
+        const stumble=await wait(()=>renderer.evaluate(()=>{
+            const scene=BABYLON.EngineStore.LastCreatedScene;
+            const player=scene.getTransformNodeByName('player');
+            const torso=scene.getTransformNodeByName('player-upper-body');
+            const z=player?.position.z, bend=torso?.rotation.x;
+            return z>1.5 && z<1.93 && bend>0.28 ? {z,bend} : null;
+        }), 'choque com outro personagem bloqueia avanço e inicia tropeço');
+        console.log(JSON.stringify({avatarGap,stumble}));
+    } finally {
+        await p.keyboard.up('w');
+        await p.keyboard.up('Shift');
+    }
+    await p.evaluate(()=>{
+        game.removeRemote('contact-a');
+        game.removeRemote('contact-b');
+        game.resetPlayer();
+    });
+    await p.waitForTimeout(T300);
     const walking=await speed(['w'],1800,false);
     assert.ok(walking.plantedFrames>=5 && walking.maxSlide<0.012,
         'pé de apoio deve ficar fixo no mundo durante a marcha em linha reta: '+JSON.stringify(walking));
@@ -207,6 +246,7 @@ async function wait(callback,label) {
     await p.waitForTimeout(T300);
     const reversing=await speed(['w'],1500,false,'s');
     console.log(JSON.stringify({reversing}));
+    assert.ok(reversing.closestGap>=0.14,'os sapatos não devem cruzar sob o corpo: '+JSON.stringify(reversing));
     assert.ok(reversing.maxBackSpeed<0.1,'jogador deve girar antes de seguir na direção oposta');
     assert.ok(reversing.turningFrames>=2 && reversing.turnSlide<0.012,
         'pé de apoio deve ficar no mesmo lugar durante a inversão: '+JSON.stringify(reversing));
