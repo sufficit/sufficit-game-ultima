@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Progressão da passada e coordenação dos braços](activities/202611241150-progressao-da-passada.md)
+
 - [Apoio mundial dos pés do jogador](activities/202611241138-apoio-mundial-dos-pes.md)
 
 - [Marcha e base anatômica dos personagens](activities/202611241125-anatomia-e-marcha.md)
