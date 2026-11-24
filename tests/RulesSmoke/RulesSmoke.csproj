@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="../../src/Rules/*.cs" Link="Rules/%(Filename)%(Extension)" />
     <Compile Include="../../src/Npc/*.cs" Link="Npc/%(Filename)%(Extension)" />
+    <Compile Include="../../engine/Ultima.Terrain/AnimationTimeline.cs" Link="Terrain/AnimationTimeline.cs" />
     <Compile Include="../../engine/Ultima.Terrain/Terrain*.cs" Link="Terrain/%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

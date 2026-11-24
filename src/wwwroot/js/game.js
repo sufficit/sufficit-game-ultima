@@ -321,6 +321,32 @@
         }
     }
 
+    let animationAudio = null;
+    function unlockAnimationAudio() {
+        if (worldBuildMode !== 'collect' || !window.AudioContext) { return; }
+        try {
+            animationAudio ||= new AudioContext();
+            if (animationAudio.state === 'suspended') { animationAudio.resume().catch(() => {}); }
+        } catch { /* o efeito sonoro é opcional */ }
+    }
+
+    function animationSound(kind) {
+        if (animationAudio?.state !== 'running' || !['dig', 'gather'].includes(kind)) { return; }
+        const hit = kind === 'dig';
+        const length = Math.floor(animationAudio.sampleRate * (hit ? 0.10 : 0.07));
+        const buffer = animationAudio.createBuffer(1, length, animationAudio.sampleRate);
+        const data = buffer.getChannelData(0);
+        let previous = 0;
+        for (let i = 0; i < length; i++) {
+            previous += (Math.random() * 2 - 1 - previous) * (hit ? 0.28 : 0.68);
+            data[i] = previous * Math.pow(1 - i / length, 2) * 0.22;
+        }
+        const source = animationAudio.createBufferSource();
+        source.buffer = buffer;
+        source.connect(animationAudio.destination);
+        source.start();
+    }
+
     function setupWorldPointer(canvas) {
         // Clique e câmera usam a mesma ponte nos dois renderizadores.
         // Um dedo/mouse arrasta e gira; dois dedos são pinça (zoom) e o giro fica
@@ -358,6 +384,7 @@
         let lastX = 0, lastY = 0, pinchDist = 0, downAt = 0, downX = 0, downY = 0, pinched = false;
         canvas.addEventListener('pointerdown', function (e) {
             if (e.button !== 0) { return; }
+            unlockAnimationAudio();
             pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
             if (pointers.size === 2) {
                 const pts = Array.from(pointers.values());
@@ -517,6 +544,7 @@
             return start.then(function () { return true; });
         },
         setFrozen(v, speaker) { post('setFrozen', [!!v, speaker]); },
+        animationSound,
         characterAction(name, point) { post('characterAction', [name, point]); },
         characterDialogueLine(speaker, length) { post('characterDialogueLine', [speaker, length]); },
         resetPlayer() { post('resetPlayer'); },

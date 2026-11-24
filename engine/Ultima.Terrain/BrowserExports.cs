@@ -9,6 +9,10 @@ internal static partial class BrowserExports
     private static TerrainSurface _surface = new();
 
     [JSExport]
+    internal static int[] CrossedAnimationMarks(double previous, double current, bool loops, double[] marks)
+        => AnimationTimeline.Crossed(previous, current, loops, marks);
+
+    [JSExport]
     internal static void Reset() => _surface = new TerrainSurface();
 
     [JSExport]

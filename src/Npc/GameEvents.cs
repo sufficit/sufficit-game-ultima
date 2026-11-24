@@ -20,3 +20,5 @@ public sealed record ReplyArrived(long NowMs, string Reply, string Source) : Gam
 
 /// <summary>As falas de abertura mudaram (conteúdo remoto da API do jogo).</summary>
 public sealed record IntroLinesChanged(long NowMs, string Speaker, string[] Lines) : GameEvent(NowMs);
+
+public sealed record AnimationMarked(long NowMs, string Name, string Payload, System.Text.Json.JsonElement Target) : GameEvent(NowMs);

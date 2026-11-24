@@ -78,6 +78,14 @@ async function until(check, label='A alteração esperada não apareceu') {
         const page=await context.newPage();
         const errors=[];
         page.on('pageerror',e=>errors.push(String(e)));
+        await page.addInitScript(() => {
+            window.gatherSounds = 0;
+            const start = AudioBufferSourceNode.prototype.start;
+            AudioBufferSourceNode.prototype.start = function (...args) {
+                if (this.buffer && this.buffer.duration < 0.11) window.gatherSounds++;
+                return start.apply(this, args);
+            };
+        });
         await ready(page);
         assert.equal(await page.evaluate(()=>game.mode), main?'main':'worker');
         const build=await page.locator('meta[name=ultima-build]').getAttribute('content');
@@ -129,6 +137,7 @@ async function until(check, label='A alteração esperada não apareceu') {
         await click({name:mesh});
         await page.getByText('+1 Toco',{exact:true}).waitFor({timeout:10000});
         await until(()=>target.evaluate(()=>globalThis.gatherMotion),'a coleta confirmada deve acionar o gesto');
+        await until(()=>page.evaluate(()=>window.gatherSounds === 1), 'a marca de som da coleta não tocou');
         await until(async()=>await enabled(target)===false);
         await click({x:1,z:9});
         await page.getByText('Aproxime-se para coletar.',{exact:true}).waitFor({timeout:10000});

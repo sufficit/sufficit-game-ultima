@@ -206,6 +206,22 @@ Check("a malha refina apenas perto da escavação", MemoryMarshal.Cast<byte, int
 surface.SetEdits([0, 0, 0, 2, 1]);
 Check("escultura preserva as marcas da mochila", Math.Abs(surface.Height(0, 0) - 0.09) < 1e-10);
 
+var marks = new double[] { 0.50, 0.62 };
+Check("timeline emite impacto e áudio no cruzamento",
+    Ultima.AnimationTimeline.Crossed(0.49, 0.63, false, marks).SequenceEqual(new[] { 0, 1 }));
+Check("timeline mantém pausa e não repete uma marca de fronteira",
+    Ultima.AnimationTimeline.Crossed(0.50, 0.50, false, marks).Length == 0 &&
+    Ultima.AnimationTimeline.Crossed(0.50, 0.62, false, marks).SequenceEqual(new[] { 1 }));
+Check("timeline recomeça o ciclo em ordem",
+    Ultima.AnimationTimeline.Crossed(0.51, 1.51, true, marks).SequenceEqual(new[] { 1, 0 }));
+Check("troca de ação descarta as marcas do clipe anterior",
+    Ultima.AnimationTimeline.Crossed(0, 0.2, false, marks).Length == 0 &&
+    Ultima.AnimationTimeline.Crossed(0.7, 1.8, false, marks).Length == 0);
+var animated = new NpcScheduler();
+animated.Submit(new AnimationMarked(3010, "hit", "collect", default));
+Check("agendador entrega impacto mesmo fora de diálogo",
+    animated.Tick(Snap()).Single().Commands.Single() is ResolveAnimationMark { Name: "hit", Payload: "collect" });
+
 Console.WriteLine(failures == 0 ? "\nTODOS OS TESTES PASSARAM" : $"\n{failures} FALHA(S)");
 return failures == 0 ? 0 : 1;
 

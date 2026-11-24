@@ -78,6 +78,8 @@ public sealed class NpcScheduler
     {
         switch (e)
         {
+            case AnimationMarked mark:
+                return [new NpcDecision([new ResolveAnimationMark(mark.Name, mark.Payload, mark.Target)], null)];
             case PlayerInteracted:
                 // Diálogo aberto tem prioridade (avança/encerra); senão, o NPC mais perto
                 // vira alvo — a Guardiã ganha quando os dois estão ao alcance.

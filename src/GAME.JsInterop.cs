@@ -23,6 +23,7 @@ public sealed class GameInterop
     public Func<double, double, double, Task>? LivePose { get; init; }
     public Func<string, Task>? LiveChat { get; init; }
     public Action<string>? BackpackStatus { get; init; }
+    public Action<string, string, JsonElement>? AnimationMarker { get; init; }
     public Action? Interact { get; init; }
     public Action? Close { get; init; }
     public Action<double, double, double, double>? MoveTick { get; init; }
@@ -52,6 +53,8 @@ public sealed class GameInterop
     [JSInvokable] public Task OnLivePose(double x, double z, double yaw) => LivePose?.Invoke(x, z, yaw) ?? Task.CompletedTask;
     [JSInvokable] public Task OnLiveChat(string text) => LiveChat?.Invoke(text) ?? Task.CompletedTask;
     [JSInvokable] public void OnBackpackStatus(string message) => BackpackStatus?.Invoke(message);
+    [JSInvokable] public void OnAnimationMarker(string name, string payload, JsonElement target)
+        => AnimationMarker?.Invoke(name, payload, target);
     [JSInvokable] public void OnInteract() => Interact?.Invoke();
     [JSInvokable] public void OnClose() => Close?.Invoke();
     [JSInvokable] public void OnMoveTick(double x, double y, double z, double fps) => MoveTick?.Invoke(x, y, z, fps);

@@ -684,6 +684,7 @@
             LivePose = Live.PoseAsync,
             LiveChat = Live.SayAsync,
             WorldCommand = operation => WorkshopService.EditAsync(operation, _browserLifetime.Token),
+            AnimationMarker = (name, payload, target) => _ = InvokeAsync(() => Dispatch(new AnimationMarked(NowMs(), name, payload, target))),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
             Close = () => _ = InvokeAsync(() => DispatchWindowActionAsync("close")),
             MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; RunNpcTick(); StateHasChanged(); }),
@@ -829,6 +830,9 @@
         {
             switch (command)
             {
+                case ResolveAnimationMark mark:
+                    _ = ResolveAnimationMarkAsync(mark);
+                    break;
                 case OpenDialog:
                     _ = SetFrozen(true);
                     break;
@@ -858,6 +862,25 @@
             }
         }
         StateHasChanged();
+    }
+
+    private async Task ResolveAnimationMarkAsync(ResolveAnimationMark mark)
+    {
+        if (mark.Name == "hit" && mark.Payload == "collect" &&
+            mark.Target.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            try
+            {
+                var target = System.Text.Json.JsonSerializer.Deserialize<AnimationCollectionTarget>(
+                    mark.Target, AnimationTargetJson.Default.AnimationCollectionTarget);
+                if (target?.Resource is not null) await BackpackState.CollectAsync(target.Resource, target.Point);
+            }
+            catch (System.Text.Json.JsonException) { }
+        }
+        else if (mark.Name == "sound")
+        {
+            await JS.InvokeVoidAsync("game.animationSound", mark.Payload);
+        }
     }
 
     private Task OnInteractAsync()

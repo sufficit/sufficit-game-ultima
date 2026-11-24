@@ -118,6 +118,13 @@ public sealed class ModelBuilder
     public void BakeCrowdWalk(double hip, double shoulder) =>
         _d.CrowdWalk = SkeletalClip.BakeWalk(hip, shoulder);
 
+    public void Action(string name, ActionClip clip)
+    {
+        if (clip.Duration <= 0 || clip.Markers.Any(marker => marker.Time is <= 0 or > 1))
+            throw new ModelValidationException($"Clipe de ação inválido: {name}.");
+        (_d.Actions ??= []).Add(name, clip with { Markers = clip.Markers.OrderBy(marker => marker.Time).ToArray() });
+    }
+
     internal ModelDescriptor Build()
     {
         if (_d.Groups.Count == 0 || _d.Groups.All(g => g.Parts.Count == 0)) throw new ModelValidationException($"Modelo '{_d.Id}' sem partes.");

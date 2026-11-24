@@ -1124,7 +1124,8 @@
             dotnet.invokeMethodAsync('OnBackpackStatus', 'Esse recurso já foi coletado.');
             return;
         }
-        host.worldOp({ action: 'collect', resource, point: { x: p.x, z: p.z } });
+        const point = { x: p.x, z: p.z };
+        playCharacterAction(target ? 'gather' : 'dig', point, { resource, point });
     }
 
     let collectionPointer = null;
@@ -2576,16 +2577,21 @@
         return rig;
     }
 
-    const characterActions = {
-        inspect: { duration: 0.56, bend: 0.17, reach: 0.42 },
-        gather: { duration: 0.44, bend: 0.23, reach: 0.84 },
-        dig: { duration: 0.50, bend: 0.34, reach: 0.62 }
+    const fallbackActions = {
+        inspect: { duration: 0.56, bend: 0.17, reach: 0.42, markers: [] },
+        gather: { duration: 0.44, bend: 0.23, reach: 0.84, markers: [
+            { name: 'hit', time: 0.50, payload: 'collect' }, { name: 'sound', time: 0.66, payload: 'gather' }
+        ] },
+        dig: { duration: 0.50, bend: 0.34, reach: 0.62, markers: [
+            { name: 'hit', time: 0.50, payload: 'collect' }, { name: 'sound', time: 0.62, payload: 'dig' }
+        ] }
     };
 
-    function playCharacterAction(name, point) {
+    function playCharacterAction(name, point, target = null) {
         const rig = characterRigs.get(player);
-        if (rig && characterActions[name] && !frozen) {
-            rig.action = { ...characterActions[name], elapsed: 0, point };
+        const clip = modelRegistry.get('character.villager')?.desc.actions?.[name] ?? fallbackActions[name];
+        if (rig && clip && !frozen) {
+            rig.action = { ...clip, times: new Float64Array(clip.markers.map(marker => marker.time)), elapsed: 0, point, target };
         }
     }
 
@@ -2612,7 +2618,15 @@
             if (action.point && speed < 0.4) {
                 turnCharacter(root, Math.atan2(action.point.x - root.position.x, action.point.z - root.position.z), delta, 13);
             }
-            action.elapsed += delta;
+            const previous = action.elapsed / action.duration;
+            if (!frozen) { action.elapsed += delta; }
+            if (action.target && action.times.length > 0) {
+                const crossed = terrain.CrossedAnimationMarks(previous, action.elapsed / action.duration, false, action.times);
+                for (const index of crossed) {
+                    const mark = action.markers[index];
+                    dotnet.invokeMethodAsync('OnAnimationMarker', mark.name, mark.payload, action.target);
+                }
+            }
             gesture = Math.sin(Math.PI * Math.min(1, action.elapsed / action.duration));
             if (action.elapsed >= action.duration) { rig.action = null; }
         }

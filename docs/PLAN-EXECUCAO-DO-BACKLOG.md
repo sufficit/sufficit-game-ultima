@@ -11,9 +11,10 @@ Reaproveitar entregas comprovadas e preservar os critérios pendentes de cada fr
 3. [concluído] Pipeline esquelético e multidões. 100/300 instâncias em dois
    tipos, textura compartilhada e LOD de 3.226 para 876 vértices. A publicação
    e a medição de regime estão no checkpoint 6.
-4. [em andamento] Notifies de animação. Comprovar wrap, pausa, transições e dois
-   eventos ligados à animação em jogo.
-5. [pendente] Revisar os checkpoints restantes de mundo, persistência e assets.
+4. [concluído] Notifies de animação. RulesSmoke comprovou loop, pausa,
+   transições e fila. A mochila comprovou impacto e som nos dois modos
+   locais. Produção no checkpoint 6.
+5. [em andamento] Revisar os checkpoints restantes de mundo, persistência e assets.
    Resolver as pendências descritas nos planos com a validação correspondente.
 6. [pendente] Validar o conjunto no GitHub Pages, atualizar o índice e
    converter os planos que tiverem todos os critérios comprovados.
@@ -25,8 +26,8 @@ O ensaio local reutilizou a câmera orbital e verificou recuo de 7,50 m para
 1,25 m diante de pinheiros, recuperação do zoom, arrasto, roda e descarte do
 chunk de origem nos dois renderizadores. A emenda e a mochila passaram.
 
-Próxima ação. Usar a timeline para aplicar a coleta no contato do golpe e
-enviar os eventos de impacto e som pelo agendador.
+Próxima ação. Implementar undo autoritativo de pincéis, validar dois
+clientes e conferir o replay e a migração do journal.
 
 Referências da interface. O diálogo existente define a posição e a hierarquia
 de fala e ações. O Painel do jogo define o ponto de acesso do Diário e os
