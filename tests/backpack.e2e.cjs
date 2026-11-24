@@ -32,7 +32,9 @@ async function ready(page) {
         if (!window.game?.glb?.status || !game?.build?.state) return false;
         const map=await game.build.state(), glb=await game.glb.status();
         return map?.chunks>=25 && glb?.loaded.some(id=>id.startsWith('prop.stump')) && (await game.models.status()).queue===0;
-    }));
+    // Três arranques neste teste (carga, recarga e 2ª aba): sob carga do host cada um
+    // pode passar de 3 min; a janela de 300 s cobre sem depender do teto do executor.
+    }), 'o jogo não ficou pronto (chunks, toco e fila de modelos)', 300000);
 }
 async function lookIntoExcavation(target) {
     // Mantém o fundo visível para atingir o mesmo ponto em cada camada.
