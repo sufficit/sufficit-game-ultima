@@ -27,6 +27,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Consultas volumétricas em C#](activities/202611241032-consultas-volumetricas-csharp.md)
+
 - [Movimento de NPC e avatares remotos em C#](activities/202611241023-movimento-npc-remotos-csharp.md)
 
 - [Preparação do cenário em C#](activities/202611240032-preparacao-cenario-csharp.md)

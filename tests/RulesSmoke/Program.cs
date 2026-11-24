@@ -216,6 +216,22 @@ Check("corredor mantém piso subterrâneo e superfície na mesma coordenada", lo
 Check("campo do corredor liberta a passagem e preserva o teto",
     !volumes.Blocks(16, -2, 0, 0.1) && volumes.Blocks(16, 0.1, 0, 0)
     && volumes.Blocks(16, -2, 5, 0));
+var cameraSamples = volumes.TraceCamera(10, -2, 0, 1, 0, 0, 10.13, 0.28);
+var expectedCameraSamples = new byte[cameraSamples.Length];
+for (var i = 0; i < expectedCameraSamples.Length; i++)
+{
+    var x = 10 + Math.Min((i + 1) * 0.25, 10.13);
+    if (!volumes.Near(x, 0)) continue;
+    expectedCameraSamples[i] = (byte)(volumes.Blocks(x, -2, 0, 0.28) ? 2 : 1);
+    if (expectedCameraSamples[i] == 2) break;
+}
+Check("câmera preserva a ordem das amostras de túnel e superfície",
+    cameraSamples.SequenceEqual(expectedCameraSamples) && cameraSamples.Contains((byte)2));
+Check("raio longe de túneis dispensa amostras volumétricas",
+    volumes.TraceCamera(10, 0, 40, 1, 0, 0, 10, 0.28).Length == 0);
+Check("teto só é criado quando todo o perímetro tem cobertura",
+    heightfield.CanCoverCarve(0, 0, 2, -0.5) && !heightfield.CanCoverCarve(0, 0, 2, 0));
+
 var leftTunnel = TerrainVolumeMesh.Build(heightfield, volumes, volumes.InChunk(0, 0), 0, 0);
 var rightTunnel = TerrainVolumeMesh.Build(heightfield, volumes, volumes.InChunk(1, 0), 1, 0);
 Check("corredor cruza chunks usando o mesmo contorno voxelizado",

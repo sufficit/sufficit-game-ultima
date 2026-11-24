@@ -108,6 +108,17 @@ internal sealed class TerrainSurface
         }
     }
 
+    internal bool CanCoverCarve(double x, double z, double radius, double roof)
+    {
+        for (var i = 0; i < 24; i++)
+        {
+            var angle = i * Math.Tau / 24;
+            var (sin, cos) = Math.SinCos(angle);
+            if (roof + 0.5 > Height(x + cos * radius, z + sin * radius)) return false;
+        }
+        return true;
+    }
+
     internal double CarveInset(double x, double z)
     {
         var inset = double.NegativeInfinity;

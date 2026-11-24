@@ -696,12 +696,7 @@
         for (const roof of carveRoofs.splice(0)) { roof.dispose(); }
         for (const op of worldCarves) {
             const segments = 24;
-            let rim = Infinity;
-            for (let i = 0; i < segments; i++) {
-                const a = i * 2 * Math.PI / segments;
-                rim = Math.min(rim, terrainHeight(op.x + Math.cos(a) * op.r, op.z + Math.sin(a) * op.r));
-            }
-            if (op.y1 + 0.5 > rim) { continue; }
+            if (!terrain.CanCoverCarve(op.x, op.z, op.r, op.y1)) { continue; }
             if (!carveRock) {
                 carveRock = new BABYLON.StandardMaterial('carve-rock', scene);
                 carveRock.disableLighting = true;
@@ -820,14 +815,16 @@
 
         let distance = cameraRay.length;
         // A altura interpolada é a mesma superfície visível, inclusive em escavações.
+        const volumes = worldTunnels.length > 0
+            ? terrain.TraceVolumeCamera(from.x, from.y, from.z, direction.x, direction.y, direction.z, distance, cameraClearance)
+            : null;
         const intervals = Math.ceil(distance / 0.25);
         for (let interval = 1; interval <= intervals; interval++) {
             const t = Math.min(interval * 0.25, distance);
             const x = from.x + direction.x * t, z = from.z + direction.z * t;
             const y = from.y + direction.y * t;
-            const blocked = worldTunnels.length && terrain.NearVolume(x, z)
-                ? terrain.TerrainBlocks(x, y, z, cameraClearance)
-                : y < visibleGroundHeight(x, z) + cameraClearance;
+            const volume = volumes?.[interval - 1] ?? 0;
+            const blocked = volume ? volume === 2 : y < visibleGroundHeight(x, z) + cameraClearance;
             if (blocked) {
                 distance = t;
                 break;

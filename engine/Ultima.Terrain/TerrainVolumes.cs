@@ -33,29 +33,62 @@ internal sealed class TerrainVolumes(TerrainSurface surface)
     internal double VoidDistance(double x, double y, double z, IReadOnlyList<Tunnel>? tunnels = null)
     {
         var distance = double.PositiveInfinity;
-        foreach (var tunnel in tunnels ?? _tunnels)
+        var candidates = tunnels ?? _tunnels;
+        for (var i = 0; i < candidates.Count; i++)
         {
+            var tunnel = candidates[i];
             if (y < tunnel.MinY || y > tunnel.MaxY || !tunnel.Intersects(x, z, x, z)) continue;
             distance = Math.Min(distance, tunnel.Distance(x, y, z));
         }
         return distance;
     }
 
-    internal bool Near(double x, double z) =>
-        _tunnels.Any(tunnel => tunnel.Intersects(x, z, x, z));
+    internal bool Near(double x, double z) => Intersects(x, z, x, z);
+
+    private bool Intersects(double minX, double minZ, double maxX, double maxZ)
+    {
+        foreach (var tunnel in _tunnels)
+            if (tunnel.Intersects(minX, minZ, maxX, maxZ)) return true;
+        return false;
+    }
 
     internal bool Blocks(double x, double y, double z, double clearance)
         => surface.Height(x, z) - y > -clearance && VoidDistance(x, y, z) > -clearance;
+
+    // Uma amostra por 25 cm. Zero delega a decisão à malha visível.
+    // Um indica espaço livre perto de túnel. Dois indica volume sólido.
+    internal byte[] TraceCamera(double x, double y, double z, double dx, double dy, double dz,
+        double distance, double clearance)
+    {
+        var endX = x + dx * distance;
+        var endZ = z + dz * distance;
+        if (!Intersects(Math.Min(x, endX), Math.Min(z, endZ), Math.Max(x, endX), Math.Max(z, endZ)))
+            return [];
+
+        var samples = new byte[(int)Math.Ceiling(distance / 0.25)];
+        for (var i = 0; i < samples.Length; i++)
+        {
+            var t = Math.Min((i + 1) * 0.25, distance);
+            var sampleX = x + dx * t;
+            var sampleZ = z + dz * t;
+            if (!Near(sampleX, sampleZ)) continue;
+            samples[i] = 1;
+            if (!Blocks(sampleX, y + dy * t, sampleZ, clearance)) continue;
+            samples[i] = 2;
+            break;
+        }
+        return samples;
+    }
 
     internal double Floor(double x, double z, double foot, double reach)
     {
         var surfaceY = surface.Height(x, z);
         if (!Near(x, z)) return surfaceY;
         var start = Math.Min(surfaceY + 0.01, foot + reach);
-        var wasAir = !Blocks(x, start, z, 0);
+        var wasAir = !Solid(start);
         for (var y = start - 0.1; y >= start - 14; y -= 0.1)
         {
-            var solid = Blocks(x, y, z, 0);
+            var solid = Solid(y);
             if (!wasAir && !solid) wasAir = true;
             else if (wasAir && solid)
             {
@@ -64,13 +97,15 @@ internal sealed class TerrainVolumes(TerrainSurface surface)
                 for (var step = 0; step < 6; step++)
                 {
                     var mid = (low + high) * 0.5;
-                    if (Blocks(x, mid, z, 0)) low = mid;
+                    if (Solid(mid)) low = mid;
                     else high = mid;
                 }
                 return (low + high) * 0.5;
             }
         }
         return surfaceY;
+
+        bool Solid(double y) => surfaceY - y > 0 && VoidDistance(x, y, z) > 0;
     }
 
     internal sealed class Tunnel(Vector3[] points, float radius)

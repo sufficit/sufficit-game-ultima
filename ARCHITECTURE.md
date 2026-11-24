@@ -78,6 +78,14 @@ O JavaScript recebe os eventos de entrada e despacha as marcas de animação par
 as ações do jogo.
 [Contrato de animações](docs/USAGE-ANIMACOES.md)
 
+Para a câmera próxima de túneis, o WASM devolve em lote as amostras do raio
+nos volumes. O Babylon.js combina o lote, na ordem do raio, com as consultas à
+superfície triangulada e às malhas de objetos. Ao procurar um piso em um
+túnel, o C# calcula a altura da superfície uma vez por coluna e a reaproveita
+nas sondas verticais. O contorno que determina se a escavação pode receber
+teto também é avaliado em C#.
+[Consultas volumétricas](engine/Ultima.Terrain/TerrainVolumes.cs)
+
 ### Texturas do terreno
 
 O C# calcula a cor de fundo, o grão, as máscaras de grama e terra e o material

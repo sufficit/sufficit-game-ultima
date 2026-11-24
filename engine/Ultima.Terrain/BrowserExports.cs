@@ -46,11 +46,12 @@ internal static partial class BrowserExports
     internal static bool HasVolume(int cx, int cz) => _volumes.InChunk(cx, cz).Length != 0;
 
     [JSExport]
-    internal static bool NearVolume(double x, double z) => _volumes.Near(x, z);
+    internal static byte[] TraceVolumeCamera(double x, double y, double z, double dx, double dy, double dz,
+        double distance, double clearance) => _volumes.TraceCamera(x, y, z, dx, dy, dz, distance, clearance);
 
     [JSExport]
-    internal static bool TerrainBlocks(double x, double y, double z, double clearance)
-        => _volumes.Blocks(x, y, z, clearance);
+    internal static bool CanCoverCarve(double x, double z, double radius, double roof)
+        => _surface.CanCoverCarve(x, z, radius, roof);
 
     [JSExport]
     internal static double VolumeFloor(double x, double z, double foot, double reach)
