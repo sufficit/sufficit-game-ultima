@@ -7,6 +7,7 @@
 const V = location.search;
 importScripts('https://cdn.jsdelivr.net/npm/babylonjs@9.36.0/babylon.js');
 importScripts('assets.js' + V);
+importScripts('game-crowd.js' + V);
 importScripts('game-core.js' + V);
 const terrainRuntime = import('../terrain-wasm/host.js' + V).then(module => module.ready);
 terrainRuntime.catch(() => {}); // A inicialização do core encaminha a falha ao shell.

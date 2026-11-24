@@ -49,8 +49,6 @@ Futuros (bom ter na manga):
 
 8. [PLAN-CROWD-SKINNING.md](PLAN-CROWD-SKINNING.md) —
    multidões: skeletons compartilhados, bone texture e LOD por tamanho em tela.
-9. [PLAN-UI-DECLARATIVE.md](PLAN-UI-DECLARATIVE.md) —
-   janelas do jogo declaradas em JSON, renderizadas por componentes Razor.
 10. [PLAN-ANIMATION-NOTIFIES.md](PLAN-ANIMATION-NOTIFIES.md) —
    eventos de gameplay amarrados a pontos da timeline das animações.
 
@@ -60,6 +58,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 `/mnt/sufficit/lineage-rust`). Cada plano cita os arquivos-fonte correspondentes.
 
 ## Atividades (`activities/`)
+
+- [Diálogo e Diário em JSON](activities/202611232127-janelas-declarativas.md)
 
 - [Câmera e streaming do terreno](activities/202611232122-camera-e-streaming.md)
 

@@ -115,6 +115,9 @@ public sealed class ModelBuilder
 
     private PartGroup Current() => _group ?? throw new ModelValidationException("Chame Group(...) antes de adicionar partes.");
 
+    public void BakeCrowdWalk(double hip, double shoulder) =>
+        _d.CrowdWalk = SkeletalClip.BakeWalk(hip, shoulder);
+
     internal ModelDescriptor Build()
     {
         if (_d.Groups.Count == 0 || _d.Groups.All(g => g.Parts.Count == 0)) throw new ModelValidationException($"Modelo '{_d.Id}' sem partes.");

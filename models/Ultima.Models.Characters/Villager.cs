@@ -74,6 +74,7 @@ public abstract class VillagerBase : ModelBase
          .SphereAt("hair", "head", 2.18 * headR, H - headR + 0.28 * headR - 1.09 * headR * 0.82, z: -0.14 * headR, segments: 10, scaleX: 1, scaleY: 0.82, scaleZ: 1.02);
 
         b.Collision(0.25);
+        b.BakeCrowdWalk(legH, H * 0.8);
     }
 }
 

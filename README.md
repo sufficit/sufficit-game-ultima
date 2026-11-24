@@ -69,6 +69,10 @@ python3 -m http.server -d publish/wwwroot 8080
 
 ## Controles
 
+O parâmetro `?crowd=100` ou `?crowd=300` ativa a demonstração local de
+multidões esqueléticas. A demonstração coloca dois tipos de personagem
+na clareira para medir animação, LOD e culling.
+
 | Tecla | Ação |
 | --- | --- |
 | `W` `A` `S` `D` ou setas | andar |

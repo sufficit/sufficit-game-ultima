@@ -520,6 +520,7 @@
         characterAction(name, point) { post('characterAction', [name, point]); },
         characterDialogueLine(speaker, length) { post('characterDialogueLine', [speaker, length]); },
         resetPlayer() { post('resetPlayer'); },
+        crowdStatus() { return query('crowdStatus'); },
         teleportToGuardian() { return query('teleportToGuardian'); },
         addRemote(id, name) { post('addRemote', [id, name]); },
         renameRemote(id, name) { post('renameRemote', [id, name]); },

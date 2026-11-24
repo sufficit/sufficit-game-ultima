@@ -1605,7 +1605,7 @@
         const meshes = g.parts.map((p) => {
             let mesh;
             if (p.shape === 'cylinder') { mesh = BABYLON.MeshBuilder.CreateCylinder(p.id, { diameterBottom: p.diameterBottom, diameterTop: p.diameterTop, height: p.height, tessellation: p.tessellation }, scene); }
-            else if (p.shape === 'capsule') { mesh = BABYLON.MeshBuilder.CreateCapsule(p.id, { height: p.height, radius: (p.diameterBottom || p.diameter || 0) / 2, subdivisions: p.subdivisions || 4 }, scene); }
+            else if (p.shape === 'capsule') { mesh = BABYLON.MeshBuilder.CreateCapsule(p.id, { height: p.height, radius: (p.diameterBottom || p.diameter || 0) / 2, subdivisions: p.subdivisions || 4, tessellation: p.crowdSides }, scene); }
             else if (p.shape === 'icosphere') { mesh = BABYLON.MeshBuilder.CreateIcoSphere(p.id, { radius: p.diameter / 2, subdivisions: p.subdivisions }, scene); }
             else if (p.shape === 'sphere') { mesh = BABYLON.MeshBuilder.CreateSphere(p.id, { diameter: p.diameter, segments: p.tessellation }, scene); }
             else if (p.shape === 'plane') {
@@ -1639,6 +1639,29 @@
     }
 
     const modelRegistry = new Map();
+    const crowdCount = Math.floor(Math.max(0, Math.min(300, Number(new URL(host.pageBase).searchParams.get('crowd')) || 0)));
+    let crowd = null, crowdError = null;
+
+    function buildCrowdGroup(desc, name, material) {
+        const group = desc.groups.find(group => group.id === name);
+        const parts = group.parts.map(part => ({ ...part, subdivisions: 1, tessellation: 4, crowdSides: 6 }));
+        return buildModelGroup(desc, { ...group, parts, castShadow: false }, { [group.material]: material });
+    }
+
+    function updateCrowd(delta) {
+        if (!crowd && !crowdError) {
+            const entries = ['character.villager', 'character.wanderer'].map(id => modelRegistry.get(id));
+            if (!entries.every(entry => entry?.desc.crowdWalk?.version === 1)) { return; }
+            try {
+                crowd = G.UltimaCrowd.create(scene, crowdCount, entries, buildCrowdGroup, terrainHeight);
+            } catch (error) {
+                crowdError = String(error.message || error);
+                console.warn('[multidão]', crowdError);
+                return;
+            }
+        }
+        crowd?.update(camera, delta);
+    }
     const modelStatus = { loaded: [], placeholders: [], errors: [], log: [], queue: 0, timings: [] };
     // Entidades (jogador, Guardiã, remotos) que esperam um modelo chegar do carregador C#.
     const modelAwaiters = new Map();   // id do modelo -> [{ make, apply, fallback }]
@@ -3030,6 +3053,7 @@
                 checkNear();
                 updateNearbyObject();
                 updateOrbit(delta, traceWorld);
+                if (crowdCount) { updateCrowd(delta); }
                 updateCollectionPreview(frameStart);
                 scene.render();
                 framePerf(performance.now() - frameStart);
@@ -3259,6 +3283,7 @@
             // usado pela oficina em C# para os assets do mundo compartilhado.
             scatter(id, opts) { return scatterSeeded(id, opts); }
         },
+        crowdStatus() { return crowd?.status() || { requested: crowdCount, error: crowdError }; },
         perf: {
             // Custo de CPU do loop de render (sem incluir a espera de GPU): amostras dos
             // últimos 600 frames, medianas e máximos para validar o orçamento dos modelos.
