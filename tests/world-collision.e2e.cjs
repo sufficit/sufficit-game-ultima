@@ -124,7 +124,9 @@ async function wait(callback,label) {
     });
     await p.keyboard.down('w');
     try {
-        await p.waitForTimeout(1050);
+        await wait(()=>renderer.evaluate(() =>
+            BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('player').position.z > 3.2),
+            'o jogador não passou do tronco');
     } finally {
         await p.keyboard.up('w');
     }

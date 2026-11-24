@@ -5,6 +5,14 @@ internal static class PlayerPose
     internal static bool CanCollect(double dx, double dy, double dz)
         => dx * dx + dy * dy + dz * dz <= 3.5 * 3.5;
 
+    internal static (double Elapsed, double Previous, double Progress) AdvanceAction(
+        double elapsed, double duration, double delta, bool frozen)
+    {
+        if (duration <= 0) return (0, 0, 0);
+        var next = frozen ? elapsed : elapsed + delta;
+        return (next, elapsed / duration, next / duration);
+    }
+
     internal static void Animate(Span<double> output, double phase, double weight, double clock,
         double distance, double delta, int nameLength, bool listening, bool speaking,
         double progress, double bend, double reach)

@@ -42,6 +42,9 @@ Jogo open source em C# / Blazor WebAssembly com mundo 3D em Babylon.js
   sem registrar a nova.
 - `app/` (API Python opcional) é fallback-friendly: o jogo nunca pode depender
   dela para iniciar.
+- Priorizar o tempo de quadro nas migrações para C#. Agrupar chamadas na ponte
+  JavaScript–WASM e comparar o custo antes e depois em cena equivalente.
+  Validar worker e fallback conforme a [arquitetura](ARCHITECTURE.md).
 - **Interface do jogo = Sufficit.Blazor.UI.** Painéis, botões, campos, seletores e
   interruptores usam os componentes da biblioteca (versão fixada no `.csproj`), nunca
   HTML cru estilizado à mão; o estado dos controles mora no Blazor e chega ao motor por

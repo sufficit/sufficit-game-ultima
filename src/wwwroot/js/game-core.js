@@ -54,10 +54,10 @@
     let camera = null;
     const G = host.global;
     const dom = !!host.dom;
-    const CAM_POINTER_SENS = 0.01;    // rad/px do arrasto no worker — mesma medida do attachControl na main (200 px ≈ 2,0 rad)
     const camPending = { dx: 0, dy: 0, wheel: 0 };
+    let cameraFrame = null;
+    let cameraGeometryRevision = 0;
     let zoomTarget = 7.5;    // zoom escolhido pelo jogador, independente do recuo por colisão
-    let orbitRadius = 7.5;
     const padState = { x: 0, y: 0, lookX: 0, lookY: 0 };
     // Eventos para fora (UI C#, rede) saem todos por aqui — idêntico nos dois modos.
     const dotnet = { invokeMethodAsync: function (name) { host.postEvent(name, Array.prototype.slice.call(arguments, 1)); } };
@@ -362,6 +362,7 @@
     function surfaceResourceId(kind, op) { return kind + ':' + (op.rev ?? [op.x, op.z, op.r].join(',')); }
 
     function syncTerrainEdits() {
+        cameraGeometryRevision++;
         const values = [];
         for (const op of worldSculpts) { values.push(0, op.x, op.z, op.r, op.dh); }
         for (const op of worldCarves) { values.push(1, op.x, op.z, op.r, op.y0); }
@@ -627,6 +628,7 @@
     // O módulo C# entrega a malha em um bloco binário. O Babylon consome
     // as vistas tipadas no próprio contexto que executa o renderizador.
     function buildChunkMesh(cx, cz, mesh = new BABYLON.Mesh('ground-' + chunkKey(cx, cz), scene)) {
+        cameraGeometryRevision++;
         const bytes = terrain.Build(cx, cz);
         const words = new Uint32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
         const values = new Float32Array(bytes.buffer, bytes.byteOffset, words.length);
@@ -693,6 +695,7 @@
             if (Math.abs(ch.cx - ccx) > CHUNK_VIEW + 1 || Math.abs(ch.cz - ccz) > CHUNK_VIEW + 1) {
                 ch.mesh.dispose(false, true);
                 chunkMap.delete(k);
+                cameraGeometryRevision++;
             }
         }
     }
@@ -859,6 +862,7 @@
     const carveRoofs = [];
     let carveRock = null;
     function syncCarveRoofs() {
+        cameraGeometryRevision++;
         for (const roof of carveRoofs.splice(0)) { roof.dispose(); }
         for (const op of worldCarves) {
             const segments = 24;
@@ -900,6 +904,7 @@
         }
         terrain.SetColliders(new Float64Array(values));
         collidersDirty = false;
+        cameraGeometryRevision++;
     }
     const solidAssets = new Map([
         ['flora.pine', 'Pinheiro'], ['rock.boulder2', 'Pedra'],
@@ -952,6 +957,8 @@
     const cameraRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), BABYLON.Vector3.Zero());
     const orbitEye = BABYLON.Vector3.Zero();
     const cameraClearance = 0.28;
+    // Colisores são estáticos entre edições, construção/remoção de chunks e trocas de visibilidade.
+    const cameraTrace = { from: BABYLON.Vector3.Zero(), to: BABYLON.Vector3.Zero(), revision: -1, limit: 0 };
 
     function playerFloor(x, z) {
         return worldTunnels.length && player
@@ -960,6 +967,9 @@
     }
 
     function traceWorld(from, to) {
+        if (cameraTrace.revision === cameraGeometryRevision && cameraTrace.from.equals(from) && cameraTrace.to.equals(to)) {
+            return cameraTrace.limit;
+        }
         const direction = cameraRay.direction;
         to.subtractToRef(from, direction);
         const length = direction.length();
@@ -993,20 +1003,27 @@
                 break;
             }
         }
-        return distance < length ? Math.max(0.12, distance - cameraClearance) : length;
+        cameraTrace.from.copyFrom(from);
+        cameraTrace.to.copyFrom(to);
+        cameraTrace.revision = cameraGeometryRevision;
+        cameraTrace.limit = distance < length ? Math.max(0.12, distance - cameraClearance) : length;
+        return cameraTrace.limit;
     }
 
-    function updateOrbit(delta, trace) {
-        camera.target.set(player.position.x, player.position.y + PLAYER_HEIGHT / 2, player.position.z);
-        orbitRadius = lerp(orbitRadius, zoomTarget, 1 - Math.exp(-14 * delta));
-        const horizontal = orbitRadius * Math.sin(camera.beta);
-        orbitEye.set(
-            camera.target.x + horizontal * Math.cos(camera.alpha),
-            camera.target.y + orbitRadius * Math.cos(camera.beta),
-            camera.target.z + horizontal * Math.sin(camera.alpha));
-        const limit = trace(camera.target, orbitEye);
-        // Recolher imediatamente evita entrar no obstáculo; a volta é amortecida.
-        camera.radius = Math.min(limit, lerp(camera.radius, orbitRadius, 1 - Math.exp(-12 * delta)));
+    function advanceCamera(delta, pad) {
+        const lookX = frozen ? 0 : pad.lookX + lookStick.x;
+        const lookY = frozen ? 0 : pad.lookY + lookStick.y;
+        const { dx, dy, wheel } = camPending;
+        if (cameraFrame?.[7] && !lookX && !lookY && !dx && !dy && !wheel &&
+            camera.alpha === cameraFrame[0] && camera.beta === cameraFrame[1] && camera.radius === cameraFrame[6]) {
+            return;
+        }
+        cameraFrame = terrain.AdvanceCamera(camera.alpha, camera.beta, camera.radius, camera.upperRadiusLimit,
+            delta, frozen, lookX, lookY, dx, dy, wheel);
+        camera.alpha = cameraFrame[0];
+        camera.beta = cameraFrame[1];
+        zoomTarget = cameraFrame[2];
+        camPending.dx = camPending.dy = camPending.wheel = 0;
     }
 
     function stepSurfaceAt(x, z, ground) {
@@ -1058,6 +1075,7 @@
         if (mesh.isEnabled(false) !== enabled) {
             mesh.setEnabled(enabled);
             if (obstacles.has(mesh)) { collidersDirty = true; }
+            if (carveRoofs.includes(mesh)) { cameraGeometryRevision++; }
         }
     }
 
@@ -1073,6 +1091,7 @@
             if (entry.kind === 'soil') {
                 const cut = { x: entry.x, z: entry.z, r: SOIL_RADIUS, geometryChanged: true };
                 terrain.AddDig(cut.x, cut.z);
+                cameraGeometryRevision++;
                 newCuts.push(cut);
             } else if (entry.brush) {
                 newCuts.push(entry.brush);
@@ -2646,34 +2665,31 @@
     function updateCharacterPose(root, delta, distance) {
         const rig = characterRigs.get(root);
         if (!rig) { return; }
-        rig.clock += delta;
-        const speed = delta > 0 ? distance / delta : 0;
         const listening = frozen && (root === player || root === dialoguePartner);
-        rig.speaking = Math.max(0, rig.speaking - delta);
-        const speaking = rig.speaking > 0 && listening;
         const action = rig.action;
-        const previous = action ? action.elapsed / action.duration : 0;
-        if (action && !frozen) { action.elapsed += delta; }
-        const progress = action ? action.elapsed / action.duration : 0;
-        const [phase, weight, torsoX, torsoZ, headX, headZ, eyesY, mouthX, mouthY, browZ, leftArm, rightArm] =
-            terrain.AnimatePlayer(rig.gaitPhase, rig.gaitWeight, rig.clock, distance, delta,
-                root.name.length, listening, speaking, progress, action?.bend ?? 0, action?.reach ?? 0);
+        const { x, y, z } = root.position;
+        const frame = terrain.AnimateCharacter(x, y, z, root.rotation.y,
+            rig.gaitPhase, rig.gaitWeight, rig.clock, rig.speaking, action?.elapsed ?? 0, action?.duration ?? 0,
+            distance, delta, root.name.length, listening, frozen, action?.bend ?? 0, action?.reach ?? 0,
+            rig.legs.length > 0, root === player, worldTunnels.length > 0);
+        const [phase, weight, torsoX, torsoZ, headX, headZ, eyesY, mouthX, mouthY, browZ, leftArm, rightArm,
+            clock, speech, elapsed, previous, progress] = frame;
         rig.gaitPhase = phase;
         rig.gaitWeight = weight;
-        if (rig.legs.length) {
-            const { x, z } = root.position;
-            updateCharacterLegs(rig, delta, speed, root === player ? playerFloor(x, z) : terrainHeight(x, z));
-        }
+        rig.clock = clock;
+        rig.speaking = speech;
+        if (rig.legs.length) { applyCharacterLegs(rig, frame, delta); }
 
         if (listening) {
             const other = root === player ? dialoguePartner : player;
             if (other) { turnCharacter(root, Math.atan2(other.position.x - root.position.x, other.position.z - root.position.z), delta, 7); }
         }
         if (action) {
-            if (action.point && speed < 0.4) {
+            action.elapsed = elapsed;
+            if (action.point && (delta === 0 || distance < 0.4 * delta)) {
                 turnCharacter(root, Math.atan2(action.point.x - root.position.x, action.point.z - root.position.z), delta, 13);
             }
-            if (action.target && action.times.length > 0) {
+            if (action.target && action.times.length > 0 && progress > previous) {
                 const crossed = terrain.CrossedAnimationMarks(previous, progress, false, action.times);
                 for (const index of crossed) {
                     const mark = action.markers[index];
@@ -2753,28 +2769,29 @@
         });
     }
 
-    function updateCharacterLegs(rig, delta, speed, ground) {
-        const { root, gaitPhase, gaitWeight } = rig;
-        const { x, y, z } = root.position;
-        const [leftForward, leftLift, lx, lz, rightForward, rightLift, rx, rz] =
-            terrain.FootTargets(root.rotation.y, gaitPhase, gaitWeight, speed, LEG_SPACING, SHOE_OFFSET);
-        const isPlayer = root === player;
-        const leftFloor = isPlayer ? playerFloor(x + lx, z + lz) : terrainHeight(x + lx, z + lz);
-        const rightFloor = isPlayer ? playerFloor(x + rx, z + rz) : terrainHeight(x + rx, z + rz);
-        const leftSupport = isPlayer ? stepSurfaceAt(x + lx, z + lz, leftFloor) : leftFloor;
-        const rightSupport = isPlayer ? stepSurfaceAt(x + rx, z + rz, rightFloor) : rightFloor;
-        const [bodyY, leftHip, leftKnee, leftAnkle, rightHip, rightKnee, rightAnkle] =
-            terrain.SolveLegs(ground, y, delta, FOOT_GAP, HIP_HEIGHT, LEG_SEGMENT, ANKLE_HEIGHT + SOLE_CLEARANCE,
-                leftForward, leftLift, leftSupport, leftSupport > leftFloor,
-                rightForward, rightLift, rightSupport, rightSupport > rightFloor);
-        root.position.y = bodyY;
+    function applyCharacterLegs(rig, frame, delta) {
+        const { root } = rig;
+        let angles = frame;
+        let i = 17;
+        if (root === player) {
+            const ground = frame[24];
+            const leftFloor = frame[27], rightFloor = frame[32];
+            const leftSupport = stepSurfaceAt(frame[25], frame[26], leftFloor);
+            const rightSupport = stepSurfaceAt(frame[30], frame[31], rightFloor);
+            if (leftSupport > leftFloor || rightSupport > rightFloor) {
+                angles = terrain.SolveSupportedLegs(ground, root.position.y, delta,
+                    frame[28], frame[29], leftFloor, leftSupport, frame[33], frame[34], rightFloor, rightSupport);
+                i = 0;
+            }
+        }
         const [left, right] = rig.legs;
-        left.hip.rotation.x = leftHip;
-        left.knee.rotation.x = leftKnee;
-        left.ankle.rotation.x = leftAnkle;
-        right.hip.rotation.x = rightHip;
-        right.knee.rotation.x = rightKnee;
-        right.ankle.rotation.x = rightAnkle;
+        root.position.y = angles[i];
+        left.hip.rotation.x = angles[i + 1];
+        left.knee.rotation.x = angles[i + 2];
+        left.ankle.rotation.x = angles[i + 3];
+        right.hip.rotation.x = angles[i + 4];
+        right.knee.rotation.x = angles[i + 5];
+        right.ankle.rotation.x = angles[i + 6];
     }
 
     // Tronco provisório enquanto o pacote de malhas do personagem é carregado.
@@ -3020,7 +3037,8 @@
                 terrain = await host.terrainRuntime;
             }
             terrain.Reset();
-            terrain.ConfigurePlayer(PLAYER_HEIGHT, KNEE_HEIGHT, FOOT_GAP);
+            terrain.ConfigurePlayer(PLAYER_HEIGHT, KNEE_HEIGHT, FOOT_GAP, HIP_HEIGHT, LEG_SEGMENT,
+                ANKLE_HEIGHT + SOLE_CLEARANCE, LEG_SPACING, SHOE_OFFSET);
             if (G.game && G.game.assets) {
                 await G.game.assets.init(host.build);
                 await warmTextures();   // chunks: aquecimento por aproximação (prefetchChunkCache)
@@ -3071,22 +3089,7 @@
                 const delta = Math.min(0.05, engine.getDeltaTime() / 1000);
                 if (dom) { pollGamepad(); }
                 const pad = padState;
-                if (!frozen) {
-                    camera.alpha -= (pad.lookX + lookStick.x) * delta * 2.2;
-                    camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + (pad.lookY + lookStick.y) * delta * 1.7));
-                }
-                if (camPending.dx || camPending.dy) {
-                    camera.alpha -= camPending.dx * CAM_POINTER_SENS;
-                    camera.beta = Math.max(0.18, Math.min(Math.PI / 2.15, camera.beta + camPending.dy * CAM_POINTER_SENS));
-                    camPending.dx = 0;
-                    camPending.dy = 0;
-                }
-                if (camPending.wheel) {
-                    const notches = -camPending.wheel / 120;
-                    zoomTarget *= notches > 0 ? Math.pow(0.9015, notches) : Math.pow(1.1212, -notches);
-                    zoomTarget = Math.max(2.4, Math.min(camera.upperRadiusLimit, zoomTarget));
-                    camPending.wheel = 0;
-                }
+                advanceCamera(delta, pad);
                 syncColliders();
                 const travelled = movePlayer(delta, pad);
                 if (player) {
@@ -3097,7 +3100,9 @@
                 updateOtherCharacters(delta);
                 checkNear();
                 updateNearbyObject();
-                updateOrbit(delta, traceWorld);
+                camera.target.set(player.position.x, player.position.y + CAM_UP.y, player.position.z);
+                orbitEye.set(camera.target.x + cameraFrame[3], camera.target.y + cameraFrame[4], camera.target.z + cameraFrame[5]);
+                camera.radius = Math.min(traceWorld(camera.target, orbitEye), cameraFrame[6]);
                 if (crowdCount) { updateCrowd(delta); }
                 updateCollectionPreview(frameStart);
                 scene.render();
@@ -3171,7 +3176,13 @@
         resetPlayer() {
             terrain?.StopPlayer();
             if (player) { player.position.set(0, terrainHeight(0, 0) + FOOT_GAP, 0); player.rotation.y = 0; }
-            if (camera) { camera.alpha = -Math.PI / 2; camera.beta = 1.12; camera.radius = orbitRadius = zoomTarget = 7.5; }
+            if (camera) {
+                terrain.ResetCamera();
+                cameraFrame = null;
+                camera.alpha = -Math.PI / 2;
+                camera.beta = 1.12;
+                camera.radius = zoomTarget = 7.5;
+            }
         },
         teleportToGuardian() {
             if (!player || !camera) return false;

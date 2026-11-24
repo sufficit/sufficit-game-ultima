@@ -36,6 +36,8 @@ Fonte técnica das frentes 1–10: análise do repositório
 
 ## Atividades (`activities/`)
 
+- [Câmera e animação por quadro em C#](activities/202611232346-camera-animacao-csharp.md)
+
 - [Simulação do jogador em C# no navegador](activities/202611232327-simulacao-csharp-navegador.md)
 
 - [Publicação do backend no Sufficit Run](activities/202611232303-publicacao-do-backend-no-run.md)
