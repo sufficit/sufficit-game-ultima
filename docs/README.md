@@ -21,7 +21,6 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
-- [Shared player rig](PLAN-SHARED-PLAYER-RIG.md).
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
 
@@ -41,6 +40,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Shared articulated player](activities/202611252051-shared-player-rig.md)
 
 - [Camera perspectives in the garden and interiors](activities/202611252041-camera-perspectives.md)
 
