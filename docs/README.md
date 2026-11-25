@@ -31,6 +31,7 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Plugin de memória da Guardiã no navegador](activities/202611251430-plugin-memoria-navegador.md)
 - [Migração dos testes de mobile e de registro de conversas para C#](activities/202611251151-testes-mobile-e-dialogo-csharp.md)
 
 - [Migração dos testes de integração do servidor para C#](activities/202611250333-testes-integracao-servidor-csharp.md)

@@ -43,8 +43,4 @@ fallback remoto em caso de falha local. O build Release passou com um
 cache NuGet novo. A confirmação no Pages e a validação com modelos reais
 permanecem evidências distintas.
 
-### Plugin de memória do navegador
-
-1. [concluído] Conectar um provedor substituível de memória ao diálogo e à inferência local, mantendo o escopo da conversa.
-2. [concluído] Verificar persistência, isolamento, substituição em runtime e falhas de armazenamento.
-3. [em andamento] Publicar e verificar os módulos em produção.
+A entrega do [plugin de memória do navegador](activities/202611251430-plugin-memoria-navegador.md) foi validada no Pages.
