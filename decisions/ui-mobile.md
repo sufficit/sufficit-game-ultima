@@ -78,3 +78,13 @@ Data: 2026-11-22 · Escopo: jogável no celular (retrato e paisagem), menus ocul
 ## Publicação via API — estado antes do PATCH
 - Validação fechada: run 12 verde (3ª execução) + dialog-log verde no build dfa4832 servido. Checkpoint local: commit das correções do harness e deste documento.
 - 3 blobs defasados em relação ao commit pendente 8a69eb2 (filho de de2e4ea): `tests/ui-mobile.e2e.js`, `decisions/ui-mobile.md`, `decisions/ui-mobile-after.json`; os outros 11 idênticos. Refazer blobs → nova tree (base_tree de2e4ea) → novo commit (pai de2e4ea) → PATCH refs/heads/main.
+
+## Validação em C# (2026-11-25)
+
+O harness em node `tests/ui-mobile.e2e.js`, o observador `tests/game-command-conflicts.cjs`
+e o teste dele em node saíram do repositório: dependiam de um `playwright-core` que o
+repositório nunca declarou. O cenário `mobile-layout` da suíte de navegador em C# cobre
+os mesmos quatro viewports com toque emulado, e `CommandConflicts` guarda a regra do 409
+de pose. A linha de base do desktop (`ui-mobile-baseline.json`) e o relatório `after`
+seguem como registro. Passou no site publicado.
+[Atividade](../docs/activities/202611251151-testes-mobile-e-dialogo-csharp.md)

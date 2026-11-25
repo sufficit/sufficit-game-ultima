@@ -11,5 +11,7 @@
     <None Update="scene-probes.js" CopyToOutputDirectory="PreserveNewest" />
     <None Update="seam-probe.js" CopyToOutputDirectory="PreserveNewest" />
     <None Update="remote-performance-probe.js" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Linha de base do desktop anterior ao layout mobile, lida pelo cenário mobile-layout. -->
+    <None Include="../../decisions/ui-mobile-baseline.json" Link="ui-mobile-baseline.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -160,7 +160,8 @@ sobem o build Release em porta efêmera com diretório de dados temporário.
 A [suíte de navegador em C#](tests/WorldCollisionE2E) usa Microsoft.Playwright.
 Ela cobre colisão e marcha, passo articulado, relógio e clima, mochila e coleta,
 câmera e streaming, cache OPFS, emendas, túnel, histórico de edições, modo cinema,
-multidões, janelas declarativas, HUD e serviços do navegador.
+multidões, janelas declarativas, HUD, serviços do navegador, layout mobile com toque
+e registro de conversas.
 O runner controla o Chromium e calcula as métricas em C#. As sondas JavaScript
 consultam APIs do navegador e dados da cena do Babylon.js no contexto em que
 são atualizados.
@@ -182,6 +183,7 @@ dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- crowd
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- declarative-windows
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- hud-status
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- browser-services
+ULTIMA_API=http://127.0.0.1:8090 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- dialog-log
 ```
 
 O cenário padrão é `collision`. Nos cenários que aceitam os dois renderizadores, use `ULTIMA_MODE=main`

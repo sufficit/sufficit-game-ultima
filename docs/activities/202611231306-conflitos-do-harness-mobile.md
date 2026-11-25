@@ -7,6 +7,9 @@ O navegador registra no console os conflitos HTTP da API, inclusive quando o jog
 ## Alterações
 
 O observador em `tests/game-command-conflicts.cjs` correlaciona a mensagem do Chromium com a resposta na mesma URL. Cada POST de ação `pose` que recebe 409 e o erro `too_fast` justifica uma ocorrência no console. Respostas de conflito inesperadas também falham quando o Chromium omite a mensagem. Os testes de regressão exercitam a contagem, o método, a ação e o motivo.
+Em 25/11 o observador em node deu lugar a `CommandConflicts` na suíte de navegador
+em C#, com os mesmos casos no `SelfCheck`
+([atividade](202611251151-testes-mobile-e-dialogo-csharp.md)).
 
 ## Validação e entrega
 

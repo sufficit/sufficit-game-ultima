@@ -64,3 +64,12 @@ e enviá-las periodicamente para nossa API, para análise e melhoria dos diálog
 - `beacon_sem_confirmacao`: pagehide com fetch keepalive falhando cai no sendBeacon
   sem confirmação — a fila permanece e o dedupe por id evita duplicidade no servidor.
 - Turnos só saem da fila com confirmação explícita do servidor (ids ack).
+
+## Validação em C# (2026-11-25)
+
+O teste em node `tests/dialog-log.e2e.js` saiu do repositório: ele não previa a
+rota `/v1/game/garden/dialog` respondendo 503 `ai_unavailable` sem IA configurada
+nem o `leave` da sessão no `pagehide`. O cenário `dialog-log` da suíte de navegador
+em C# cobre o mesmo fluxo contra o backend Release real, com as esperas por
+sondagem em vez de tempos fixos, e passou no worker e na thread principal com o
+site publicado. [Atividade](../docs/activities/202611251151-testes-mobile-e-dialogo-csharp.md)

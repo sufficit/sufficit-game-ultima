@@ -31,6 +31,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Migração dos testes de mobile e de registro de conversas para C#](activities/202611251151-testes-mobile-e-dialogo-csharp.md)
+
 - [Migração dos testes de integração do servidor para C#](activities/202611250333-testes-integracao-servidor-csharp.md)
 
 - [Conversa com histórico e relatos de diagnóstico](activities/202611250122-conversa-e-diagnosticos.md)
