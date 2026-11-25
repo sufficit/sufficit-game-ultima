@@ -19,6 +19,20 @@ flowchart LR
     UI <-->|HTTP| API
 ```
 
+## One engine and a continuous world
+
+The target architecture uses one engine for every playable environment. Content definitions supply
+terrain, structures, lighting, spawn points, NPCs and interactions. The engine
+uses one simulation for player movement, physics, input, animation and cameras
+in C#, with Babylon.js rendering the scene.
+
+The current office prototype still has its own scene lifecycle and the
+`SceneWalk` controller. It reuses the player rig and parts of the garden's
+simulation. The migration will bring office content into the same engine while
+the environment picker still opens each place separately. A later map update
+will place the office in the world so the player can walk to it.
+[Architecture decision](decisions/one-engine-for-all-environments.md)
+
 ## Responsabilidades atuais
 
 | Camada | Responsabilidade |

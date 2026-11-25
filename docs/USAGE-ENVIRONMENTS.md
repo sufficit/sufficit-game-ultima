@@ -25,9 +25,11 @@ the office. Each record declares its ID, name, description, and either terrain
 settings or an object scene. The latter specifies camera, background, geometry,
 and optional stations. A scene may also declare walking bounds, a spawn point,
 solid furniture, material finishes, signs, and lights. Add another record to make it selectable in **Ambientes**.
-The game uses the same scene renderer for every object scene. Additional terrain
-presets open locally. The garden API's existing shared terrain and NPC rules remain
-attached to the default terrain preset.
+The current object scenes use the office prototype's renderer. Additional
+terrain presets open locally. The garden API's existing shared terrain and NPC
+rules remain attached to the default terrain preset. The
+[engine architecture](../ARCHITECTURE.md#one-engine-and-a-continuous-world)
+defines how these places will use one engine.
 
 Players can design environment definitions as JSON. The pilot loads a published
 catalog. The in-game editor and publishing permissions for player environments
