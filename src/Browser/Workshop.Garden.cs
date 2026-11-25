@@ -56,24 +56,25 @@ public sealed partial class Workshop
     }
 
     public async Task<(string Reply, string Source)> TalkToGuardianAsync(
-        string text, string recent, bool gpu, bool cpu, CancellationToken token)
+        string text, bool gpu, bool cpu, CancellationToken token)
     {
+        var local = (gpu || cpu) && !GardenLanternIntent.Matches(text);
         try
         {
             var endpoint = await EndpointAsync(token);
             if (string.IsNullOrEmpty(endpoint.Token))
-                return await TalkOfflineAsync(text, recent, gpu, cpu, token);
-            if ((gpu || cpu) && !GardenLanternIntent.Matches(text))
+                return await TalkOfflineAsync(text, gpu, cpu, token);
+            if (local)
             {
                 var context = await GetAsync<JsonElement>(endpoint, GardenRoute + "/context", 8, token);
                 if (context.TryGetProperty("prompt", out var prompt) && prompt.GetString() is { Length: > 0 } instructions)
                 {
-                    if (recent.Length > 0) instructions += "\nContexto de turnos anteriores:\n" + recent;
-                    if (gpu && await AskLocalGardenAsync(endpoint, instructions, text, "ai", "GPU do jogador", 60, token) is { } gpuReply)
+                    if (gpu && await AskLocalGardenAsync(endpoint, instructions, text, "gpu", 60, token) is { } gpuReply)
                         return gpuReply;
-                    if (cpu && await AskLocalGardenAsync(endpoint, instructions, text, "aiCpu", "CPU do jogador", 120, token) is { } cpuReply)
+                    if (cpu && await AskLocalGardenAsync(endpoint, instructions, text, "cpu", 120, token) is { } cpuReply)
                         return cpuReply;
                 }
+                return ("A IA local não conseguiu concluir o pedido. Tente novamente.", GuardianGenius.SourcePrefix);
             }
             using var message = JsonContent.Create(new Dictionary<string, string> { ["message"] = text });
             var turn = await SendAsync<JsonElement>(endpoint, HttpMethod.Post, GardenRoute + "/dialog", message, 18, token);
@@ -83,6 +84,7 @@ public sealed partial class Workshop
         }
         catch (WorkshopException ex) when (!token.IsCancellationRequested)
         {
+            if (local) return ("O jardim não confirmou o pedido. Tente novamente.", GuardianGenius.SourcePrefix);
             return ex.Code switch
             {
                 "ai_unavailable" when gpu || cpu => ("A IA local está ativa, mas não gerou um plano válido para este pedido. Tente pedir uma mudança por vez.", ""),
@@ -96,59 +98,68 @@ public sealed partial class Workshop
         }
         catch (Exception ex) when (!token.IsCancellationRequested && ex is HttpRequestException or JSException or JsonException or OperationCanceledException)
         {
-            return ("Não consegui acessar a Oficina do jardim.", "");
+            return ("Não consegui acessar a Oficina do jardim.", local ? GuardianGenius.SourcePrefix : "");
         }
     }
 
     private async Task<(string Reply, string Source)> TalkOfflineAsync(
-        string text, string recent, bool gpu, bool cpu, CancellationToken token)
+        string text, bool gpu, bool cpu, CancellationToken token)
     {
-        var prompt = recent.Length == 0 ? OfflinePrompt : OfflinePrompt + "\nConversa recente:\n" + Limit(recent, 700);
-        var reply = gpu ? await GenerateLocalAsync(prompt, text, "ai", 60, 120, token) : null;
-        if (!string.IsNullOrWhiteSpace(reply))
-            return ($"{Limit(reply.Trim(), 300)} {OfflineGarden}", "GPU do jogador");
-        reply = cpu ? await GenerateLocalAsync(prompt, text, "aiCpu", 120, 120, token) : null;
-        if (!string.IsNullOrWhiteSpace(reply))
-            return ($"{Limit(reply.Trim(), 300)} {OfflineGarden}", "CPU do jogador");
-        return (gpu || cpu ? $"A IA local está ativa, mas não conseguiu responder. {OfflineGarden}"
-            : "Ative a IA local ou conecte-se ao servidor do jogo para conversar comigo.", "");
+        var reply = gpu ? await GenerateLocalAsync(OfflinePrompt, text, "gpu", 60, 120, token) : null;
+        if (reply is not null)
+            return ($"{reply} {OfflineGarden}", GeniusSource("gpu"));
+        reply = cpu ? await GenerateLocalAsync(OfflinePrompt, text, "cpu", 120, 120, token) : null;
+        if (reply is not null)
+            return ($"{reply} {OfflineGarden}", GeniusSource("cpu"));
+        return gpu || cpu ? ($"A IA local está ativa, mas não conseguiu responder. {OfflineGarden}", GuardianGenius.SourcePrefix)
+            : ("Ative a IA local ou conecte-se ao servidor do jogo para conversar comigo.", "");
     }
 
+    private static string GeniusSource(string engine) => $"{GuardianGenius.SourcePrefix} · {engine.ToUpperInvariant()}";
+
     private async Task<string?> GenerateLocalAsync(string prompt, string text, string engine, int seconds,
-        int maxTokens, CancellationToken token)
+        int maxTokens, CancellationToken token, Func<string, string>? interpret = null)
     {
-        using var timeout = TimeoutToken(seconds, token);
-        try { return await js.InvokeAsync<string?>($"game.{engine}.garden", timeout.Token, prompt, text, maxTokens); }
-        catch (Exception ex) when (!token.IsCancellationRequested && ex is JSException or OperationCanceledException) { return null; }
+        try { return await _genius.ReplyAsync(prompt, text, engine, seconds, maxTokens, token, interpret ?? (reply => Limit(reply, 300))); }
+        catch (Exception ex) when (!token.IsCancellationRequested &&
+            ex is JSException or OperationCanceledException or JsonException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     private async Task<(string Reply, string Source)?> AskLocalGardenAsync(Endpoint endpoint, string prompt, string text,
-        string engine, string source, int seconds, CancellationToken token)
+        string engine, int seconds, CancellationToken token)
     {
-        var output = await GenerateLocalAsync(prompt, text, engine, seconds, 1200, token);
-        if (string.IsNullOrWhiteSpace(output)) return null;
-        JsonDocument plan;
-        try
+        JsonElement actions = default;
+        string? proposedReply = null;
+        var reply = await GenerateLocalAsync(prompt, text, engine, seconds, 1200, token, output =>
         {
-            output = output.Trim();
-            if (output.StartsWith("```", StringComparison.Ordinal) && output.EndsWith("```", StringComparison.Ordinal)
-                && output.IndexOf('\n') is > 0 and var firstLine && firstLine < output.Length - 3)
-                output = output[(firstLine + 1)..^3].Trim();
-            plan = JsonDocument.Parse(output);
-        }
-        catch (JsonException) { return null; }
-        using (plan)
-        {
-            var root = plan.RootElement;
-            var reply = ReadReply(root);
-            if (reply is null || !root.TryGetProperty("actions", out var actions) || actions.ValueKind != JsonValueKind.Array)
-                return null;
-            if (actions.GetArrayLength() == 0) return (reply, source);
-            token.ThrowIfCancellationRequested();
-            using var request = new StringContent("{\"actions\":" + actions.GetRawText() + "}", System.Text.Encoding.UTF8, "application/json");
-            var result = await SendAsync<JsonElement>(endpoint, HttpMethod.Post, GardenRoute + "/edits", request, 12, token);
-            return await GardenReplyAsync(result, reply, source, token);
-        }
+            using var document = JsonDocument.Parse(UnwrapJson(output));
+            var root = document.RootElement;
+            var response = ReadReply(root);
+            if (response is null || !root.TryGetProperty("actions", out var proposed) || proposed.ValueKind != JsonValueKind.Array)
+                throw new JsonException("Plano do jardim inválido.");
+            actions = proposed.Clone();
+            proposedReply = response;
+            return actions.GetArrayLength() == 0 ? response : "Propus alterações para o jardim.";
+        });
+        if (reply is null || proposedReply is null) return null;
+        var source = GeniusSource(engine);
+        if (actions.GetArrayLength() == 0) return (reply, source);
+
+        token.ThrowIfCancellationRequested();
+        using var request = new StringContent("{\"actions\":" + actions.GetRawText() + "}", System.Text.Encoding.UTF8, "application/json");
+        var result = await SendAsync<JsonElement>(endpoint, HttpMethod.Post, GardenRoute + "/edits", request, 12, token);
+        return await GardenReplyAsync(result, proposedReply, source, token);
+    }
+
+    private static string UnwrapJson(string output)
+    {
+        if (output.StartsWith("```", StringComparison.Ordinal) && output.EndsWith("```", StringComparison.Ordinal)
+            && output.IndexOf('\n') is > 0 and var firstLine && firstLine < output.Length - 3)
+            return output[(firstLine + 1)..^3].Trim();
+        return output;
     }
 
     private async Task<(string Reply, string Source)> GardenReplyAsync(JsonElement result, string reply, string source, CancellationToken token)

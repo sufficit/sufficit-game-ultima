@@ -57,7 +57,10 @@ public sealed class DialogLog(IJSRuntime js)
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
     }
 
-    public async Task RecordAsync(string npc, string player, string reply, string source, long ms)
+    public Task RecordAsync(string npc, string player, string reply, string source, long ms) =>
+        RecordAsync(npc, player, reply, source, ms, localOnly: false);
+
+    public async Task RecordAsync(string npc, string player, string reply, string source, long ms, bool localOnly)
     {
         npc = Clean(npc, 40);
         player = Clean(player, 500);
@@ -72,14 +75,17 @@ public sealed class DialogLog(IJSRuntime js)
         try
         {
             var now = Now();
-            if (_queue.LastOrDefault() is { } last && now - last.T < 2000
-                && last.Npc == npc && last.Player == player && last.Reply == reply) return;
+            if (!localOnly)
+            {
+                if (_queue.LastOrDefault() is { } last && now - last.T < 2000
+                    && last.Npc == npc && last.Player == player && last.Reply == reply) return;
 
-            var turn = new DialogTurn($"d{Guid.NewGuid():N}", now, npc, player, reply, source,
-                model, (int)Math.Clamp(ms, 0, 600000));
-            _queue.Add(turn);
-            Trim(_queue, _maxQueue);
-            await SaveQueueAsync();
+                var turn = new DialogTurn($"d{Guid.NewGuid():N}", now, npc, player, reply, source,
+                    model, (int)Math.Clamp(ms, 0, 600000));
+                _queue.Add(turn);
+                Trim(_queue, _maxQueue);
+                await SaveQueueAsync();
+            }
             if (!_history.TryGetValue(npc, out var list)) _history[npc] = list = [];
             list.Add(new DialogHistory(now, player, reply, source));
             Trim(list, 50);

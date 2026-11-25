@@ -207,19 +207,29 @@
         }
     }
 
-    async function garden(prompt, text, maxTokens = 1200) {
-        if (!engine || state !== 'ready') return null;
-        emit('thinking', progress, 'Guardiã planejando o jardim na sua GPU…');
+    async function garden(prompt, text, maxTokens = 1200, history = [], signal) {
+        const model = engine;
+        if (!model || state !== 'ready') return null;
+        signal?.throwIfAborted();
+        emit('thinking', progress, 'Guardiã pensando na sua GPU…');
+        const interrupt = () => { void model.interruptGenerate().catch(() => {}); };
+        signal?.addEventListener('abort', interrupt, { once: true });
         try {
-            const output = await engine.chat.completions.create({
-                messages: [{ role: 'system', content: prompt }, { role: 'user', content: text }],
-                max_tokens: maxTokens, temperature: 0.2
+            const messages = [{ role: 'system', content: prompt }];
+            for (const turn of history) {
+                messages.push({ role: 'user', content: turn.user }, { role: 'assistant', content: turn.assistant });
+            }
+            messages.push({ role: 'user', content: text });
+            const output = await model.chat.completions.create({
+                messages, max_tokens: maxTokens, temperature: 0.2
             });
+            signal?.throwIfAborted();
             return output?.choices?.[0]?.message?.content || null;
         } catch {
             return null;
         } finally {
-            if (engine && state === 'thinking') emit('ready', 1, modelLabel + ' pronta na sua GPU');
+            signal?.removeEventListener('abort', interrupt);
+            if (engine === model && state === 'thinking') emit('ready', 1, modelLabel + ' pronta na sua GPU');
         }
     }
 

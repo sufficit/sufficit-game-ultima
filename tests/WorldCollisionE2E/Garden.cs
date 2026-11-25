@@ -112,6 +112,7 @@ internal static class Garden
             }
             """, lampIds), "hastes mais altas e intensidade aplicada na cena");
 
+        await page.EvaluateAsync("() => { window.gardenCpuReady = false; }");
         var response = page.WaitForResponseAsync(r => r.Url.EndsWith("/v1/game/garden/dialog") && r.Status == 200);
         await AskAsync("Luminária, flores e trilha");
         await page.GetByText("Apliquei as mudanças no jardim.", new() { Exact = false }).WaitForAsync();
@@ -129,11 +130,18 @@ internal static class Garden
                     scene.lights.some(light => light.name.startsWith('garden-light-') && light.isEnabled());
             }
             """, new[] { lantern.Uid, flowers.Uid }), "luminária ligada e flores aplicadas à cena");
+        await page.EvaluateAsync("() => { window.gardenCpuReady = true; }");
+        var serverCalls = 0;
+        page.Request += (_, req) =>
+        {
+            if (req.Url.EndsWith("/v1/game/garden/dialog")) Interlocked.Increment(ref serverCalls);
+        };
         await AskAsync("provedor fora");
-        await page.GetByText("A IA local está ativa, mas não gerou um plano válido", new() { Exact = false }).WaitForAsync();
+        await page.GetByText("A IA local não conseguiu concluir o pedido.", new() { Exact = false }).WaitForAsync();
+        Check(serverCalls == 0, "falha local não transmite a fala ao provedor remoto");
         Check((await MapAsync(page)).Revision == edited.Revision, "resposta inválida preserva o jardim");
         await AskAsync("Plante uma samambaia");
-        await page.GetByText("✦ origem da resposta: CPU do jogador").WaitForAsync();
+        await page.GetByText("✦ origem da resposta: Genius local · CPU").WaitForAsync();
         var fern = (await MapAsync(page)).Placements.Single(p => p.Asset == "flora.fern");
         await AskAsync("Plante outra samambaia mantendo o tamanho padrão");
         await page.GetByText("Plantei a outra samambaia.", new() { Exact = false }).WaitForAsync();

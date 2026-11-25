@@ -8,8 +8,9 @@ using Microsoft.JSInterop;
 
 namespace Ultima.Browser;
 
-public sealed partial class Workshop(HttpClient http, IJSRuntime js)
+public sealed partial class Workshop(HttpClient http, IJSRuntime js, GuardianGenius genius)
 {
+    private readonly GuardianGenius _genius = genius;
     public const int MaxUploadBytes = 2 * 1024 * 1024;
     private readonly HashSet<string> _known = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _register = new(1);

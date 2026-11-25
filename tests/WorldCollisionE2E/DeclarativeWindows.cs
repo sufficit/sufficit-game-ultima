@@ -20,10 +20,18 @@ internal static class DeclarativeWindows
                         ? { state: 'ready', progress: 1, detail: 'Modelo de teste pronto' }
                         : status();
                     game.live.token = () => null;
-                    game.aiCpu.garden = (_, text, tokens) => {
-                        window.guardianProbe = { text, tokens };
+                    game.aiCpu.garden = (_, text, tokens, history) => {
+                        window.guardianProbe = { text, tokens, history };
                         return 'Olá, caminhante.';
                     };
+                    if (sessionStorage.getItem('guardian-test-engine') === 'gpu') {
+                        game.ai.init = () => {};
+                        game.ai.status = () => ({ state: 'ready', progress: 1, detail: 'GPU de teste pronta' });
+                        game.ai.garden = (_, text, tokens, history) => {
+                            window.guardianProbe = { text, tokens, history };
+                            return 'Você pediu novas árvores.';
+                        };
+                    }
                     game.voice.startDictation = () => bridge.invokeMethodAsync('OnSpeechTranscript', 'Texto ditado');
                     game.voice.speak = text => { window.guardianSpoken = text; };
                     return init(bridge);
@@ -91,13 +99,30 @@ internal static class DeclarativeWindows
         await conversation.GetByRole(AriaRole.Textbox, new() { Name = "Escreva para a Guardiã" }).FillAsync("Quero novas árvores");
         await Button(conversation, "Enviar para a Guardiã").ClickAsync();
         await conversation.GetByText("Olá, caminhante. Conecte-se ao servidor do jogo para aplicar alterações no jardim.").WaitForAsync();
-        await conversation.GetByText("✦ origem da resposta: CPU do jogador").WaitForAsync();
+        await conversation.GetByText("✦ origem da resposta: Genius local · CPU").WaitForAsync();
         Check(await page.EvaluateAsync<bool>("() => guardianProbe.text === 'Quero novas árvores' && guardianProbe.tokens === 120"),
             "conversa sem sessão usa a IA local com contexto curto");
         var reply = await line.InnerTextAsync();
         await CloseAsync(conversation);
         await OpenJournalAsync();
         await journal.GetByText(reply).WaitForAsync();
+        Check(!await page.EvaluateAsync<bool>("() => (localStorage.getItem('ultima-dialog-queue') || '').includes('Quero novas árvores')"),
+            "a conversa do Genius fica fora da fila de telemetria");
+
+        await CloseAsync(journal);
+        await page.EvaluateAsync("() => sessionStorage.setItem('guardian-test-engine', 'gpu')");
+        await page.ReloadAsync(new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+        await WaitAsync(() => page.EvaluateAsync<bool>("() => game.teleportToGuardian()"), "reencontra a Guardiã após recarregar");
+        await page.Locator("#game-canvas").FocusAsync();
+        await page.Locator(".ultima-hint").GetByText("para conversar").WaitForAsync();
+        await page.Keyboard.PressAsync("e");
+        await conversation.WaitForAsync();
+        await conversation.GetByText("IA local pronta na GPU.").WaitForAsync();
+        await draft.FillAsync("Qual foi meu pedido anterior?");
+        await Button(conversation, "Enviar para a Guardiã").ClickAsync();
+        await conversation.GetByText("✦ origem da resposta: Genius local · GPU").WaitForAsync();
+        Check(await page.EvaluateAsync<bool>("() => guardianProbe.history.some(turn => turn.user === 'Quero novas árvores' && turn.assistant === 'Olá, caminhante.')"),
+            "o segundo turno recebe o histórico do Genius depois de recarregar");
         Check(errors.IsEmpty, "erros no navegador", errors);
         Log(new { build, mode = Mode, journal = true, dialogue = true, contrast = true, reply });
     }

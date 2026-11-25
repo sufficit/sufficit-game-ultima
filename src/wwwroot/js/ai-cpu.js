@@ -172,19 +172,26 @@
             if (inst && state === 'thinking') emit('ready', 1, modelLabel + ' pronta na sua CPU' + (tokensPerSec ? ' · ' + tokensPerSec + ' tok/s' : ''));
         }
     }
-    async function garden(prompt, text, maxTokens = 1200) {
-        if (!inst || state !== 'ready') return null;
-        emit('thinking', progress, 'Guardiã planejando o jardim na sua CPU…');
+    async function garden(prompt, text, maxTokens = 1200, history = [], signal) {
+        const model = inst;
+        if (!model || state !== 'ready') return null;
+        signal?.throwIfAborted();
+        emit('thinking', progress, 'Guardiã pensando na sua CPU…');
         try {
-            const output = await inst.createChatCompletion({
-                messages: [{ role: 'system', content: prompt }, { role: 'user', content: text }],
-                max_tokens: maxTokens, temperature: 0.2
+            const messages = [{ role: 'system', content: prompt }];
+            for (const turn of history) {
+                messages.push({ role: 'user', content: turn.user }, { role: 'assistant', content: turn.assistant });
+            }
+            messages.push({ role: 'user', content: text });
+            const output = await model.createChatCompletion({
+                abortSignal: signal, messages, max_tokens: maxTokens, temperature: 0.2
             });
+            signal?.throwIfAborted();
             return output?.choices?.[0]?.message?.content || null;
         } catch {
             return null;
         } finally {
-            if (inst && state === 'thinking') emit('ready', 1, modelLabel + ' pronta na sua CPU');
+            if (inst === model && state === 'thinking') emit('ready', 1, modelLabel + ' pronta na sua CPU');
         }
     }
 

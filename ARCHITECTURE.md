@@ -226,10 +226,12 @@ grava um registro no journal antes de compartilhar a nova revisão. O navegador
 aplica o mapa confirmado no mesmo turno. Falhas do provedor e planos inválidos
 preservam o mundo. [Contratos e exemplos](docs/USAGE-API-JARDIM.md)
 
-O runtime headless do Genius foi validado em Chromium em uma aplicação
-Blazor isolada. O desenho do Ultima prevê carregamento sob demanda e
-armazenamento de sessões no perfil do navegador, com a inferência nos
-motores do jogo. [Plano de integração](docs/PLAN-GENIUS-LOCAL.md)
+Turnos com um modelo local disponível passam pela biblioteca
+`Sufficit.AI.Genius.Embedded`. Ela retoma o contexto no IndexedDB pelo mundo,
+jogador e NPC. WebLLM e wllama recebem apenas a janela recente em uma chamada
+de interop. O Diário registra essas conversas no navegador, sem enfileirá-las
+para a telemetria. A API do mundo autoriza e grava os planos de edição.
+[Plano de integração e pacote](docs/PLAN-GENIUS-LOCAL.md)
 
 ## Relógio e clima
 
