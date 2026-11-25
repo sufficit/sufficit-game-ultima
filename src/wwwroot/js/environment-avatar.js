@@ -50,6 +50,7 @@ export function createAvatar(B, scene, descriptor) {
     shadow.material = shadowMaterial;
 
     return {
+        setVisible(visible) { root.setEnabled(visible); },
         apply(x, z, yaw, stride, leftArm, rightArm) {
             root.position.set(x, 0, z);
             root.rotation.y = yaw;

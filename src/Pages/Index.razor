@@ -156,6 +156,8 @@
                             <SUIButton SizeValue="SUISize.Small" OnClick="OpenJournal">Diário</SUIButton>
                             <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined"
                                        OnClick="OpenEnvironments">Ambientes</SUIButton>
+                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined"
+                                       OnClick='() => JS.InvokeVoidAsync("game.cycleCameraView").AsTask()'>Alternar câmera</SUIButton>
 
                             <SUIExpansionPanel Title="Mochila" StartIcon="inbox">
                                 <SUIStack Spacing="2">

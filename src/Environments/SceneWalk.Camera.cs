@@ -1,15 +1,31 @@
+using Ultima.Terrain;
+
 namespace Ultima.Environments;
 
 internal sealed partial class SceneWalk
 {
     private const double TargetHeight = 1.18;
     private const double CameraClearance = .10;
+    private PlayerCameraView _view;
+
+    internal int CycleCameraView() => (int)(_view = PlayerCameraViews.Next(_view));
 
     private void Follow(Span<double> result, double sin, double cos)
     {
-        var dx = -sin * 2.8;
+        if (_view == PlayerCameraView.FirstPerson)
+        {
+            var horizontal = Math.Cos(_pitch);
+            (result[6], result[7], result[8]) = (_x, PlayerCameraViews.EyeHeight, _z);
+            (result[9], result[10], result[11]) = (_x + sin * horizontal,
+                PlayerCameraViews.EyeHeight - Math.Sin(_pitch), _z + cos * horizontal);
+            result[12] = (int)_view;
+            return;
+        }
+
         var dy = 1.04 - 1.65 * Math.Sin(_pitch);
-        var dz = -cos * 2.8;
+        var (anchorX, anchorZ) = _view == PlayerCameraView.Front ? Math.SinCos(_heading) : (-sin, -cos);
+        var dx = anchorX * 2.8;
+        var dz = anchorZ * 2.8;
         var fraction = CameraFraction(dx, dy, dz);
 
         if (fraction < .34)
@@ -25,8 +41,10 @@ internal sealed partial class SceneWalk
             }
         }
 
-        (result[6], result[7], result[8], result[9]) =
-            (_x + dx * fraction, TargetHeight + dy * fraction, _z + dz * fraction, TargetHeight);
+        (result[6], result[7], result[8]) =
+            (_x + dx * fraction, TargetHeight + dy * fraction, _z + dz * fraction);
+        (result[9], result[10], result[11]) = (_x, TargetHeight, _z);
+        result[12] = (int)_view;
     }
 
     private double CameraFraction(double dx, double dy, double dz)

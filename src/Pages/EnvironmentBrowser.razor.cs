@@ -97,6 +97,11 @@ public partial class EnvironmentBrowser : IAsyncDisposable
         Navigation.NavigateTo(Navigation.BaseUri + query, forceLoad: true);
     }
 
+    private async Task CycleCameraViewAsync()
+    {
+        if (_scene is not null) await _scene.InvokeVoidAsync("cycleCameraView");
+    }
+
     private async Task SelectStationAsync(string id)
     {
         _station = id;

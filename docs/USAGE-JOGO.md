@@ -15,6 +15,10 @@ aproxima de um personagem ou objeto.
 | Conversar ou examinar | E | A / ✕ | Botão A |
 | Fechar o diálogo | Esc | B / ○ | Botão B |
 
+Press **V**, click the mouse wheel, press the controller's right stick
+(**R3**), or use **Painel → Alternar câmera** to cycle through rear third
+person, first person, and front third person.
+
 As dicas de interação acompanham o último controle usado. Ao mudar de aba ou
 focar um campo de texto, as teclas de movimento são soltas. Feche um diálogo
 com Esc ou B mesmo com o campo de mensagem em foco.

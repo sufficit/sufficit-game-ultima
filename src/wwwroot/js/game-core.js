@@ -54,6 +54,9 @@
     let player = null;
     let dialoguePartner = null;
     let camera = null;
+    let perspectiveCamera = null;
+    let cameraView = 0;
+    const PLAYER_LAYER = 0x08000000;
     const G = host.global;
     const dom = !!host.dom;
     const camPending = { dx: 0, dy: 0, wheel: 0 };
@@ -822,6 +825,35 @@
         camera.beta = cameraFrame[1];
         zoomTarget = cameraFrame[2];
         camPending.dx = camPending.dy = camPending.wheel = 0;
+    }
+
+    const viewTarget = new BABYLON.Vector3();
+
+    function applyCameraView(position) {
+        camera.target.set(position.x, cameraFrame[8] + CAM_UP.y, position.z);
+        if (cameraView === 0) {
+            orbitEye.set(camera.target.x + cameraFrame[3], camera.target.y + cameraFrame[4], camera.target.z + cameraFrame[5]);
+            camera.radius = Math.min(traceWorld(camera.target, orbitEye), cameraFrame[6]);
+            return;
+        }
+
+        if (cameraView === 1) {
+            const yaw = Math.atan2(-Math.cos(camera.alpha), -Math.sin(camera.alpha));
+            const eye = position.y + 1.62;
+            perspectiveCamera.position.set(position.x, eye, position.z);
+            perspectiveCamera.rotation.set(cameraFrame[9], yaw, 0);
+            return;
+        }
+
+        const heading = player.rotation.y;
+        const horizontal = Math.hypot(cameraFrame[3], cameraFrame[5]);
+        viewTarget.copyFrom(camera.target);
+        orbitEye.set(viewTarget.x + Math.sin(heading) * horizontal, viewTarget.y + cameraFrame[4],
+            viewTarget.z + Math.cos(heading) * horizontal);
+        const distance = BABYLON.Vector3.Distance(viewTarget, orbitEye);
+        const fraction = Math.min(1, traceWorld(viewTarget, orbitEye) / Math.max(distance, .001));
+        BABYLON.Vector3.LerpToRef(viewTarget, orbitEye, fraction, perspectiveCamera.position);
+        perspectiveCamera.setTarget(viewTarget);
     }
 
     function stepSurfaceAt(x, z, ground) {
@@ -1630,6 +1662,7 @@
 
     function trackCharacterShadow(rig, mesh) {
         rig.shadowMeshes.push(mesh);
+        if (rig.root.name === 'player') mesh.layerMask = PLAYER_LAYER;
         if (rig.castsShadow) { sceneShadows?.addShadowCaster(mesh); }
     }
 
@@ -2356,6 +2389,10 @@
         camera.upperBetaLimit = Math.PI / 2.08;
         camera.minZ = 0.06;
         camera.fov = 0.85;
+        perspectiveCamera = new BABYLON.UniversalCamera('perspective-camera', BABYLON.Vector3.Zero(), scene);
+        perspectiveCamera.minZ = .04;
+        perspectiveCamera.fov = camera.fov;
+        scene.activeCamera = camera;
 
         const advancedGraphics = graphicsStyle === 'cinema' && !softwareRenderer &&
             (engine.isWebGPU || engine.webGLVersion >= 2);
@@ -2405,6 +2442,7 @@
 
         // Guardiã: figura encapuzada dourada (1,7 m) com anel de destaque no chão —
         // modelo C# (character.guardian) carregado em runtime, fallback JS centrado.
+        for (const mesh of player.getChildMeshes()) mesh.layerMask = PLAYER_LAYER;
         guardianRoot = spawnFromModel('character.guardian', 'npc',
             new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.03, NPC_POSITION.z), 0,
             () => { const m = buildGuardian('npc-js'); m.position.y = 0.85; return m; });
@@ -3120,7 +3158,8 @@
             const nearPlayer = (flags & REMOTE_NEAR_PLAYER) !== 0;
             setCharacterShadows(rig, nearPlayer);
             if (!nearPlayer && !hasFrustum) {
-                camera.getViewMatrix().multiplyToRef(camera.getProjectionMatrix(), remoteViewProjection);
+                const view = scene.activeCamera;
+                view.getViewMatrix().multiplyToRef(view.getProjectionMatrix(), remoteViewProjection);
                 BABYLON.Frustum.GetPlanesToRef(remoteViewProjection, remoteFrustum);
                 hasFrustum = true;
             }
@@ -3331,9 +3370,7 @@
                 const p = player.position, g = guardianRoot.position, w = wandererRoot.position;
                 terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
                 syncCharacterHitboxes();
-                camera.target.set(p.x, cameraFrame[8] + CAM_UP.y, p.z);
-                orbitEye.set(camera.target.x + cameraFrame[3], camera.target.y + cameraFrame[4], camera.target.z + cameraFrame[5]);
-                camera.radius = Math.min(traceWorld(camera.target, orbitEye), cameraFrame[6]);
+                applyCameraView(p);
                 checkNear();
                 updateNearbyObject();
                 if (crowdCount) { updateCrowd(delta); }
@@ -3374,6 +3411,13 @@
         },
         padDisconnected() { if (activeInput === 'gamepad') { setActiveInput('keyboard'); } },
         camera(dx, dy, wheel, deltaMode) { camPending.dx += dx || 0; camPending.dy += dy || 0; camPending.wheel += (wheel || 0) * (deltaMode === 1 ? 40 : 1); },
+        cycleCameraView() {
+            if (!camera || !perspectiveCamera || frozen) return;
+            cameraView = terrain.CycleCameraView();
+            cameraFrame = null;
+            perspectiveCamera.layerMask = cameraView === 1 ? camera.layerMask & ~PLAYER_LAYER : camera.layerMask;
+            scene.activeCamera = cameraView === 0 ? camera : perspectiveCamera;
+        },
         action() { interact(); },
         terrainClick(sx, sy) { terrainClickImpl(sx, sy); },
         terrainHover(point) { setCollectionPointer(point); },
@@ -3636,7 +3680,7 @@
         input,
         assetsReport() { return assetsReal ? assetsReal.report() : null; },
         renderSize() { return engine ? { width: engine.getRenderWidth(), height: engine.getRenderHeight(), canvasW: host.canvas.width, canvasH: host.canvas.height, scaling: engine.getHardwareScalingLevel() } : null; },
-        cameraState() { return camera ? { alpha: camera.alpha, beta: camera.beta, radius: camera.radius, zoom: zoomTarget } : null; },
+        cameraState() { return camera ? { alpha: camera.alpha, beta: camera.beta, radius: camera.radius, zoom: zoomTarget, view: cameraView } : null; },
         playerState() { return player ? { x: player.position.x, z: player.position.z, ry: player.rotation.y } : null; },
         coreId() { return CORE_ID; }
     };

@@ -142,6 +142,12 @@ export async function create(canvas, settings, selectedStation, avatarDescriptor
     });
     return {
         select,
+        cycleCameraView() {
+            if (walk) {
+                canvas.focus({ preventScroll: true });
+                walk.cycle();
+            }
+        },
         dispose() {
             resize.disconnect();
             walk?.dispose();

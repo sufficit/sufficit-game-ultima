@@ -315,11 +315,12 @@
                 return;
             }
             if (editable(e.target) || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) { return; }
-            if (!gameCodes.includes(e.code) && e.code !== 'KeyE') { return; }
+            if (!gameCodes.includes(e.code) && e.code !== 'KeyE' && e.code !== 'KeyV') { return; }
             e.preventDefault();
             if (e.repeat) { return; }
             deliver('inputMode', ['keyboard']);
             if (e.code === 'KeyE') { deliver('action', []); }
+            else if (e.code === 'KeyV') { deliver('cycleCameraView', []); }
             else { deliver('key', [e.code, true]); }
         });
         window.addEventListener('keyup', function (e) {
@@ -343,7 +344,7 @@
             if (editable(e.target)) { clear(); }
         });
 
-        let actionWasDown = false, cancelWasDown = false;
+        let actionWasDown = false, cancelWasDown = false, viewWasDown = false;
         let padIndex = null;
         function samplePad(x, y, lookX, lookY, dpadX, dpadY) {
             if (x === padValues[0] && y === padValues[1] && lookX === padValues[2] &&
@@ -374,18 +375,20 @@
                     deliver('padDisconnected', []);
                 }
                 padIndex = nextIndex;
-                actionWasDown = cancelWasDown = false;
+                actionWasDown = cancelWasDown = viewWasDown = false;
             }
             if (!pad) { return; }
             const buttons = pad.buttons;
             const action = !!buttons[0]?.pressed;
             const cancel = !!(buttons[1]?.pressed || buttons[9]?.pressed);
+            const view = !!buttons[11]?.pressed;
             if (!blurred && !document.hidden) {
                 if (!editable(document.activeElement)) {
                     const axes = pad.axes;
                     samplePad(axes[0] || 0, axes[1] || 0, axes[2] || 0, axes[3] || 0,
                         Number(!!buttons[15]?.pressed) - Number(!!buttons[14]?.pressed),
                         Number(!!buttons[12]?.pressed) - Number(!!buttons[13]?.pressed));
+                    if (view && !viewWasDown) { deliver('cycleCameraView', []); }
                     if (action && !actionWasDown) {
                         deliver('inputMode', ['gamepad']);
                         deliver('action', []);
@@ -396,6 +399,7 @@
                     postEventToDotnet('OnClose', []);
                 }
             }
+            viewWasDown = view;
             actionWasDown = action;
             cancelWasDown = cancel;
         }
@@ -490,7 +494,14 @@
         canvas.addEventListener('pointerleave', clearHover);
         window.addEventListener('blur', clearHover);
         let lastX = 0, lastY = 0, pinchDist = 0, downAt = 0, downX = 0, downY = 0, pinched = false;
+        canvas.addEventListener('mousedown', function (e) { if (e.button === 1) e.preventDefault(); });
+        canvas.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
         canvas.addEventListener('pointerdown', function (e) {
+            if (e.button === 1) {
+                e.preventDefault();
+                deliver('cycleCameraView', []);
+                return;
+            }
             if (e.button !== 0) { return; }
             unlockAnimationAudio();
             pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -735,6 +746,7 @@
         assetsReport() { return query('assetsReport'); },
         coreId() { return query('coreId'); },
         renderSize() { return query('renderSize'); },
+        cycleCameraView() { deliver('cycleCameraView', []); },
         cameraState() { return query('cameraState'); },
         playerState() { return query('playerState'); }
     });

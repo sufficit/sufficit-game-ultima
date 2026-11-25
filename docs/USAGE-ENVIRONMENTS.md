@@ -10,6 +10,10 @@ and enter the glass meeting room through the open doorway.
 - With the scene focused, the controller's left stick moves and its right
   stick turns the camera.
 
+Press **V**, click the mouse wheel, press the controller's right stick
+(**R3**), or select **Alternar câmera**. Each input cycles from rear
+third person to first person to front third person.
+
 Open **Missões** to see the board and filter by station. Use
 **Trocar ambiente** to return to the environment picker. The office can
 be explored without a connection to the mission API.

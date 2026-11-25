@@ -8,7 +8,7 @@ internal static partial class EnvironmentExports
 {
     private static readonly PlayerInput Input = new();
     private static readonly double[] Intent = new double[7];
-    private static readonly double[] Pose = new double[10];
+    private static readonly double[] Pose = new double[13];
     private static SceneWalk? _walk;
 
     internal static void Configure(SceneSettings scene)
@@ -28,6 +28,10 @@ internal static partial class EnvironmentExports
         Input.Clear();
         _walk?.StopAnimation();
     }
+
+    [SupportedOSPlatform("browser")]
+    [JSExport]
+    internal static int CycleCameraView() => _walk?.CycleCameraView() ?? 0;
 
     [SupportedOSPlatform("browser")]
     [JSExport]

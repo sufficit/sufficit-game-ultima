@@ -15,7 +15,7 @@ internal static partial class BrowserExports
     private static readonly PlayerFootContacts PlayerFeet = new();
     private static readonly PlayerCamera Camera = new();
     private static readonly PlayerCameraObstacles CameraObstacles = new();
-    private static readonly double[] CameraResult = new double[9];
+    private static readonly double[] CameraResult = new double[10];
     private static double _kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset;
 
     private static PlayerRemoteAvatars? _remoteAvatars;
@@ -109,6 +109,9 @@ internal static partial class BrowserExports
     [JSExport]
     internal static int[] QueryCameraObstacles(double minX, double minZ, double maxX, double maxZ)
         => CameraObstacles.Query(minX, minZ, maxX, maxZ);
+
+    [JSExport]
+    internal static int CycleCameraView() => (int)Camera.Cycle();
 
     [JSExport]
     internal static void ResetCamera() => Camera.Reset();

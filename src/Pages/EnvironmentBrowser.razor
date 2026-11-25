@@ -15,6 +15,7 @@
             <SUIStack Row="true" Spacing="2" Wrap="true">
                 @if (_environment.Scene?.Walk is not null)
                 {
+                    <SUIButton VariantValue="SUIVariant.Outlined" OnClick="CycleCameraViewAsync">Alternar câmera</SUIButton>
                     <SUIButton VariantValue="SUIVariant.Outlined" aria-expanded="@(_missionPanel ? "true" : "false")"
                                OnClick="ToggleMissionPanel">Missões</SUIButton>
                 }

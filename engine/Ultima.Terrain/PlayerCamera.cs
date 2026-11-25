@@ -9,6 +9,11 @@ internal sealed class PlayerCamera
     private const double MaxVerticalLag = 0.24;
     private const double FollowRate = 8;
     private double _floor = double.NaN;
+    private double _firstPersonPitch;
+
+    internal PlayerCameraView View { get; private set; }
+
+    internal PlayerCameraView Cycle() => View = PlayerCameraViews.Next(View);
 
     internal void Reset()
     {
@@ -26,14 +31,18 @@ internal sealed class PlayerCamera
         if (!frozen)
         {
             alpha -= lookX * delta * 2.2;
-            beta = Math.Clamp(beta + lookY * delta * 1.7, 0.18, maxBeta);
+            if (View == PlayerCameraView.FirstPerson)
+                _firstPersonPitch = Math.Clamp(_firstPersonPitch + lookY * delta * 1.7, -.95, .95);
+            else beta = Math.Clamp(beta + lookY * delta * 1.7, 0.18, maxBeta);
         }
         if (dragX != 0 || dragY != 0)
         {
             alpha -= dragX * 0.01;
-            beta = Math.Clamp(beta + dragY * 0.01, 0.18, maxBeta);
+            if (View == PlayerCameraView.FirstPerson)
+                _firstPersonPitch = Math.Clamp(_firstPersonPitch + dragY * .006, -.95, .95);
+            else beta = Math.Clamp(beta + dragY * 0.01, 0.18, maxBeta);
         }
-        if (wheel != 0)
+        if (wheel != 0 && View != PlayerCameraView.FirstPerson)
         {
             var notches = -wheel / 120;
             _zoom *= notches > 0 ? Math.Pow(0.9015, notches) : Math.Pow(1.1212, -notches);
@@ -59,6 +68,7 @@ internal sealed class PlayerCamera
             ? floor
             : floor - Math.Clamp(difference * Math.Exp(-FollowRate * delta), -MaxVerticalLag, MaxVerticalLag);
         output[8] = _floor;
+        if (output.Length > 9) output[9] = _firstPersonPitch;
         output[7] = _floor == floor && output[6] == _orbit && _orbit == _zoom && beta >= 0.18 && beta <= maxBeta ? 1 : 0;
     }
 }
