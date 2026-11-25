@@ -9,6 +9,21 @@ internal static class DeclarativeWindows
         var errors = TrackErrors(page);
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ULTIMA_DIAGNOSTIC")))
             page.Console += (_, message) => Console.WriteLine($"{message.Type} {message.Text[..Math.Min(900, message.Text.Length)]}");
+        await page.AddInitScriptAsync("""
+            document.addEventListener('DOMContentLoaded', () => {
+                const init = game.aiCpu.init;
+                game.aiCpu.init = bridge => {
+                    game.aiCpu.load = () => bridge.invokeMethodAsync('OnAiCpuState', 'ready', 1, 'Modelo de teste pronto');
+                    game.aiCpu.garden = (_, text, tokens) => {
+                        window.guardianProbe = { text, tokens };
+                        return 'Olá, caminhante.';
+                    };
+                    game.voice.startDictation = () => bridge.invokeMethodAsync('OnSpeechTranscript', 'Texto ditado');
+                    game.voice.speak = text => { window.guardianSpoken = text; };
+                    return init(bridge);
+                };
+            }, { once: true });
+            """);
         await page.GotoAsync(GameUrl(), new() { WaitUntil = WaitUntilState.DOMContentLoaded });
         var build = await CheckBuildAsync(page);
 
@@ -31,7 +46,7 @@ internal static class DeclarativeWindows
 
         await WaitAsync(async () => await page.EvaluateAsync<string?>("() => window.game?.mode ?? null") == Mode,
             "modo do renderizador");
-        Check(await page.EvaluateAsync<bool>("() => game.teleportToGuardian()"), "chega à Guardiã");
+        await WaitAsync(() => page.EvaluateAsync<bool>("() => game.teleportToGuardian()"), "chega à Guardiã");
         await page.Locator("#game-canvas").FocusAsync();
         await page.Locator(".ultima-hint").GetByText("para conversar").WaitForAsync();
         await page.Keyboard.PressAsync("e");
@@ -40,6 +55,27 @@ internal static class DeclarativeWindows
         await conversation.WaitForAsync(new() { Timeout = 10_000 });
         Check((await conversation.GetAttributeAsync("class"))?.Contains("ultima-window--contrast", StringComparison.Ordinal) == true,
             "a conversa usa o contraste escolhido");
+        var draft = conversation.GetByRole(AriaRole.Textbox, new() { Name = "Escreva para a Guardiã" });
+        var testAi = Button(conversation, "Testar IA");
+        Check(!await testAi.IsEnabledAsync(), "teste indisponível antes de ativar um modelo");
+        await Button(conversation, "Ativar IA na CPU").ClickAsync();
+        await conversation.GetByText("IA local pronta na CPU.").WaitForAsync();
+        await testAi.ClickAsync();
+        await conversation.GetByText("A IA local respondeu ao teste.").WaitForAsync();
+        Check(await page.EvaluateAsync<bool>("() => guardianProbe.text === 'Olá!' && guardianProbe.tokens === 32"),
+            "teste usa a inferência curta");
+        await Button(conversation, "Iluminar o jardim").ClickAsync();
+        Check(await draft.InputValueAsync() == "Coloque duas luminárias junto à entrada do jardim.", "sugestão preenche a caixa de texto");
+        await Button(conversation, "Ditar").ClickAsync();
+        await WaitAsync(async () => await draft.InputValueAsync() == "Texto ditado", "ditado alimenta a caixa de texto");
+        await Button(conversation, "Ouvir fala").ClickAsync();
+        Check(await page.EvaluateAsync<bool>("() => !!window.guardianSpoken"), "reproduz a fala");
+        if (Environment.GetEnvironmentVariable("ULTIMA_CAPTURE") is { Length: > 0 } capture)
+        {
+            await page.SetViewportSizeAsync(390, 844);
+            await page.ScreenshotAsync(new() { Path = capture });
+            await page.SetViewportSizeAsync(1200, 720);
+        }
         var line = conversation.Locator(".ultima-dialog__line");
         var first = await line.InnerTextAsync();
         await Button(conversation, "Continuar · E/A").ClickAsync();

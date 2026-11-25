@@ -20,7 +20,7 @@ public sealed record GameLayout(int Version, string Title, GameControl[] Control
 public sealed record GameControl(
     string Type, string? Text = null, string? Bind = null, string? Action = null,
     string? When = null, string? Style = null, string? Icon = null, string? Id = null,
-    string? Label = null, int? MaxLength = null, GameControl[]? Children = null);
+    string? Label = null, int? MaxLength = null, GameControl[]? Children = null, string? DisabledWhen = null);
 
 public sealed class WindowState
 {

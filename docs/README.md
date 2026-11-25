@@ -29,6 +29,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Controles de IA na conversa da Guardiã](activities/202611242216-guardia-controles-ia.md)
+
 - [Migração do teste de serviços do navegador para C#](activities/202611242209-testes-servicos-navegador-csharp.md)
 
 - [Migração dos testes de janelas e HUD para C#](activities/202611242159-testes-janelas-hud-csharp.md)

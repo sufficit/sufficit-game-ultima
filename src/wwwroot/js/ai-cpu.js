@@ -172,13 +172,13 @@
             if (inst && state === 'thinking') emit('ready', 1, modelLabel + ' pronta na sua CPU' + (tokensPerSec ? ' · ' + tokensPerSec + ' tok/s' : ''));
         }
     }
-    async function garden(prompt, text) {
+    async function garden(prompt, text, maxTokens = 1200) {
         if (!inst || state !== 'ready') return null;
         emit('thinking', progress, 'Guardiã planejando o jardim na sua CPU…');
         try {
             const output = await inst.createChatCompletion({
                 messages: [{ role: 'system', content: prompt }, { role: 'user', content: text }],
-                max_tokens: 1200, temperature: 0.2
+                max_tokens: maxTokens, temperature: 0.2
             });
             return output?.choices?.[0]?.message?.content || null;
         } catch {

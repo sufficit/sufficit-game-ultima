@@ -5,10 +5,24 @@
     { "type": "speaker", "bind": "speaker" },
     { "type": "line", "bind": "line" },
     { "type": "note", "bind": "source", "when": "source" },
+    { "type": "note", "bind": "guardianAi", "when": "guardianAi" },
+    { "type": "row", "when": "guardianAi", "children": [
+      { "type": "button", "bind": "enableGpu", "when": "enableGpu", "style": "outline", "action": "guardian-gpu", "disabledWhen": "busy" },
+      { "type": "button", "bind": "enableCpu", "when": "enableCpu", "style": "outline", "action": "guardian-cpu", "disabledWhen": "busy" },
+      { "type": "button", "text": "Testar IA", "style": "outline", "action": "guardian-test", "disabledWhen": "testDisabled" }
+    ] },
+    { "type": "note", "bind": "aiTest", "when": "aiTest" },
+    { "type": "note", "text": "Sugestões de resposta", "when": "guardianAi" },
+    { "type": "row", "when": "guardianAi", "children": [
+      { "type": "button", "text": "Iluminar o jardim", "style": "outline", "action": "suggest-lights", "disabledWhen": "busy" },
+      { "type": "button", "text": "Criar uma trilha", "style": "outline", "action": "suggest-path", "disabledWhen": "busy" },
+      { "type": "button", "text": "Plantar flores", "style": "outline", "action": "suggest-flowers", "disabledWhen": "busy" }
+    ] },
     { "type": "form", "action": "speak", "children": [
       { "type": "input", "id": "dialog-input", "bind": "draft", "text": "Escreva algo para a Guardiã…", "label": "Escreva para a Guardiã", "maxLength": 300 },
-      { "type": "submit", "text": "Enviar", "icon": "send", "label": "Enviar para a Guardiã" },
-      { "type": "button", "bind": "dictation", "icon": "audio", "style": "outline", "action": "dictate" }
+      { "type": "submit", "text": "Enviar", "icon": "send", "label": "Enviar para a Guardiã", "disabledWhen": "busy" },
+      { "type": "button", "bind": "dictation", "icon": "audio", "style": "outline", "action": "dictate", "disabledWhen": "busy" },
+      { "type": "button", "text": "Ouvir fala", "style": "outline", "action": "listen", "disabledWhen": "thinking" }
     ] },
     { "type": "note", "bind": "speechError", "when": "speechError", "style": "error" },
     { "type": "row", "children": [

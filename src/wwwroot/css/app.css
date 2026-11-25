@@ -137,6 +137,7 @@ form.ultima-chat-compose > :first-child { flex: 1 1 180px; min-width: 0; }
 .ultima-dialog {
     position: absolute; left: 50%; bottom: 1rem; transform: translateX(-50%);
     width: min(640px, calc(100% - 1.5rem));
+    max-height: calc(100% - 2rem); overflow-y: auto; overscroll-behavior: contain;
     z-index: 6;
 }
 .ultima-dialog__speaker {

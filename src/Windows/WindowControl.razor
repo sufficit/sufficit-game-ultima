@@ -28,12 +28,12 @@
             break;
         case "submit":
             <SUIButton ButtonTypeValue="SUIButtonType.Submit" SizeValue="SUISize.Small" StartIcon="@Control.Icon"
-                       aria-label="@Control.Label">@State.Content(Control)</SUIButton>
+                       Disabled="@Disabled" aria-label="@Control.Label">@State.Content(Control)</SUIButton>
             break;
         case "button":
             <SUIButton VariantValue="@(Control.Style == "outline" ? SUIVariant.Outlined : SUIVariant.Filled)"
                        SizeValue="@(Control.Style == "outline" ? SUISize.Small : SUISize.Medium)" StartIcon="@Control.Icon"
-                       OnClick="Dispatch">@State.Content(Control)</SUIButton>
+                       Disabled="@Disabled" OnClick="Dispatch">@State.Content(Control)</SUIButton>
             break;
         case "list":
             <ul class="ultima-window__list">
@@ -51,6 +51,8 @@
     [Parameter, EditorRequired] public WindowState State { get; set; } = default!;
     [Parameter] public EventCallback<string> OnAction { get; set; }
     [Parameter] public EventCallback<(string Key, string Value)> OnEdit { get; set; }
+
+    private bool Disabled => State.Read(Control.DisabledWhen).Length != 0;
 
     private IReadOnlyList<string> Items => Control.Bind is { } key && State.Lists.TryGetValue(key, out var items) ? items : [];
 

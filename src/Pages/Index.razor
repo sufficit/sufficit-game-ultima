@@ -651,12 +651,12 @@
         _gfxStyle = await JS.InvokeAsync<string>("game.graphics.set", style);
         _gfxDirty = true;
     }
-    private Task EnableAiAsync() => JS.InvokeVoidAsync("game.ai.load").AsTask();
+    private Task EnableAiAsync() => JS.InvokeVoidAsync("game.ai.load", _browserLifetime.Token).AsTask();
     private Task DisableAiAsync() => JS.InvokeVoidAsync("game.ai.disable").AsTask();
-    private Task RetryAiAsync() => JS.InvokeVoidAsync("game.ai.retry").AsTask();
-    private Task EnableAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.load").AsTask();
+    private Task RetryAiAsync() => JS.InvokeVoidAsync("game.ai.retry", _browserLifetime.Token).AsTask();
+    private Task EnableAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.load", _browserLifetime.Token).AsTask();
     private Task DisableAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.disable").AsTask();
-    private Task RetryAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.retry").AsTask();
+    private Task RetryAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.retry", _browserLifetime.Token).AsTask();
     private string _aiCpuModel = "gemma270";
     // Dois modelos, propostas diferentes (t48): leveza máxima vs. melhor conversa em português.
     private static readonly Dictionary<string, (string Label, string Why)> AiCpuModels = new()
@@ -991,6 +991,47 @@
     private readonly WindowState _conversationState = new();
     private readonly WindowState _journalState = new();
 
+    private bool _testingGuardianAi;
+    private string _guardianAiTest = "";
+    private bool GuardianOpen => _view is { Speaker: not "Andarilho" };
+    private bool GuardianBusy => _view?.Thinking == true || (GuardianOpen && _testingGuardianAi);
+    private static bool AiLoading(string state) => state is "checking" or "downloading" or "compiling" or "thinking";
+
+    private string GuardianAiStatus()
+    {
+        if (_aiState == "ready" || _aiCpuState == "ready")
+            return _aiState == "ready" ? "IA local pronta na GPU." : "IA local pronta na CPU.";
+        if (AiLoading(_aiState)) return _aiDetail;
+        if (AiLoading(_aiCpuState)) return _aiCpuDetail;
+        if (_aiState is "error" or "stalled") return _aiDetail;
+        if (_aiCpuState is "error" or "stalled") return _aiCpuDetail;
+        return "Ative a IA local para conversar quando a IA do servidor estiver indisponível.";
+    }
+
+    private async Task TestGuardianAiAsync()
+    {
+        if (!GuardianOpen || GuardianBusy) return;
+        var engine = _aiState == "ready" ? "ai" : _aiCpuState == "ready" ? "aiCpu" : null;
+        if (engine is null) return;
+        _testingGuardianAi = true;
+        _guardianAiTest = "Testando a resposta da IA local…";
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_browserLifetime.Token);
+            timeout.CancelAfter(TimeSpan.FromSeconds(60));
+            var text = await JS.InvokeAsync<string?>($"game.{engine}.garden", timeout.Token,
+                "Responda com uma saudação curta em português.", "Olá!", 32);
+            _guardianAiTest = !string.IsNullOrWhiteSpace(text)
+                ? "A IA local respondeu ao teste."
+                : "A IA local não respondeu. Tente novamente.";
+        }
+        catch (Exception ex) when (ex is JSException or OperationCanceledException)
+        {
+            _guardianAiTest = "O teste da IA local não foi concluído. Tente novamente.";
+        }
+        finally { _testingGuardianAi = false; }
+    }
+
     private WindowState ConversationState()
     {
         var view = _view!;
@@ -1000,6 +1041,15 @@
         values["line"] = line.Text;
         values["source"] = !view.Thinking && !string.IsNullOrEmpty(view.ReplySource) && line.Speaker != "Você"
             ? "✦ origem da resposta: " + view.ReplySource : "";
+        values["guardianAi"] = GuardianOpen ? GuardianAiStatus() : "";
+        values["enableGpu"] = GuardianOpen && !AiLoading(_aiState) && _aiState is not ("ready" or "unsupported")
+            ? _aiState is "error" or "stalled" ? "Tentar GPU novamente" : "Ativar IA na GPU" : "";
+        values["enableCpu"] = GuardianOpen && !AiLoading(_aiCpuState) && _aiCpuState is not ("ready" or "unsupported")
+            ? _aiCpuState is "error" or "stalled" ? "Tentar CPU novamente" : "Ativar IA na CPU" : "";
+        values["busy"] = GuardianBusy ? "1" : "";
+        values["thinking"] = view.Thinking ? "1" : "";
+        values["testDisabled"] = GuardianBusy || (_aiState != "ready" && _aiCpuState != "ready") ? "1" : "";
+        values["aiTest"] = GuardianOpen ? _guardianAiTest : "";
         values["draft"] = _dialogDraft;
         values["dictation"] = _dictating ? "Parar ditado" : "Ditar";
         values["speechError"] = _speechError;
@@ -1032,7 +1082,26 @@
         {
             case "advance": return AdvanceAsync();
             case "speak": return SubmitDialogAsync();
-            case "dictate": return ToggleDictationAsync();
+            case "dictate" when !GuardianBusy: return ToggleDictationAsync();
+            case "listen" when _view is { Thinking: false } dialog:
+                var line = dialog.Lines[dialog.CurrentLine];
+                return JS.InvokeVoidAsync("game.voice.speak", line.Text, line.Speaker).AsTask();
+            case "guardian-gpu" when GuardianOpen && !GuardianBusy:
+                _guardianAiTest = "";
+                return _aiState is "error" or "stalled" ? RetryAiAsync() : EnableAiAsync();
+            case "guardian-cpu" when GuardianOpen && !GuardianBusy:
+                _guardianAiTest = "";
+                return _aiCpuState is "error" or "stalled" ? RetryAiCpuAsync() : EnableAiCpuAsync();
+            case "guardian-test": return TestGuardianAiAsync();
+            case "suggest-lights" when GuardianOpen && !GuardianBusy:
+                _dialogDraft = "Coloque duas luminárias junto à entrada do jardim.";
+                break;
+            case "suggest-path" when GuardianOpen && !GuardianBusy:
+                _dialogDraft = "Crie uma trilha de pedra ligando a entrada do jardim à clareira.";
+                break;
+            case "suggest-flowers" when GuardianOpen && !GuardianBusy:
+                _dialogDraft = "Plante flores nas bordas do caminho do jardim.";
+                break;
             case "close":
                 if (_view is not null) CloseDialog();
                 else _journalOpen = false;
@@ -1050,7 +1119,7 @@
     private async Task SubmitDialogAsync()
     {
         var text = _dialogDraft.Trim();
-        if (_view is null || _view.Thinking || text.Length == 0) return;
+        if (_view is null || GuardianBusy || text.Length == 0) return;
         if (text.Length > 300) text = text[..300];
         var recent = string.Join("\n", _view.Lines.TakeLast(4).Select(line => $"{line.Speaker}: {line.Text}"));
         _dialogDraft = string.Empty;

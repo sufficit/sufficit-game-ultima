@@ -207,13 +207,13 @@
         }
     }
 
-    async function garden(prompt, text) {
+    async function garden(prompt, text, maxTokens = 1200) {
         if (!engine || state !== 'ready') return null;
         emit('thinking', progress, 'Guardiã planejando o jardim na sua GPU…');
         try {
             const output = await engine.chat.completions.create({
                 messages: [{ role: 'system', content: prompt }, { role: 'user', content: text }],
-                max_tokens: 1200, temperature: 0.2
+                max_tokens: maxTokens, temperature: 0.2
             });
             return output?.choices?.[0]?.message?.content || null;
         } catch {
