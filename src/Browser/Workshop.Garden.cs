@@ -58,6 +58,8 @@ public sealed partial class Workshop
     public async Task<(string Reply, string Source)> TalkToGuardianAsync(
         string text, bool gpu, bool cpu, CancellationToken token)
     {
+        if (await _genius.MemoryCommandAsync(text, token) is { } reply)
+            return (reply, GuardianGenius.SourcePrefix);
         var local = (gpu || cpu) && !GardenLanternIntent.Matches(text);
         try
         {

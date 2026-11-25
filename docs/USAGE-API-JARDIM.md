@@ -81,3 +81,29 @@ A família de jogo continua em `/v1/game/command` para movimento, interação,
 construção e escavação avançada, e a família de modelos em `/v1/assets`.
 A Guardiã usa as ações registradas no catálogo do jardim. A remoção
 seleciona colocações do mapa pelo UID.
+
+### Memória da Guardiã no navegador
+
+No diálogo, `/lembrar minha flor favorita é a orquídea` grava a nota e
+`/memórias flor` consulta até cinco notas. Sem termos, a consulta lista
+as mais recentes. A inferência local recebe até três notas por coincidência
+de palavras, ignorando acentos e maiúsculas. Cada nota comporta 300 caracteres.
+O escopo combina servidor, sala, jogador e Guardiã. Os dados ficam no
+`localStorage` da origem do jogo e o histórico da conversa fica no IndexedDB.
+
+Um módulo do host pode trocar o provedor após a inicialização. Importe pela
+mesma URL usada pelo jogo para compartilhar a instância do módulo.
+
+```js
+const { useMemoryPlugin } = await import(new URL('js/guardian-genius.mjs', document.baseURI));
+useMemoryPlugin(meuProvedor);
+// Para restaurar o provedor local do jogo:
+useMemoryPlugin();
+```
+
+O provedor implementa `save(scope, text)`, que resolve com `{ id }` após
+gravar, e `search(scope, query, limit)`, que resolve com uma lista ordenada
+de objetos com `text`. Ele é responsável pelo isolamento do escopo recebido.
+Uma troca afeta as operações seguintes e não migra notas entre provedores.
+A fábrica independente `createLocalStorageMemory(getStorage, namespace)` em
+`js/local-storage-memory.mjs` permite reutilizar o armazenamento em outro host.

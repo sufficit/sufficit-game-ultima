@@ -23,7 +23,7 @@ public sealed class GuardianGenius(IJSRuntime js) : IAsyncDisposable
         {
             return await runtime.SubmitAsync(id, prompt, text, (request, ct) =>
                 module.InvokeAsync<string?>("generate", ct, requestId, engine,
-                    JsonSerializer.Serialize(request, GuardianGeniusJson.Default.InferenceRequest), maxTokens),
+                    JsonSerializer.Serialize(request, GuardianGeniusJson.Default.InferenceRequest), maxTokens, id),
                 interpret is null ? null : (answer, _) => ValueTask.FromResult(interpret(answer)), timeout.Token);
         }
         finally
@@ -31,6 +31,22 @@ public sealed class GuardianGenius(IJSRuntime js) : IAsyncDisposable
             if (timeout.IsCancellationRequested)
                 await module.InvokeVoidAsync("cancel", CancellationToken.None, requestId);
         }
+    }
+
+    public async Task<string?> MemoryCommandAsync(string text, CancellationToken token)
+    {
+        var trimmed = text.Trim();
+        var end = 0;
+        while (end < trimmed.Length && !char.IsWhiteSpace(trimmed[end])) end++;
+        var command = trimmed[..end].ToLowerInvariant();
+        if (command == "/memórias") command = "/memorias";
+        if (command is not ("/lembrar" or "/memorias")) return null;
+        try
+        {
+            var module = await ModuleAsync();
+            return await module.InvokeAsync<string>("handleMemoryCommand", token, command, trimmed[end..].Trim());
+        }
+        catch (JSException) { return "Não consegui acessar a memória neste navegador."; }
     }
 
     private async Task<IJSObjectReference> ModuleAsync()

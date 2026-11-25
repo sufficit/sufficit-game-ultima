@@ -1,3 +1,6 @@
+import { contextualize, memoryCommand } from './guardian-memory.mjs';
+export { useMemoryPlugin } from './guardian-memory.mjs';
+
 let database;
 const attempts = new Map();
 const sessions = 'sessions';
@@ -46,13 +49,19 @@ export async function save(id, revision, json) {
     });
 }
 
-export async function generate(id, engine, json, maxTokens) {
+export function handleMemoryCommand(command, text) {
+    return memoryCommand(guardianConversationId(), command, text);
+}
+
+export async function generate(id, engine, json, maxTokens, scope = guardianConversationId()) {
     const { instructions, history, user } = JSON.parse(json);
     const model = engine === 'gpu' ? game.ai : game.aiCpu;
     const controller = new AbortController();
     attempts.set(id, controller);
     try {
-        return await model.garden(instructions, user, maxTokens, history, controller.signal);
+        const message = await contextualize(scope, user);
+        controller.signal.throwIfAborted();
+        return await model.garden(instructions, message, maxTokens, history, controller.signal);
     } finally {
         attempts.delete(id);
     }
