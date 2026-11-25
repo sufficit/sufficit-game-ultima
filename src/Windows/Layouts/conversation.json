@@ -12,11 +12,11 @@
       { "type": "button", "text": "Testar IA", "style": "outline", "action": "guardian-test", "disabledWhen": "testDisabled" }
     ] },
     { "type": "note", "bind": "aiTest", "when": "aiTest" },
-    { "type": "note", "text": "Sugestões de resposta", "when": "guardianAi" },
+    { "type": "note", "text": "Ações do jardim", "when": "guardianAi" },
     { "type": "row", "when": "guardianAi", "children": [
-      { "type": "button", "text": "Iluminar o jardim", "style": "outline", "action": "suggest-lights", "disabledWhen": "busy" },
-      { "type": "button", "text": "Criar uma trilha", "style": "outline", "action": "suggest-path", "disabledWhen": "busy" },
-      { "type": "button", "text": "Plantar flores", "style": "outline", "action": "suggest-flowers", "disabledWhen": "busy" }
+      { "type": "button", "text": "Iluminar o jardim", "style": "outline", "action": "light-garden", "disabledWhen": "busy" },
+      { "type": "button", "text": "Sugerir trilha", "style": "outline", "action": "suggest-path", "disabledWhen": "busy" },
+      { "type": "button", "text": "Sugerir flores", "style": "outline", "action": "suggest-flowers", "disabledWhen": "busy" }
     ] },
     { "type": "form", "action": "speak", "children": [
       { "type": "input", "id": "dialog-input", "bind": "draft", "text": "Escreva algo para a Guardiã…", "label": "Escreva para a Guardiã", "maxLength": 300 },

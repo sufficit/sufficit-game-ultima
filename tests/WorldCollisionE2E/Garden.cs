@@ -52,13 +52,39 @@ internal static class Garden
         await page.GetByText("Minha IA está indisponível.", new() { Exact = false }).WaitForAsync();
         Check(!(await MapAsync(page)).Placements.Any(p => p.Asset == "prop.lantern" &&
             initial.Placements.All(old => old.Uid != p.Uid)), "IA indisponível não cria luminárias");
+        var illuminate = page.GetByRole(AriaRole.Button, new() { Name = "Iluminar o jardim", Exact = true });
+        var draft = page.Locator("#dialog-input");
+        await draft.FillAsync("Rascunho de outro pedido");
+        var lightsResponse = page.WaitForResponseAsync(r => r.Url.EndsWith("/v1/game/garden/decor") && r.Status == 200);
+        await illuminate.ClickAsync();
+        await page.GetByText("As duas luminárias estão na entrada do jardim.", new() { Exact = false }).WaitForAsync();
+        await lightsResponse;
+        Check(await draft.InputValueAsync() == "Rascunho de outro pedido", "a ação preserva o rascunho");
+        var lit = await MapAsync(page);
+        var lampIds = lit.Placements.Where(p => p.Asset == "prop.lantern").Select(p => p.Uid).ToArray();
+        Check(lampIds.Length == 2, "um clique grava duas luminárias no mapa");
+        await WaitAsync(() => RenderAsync<bool>(page, """
+            ids => {
+                const scene = BABYLON.EngineStore.LastCreatedScene;
+                const lights = scene.lights.filter(light => light.name.startsWith('garden-light-') && light.isEnabled());
+                return ids.every(id => {
+                    const mesh = scene.getMeshByName('place-' + id);
+                    return mesh?.isVisible && lights.some(light => light.position.x === mesh.position.x &&
+                        light.position.z === mesh.position.z && light.intensity > 0);
+                });
+            }
+            """, lampIds), "as duas luminárias visíveis e acesas");
+        await illuminate.ClickAsync();
+        await page.GetByText("A entrada do jardim já está iluminada.", new() { Exact = true }).WaitForAsync();
+        Check((await MapAsync(page)).Revision == lit.Revision, "repetir a ação não duplica luminárias");
+
         var response = page.WaitForResponseAsync(r => r.Url.EndsWith("/v1/game/garden/dialog") && r.Status == 200);
         await AskAsync("Luminária, flores e trilha");
         await page.GetByText("Apliquei as mudanças no jardim.", new() { Exact = false }).WaitForAsync();
         var edited = await MapAsync(page);
         using var reply = JsonDocument.Parse(await (await response).TextAsync());
         Check(reply.RootElement.GetProperty("applied").GetInt32() == 7, "diálogo gravou cinco pincéis e dois objetos");
-        var previous = initial.Placements.Select(p => p.Uid).ToHashSet(StringComparer.Ordinal);
+        var previous = lit.Placements.Select(p => p.Uid).ToHashSet(StringComparer.Ordinal);
         var lantern = edited.Placements.Single(p => p.Asset == "prop.lantern" && !previous.Contains(p.Uid));
         var flowers = edited.Placements.Single(p => p.Asset == "flora.flowers" && !previous.Contains(p.Uid));
         await WaitAsync(async () => await RenderAsync<bool>(page, """

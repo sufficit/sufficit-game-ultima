@@ -70,8 +70,8 @@ internal static class DeclarativeWindows
         await conversation.GetByText("A IA local respondeu ao teste.").WaitForAsync();
         Check(await page.EvaluateAsync<bool>("() => guardianProbe.text === 'Olá!' && guardianProbe.tokens === 32"),
             "teste usa a inferência curta");
-        await Button(conversation, "Iluminar o jardim").ClickAsync();
-        Check(await draft.InputValueAsync() == "Coloque duas luminárias junto à entrada do jardim.", "sugestão preenche a caixa de texto");
+        await Button(conversation, "Sugerir trilha").ClickAsync();
+        Check((await draft.InputValueAsync()).StartsWith("Crie uma trilha de pedra", StringComparison.Ordinal), "sugestão preenche a caixa de texto");
         await Button(conversation, "Ditar").ClickAsync();
         await WaitAsync(async () => await draft.InputValueAsync() == "Texto ditado", "ditado alimenta a caixa de texto");
         await Button(conversation, "Ouvir fala").ClickAsync();
@@ -86,6 +86,8 @@ internal static class DeclarativeWindows
         var first = await line.InnerTextAsync();
         await Button(conversation, "Continuar · E/A").ClickAsync();
         await WaitAsync(async () => await line.InnerTextAsync() != first, "avança para a fala seguinte");
+        await Button(conversation, "Iluminar o jardim").ClickAsync();
+        await conversation.GetByText("Conecte-se ao servidor do jogo para aplicar alterações no jardim.", new() { Exact = true }).WaitForAsync();
         await conversation.GetByRole(AriaRole.Textbox, new() { Name = "Escreva para a Guardiã" }).FillAsync("Quero novas árvores");
         await Button(conversation, "Enviar para a Guardiã").ClickAsync();
         await conversation.GetByText("Olá, caminhante. Conecte-se ao servidor do jogo para aplicar alterações no jardim.").WaitForAsync();
