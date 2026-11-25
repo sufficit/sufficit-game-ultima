@@ -226,6 +226,11 @@ grava um registro no journal antes de compartilhar a nova revisão. O navegador
 aplica o mapa confirmado no mesmo turno. Falhas do provedor e planos inválidos
 preservam o mundo. [Contratos e exemplos](docs/USAGE-API-JARDIM.md)
 
+O runtime headless do Genius foi validado em Chromium em uma aplicação
+Blazor isolada. O desenho do Ultima prevê carregamento sob demanda e
+armazenamento de sessões no perfil do navegador, com a inferência nos
+motores do jogo. [Plano de integração](docs/PLAN-GENIUS-LOCAL.md)
+
 ## Relógio e clima
 
 O painel de tempo usa o mesmo cálculo lunar em C#. A ponte do navegador
