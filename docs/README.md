@@ -41,6 +41,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Hosted mission API rollout](activities/202611252005-mission-api-rollout.md)
+
 - [Data-driven environments and missions](activities/202611251942-environment-missions.md)
 
 - [Authored NPC dialogue topics](activities/202611251914-npc-dialogue.md)

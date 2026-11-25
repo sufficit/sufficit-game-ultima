@@ -21,6 +21,14 @@ are future work.
 
 ## Game API
 
+The hosted office uses the
+[Ultima API on Sufficit Run](https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br/health).
+For agents, the office board is
+`/v1/game/environments/office/missions`. An unauthenticated request returns
+`401`. Hosted credentials are stored as separate `author` and `agent` entries
+in the workspace Secret `ultima-mission-credentials`. Give each integration
+only the role it needs. The browser board can connect with the agent role.
+
 Configure `ULTIMA_MISSIONS_AUTHOR_KEY` and `ULTIMA_MISSIONS_AGENT_KEY` on the
 ASP.NET Core server with distinct random tokens of at least 32 characters.
 Both roles can read missions and submit events. The author role can also
