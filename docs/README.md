@@ -17,8 +17,6 @@ As quatro frentes históricas estão registradas nas atividades de entrega.
 - [Decisões dos NPCs em C#](activities/202611220040-ia-npcs-decisoes.md)
 - [Upload amortizado de modelos](activities/202611212030-upload-amortizado-modelos.md)
 
-- [Personalização de modelos do jardim](PLAN-PERSONALIZAR-MODELOS.md)
-
 Futuros (bom ter na manga):
 
 - [PLAN-MOB-BRAIN.md](PLAN-MOB-BRAIN.md) — IA determinística de criaturas
@@ -30,6 +28,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Personalização de modelos por instância](activities/202611250007-personalizacao-modelos.md)
 
 - [Luminárias paramétricas da Guardiã](activities/202611242347-luminarias-parametricas.md)
 
