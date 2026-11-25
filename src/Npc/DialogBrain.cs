@@ -14,6 +14,7 @@ public abstract class DialogBrain
     private const string Thinking = "…";
 
     private readonly string _speaker;
+    private IReadOnlyList<DialogLine> _opening;
     private readonly List<DialogLine> _lines;
     private int _line = -1;          // -1 = diálogo fechado
     private bool _thinking;
@@ -22,6 +23,7 @@ public abstract class DialogBrain
     protected DialogBrain(string speaker, IReadOnlyList<DialogLine> openingLines)
     {
         _speaker = speaker;
+        _opening = openingLines;
         _lines = [.. openingLines];
     }
 
@@ -41,6 +43,9 @@ public abstract class DialogBrain
     {
         if (_line < 0)
         {
+            _lines.Clear();
+            _lines.AddRange(_opening);
+            _replySource = string.Empty;
             _line = 0;
             return View([new OpenDialog(), new ShowLine(0)]);
         }
@@ -88,11 +93,11 @@ public abstract class DialogBrain
     {
         if (changed.Lines.Length == 0) { return NpcDecision.Empty; }
         var speaker = string.IsNullOrWhiteSpace(changed.Speaker) ? _speaker : changed.Speaker;
+        _opening = changed.Lines.Select(line => new DialogLine(speaker, line)).ToArray();
+        if (_line >= 0) return NpcDecision.Empty;
         _lines.Clear();
-        _lines.AddRange(changed.Lines.Select(l => new DialogLine(speaker, l)));
-        if (_line >= _lines.Count) { _line = _lines.Count - 1; }           // diálogo aberto durante troca de conteúdo
-        _thinking = false;
-        return _line >= 0 ? View([new ShowLine(_line)]) : NpcDecision.Empty;
+        _lines.AddRange(_opening);
+        return NpcDecision.Empty;
     }
 
     private NpcDecision View(IReadOnlyList<NpcCommand> commands) =>

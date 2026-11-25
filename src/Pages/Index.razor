@@ -953,6 +953,7 @@
                     _ = ResolveAnimationMarkAsync(mark);
                     break;
                 case OpenDialog:
+                    _conversationState.ArchivedTurns = Dialogs.HistoryFor(decision.View!.Speaker);
                     _ = SetFrozen(true);
                     break;
                 case Ultima.Npc.CloseDialog:
@@ -1032,7 +1033,7 @@
     private bool GuardianOpen => _view is { Speaker: not "Andarilho" };
     private bool GuardianBusy => _view?.Thinking == true || (GuardianOpen && _testingGuardianAi);
     private static bool AiLoading(string state) => state is "checking" or "downloading" or "compiling" or "loading" or "thinking";
-    private sealed record LocalAiStatus(string State, double Progress, string Detail);
+    private sealed record LocalAiStatus(string State, double Progress, string Detail, string? Model, double? LastReplyMs);
 
     private async Task LoadLocalAiAsync(string engine, string action)
     {
@@ -1045,8 +1046,10 @@
         var gpu = JS.InvokeAsync<LocalAiStatus>("game.ai.status", token).AsTask();
         var cpu = JS.InvokeAsync<LocalAiStatus>("game.aiCpu.status", token).AsTask();
         await Task.WhenAll(gpu, cpu);
-        (_aiState, _aiProgress, _aiDetail) = await gpu;
-        (_aiCpuState, _aiCpuProgress, _aiCpuDetail) = await cpu;
+        var gpuStatus = await gpu;
+        var cpuStatus = await cpu;
+        (_aiState, _aiProgress, _aiDetail) = (gpuStatus.State, gpuStatus.Progress, gpuStatus.Detail);
+        (_aiCpuState, _aiCpuProgress, _aiCpuDetail) = (cpuStatus.State, cpuStatus.Progress, cpuStatus.Detail);
     }
 
     private string GuardianAiStatus()
@@ -1093,12 +1096,8 @@
     private WindowState ConversationState()
     {
         var view = _view!;
-        var line = view.Lines[view.CurrentLine];
+        _conversationState.Conversation = view;
         var values = _conversationState.Text;
-        values["speaker"] = line.Speaker;
-        values["line"] = line.Text;
-        values["source"] = !view.Thinking && !string.IsNullOrEmpty(view.ReplySource) && line.Speaker != "Você"
-            ? "✦ origem da resposta: " + view.ReplySource : "";
         values["guardianAi"] = GuardianOpen ? GuardianAiStatus() : "";
         values["enableGpu"] = GuardianOpen && !AiLoading(_aiState) && _aiState is not ("ready" or "unsupported")
             ? _aiState is "error" or "stalled" ? "Tentar GPU novamente" : "Ativar IA na GPU" : "";
@@ -1109,6 +1108,7 @@
         values["testDisabled"] = GuardianBusy || (_aiState != "ready" && _aiCpuState != "ready") ? "1" : "";
         values["aiTest"] = GuardianOpen ? _guardianAiTest : "";
         values["draft"] = _dialogDraft;
+        BindDiagnosticReport(values);
         values["dictation"] = _dictating ? "Parar ditado" : "Ditar";
         values["speechError"] = _speechError;
         values["advance"] = view.CurrentLine + 1 < view.Lines.Count ? "Continuar · E/A" : "Encerrar · E/A";
@@ -1118,6 +1118,7 @@
     private void EditWindow((string Key, string Value) edit)
     {
         if (edit.Key == "draft") _dialogDraft = edit.Value;
+        else if (edit.Key == "reportDraft") _reportDraft = edit.Value;
     }
 
     private void OpenJournal()
@@ -1138,6 +1139,11 @@
     {
         switch (action)
         {
+            case "report-toggle":
+                _reportOpen = !_reportOpen;
+                _reportStatus = "";
+                break;
+            case "report-send": return SendDiagnosticReportAsync();
             case "advance": return AdvanceAsync();
             case "speak": return SubmitDialogAsync();
             case "dictate" when !GuardianBusy: return ToggleDictationAsync();

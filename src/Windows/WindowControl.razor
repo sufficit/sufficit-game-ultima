@@ -4,11 +4,11 @@
 {
     @switch (Control.Type)
     {
-        case "speaker":
-            <p class="ultima-dialog__speaker">@State.Content(Control)</p>
+        case "transcript" when State.Conversation is { } conversation:
+            <ConversationTranscript View="conversation" Archived="State.ArchivedTurns" />
             break;
-        case "line":
-            <p class="ultima-dialog__line" aria-live="polite">@State.Content(Control)</p>
+        case "status":
+            <SUIText Typo="SUITypo.caption" role="status">@State.Content(Control)</SUIText>
             break;
         case "note":
             <SUIText Typo="SUITypo.caption" Color="@(Control.Style == "error" ? SUIColor.Error : SUIColor.Secondary)">

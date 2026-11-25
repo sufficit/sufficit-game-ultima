@@ -7,6 +7,13 @@ internal static class DeclarativeWindows
     {
         var page = await browser.NewPageAsync(new() { ViewportSize = new() { Width = 1200, Height = 720 } });
         var errors = TrackErrors(page);
+        string? reported = null;
+        await page.RouteAsync("**/v1/diagnostics/reports", async route =>
+        {
+            reported = route.Request.PostData;
+            await route.FulfillAsync(new() { Status = 201, ContentType = "application/json",
+                Body = "{\"id\":\"0123456789abcdef0123456789abcdef\"}" });
+        });
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ULTIMA_DIAGNOSTIC")))
             page.Console += (_, message) => Console.WriteLine($"{message.Type} {message.Text[..Math.Min(900, message.Text.Length)]}");
         await page.AddInitScriptAsync("""
@@ -103,6 +110,16 @@ internal static class DeclarativeWindows
         Check(await page.EvaluateAsync<bool>("() => guardianProbe.text === 'Quero novas árvores' && guardianProbe.tokens === 120"),
             "conversa sem sessão usa a IA local com contexto curto");
         var reply = await line.InnerTextAsync();
+        var history = conversation.GetByRole(AriaRole.Region, new() { Name = "Histórico da conversa" });
+        await history.GetByText("Quero novas árvores", new() { Exact = true }).WaitForAsync();
+        await Button(conversation, "Reportar erro").ClickAsync();
+        await conversation.GetByRole(AriaRole.Textbox, new() { Name = "Descrição opcional do problema" }).FillAsync("GPU indisponível");
+        await Button(conversation, "Enviar diagnóstico").ClickAsync();
+        await conversation.GetByRole(AriaRole.Status).GetByText("Diagnóstico enviado.", new() { Exact = false }).WaitForAsync();
+        using var report = System.Text.Json.JsonDocument.Parse(reported ?? "{}");
+        Check(report.RootElement.GetProperty("cpu").GetProperty("state").GetString() == "ready" &&
+            report.RootElement.GetProperty("description").GetString() == "GPU indisponível" &&
+            !reported!.Contains("Quero novas árvores", StringComparison.Ordinal), "diagnóstico envia estados sem conversa");
         await CloseAsync(conversation);
         await OpenJournalAsync();
         await journal.GetByText(reply).WaitForAsync();
@@ -117,6 +134,7 @@ internal static class DeclarativeWindows
         await page.Locator(".ultima-hint").GetByText("para conversar").WaitForAsync();
         await page.Keyboard.PressAsync("e");
         await conversation.WaitForAsync();
+        await history.GetByText("Quero novas árvores", new() { Exact = true }).WaitForAsync();
         await conversation.GetByText("IA local pronta na GPU.").WaitForAsync();
         await draft.FillAsync("Qual foi meu pedido anterior?");
         await Button(conversation, "Enviar para a Guardiã").ClickAsync();

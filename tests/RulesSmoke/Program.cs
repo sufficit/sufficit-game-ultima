@@ -175,7 +175,11 @@ var reply = npc.Tick(Snap(open: true, ai: true)).Single();
 Check("resposta do produtor caro substitui as reticências", reply.Commands.Any(c => c is SetReply { Text: "Resposta da GPU." }) && reply.View is { Thinking: false, ReplySource: "GPU do jogador" });
 
 npc.Submit(new IntroLinesChanged(1900, "Guardiã Remota", ["Fala remota 1", "Fala remota 2"]));
-var intro = npc.Tick(Snap(open: true)).Single();
+Check("conteúdo remoto preserva a conversa que está aberta", npc.Tick(Snap(open: true)).Count == 0);
+npc.Submit(new DialogClosedByPlayer(1901));
+npc.Tick(Snap(open: true));
+npc.Submit(new PlayerInteracted(1902));
+var intro = npc.Tick(Snap(open: false)).Single();
 Check("conteúdo remoto troca as falas de abertura", intro.View!.Lines.Count == 2 && intro.View.Lines[0] is { Speaker: "Guardiã Remota", Text: "Fala remota 1" });
 
 // Segundo NPC: o Andarilho prova que o desenho escala sem mudar o loop

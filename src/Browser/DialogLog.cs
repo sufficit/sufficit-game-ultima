@@ -135,6 +135,9 @@ public sealed class DialogLog(IJSRuntime js)
         finally { _sending = false; }
     }
 
+    public DialogHistory[] HistoryFor(string npc) =>
+        _history.TryGetValue(npc, out var turns) ? turns.ToArray() : [];
+
     public IReadOnlyList<string> RecentEntries() => _history
         .SelectMany(entry => entry.Value.Select(turn => (Npc: entry.Key, Turn: turn)))
         .OrderByDescending(entry => entry.Turn.T)

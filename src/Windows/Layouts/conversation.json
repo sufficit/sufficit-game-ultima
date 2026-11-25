@@ -2,9 +2,7 @@
   "version": 1,
   "title": "Conversa",
   "controls": [
-    { "type": "speaker", "bind": "speaker" },
-    { "type": "line", "bind": "line" },
-    { "type": "note", "bind": "source", "when": "source" },
+    { "type": "transcript" },
     { "type": "note", "bind": "guardianAi", "when": "guardianAi" },
     { "type": "row", "when": "guardianAi", "children": [
       { "type": "button", "bind": "enableGpu", "when": "enableGpu", "style": "outline", "action": "guardian-gpu", "disabledWhen": "busy" },
@@ -25,7 +23,14 @@
       { "type": "button", "text": "Ouvir fala", "style": "outline", "action": "listen", "disabledWhen": "thinking" }
     ] },
     { "type": "note", "bind": "speechError", "when": "speechError", "style": "error" },
+    { "type": "note", "when": "reportOpen", "text": "O relato inclui a versão do jogo e os estados da renderização e da IA. Seu histórico fica no navegador." },
+    { "type": "form", "when": "reportOpen", "action": "report-send", "children": [
+      { "type": "input", "id": "diagnostic-description", "bind": "reportDraft", "text": "O que aconteceu?", "label": "Descrição opcional do problema", "maxLength": 400 },
+      { "type": "submit", "text": "Enviar diagnóstico", "disabledWhen": "reportBusy" }
+    ] },
+    { "type": "status", "bind": "reportStatus", "when": "reportStatus" },
     { "type": "row", "children": [
+      { "type": "button", "bind": "reportToggle", "action": "report-toggle", "style": "outline", "disabledWhen": "reportBusy" },
       { "type": "button", "bind": "advance", "action": "advance" },
       { "type": "button", "text": "Fechar · Esc", "style": "outline", "action": "close" }
     ] }

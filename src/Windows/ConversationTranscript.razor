@@ -1,0 +1,53 @@
+@using Sufficit.Blazor.UI.Components
+@using Ultima.Browser
+@using Ultima.Npc
+
+<div class="ultima-conversation" tabindex="0" role="region" aria-label="Histórico da conversa">
+    <ol class="ultima-conversation__messages">
+        @foreach (var turn in Archived)
+        {
+            @Message("Você", turn.Player)
+            @Message(View.Speaker, turn.Reply, turn.Source)
+        }
+        @foreach (var line in View.Lines.Take(View.CurrentLine))
+        {
+            @Message(line.Speaker, line.Text)
+        }
+        <li class="ultima-conversation__message" aria-live="polite">
+            <SUIText Typo="SUITypo.caption" Class="ultima-dialog__speaker">@Current.Speaker</SUIText>
+            <p class="ultima-dialog__line">@(View.Thinking ? "Pensando…" : Current.Text)</p>
+            @if (!View.Thinking && View.ReplySource.Length != 0 && Current.Speaker != "Você")
+            {
+                <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">✦ origem da resposta: @View.ReplySource</SUIText>
+            }
+        </li>
+    </ol>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public DialogView View { get; set; } = default!;
+    [Parameter, EditorRequired] public IReadOnlyList<DialogHistory> Archived { get; set; } = [];
+    private DialogLine Current => View.Lines[View.CurrentLine];
+    private DialogView? _renderedView;
+    private IReadOnlyList<DialogHistory>? _renderedArchive;
+
+    protected override bool ShouldRender() =>
+        !ReferenceEquals(_renderedView, View) || !ReferenceEquals(_renderedArchive, Archived);
+
+    protected override void OnAfterRender(bool firstRender) =>
+        (_renderedView, _renderedArchive) = (View, Archived);
+
+    private RenderFragment Message(string speaker, string text, string? source = null) => @<text>
+        @if (text.Length > 0)
+        {
+            <li class="ultima-conversation__message @(speaker == "Você" ? "ultima-conversation__message--player" : "")">
+                <SUIText Typo="SUITypo.caption" Class="ultima-dialog__speaker">@speaker</SUIText>
+                <SUIText>@text</SUIText>
+                @if (!string.IsNullOrEmpty(source))
+                {
+                    <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@source</SUIText>
+                }
+            </li>
+        }
+    </text>;
+}

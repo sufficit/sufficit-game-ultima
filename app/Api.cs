@@ -8,7 +8,7 @@ namespace Ultima.Server;
 
 /// <summary>Roteador HTTP: mesmas rotas, códigos e cabeçalhos do backend anterior (main.py).</summary>
 sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat chat, WorldAssets assets,
-    DialogAnalytics dialogs, ILogger log)
+    DialogAnalytics dialogs, DiagnosticReports reports, ILogger log)
 {
     const int MaxBody = 64 * 1024;
     const string ApiVersion = "v1";
@@ -26,7 +26,7 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
         "POST /v1/game/leave",
         "/v1/assets", "/v1/assets/jobs/{id}", "/v1/assets/file/{name}",
         "POST /v1/assets/generate", "POST /v1/assets/upload",
-        "/v1/analytics/dialogs", "POST /v1/analytics/dialogs",
+        "/v1/analytics/dialogs", "POST /v1/analytics/dialogs", "POST /v1/diagnostics/reports",
     ];
 
     public async Task HandleAsync(HttpContext ctx)
@@ -266,6 +266,18 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
             }
             var scale = QueryFloat(ctx, "scale", 1.0);
             await Json(ctx, assets.Upload(Token(ctx), buf, ctx.Request.Query["name"].ToString(), scale));
+            return;
+        }
+        if (path == "/v1/diagnostics/reports")
+        {
+            if (ctx.Request.ContentLength > 4096)
+            {
+                await Json(ctx, J.Err("report_too_large"), 413, NoStore);
+                return;
+            }
+            var report = await Body(ctx);
+            if (report is null) { await Json(ctx, J.Err("bad_request"), 400, NoStore); return; }
+            await Json(ctx, reports.Post(Ip(ctx), report));
             return;
         }
         if (path == "/v1/analytics/dialogs")

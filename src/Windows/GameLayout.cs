@@ -24,6 +24,9 @@ public sealed record GameControl(
 
 public sealed class WindowState
 {
+    public Ultima.Npc.DialogView? Conversation { get; set; }
+    public IReadOnlyList<Ultima.Browser.DialogHistory> ArchivedTurns { get; set; } = [];
+
     public Dictionary<string, string> Text { get; } = [];
     public Dictionary<string, IReadOnlyList<string>> Lists { get; } = [];
 

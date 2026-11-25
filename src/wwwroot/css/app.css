@@ -333,3 +333,30 @@ form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
     background: #3a1220; color: #ffd7de; padding: .75rem 1rem; font-size: .85rem; z-index: 50;
 }
 #blazor-error-ui.visible { display: block; }
+
+.ultima-conversation {
+    display: flex;
+    flex-direction: column-reverse;
+    max-height: min(31dvh, 20rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.ultima-conversation__messages {
+    flex: 0 0 auto;
+    display: grid;
+    gap: .65rem;
+    list-style: none;
+    margin: 0;
+    padding: .25rem;
+}
+.ultima-conversation__message {
+    padding: .45rem .65rem;
+    border-inline-start: 2px solid var(--ultima-gold, #d9c37a);
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+.ultima-conversation__message--player {
+    border-color: var(--sui-primary, #8fd19c);
+    background: var(--sui-surface, #111a14);
+}
+.ultima-conversation__message .ultima-dialog__line { margin: 0; }
