@@ -40,4 +40,4 @@ No A/B com 64 avatares em movimento no Chromium WebGL com GPU AMD,
 o p95 do laço de CPU foi de 9,8 → 13,7 ms e o p95 do
 intervalo entre quadros foi de 18,4 → 18,9 ms. Cada cenário
 usou 90 amostras em uma bancada.
-[Harness de desempenho](../../tests/remote-performance.cjs)
+[Harness de desempenho](https://github.com/sufficit/sufficit-game-ultima/blob/865ca328adf67db9e5d172997ad05e4632eb6a20/tests/remote-performance.cjs)

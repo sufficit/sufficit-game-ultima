@@ -7,14 +7,20 @@ using static BrowserTest;
 
 try
 {
+    var scenario = args.FirstOrDefault() ?? "collision";
+    if (scenario != "remote-performance" && args.Length > 1)
+        throw new ArgumentException("Informe apenas um cenário.");
+    var browserArgs = scenario == "remote-performance" && RemotePerformance.UsesSwiftShader
+        ? RemotePerformance.SwiftShaderArgs
+        : (Environment.GetEnvironmentVariable("ULTIMA_CHROMIUM_ARGS") ?? "")
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
     using var playwright = await Playwright.CreateAsync();
     await using var browser = await playwright.Chromium.LaunchAsync(new()
     {
         ExecutablePath = Environment.GetEnvironmentVariable("ULTIMA_CHROMIUM"),
-        Args = (Environment.GetEnvironmentVariable("ULTIMA_CHROMIUM_ARGS") ?? "")
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+        Args = browserArgs
     });
-    switch (args.SingleOrDefault() ?? "collision")
+    switch (scenario)
     {
         case "collision":
             var size = (Environment.GetEnvironmentVariable("ULTIMA_VIEWPORT") ?? "1200x720").Split('x');
@@ -54,8 +60,14 @@ try
         case "graphics":
             await Graphics.RunAsync(browser);
             break;
+        case "crowd":
+            await Crowd.RunAsync(browser);
+            break;
+        case "remote-performance":
+            await RemotePerformance.RunAsync(browser, args[1..]);
+            break;
         default:
-            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics.");
+            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance.");
     }
     return 0;
 }

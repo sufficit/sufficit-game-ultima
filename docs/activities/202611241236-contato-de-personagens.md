@@ -40,4 +40,4 @@ No A/B com 64 avatares em movimento no Chromium WebGL com GPU AMD,
 o p95 da atualização de personagens passou de 0,3 para 0,6 ms e
 o p95 do intervalo entre quadros passou de 18,4 para 19,2 ms.
 A comparação usou 90 amostras por cenário em uma bancada.
-[Harness do comparativo](../../tests/remote-performance.cjs)
+[Harness do comparativo](https://github.com/sufficit/sufficit-game-ultima/blob/865ca328adf67db9e5d172997ad05e4632eb6a20/tests/remote-performance.cjs)

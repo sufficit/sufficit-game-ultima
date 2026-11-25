@@ -41,4 +41,4 @@ No A/B de 64 avatares em movimento no Chromium WebGL com GPU AMD,
 o p95 da atualização de personagens foi de 0,6 → 1,2 ms e o
 p95 do intervalo entre quadros foi de 19,6 → 19,6 ms. Cada cenário
 usou 90 quadros em uma bancada.
-[Harness de desempenho](../../tests/remote-performance.cjs)
+[Harness de desempenho](https://github.com/sufficit/sufficit-game-ultima/blob/865ca328adf67db9e5d172997ad05e4632eb6a20/tests/remote-performance.cjs)

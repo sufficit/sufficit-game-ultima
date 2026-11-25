@@ -81,4 +81,4 @@ Para repetir, servir dois publishes Release e passar as URLs dos builds
 a `node tests/remote-performance.cjs`. O padrão usa SwiftShader. Para
 repetir com a GPU desta bancada, definir `ULTIMA_CHROMIUM_ARGS` como
 `--enable-gpu --ignore-gpu-blocklist --use-gl=angle --use-angle=gl`.
-[Harness de desempenho](../../tests/remote-performance.cjs)
+[Harness de desempenho](https://github.com/sufficit/sufficit-game-ultima/blob/865ca328adf67db9e5d172997ad05e4632eb6a20/tests/remote-performance.cjs)

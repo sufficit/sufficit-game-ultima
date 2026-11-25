@@ -10,5 +10,6 @@
     <PackageReference Include="Microsoft.Playwright" Version="1.64.1" />
     <None Update="scene-probes.js" CopyToOutputDirectory="PreserveNewest" />
     <None Update="seam-probe.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="remote-performance-probe.js" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

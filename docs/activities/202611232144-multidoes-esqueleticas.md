@@ -29,6 +29,6 @@ usar a mesma textura de matrizes para todas as instâncias de cada tipo.
   60 FPS no teste em 1.200 × 720 com GPU AMD via ANGLE. Essa medição
   caracteriza o equipamento testado.
 - O build `efa3ce7` publicou a demonstração. A medição de regime foi
-  repetida em `f59bfde`. [Teste](../../tests/crowd.e2e.cjs)
+  repetida em `f59bfde`. [Teste](https://github.com/sufficit/sufficit-game-ultima/blob/865ca328adf67db9e5d172997ad05e4632eb6a20/tests/crowd.e2e.cjs)
   · [Jogo com multidão](https://sufficit.github.io/sufficit-game-ultima/?crowd=300)
   · [Publicação](https://github.com/sufficit/sufficit-game-ultima/actions/runs/45297298763).

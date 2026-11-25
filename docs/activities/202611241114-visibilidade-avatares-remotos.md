@@ -37,7 +37,7 @@ avatares ficou no nível próximo e metade ficou distante, fora da câmera.
 O p95 do laço mede CPU até a chamada a `scene.render()` retornar.
 O intervalo entre quadros também inclui o agendamento do navegador.
 As duas métricas estão em milissegundos.
-[Harness de desempenho](../../tests/remote-performance.cjs)
+[Harness de desempenho](https://github.com/sufficit/sufficit-game-ultima/blob/865ca328adf67db9e5d172997ad05e4632eb6a20/tests/remote-performance.cjs)
 
 | Renderer | Avatares | Estado | Ativos no Babylon.js | p95 do laço | p95 do intervalo |
 | --- | ---: | --- | ---: | ---: | ---: |

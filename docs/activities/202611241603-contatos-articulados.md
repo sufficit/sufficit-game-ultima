@@ -45,4 +45,4 @@ de sombras recebeu 480 → 544 malhas remotas, com os antebraços separados.
 Com 64 avatares parados, o p95 de CPU subiu de 9,6 para 13,6 ms e o
 intervalo entre quadros subiu de 18,8 para 19,3 ms. Cada cenário foi
 medido em uma rodada.
-[Harness de desempenho](../../tests/remote-performance.cjs)
+[Harness de desempenho](https://github.com/sufficit/sufficit-game-ultima/blob/865ca328adf67db9e5d172997ad05e4632eb6a20/tests/remote-performance.cjs)

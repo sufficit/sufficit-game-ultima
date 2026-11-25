@@ -41,7 +41,7 @@ Chromium WebGL no worker, 640 × 360, perfil Padrão, de 12 a 64 avatares
 com metade perto e metade além de 32 m. O benchmark esperou o carregamento
 dos modelos, aqueceu a cena e coletou 90 quadros por cenário. As versões
 comparadas foram `43155b5` e `a3874d1`. O renderer foi conferido em cada
-versão. [Harness de desempenho](../../tests/remote-performance.cjs)
+versão. [Harness de desempenho](https://github.com/sufficit/sufficit-game-ultima/blob/865ca328adf67db9e5d172997ad05e4632eb6a20/tests/remote-performance.cjs)
 
 Os tempos são p95 em milissegundos. O laço mede o trabalho síncrono de CPU
 do motor até o término da chamada a `scene.render()`. O intervalo inclui
