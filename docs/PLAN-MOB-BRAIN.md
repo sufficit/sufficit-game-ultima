@@ -53,7 +53,7 @@ retornar) e permitir evoluí-los sem espalhar condicionais pela lógica do mundo
 | Contrato por quadro | `engine/Ultima.Terrain/BrowserExports.Player.cs` | `AnimateCompanion` (um ator: o JS envia posição/origem/orientação e recebe 29 valores) e `UpdateRemoteAvatars` (lote: todos os avatares em uma chamada por quadro). São os moldes do contrato do mob. |
 | Cérebros sobre snapshot | `src/Npc/WorldSnapshot.cs`, `DialogBrain.cs`, `NpcScheduler.cs` | Snapshot imutável, decisão → comandos, orçamento por tick (4 eventos/16 comandos, fila 32). |
 | Regras D&D | `src/Rules/D20.cs`, `Dice.cs`, `Character.cs` | `D20.Test(kind: Attack)` com RNG semeado. Hoje só o `RulesSmoke` as exercita; o jogo não as referencia e o módulo WASM do worker não as compila. |
-| Testes | `tests/RulesSmoke`, `tests/*.e2e.cjs` | `RulesSmoke` compila por link `src/Rules/*.cs`, `src/Npc/*.cs`, `Terrain*.cs`, `Player*.cs` e `World*.cs`; os E2E rodam contra build local e site publicado, nos modos worker e `?render=main`. |
+| Testes | `tests/RulesSmoke`, `tests/WorldCollisionE2E` | `RulesSmoke` compila por link `src/Rules/*.cs`, `src/Npc/*.cs`, `Terrain*.cs`, `Player*.cs` e `World*.cs`. A suíte de navegador em C# (Microsoft.Playwright) roda contra build local e site publicado, nos modos worker e `?render=main`; é onde entra o E2E do mob. |
 
 O loop: `game-core.js` (compartilhado pelo worker e pela thread principal) chama o
 WASM a cada quadro — `MovePlayer` para o jogador, `AnimateCompanion` para o

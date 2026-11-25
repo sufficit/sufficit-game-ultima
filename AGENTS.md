@@ -40,7 +40,8 @@ Jogo open source em C# / Blazor WebAssembly com mundo 3D em Babylon.js
   pequeno e mensagem descritiva.
 - Decisões de design históricas em `decisions/`; não reabrir decisão registrada
   sem registrar a nova.
-- `app/` (API Python opcional) é fallback-friendly: o jogo nunca pode depender
+- `app/` (API opcional em ASP.NET Core; a implementação anterior em Python
+  fica em `app-python/`) é fallback-friendly: o jogo nunca pode depender
   dela para iniciar.
 - Priorizar o tempo de quadro nas migrações para C#. Agrupar chamadas na ponte
   JavaScript–WASM e comparar o custo antes e depois em cena equivalente.
