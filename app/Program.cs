@@ -55,5 +55,10 @@ if (int.TryParse(Environment.GetEnvironmentVariable("ULTIMA_ASSET_GC_DAYS"), out
     _ = assetsSvc.PruneOrphansAsync(TimeSpan.FromDays(days), app.Lifetime.ApplicationStopping);
 
 var api = new Api(content, game, net, chat, assetsSvc, new DialogAnalytics(log), new DiagnosticReports(dataDir, log), log);
-app.Run((RequestDelegate)api.HandleAsync);
+var missions = new MissionApi(new MissionStore(Path.Combine(dataDir, "missions.json")),
+    Environment.GetEnvironmentVariable("ULTIMA_MISSIONS_AUTHOR_KEY"),
+    Environment.GetEnvironmentVariable("ULTIMA_MISSIONS_AGENT_KEY"));
+app.Run((RequestDelegate)(context => context.Request.Path.StartsWithSegments(MissionApi.Prefix)
+    ? missions.HandleAsync(context, context.Request.Path.Value!.TrimEnd('/'))
+    : api.HandleAsync(context)));
 app.Run();

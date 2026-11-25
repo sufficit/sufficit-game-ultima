@@ -154,6 +154,8 @@
                         <SUIStack Spacing="2">
 
                             <SUIButton SizeValue="SUISize.Small" OnClick="OpenJournal">Diário</SUIButton>
+                            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined"
+                                       OnClick="OpenEnvironments">Ambientes</SUIButton>
 
                             <SUIExpansionPanel Title="Mochila" StartIcon="inbox">
                                 <SUIStack Spacing="2">
@@ -840,9 +842,10 @@
         var motorOk = false;
         try
         {
-            motorOk = await JS.InvokeAsync<bool>("game.init", "game-canvas", _bridge, _modelsRef);
+            var environment = await LoadTerrainAsync();
+            motorOk = await JS.InvokeAsync<bool>("game.init", "game-canvas", _bridge, _modelsRef, environment.Id, environment.Terrain);
         }
-        catch (JSException ex)
+        catch (Exception ex) when (ex is JSException or HttpRequestException or System.Text.Json.JsonException or InvalidDataException)
         {
             _workshopStatus = "Motor 3D indisponível: " + ex.Message;   // UI viva; o shell mostra detalhes
         }

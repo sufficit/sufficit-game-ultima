@@ -85,6 +85,9 @@ try
         case "browser-services":
             await BrowserServices.RunAsync(browser);
             break;
+        case "office":
+            await OfficeBrowser.RunAsync(browser);
+            break;
         case "input-devices":
             await InputDevices.RunAsync(browser);
             break;
@@ -95,7 +98,7 @@ try
             await DialogLogLive.RunAsync(browser);
             break;
         default:
-            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, camera-performance, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance, declarative-windows, hud-status, browser-services, local-preferences, mobile-layout, input-devices, dialog-log.");
+            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, camera-performance, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance, declarative-windows, hud-status, browser-services, local-preferences, mobile-layout, input-devices, dialog-log, office.");
     }
     return 0;
 }

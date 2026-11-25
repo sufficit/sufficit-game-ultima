@@ -1,0 +1,109 @@
+@page "/environments"
+@using Sufficit.Blazor.UI.Components
+@using Ultima.Environments
+
+<PageTitle>@(_environment?.Name ?? "Ambientes") · Ultima</PageTitle>
+
+<main class="environment">
+    <header class="environment__header">
+        <div>
+            <h1>@(_environment?.Name ?? "Ambientes")</h1>
+            <p>@(_environment?.Description ?? "Escolha um ambiente para abrir")</p>
+        </div>
+        @if (_environment is not null)
+        {
+            <SUIButton VariantValue="SUIVariant.Outlined" OnClick="ShowCatalog">Trocar ambiente</SUIButton>
+        }
+    </header>
+
+    @if (_environment?.Scene is not { } definition)
+    {
+        <SUIStack Spacing="2">
+            @if (_catalog is not null)
+            {
+                @foreach (var environment in _catalog.Environments)
+                {
+                    <SUIButton @key="environment.Id" VariantValue="SUIVariant.Outlined"
+                               OnClick="() => Open(environment)">@environment.Name</SUIButton>
+                }
+            }
+            @if (_status.Length != 0)
+            {
+                <p role="status">@_status</p>
+            }
+        </SUIStack>
+    }
+    else
+    {
+        <div class="environment__workplace">
+            <section class="environment__scene" aria-label="Estações de trabalho">
+                <canvas @ref="_canvas" aria-label="Vista 3D do ambiente"></canvas>
+                @if (_sceneError)
+                {
+                    <p class="environment__scene-error" role="status">A vista 3D está indisponível neste navegador.</p>
+                }
+                <div class="environment__stations">
+                    <SUIStack Row="true" Spacing="2" Wrap="true">
+                        @foreach (var station in definition.Stations)
+                        {
+                            <SUIButton @key="station.Id"
+                                       VariantValue="@(_station == station.Id ? SUIVariant.Filled : SUIVariant.Outlined)"
+                                       aria-pressed="@(_station == station.Id ? "true" : "false")"
+                                       OnClick="() => SelectStationAsync(station.Id)">@station.Name</SUIButton>
+                        }
+                    </SUIStack>
+                </div>
+            </section>
+
+            <aside aria-label="Painel de missões">
+                <SUICard Elevation="2">
+                    <SUICardContent>
+                        <SUIStack Spacing="2">
+                            <h2>Missões</h2>
+                            @if (!_connected)
+                            {
+                                <form class="environment__connect" @onsubmit="ConnectAsync" @onsubmit:preventDefault="true">
+                                    <SUITextField TValue="string" Label="Endereço da API" MaxLength="240" Immediate="true"
+                                                  @bind-Value="_endpoint" />
+                                    <SUITextField TValue="string" Label="Chave de missões" InputType="password" MaxLength="512"
+                                                  autocomplete="off" Immediate="true" @bind-Value="_draftKey" />
+                                    <SUIButton ButtonTypeValue="SUIButtonType.Submit" Disabled="@_connecting">Conectar</SUIButton>
+                                </form>
+                            }
+                            else
+                            {
+                                <SUIButton VariantValue="SUIVariant.Outlined" OnClick="DisconnectAsync">Desconectar</SUIButton>
+                                var missions = StationMissions;
+                                @if (missions.Length == 0)
+                                {
+                                    <p>Nenhuma missão nesta estação.</p>
+                                }
+                                @foreach (var mission in missions)
+                                {
+                                    <article class="environment__mission" @key="mission.Id">
+                                        <h3>@mission.Title</h3>
+                                        <p>@(mission.Complete ? "Concluída" : mission.LastEvent is null ? "Aguardando agente" : "Em andamento")</p>
+                                        <ul>
+                                            @foreach (var objective in mission.Objectives)
+                                            {
+                                                <li>@ObjectiveLabel(objective.Kind) · @objective.Target <strong>@objective.Count / @objective.Required</strong></li>
+                                            }
+                                        </ul>
+                                        @if (mission.LastEvent is { } last)
+                                        {
+                                            <p>Último registro · @last.Agent</p>
+                                        }
+                                    </article>
+                                }
+                            }
+                            @if (_status.Length > 0)
+                            {
+                                <p role="status" class="environment__status">@_status</p>
+                            }
+                        </SUIStack>
+                    </SUICardContent>
+                </SUICard>
+            </aside>
+        </div>
+    }
+</main>

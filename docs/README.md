@@ -4,6 +4,7 @@
 
 - [Guia do jogador](USAGE-JOGO.md) — controles, coleta, Guardiã e multiplayer.
 - [NPC dialogue guide](USAGE-DIALOGUE.md) — conversation topics and how to extend them.
+- [Environments and mission API guide](USAGE-ENVIRONMENTS.md).
 - [Edições, relógio e clima](USAGE-MUNDO.md) — Oficina do mundo e tempo local.
 
 ## Contribuir
@@ -20,6 +21,7 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
+- [Data-driven environments and missions](PLAN-ENVIRONMENT-MISSIONS.md).
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
 

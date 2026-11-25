@@ -8,9 +8,8 @@
     ROOT.UltimaCore = {
         create: function (host) {
 
-    const WORLD_HALF = 400;   // F3: mundo expansível (montanhas do gerador são a barreira natural)
-    const NPC_POSITION = { x: 0, z: -14 };      // Guardiã
-    const WANDERER_HOME = { x: 5.0, z: 0.0 };    // Andarilho: circula pela clareira inicial
+    const { halfSize: WORLD_HALF, guide: NPC_POSITION, wanderer: WANDERER_HOME,
+        spawn: defaultSpawn } = host.terrainSettings;
     // Escala realista: personagem com ~1,75 m; os olhos ficam a ~1,62 m do chão.
     const NEAR_RADIUS = 3.2;
     const PLAYER_HEIGHT = 1.75;
@@ -2380,7 +2379,7 @@
 
         const sky = skyDome();
         if (usePbr) { setupProceduralEnv(); }
-        const spawn = host.spawn ?? { x: 0, z: 0, ry: 0 };
+        const spawn = host.spawn ?? defaultSpawn;
         ensureChunksAround(spawn.x, spawn.z);   // grade de chunks com orçamento por frame
         void loadGroundMaterials();
         const updateWeather = weatherUpdate(sun, hemi, sky, horizon, softwareRenderer ? 240 : 520);
@@ -3439,7 +3438,7 @@
         },
         resetPlayer() {
             resetPlayerGait();
-            if (player) { placePlayer(0, 0); player.rotation.y = 0; }
+            if (player) { placePlayer(defaultSpawn.x, defaultSpawn.z); player.rotation.y = defaultSpawn.ry; }
             if (camera) {
                 terrain.ResetCamera();
                 cameraFrame = null;

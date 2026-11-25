@@ -44,6 +44,8 @@ jobs:
           cp publish/wwwroot/index.html publish/wwwroot/404.html
           touch publish/wwwroot/.nojekyll
           sed -i "s|__BUILD__|${GITHUB_SHA}|g" publish/wwwroot/index.html publish/wwwroot/404.html
+          mkdir -p publish/wwwroot/environments
+          cp publish/wwwroot/index.html publish/wwwroot/environments/index.html
           echo "{\"build\":\"${GITHUB_SHA}\"}" > publish/wwwroot/build.json
 
       - uses: actions/configure-pages@v5

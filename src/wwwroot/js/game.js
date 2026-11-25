@@ -28,7 +28,6 @@
     let callSeq = 0;
 
     // Usa a batida de pose existente. A chave separa os mapas servidos por APIs distintas.
-    const defaultPose = { x: 0, z: 0, ry: 0 };
     let poseKey, lastSavedPose, latestPose, nextPoseWrite = 0;
 
     function validPose(pose) {
@@ -37,8 +36,9 @@
             Number.isFinite(pose.ry) && Math.abs(pose.ry) <= 2 * Math.PI;
     }
 
-    function restorePose() {
-        poseKey = 'ultima.posicao.v1:' + window.game.live.api();
+    function restorePose(environment, defaultPose) {
+        const defaultEnvironment = !qs2.get('world');
+        poseKey = 'ultima.posicao.v1:' + (defaultEnvironment ? '' : environment + ':') + window.game.live.api();
         let saved;
         try { saved = JSON.parse(window.game.browser.read(poseKey)); } catch { /* registro inválido */ }
         lastSavedPose = latestPose = validPose(saved) ? saved : defaultPose;
@@ -173,7 +173,7 @@
         });
     }
 
-    function startMain(canvas, spawn) {
+    function startMain(canvas, spawn, terrainSettings) {
         return loadBabylon().then(function () {
             return new Promise(function (resolve, reject) {
                 mode = 'main';
@@ -187,6 +187,7 @@
                     gpuOff: GPU_OFF,
                     weather: weatherPref(),
                     spawn,
+                    terrainSettings,
                     global: window,
                     dom: true,
                     postEvent: postEventToDotnet,
@@ -209,7 +210,7 @@
         return { width: Math.max(1, canvas.clientWidth || 1280), height: Math.max(1, canvas.clientHeight || 720), dpr: window.devicePixelRatio || 1 };
     }
 
-    function startWorker(canvas, spawn) {
+    function startWorker(canvas, spawn, terrainSettings) {
         const off = canvas.transferControlToOffscreen();
         // Mesma versão dos scripts da página (?v=<build>): sem isso o cache HTTP
         // (10 min) pode entregar um worker/motor antigos junto com o shell novo logo
@@ -226,7 +227,7 @@
                 reject(new Error('worker: ' + (e && e.message || 'erro')));
             };
             worker.postMessage(
-                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref(), spawn },
+                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref(), spawn, terrainSettings },
                 [off]);
         });
     }
@@ -608,7 +609,9 @@
     // ---------- Contrato público (igual nos dois modos) ----------
     window.game = window.game || {};
     Object.assign(window.game, {
-        init(canvasId, dotnetRef, modelsRef) {
+        loadBabylon,
+        buildStamp,
+        init(canvasId, dotnetRef, modelsRef, environment, terrainSettings) {
             const canvas = document.getElementById(canvasId);
             if (!canvas) { return Promise.reject(new Error('canvas ' + canvasId + ' não encontrado')); }
             dotnet = dotnetRef;
@@ -622,10 +625,10 @@
                 showEngineFailure(err);
                 return Promise.resolve(false);
             }
-            const spawn = restorePose();
+            const spawn = restorePose(environment, terrainSettings.spawn);
             const canWorker = !!canvas.transferControlToOffscreen && typeof Worker !== 'undefined';
             const start = (canWorker && FORCE !== 'main')
-                ? startWorker(canvas, spawn).then(function (ok) {
+                ? startWorker(canvas, spawn, terrainSettings).then(function (ok) {
                         // No worker o core não tem DOM: o input é capturado aqui.
                         setupInput(canvas);
                         watchSize(canvas);   // resolução de render casada com a tela (CSS × dpr)
@@ -645,7 +648,7 @@
                         }
                         throw err;
                     })
-                : startMain(canvas, spawn).then(function (ok) {
+                : startMain(canvas, spawn, terrainSettings).then(function (ok) {
                         setupInput(canvas);
                         watchSizeMain(canvas);
                         return ok;

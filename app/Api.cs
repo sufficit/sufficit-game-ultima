@@ -24,6 +24,8 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
         "POST /v1/game/sessions", "/v1/game/sessions", "/v1/game/state",
         "POST /v1/game/command", "/v1/game/events", "/v1/game/map", "POST /v1/game/map/edits",
         "POST /v1/game/leave",
+        "GET /v1/game/environments/{environment}/missions", "POST /v1/game/environments/{environment}/missions",
+        "POST /v1/game/environments/{environment}/missions/{id}/events",
         "/v1/assets", "/v1/assets/jobs/{id}", "/v1/assets/file/{name}",
         "POST /v1/assets/generate", "POST /v1/assets/upload",
         "/v1/analytics/dialogs", "POST /v1/analytics/dialogs", "POST /v1/diagnostics/reports",

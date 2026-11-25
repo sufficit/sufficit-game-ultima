@@ -1,0 +1,71 @@
+.environment {
+    height: 100dvh;
+    overflow: auto;
+    padding: clamp(1rem, 3vw, 2.5rem);
+    background: var(--sui-background, #111a14);
+    color: var(--sui-text-primary, #e9f1e7);
+}
+
+.environment__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin: 0 auto 1.25rem;
+    max-width: 100rem;
+}
+
+.environment__header h1 {
+    margin: 0;
+    font-size: clamp(1.7rem, 3vw, 2.7rem);
+}
+
+.environment__header p,
+.environment__mission p {
+    margin: .3rem 0;
+}
+
+.environment__workplace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(17rem, 23rem);
+    align-items: start;
+    gap: 1rem;
+    max-width: 100rem;
+    margin: 0 auto;
+}
+
+.environment__scene {
+    position: relative;
+    height: clamp(25rem, 72vh, 54rem);
+    min-width: 0;
+    overflow: hidden;
+    border-radius: var(--sui-radius-md, .6rem);
+    background: #151d24;
+}
+
+.environment__scene canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+}
+
+.environment__scene-error,
+.environment__stations {
+    position: absolute;
+    left: .85rem;
+    right: .85rem;
+}
+
+.environment__scene-error { top: .85rem; }
+.environment__stations { bottom: .85rem; }
+.environment__connect { display: grid; gap: .8rem; }
+.environment__mission { border-top: 1px solid var(--sui-border, #385044); padding-top: .7rem; }
+.environment__mission h3, .environment__status, .environment aside h2 { margin: 0; }
+.environment__mission ul { padding-left: 1.2rem; }
+
+@media (max-width: 780px) {
+    .environment__workplace { grid-template-columns: minmax(0, 1fr); }
+    .environment__scene { height: clamp(17rem, 49vh, 27rem); }
+    .environment__header { flex-wrap: wrap; }
+}
