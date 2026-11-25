@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Ultima.Garden;
 
 namespace Ultima.Server;
 
@@ -21,7 +22,12 @@ sealed partial class GameWorld
         {
             ["terrain"] = new JsonObject { ["route"] = GardenRoute + "/terrain", ["actions"] = J.StrArr(["paint", "sculpt", "path"]), ["materials"] = J.StrArr(PaintMaterials) },
             ["plants"] = new JsonObject { ["route"] = GardenRoute + "/plants", ["actions"] = J.StrArr(["place", "remove"]), ["assets"] = J.StrArr(Plants) },
-            ["decor"] = new JsonObject { ["route"] = GardenRoute + "/decor", ["actions"] = J.StrArr(["place", "remove"]), ["assets"] = J.StrArr(Decorations) },
+            ["decor"] = new JsonObject { ["route"] = GardenRoute + "/decor", ["actions"] = J.StrArr(["place", "remove", "customize"]), ["assets"] = J.StrArr(Decorations) },
+        },
+        ["models"] = new JsonObject
+        {
+            [LanternAsset] = new JsonObject { ["parameters"] = new JsonObject
+                { ["poleHeight"] = PoleHeight.Describe("m"), ["lightIntensity"] = LightIntensity.Describe("intensidade") } }
         },
         ["edits"] = GardenRoute + "/edits",
         ["dialog"] = GardenRoute + "/dialog",
@@ -30,7 +36,8 @@ sealed partial class GameWorld
     string GardenPrompt()
     {
         var placed = _placements.Where(p => InGarden(p.X, p.Z)).TakeLast(36)
-            .Select(p => new JsonObject { ["uid"] = p.Uid, ["asset"] = p.AssetId, ["x"] = p.X, ["z"] = p.Z });
+            .Select(p => new JsonObject { ["uid"] = p.Uid, ["asset"] = p.AssetId, ["x"] = p.X, ["z"] = p.Z,
+                ["parameters"] = p.Parameters?.DeepClone() });
         return """
             Você é a Guardiã do Jardim de Ultima. Converse em português e, quando o jogador pedir mudanças, planeje e execute com o catálogo abaixo.
             Retorne somente JSON no formato {"reply":"resposta curta","actions":[]}. Para conversa ou pedido sem informação suficiente, use actions vazio.
@@ -38,11 +45,14 @@ sealed partial class GameWorld
             Use o jardim com criatividade e composição. Se a posição não foi especificada, escolha um lugar coerente no jardim.
             Use ações do catálogo, sem código, URLs ou comandos externos. Não afirme que executou: o jogo confirma depois de gravar.
             Exemplos de ações:
-            {"action":"place","asset":"prop.lantern","x":2,"z":-11,"scale":1}
+            {"action":"place","asset":"prop.lantern","x":2,"z":-11,"parameters":{"poleHeight":2,"lightIntensity":1.3}}
+            {"action":"customize","uid":"uid real da luminária","parameters":{"poleHeight":2.2,"lightIntensity":1.4}}
             {"action":"paint","mat":"dirt","x":0,"z":-9,"r":2}
             {"action":"sculpt","x":-4,"z":-10,"r":2,"dh":0.5}
             {"action":"path","mat":"rock","r":1.2,"points":[{"x":0,"z":-13},{"x":1,"z":-8},{"x":0,"z":-2}]}
             {"action":"remove","uid":"id existente"}
+            Use customize para modificar objetos existentes por UID, preservando a posição. Os parâmetros e limites ficam em models.
+            Em pedidos relativos, use os valores atuais ou os defaults do catálogo e faça um ajuste moderado.
             Para substituir uma planta colocada, remova pelo uid e coloque outra na mesma posição. Plantas nativas não têm uid.
             Catálogo:
             """ + "\n" + GardenCatalog().ToJsonString(J.Opts) + "\nObjetos colocados no jardim: " + J.Arr(placed).ToJsonString(J.Opts);
@@ -68,6 +78,8 @@ sealed partial class GameWorld
             if (ch is null) return (401, J.Err("invalid_token"));
             if (Dist(ch, NpcX, NpcZ) > TalkRadius) return (409, J.Err("guardian_out_of_reach"));
             ch.Last = J.Now;
+            if (GardenLanternIntent.Matches(text))
+                return AdjustNearbyLanterns(token, ch.X, ch.Z);
             prompt = GardenPrompt();
             id = ch.Id;
         }
@@ -103,17 +115,17 @@ sealed partial class GameWorld
             ch.Last = now;
             if (body is not JsonArray input || input.Count is 0 or > GardenActions) return (400, J.Err("invalid_actions"));
             List<JsonObject> changes = [];
-            var removed = new HashSet<string>(StringComparer.Ordinal);
+            var touched = new HashSet<string>(StringComparer.Ordinal);
             foreach (var node in input)
             {
                 if (node is not JsonObject action) return (400, J.Err("invalid_action"));
-                var error = PlanGardenAction(action, changes, removed, family);
+                var error = PlanGardenAction(action, changes, touched, family);
                 if (error is not null)
                     return (400, new JsonObject { ["error"] = error, ["action"] = J.Str(action["action"]) });
                 if (changes.Count > GardenChanges) return (400, J.Err("too_many_garden_changes"));
             }
             if (_edits.Count + changes.Count(IsGardenSurface) > MaxSurfaceEdits) return (507, J.Err("too_many_surface_edits"));
-            if (_placements.Count + changes.Count(op => J.Str(op["kind"]) == "place") - removed.Count > MaxPlacements)
+            if (_placements.Count + changes.Count(op => J.Str(op["kind"]) == "place") - changes.Count(op => J.Str(op["kind"]) == "remove") > MaxPlacements)
                 return (507, J.Err("too_many_placements"));
 
             var edit = "e" + J.Hex(12);
@@ -134,6 +146,7 @@ sealed partial class GameWorld
             {
                 if (IsGardenSurface(op)) _edits.Add(op);
                 else if (J.Str(op["kind"]) == "place") _placements.Add(Placement.FromJson(op));
+                else if (J.Str(op["kind"]) == "customize") Placement.UpdateParameters(_placements, op);
                 else _placements.RemoveAll(p => p.Uid == J.Str(op["uid"]));
             }
             _revision = rev;
@@ -145,17 +158,24 @@ sealed partial class GameWorld
 
     static bool IsGardenSurface(JsonObject op) => J.Str(op["kind"]) is "paint" or "sculpt";
 
-    string? PlanGardenAction(JsonObject action, List<JsonObject> changes, HashSet<string> removed, string? family)
+    string? PlanGardenAction(JsonObject action, List<JsonObject> changes, HashSet<string> touched, string? family)
     {
         var kind = J.Str(action["action"]);
         var asset = J.Str(action["asset"]);
-        if (kind == "remove")
+        if (kind is "remove" or "customize")
         {
             var uid = J.Str(action["uid"]);
             var placement = _placements.FirstOrDefault(p => p.Uid == uid);
-            if (placement is null || !InGarden(placement.X, placement.Z) || !removed.Add(uid)) return "invalid_placement";
+            if (placement is null || !InGarden(placement.X, placement.Z) || !touched.Add(uid)) return "invalid_placement";
             if (family is not null && family != GardenFamily(placement.AssetId)) return "wrong_family";
-            changes.Add(new JsonObject { ["kind"] = kind, ["uid"] = uid });
+            var change = new JsonObject { ["kind"] = kind, ["uid"] = uid };
+            if (kind == "customize")
+            {
+                if (ReadGardenParameters(placement.AssetId, action["parameters"], placement.Parameters) is not { } parameters)
+                    return "invalid_model_parameters";
+                change["parameters"] = parameters;
+            }
+            changes.Add(change);
             return null;
         }
         if (kind == "place")
@@ -165,8 +185,15 @@ sealed partial class GameWorld
             if (!GardenPoint(action, out var x, out var z) || !InGarden(x, z)) return "outside_garden";
             if (!OptionalNumber(action, "rot", 0, -2 * Math.PI, 2 * Math.PI, out var rot) ||
                 !OptionalNumber(action, "scale", 1, .05, 8, out var scale)) return "invalid_transform";
-            changes.Add(new JsonObject { ["kind"] = kind, ["uid"] = "p" + J.Hex(8), ["asset"] = asset,
-                ["x"] = J.R(x, 3), ["z"] = J.R(z, 3), ["rot"] = J.R(rot, 3), ["scale"] = J.R(scale, 3) });
+            var change = new JsonObject { ["kind"] = kind, ["uid"] = "p" + J.Hex(8), ["asset"] = asset,
+                ["x"] = J.R(x, 3), ["z"] = J.R(z, 3), ["rot"] = J.R(rot, 3), ["scale"] = J.R(scale, 3) };
+            if (action.ContainsKey("parameters"))
+            {
+                if (ReadGardenParameters(asset, action["parameters"], null) is not { } parameters)
+                    return "invalid_model_parameters";
+                change["parameters"] = parameters;
+            }
+            changes.Add(change);
             return null;
         }
         if (family is not null and not "terrain") return "wrong_family";

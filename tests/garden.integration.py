@@ -57,7 +57,9 @@ def test():
     with tempfile.TemporaryDirectory(prefix="ultima-garden-test-") as tmp, provider() as settings:
         path = Path(tmp)
         with boot(path, **settings) as url:
-            assert set(request(url, GARDEN)["families"]) == {"terrain", "plants", "decor"}
+            catalog = request(url, GARDEN)
+            assert set(catalog["families"]) == {"terrain", "plants", "decor"}
+            assert catalog["models"]["prop.lantern"]["parameters"]["poleHeight"]["default"] == 1.4
             session = request(url, "/v1/game/sessions", {"name": "Jardineiro"})
             token = session["token"]
             observer = request(url, "/v1/game/sessions", {"name": "Observador"})
@@ -84,8 +86,28 @@ def test():
                 {"action": "place", "asset": "flora.fern", "x": flower["x"], "z": flower["z"]},
             ]}, token)
             assert result["applied"] == 2
+            before = request(url, "/v1/game/map")
+            assert {p["asset"] for p in before["placements"]} == {"prop.lantern", "flora.fern"}
+            lamp = next(p for p in before["placements"] if p["asset"] == "prop.lantern")
+            custom = {"action": "customize", "uid": lamp["uid"], "parameters": {"lightIntensity": 1.2}}
+            bad = {**custom, "parameters": {"poleHeight": 12}}
+            assert request(url, GARDEN + "/decor", {"actions": [custom, bad | {"uid": "missing"}]}, token, expect=400)["error"] == "invalid_placement"
+            assert request(url, GARDEN + "/decor", {"actions": [bad]}, token, expect=400)["error"] == "invalid_model_parameters"
+            assert request(url, "/v1/game/map") == before
+            made = request(url, GARDEN + "/decor", {"actions": [{**place, "x": -2, "parameters":
+                {"poleHeight": 2.4}}]}, token)
+            new_lamp = made["operations"][0]
+            request(url, GARDEN + "/decor", {"actions": [{**custom, "uid": new_lamp["uid"]}]}, token)
+            adjusted = request(url, GARDEN + "/dialog", {"message":
+                "essas luminarias possuem o meu tamanho, quero luminarias mais altas e um pouco mais fortes"}, token)
+            assert adjusted["source"] == "garden" and adjusted["applied"] == 2
             final = request(url, "/v1/game/map")
-            assert {p["asset"] for p in final["placements"]} == {"prop.lantern", "flora.fern"}
+            first, second = [next(p for p in final["placements"] if p["uid"] == uid) for uid in [lamp["uid"], new_lamp["uid"]]]
+            assert (first["x"], first["z"]) == (lamp["x"], lamp["z"])
+            assert first["parameters"] == {"poleHeight": 2, "lightIntensity": 1.31}
+            assert second["parameters"] == {"poleHeight": 3, "lightIntensity": 1.5}
+            events = request(url, f'/v1/game/events?since={observer["eventsFrom"]}&wait=0', token=observer["token"])
+            assert any(event["type"] == "world_edited" and event["revision"] == final["revision"] for event in events["events"])
         with boot(path, NPC_SERVER_AI="off") as url:
             assert request(url, "/v1/game/map") == final
             token = request(url, "/v1/game/sessions", {"name": "Jardineiro"})["token"]

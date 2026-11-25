@@ -196,6 +196,9 @@ sealed class JournalWorldStore : IWorldStore
                                 var placement = Placement.FromJson(change);
                                 if (st.Placements.All(p => p.Uid != placement.Uid)) st.Placements.Add(placement);
                                 break;
+                            case "customize":
+                                Placement.UpdateParameters(st.Placements, change);
+                                break;
                             case "remove":
                                 st.Placements.RemoveAll(p => p.Uid == J.Str(change["uid"]));
                                 break;

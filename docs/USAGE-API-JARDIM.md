@@ -9,7 +9,7 @@ o jardim pelo `GET /v1/game/garden`. O mapa compartilhado está em
 | --- | --- | --- |
 | Terreno | `POST /v1/game/garden/terrain` | `paint`, `sculpt`, `path` |
 | Plantas | `POST /v1/game/garden/plants` | `place`, `remove` |
-| Decoração | `POST /v1/game/garden/decor` | `place`, `remove` |
+| Decoração | `POST /v1/game/garden/decor` | `place`, `remove`, `customize` |
 | Composição | `POST /v1/game/garden/edits` | Lote que combina as famílias |
 | Guardiã | `POST /v1/game/garden/dialog` | Diálogo com IA e aplicação no mesmo turno |
 
@@ -46,6 +46,24 @@ indica ausência de provedor. A API de diálogo usa o modo de IA do servidor
 (`NPC_SERVER_AI`, `NPC_LLM_URL`, `NPC_LLM_KEY`, `NPC_LLM_MODEL`).
 O cliente pode usar a IA local quando o modelo na GPU ou CPU está pronto.
 O plano local usa a mesma rota de edição e as mesmas validações.
+
+## Modelos que aceitam personalização
+
+A seção `models` do catálogo lista parâmetros, valores padrão, unidades e
+limites. A luminária `prop.lantern` aceita `poleHeight` de 0,5 a 5 m antes
+da escala do objeto e `lightIntensity` de 0 a 3. Os valores padrão são
+1,4 m e 1,05. Use `parameters` em `place` para criar uma variante ou em
+`customize` para alterar um objeto existente pelo UID.
+
+```json
+{"actions":[{"action":"customize","uid":"uid-da-luminaria","parameters":{"poleHeight":2,"lightIntensity":1.31}}]}
+```
+
+O ajuste mantém posição, rotação, escala e UID. Campos omitidos preservam
+o valor atual. A frase “quero luminárias mais altas e um pouco mais fortes”
+ajusta até duas luminárias próximas no jardim. Ela acrescenta 0,6 m às
+hastes e aumenta a luz em aproximadamente 25%, respeitando os limites.
+O mesmo contrato fica disponível ao planejador da Guardiã para pedidos livres.
 
 A família de jogo continua em `/v1/game/command` para movimento, interação,
 construção e escavação avançada, e a família de modelos em `/v1/assets`.

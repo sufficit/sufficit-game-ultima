@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.JSInterop;
+using Ultima.Garden;
 
 namespace Ultima.Browser;
 
@@ -62,7 +63,7 @@ public sealed partial class Workshop
             var endpoint = await EndpointAsync(token);
             if (string.IsNullOrEmpty(endpoint.Token))
                 return await TalkOfflineAsync(text, recent, gpu, cpu, token);
-            if (gpu || cpu)
+            if ((gpu || cpu) && !GardenLanternIntent.Matches(text))
             {
                 var context = await GetAsync<JsonElement>(endpoint, GardenRoute + "/context", 8, token);
                 if (context.TryGetProperty("prompt", out var prompt) && prompt.GetString() is { Length: > 0 } instructions)
@@ -76,7 +77,9 @@ public sealed partial class Workshop
             }
             using var message = JsonContent.Create(new Dictionary<string, string> { ["message"] = text });
             var turn = await SendAsync<JsonElement>(endpoint, HttpMethod.Post, GardenRoute + "/dialog", message, 18, token);
-            return await GardenReplyAsync(turn, ReadReply(turn) ?? "O pedido foi recebido.", "IA do servidor", token);
+            var source = turn.TryGetProperty("source", out var origin) && origin.GetString() == "garden"
+                ? "Oficina do jardim" : "IA do servidor";
+            return await GardenReplyAsync(turn, ReadReply(turn) ?? "O pedido foi recebido.", source, token);
         }
         catch (WorkshopException ex) when (!token.IsCancellationRequested)
         {

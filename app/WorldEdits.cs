@@ -7,14 +7,27 @@ sealed class Placement
 {
     public string Uid = "", AssetId = "", By = "";
     public double X, Y, Z, Rot, Scale = 1, At;
+    public JsonObject? Parameters;
 
-    public JsonObject ToJson() => new()
+    public JsonObject ToJson()
     {
-        ["uid"] = Uid, ["asset"] = AssetId,
-        ["x"] = J.R(X, 3), ["y"] = J.R(Y, 3), ["z"] = J.R(Z, 3),
-        ["rot"] = J.R(Rot, 3), ["scale"] = J.R(Scale, 3),
-        ["by"] = By, ["at"] = J.R(At, 3),
-    };
+        var objectData = new JsonObject
+        {
+            ["uid"] = Uid, ["asset"] = AssetId,
+            ["x"] = J.R(X, 3), ["y"] = J.R(Y, 3), ["z"] = J.R(Z, 3),
+            ["rot"] = J.R(Rot, 3), ["scale"] = J.R(Scale, 3),
+            ["by"] = By, ["at"] = J.R(At, 3),
+        };
+        if (Parameters is not null) objectData["parameters"] = Parameters.DeepClone();
+        return objectData;
+    }
+
+    public static void UpdateParameters(List<Placement> placements, JsonObject change)
+    {
+        var uid = J.Str(change["uid"]);
+        if (placements.Find(p => p.Uid == uid) is { } placement)
+            placement.Parameters = change["parameters"]?.DeepClone() as JsonObject;
+    }
 
     public static Placement FromJson(JsonObject o) => new()
     {
@@ -24,6 +37,7 @@ sealed class Placement
         Rot = J.TryFloat(o["rot"], out var r) ? r : 0,
         Scale = J.TryFloat(o["scale"], out var s) ? Math.Clamp(s, 0.05, 8) : 1,
         At = J.TryFloat(o["at"], out var a) ? a : 0,
+        Parameters = o["parameters"]?.DeepClone() as JsonObject,
     };
 }
 

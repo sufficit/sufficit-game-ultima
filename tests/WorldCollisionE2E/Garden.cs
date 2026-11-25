@@ -22,10 +22,13 @@ internal static class Garden
                 const status = game.aiCpu.status;
                 game.aiCpu.status = () => window.gardenCpuReady
                     ? { state: 'ready', progress: 1, detail: 'Motor de teste' } : status();
-                game.aiCpu.garden = (prompt, text) => prompt.includes('prop.lantern') && text === 'Plante uma samambaia'
-                    ? JSON.stringify({ reply: 'Uma samambaia para o jardim.',
-                        actions: [{action: 'place', asset: 'flora.fern', x: 3, z: -12}] })
-                    : 'Resposta de teste sem JSON';
+                game.aiCpu.garden = (prompt, text) => {
+                    window.lastGardenCpuPrompt = text;
+                    return prompt.includes('prop.lantern') && text === 'Plante uma samambaia'
+                        ? JSON.stringify({ reply: 'Uma samambaia para o jardim.',
+                            actions: [{action: 'place', asset: 'flora.fern', x: 3, z: -12}] })
+                        : 'Resposta de teste sem JSON';
+                };
             }, { once: true });
             """);
         await page.GotoAsync(url.Uri.AbsoluteUri, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
@@ -78,6 +81,27 @@ internal static class Garden
         await page.GetByText("A entrada do jardim já está iluminada.", new() { Exact = true }).WaitForAsync();
         Check((await MapAsync(page)).Revision == lit.Revision, "repetir a ação não duplica luminárias");
 
+        await page.EvaluateAsync("() => { window.gardenCpuReady = true; }");
+        await AskAsync("essas luminarias possuem o meu tamanho, quero luminarias mais altas e um pouco mais fortes");
+        await page.GetByText("Ajustei a altura das hastes e a intensidade da luz", new() { Exact = false }).WaitForAsync();
+        Check(!await page.EvaluateAsync<bool>("() => !!window.lastGardenCpuPrompt"),
+            "ajuste relativo funciona mesmo com um modelo local ruim selecionado");
+        var customized = await MapAsync(page);
+        Check(customized.Placements.Where(p => lampIds.Contains(p.Uid)).Count(p =>
+            p.Parameters is { PoleHeight: 2, LightIntensity: 1.31 }) == 2, "mesmos UIDs com parâmetros personalizados");
+        await WaitAsync(() => RenderAsync<bool>(page, """
+            ids => {
+                const scene = BABYLON.EngineStore.LastCreatedScene;
+                const lights = scene.lights.filter(light => light.name.startsWith('garden-light-') && light.isEnabled());
+                return ids.every(id => {
+                    const mesh = scene.getMeshByName('place-' + id);
+                    return mesh?.isVisible && mesh.getBoundingInfo().boundingBox.extendSize.y > 1.2 &&
+                        lights.some(light => light.position.x === mesh.position.x && light.position.z === mesh.position.z &&
+                            Math.abs(light.position.y - mesh.position.y - 2.17) < 0.001 && light.intensity === 1.31);
+                });
+            }
+            """, lampIds), "hastes mais altas e intensidade aplicada na cena");
+
         var response = page.WaitForResponseAsync(r => r.Url.EndsWith("/v1/game/garden/dialog") && r.Status == 200);
         await AskAsync("Luminária, flores e trilha");
         await page.GetByText("Apliquei as mudanças no jardim.", new() { Exact = false }).WaitForAsync();
@@ -95,7 +119,6 @@ internal static class Garden
                     scene.lights.some(light => light.name.startsWith('garden-light-') && light.isEnabled());
             }
             """, new[] { lantern.Uid, flowers.Uid }), "luminária ligada e flores aplicadas à cena");
-        await page.EvaluateAsync("() => { window.gardenCpuReady = true; }");
         await AskAsync("provedor fora");
         await page.GetByText("A IA local está ativa, mas não gerou um plano válido", new() { Exact = false }).WaitForAsync();
         Check((await MapAsync(page)).Revision == edited.Revision, "resposta inválida preserva o jardim");
@@ -110,5 +133,6 @@ internal static class Garden
         ReadAsync<Map>(page, "async () => (await fetch(game.live.api() + '/v1/game/map')).json()");
 
     private sealed record Map(long Revision, Placement[] Placements);
-    private sealed record Placement(string Uid, string Asset);
+    private sealed record Placement(string Uid, string Asset, Parameters? Parameters);
+    private sealed record Parameters(double PoleHeight, double LightIntensity);
 }

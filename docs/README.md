@@ -17,6 +17,8 @@ As quatro frentes históricas estão registradas nas atividades de entrega.
 - [Decisões dos NPCs em C#](activities/202611220040-ia-npcs-decisoes.md)
 - [Upload amortizado de modelos](activities/202611212030-upload-amortizado-modelos.md)
 
+- [Luminárias paramétricas](PLAN-LUMINARIAS-PARAMETRICAS.md)
+
 Futuros (bom ter na manga):
 
 - [PLAN-MOB-BRAIN.md](PLAN-MOB-BRAIN.md) — IA determinística de criaturas
