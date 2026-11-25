@@ -8,13 +8,14 @@ internal static partial class EnvironmentExports
 {
     private static readonly PlayerInput Input = new();
     private static readonly double[] Intent = new double[7];
-    private static readonly double[] Pose = new double[13];
+    private static readonly double[] Pose = new double[56];
     private static SceneWalk? _walk;
 
     internal static void Configure(SceneSettings scene)
     {
         Input.Clear();
-        _walk = scene.Walk is { } walk ? new SceneWalk(walk, scene.Boxes) : null;
+        _walk = OperatingSystem.IsBrowser() && scene.Walk is { } walk ? new SceneWalk(walk, scene.Boxes) : null;
+        if (OperatingSystem.IsBrowser() && _walk is not null) BrowserExports.ConfigureInteriorPlayer();
     }
 
     [SupportedOSPlatform("browser")]

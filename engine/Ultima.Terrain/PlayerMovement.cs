@@ -62,7 +62,8 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
     internal (double X, double Z, double Yaw, double Distance) Advance(
         double x, double y, double z, double facing, double forwardX, double forwardZ,
         double keyX, double keyZ, double analogX, double analogZ, bool sprint, double delta,
-        TerrainSurface surface, TerrainVolumes volumes, bool hasTunnels)
+        TerrainSurface surface, TerrainVolumes volumes, bool hasTunnels,
+        Func<double, double, double, double, (double X, double Z)>? interior = null)
     {
         var inputX = keyX + analogX;
         var inputZ = keyZ + analogZ;
@@ -104,11 +105,10 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
         var speed = pivoting ? Math.Min(_speed, targetSpeed) : _speed;
         if (speed <= 0) return (x, z, yaw, 0);
 
-        var ground = hasTunnels ? volumes.Floor(x, z, y, kneeHeight) : surface.Height(x, z);
+        var ground = interior is not null ? 0 : hasTunnels ? volumes.Floor(x, z, y, kneeHeight) : surface.Height(x, z);
         var stepping = y - footGap > ground + 0.015;
         var distance = (stepping ? Math.Min(2.8, speed) : speed) * delta;
-        var (nextX, nextZ) = ResolveMove(x, y, z, _directionX * distance, _directionZ * distance,
-            ground, volumes, hasTunnels);
+        var (nextX, nextZ) = Resolve(_directionX * distance, _directionZ * distance);
         var actualX = nextX - x;
         var actualZ = nextZ - z;
         var travelled = double.Hypot(actualX, actualZ);
@@ -119,7 +119,7 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
             if (scale < 0.999 && travelled > 0)
             {
                 // Revalida a direção percorrível depois de reduzir o trecho na curva.
-                (nextX, nextZ) = ResolveMove(x, y, z, actualX * scale, actualZ * scale, ground, volumes, hasTunnels);
+                (nextX, nextZ) = Resolve(actualX * scale, actualZ * scale);
                 travelled = double.Hypot(nextX - x, nextZ - z);
             }
         }
@@ -130,7 +130,7 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
             if (permitted.Blocked && (nextX != x || nextZ != z))
             {
                 // O ponto interrompido pode estar no segmento que contornou um obstáculo.
-                (nextX, nextZ) = ResolveMove(x, y, z, nextX - x, nextZ - z, ground, volumes, hasTunnels);
+                (nextX, nextZ) = Resolve(nextX - x, nextZ - z);
                 var validated = characters.Move(PlayerCharacterSpace.Player, x, y, z, nextX, nextZ);
                 (nextX, nextZ) = (validated.X, validated.Z);
             }
@@ -140,6 +140,10 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
             characters.Set(PlayerCharacterSpace.Player, nextX, y, nextZ);
         }
         return (nextX, nextZ, yaw, travelled);
+
+        (double X, double Z) Resolve(double dx, double dz) => interior is null
+            ? ResolveMove(x, y, z, dx, dz, ground, volumes, hasTunnels)
+            : interior(x, z, dx, dz);
     }
 
     internal static double PivotYaw(double start, double turn, double progress)

@@ -1626,6 +1626,7 @@
     // Entidades (jogador, Guardiã, remotos) que esperam um modelo chegar do carregador C#.
     const modelAwaiters = new Map();   // id do modelo -> [{ make, apply, fallback }]
     const characterRigs = new Map();
+    let rigRenderer;
 
     // Instancia um modelo registrado como root único (TransformNode) com origem nos pés:
     // cada grupo vira clone visível filho do root. Se o modelo ainda não chegou, entra na
@@ -1635,7 +1636,8 @@
         const root = new BABYLON.TransformNode(name, scene);
         root.position.copyFrom(groundPos);
         root.rotation.y = rotationY || 0;
-        const rig = createCharacterRig(root, modelId === 'character.guardian', castsShadow, anatomy);
+        const rig = rigRenderer.create(root, modelId === 'character.guardian', castsShadow, anatomy);
+        characterRigs.set(root, rig);
         const entry = { root, rig, onFallback: null };
         root.onDisposeObservable.addOnce(() => {
             characterRigs.delete(root);
@@ -1689,55 +1691,7 @@
         const reg = modelRegistry.get(modelId);
         if (!reg || reg.placeholder || entry.root.isDisposed()) { return; }
         disposeCharacterFallback(entry);
-        const { rig } = entry;
-        rig.face.setEnabled(true);
-        rig.eyes.setEnabled(true);
-        for (const proto of reg.protos) {
-            const group = proto.name.slice(('model-' + modelId + '-').length);
-            if (rig.legs.length && group === 'legs') {
-                for (const leg of rig.legs) { leg.thigh.material = leg.shin.material = proto.material; }
-                continue;
-            }
-            if (rig.legs.length && group === 'shoes') {
-                for (const leg of rig.legs) { leg.shoe.material = proto.material; }
-                continue;
-            }
-            if (rig.elbows.length && (group === 'arm-left' || group === 'arm-right')) {
-                const side = group === 'arm-left' ? 0 : 1;
-                const name = proto.name.replace('model-', 'char-') + '-' + entry.root.name;
-                const radius = PLAYER_HEIGHT * 0.026;
-                const segments = [
-                    [name, rig.shoulders[side], -rig.elbows[side].position.y],
-                    [name + '-forearm', rig.elbows[side], -rig.wrists[side].position.y]
-                ];
-                for (const [meshName, parent, length] of segments) {
-                    const mesh = BABYLON.MeshBuilder.CreateCapsule(meshName,
-                        { height: length + radius, radius, subdivisions: 2, tessellation: 8 }, scene);
-                    mesh.parent = parent;
-                    mesh.position.y = -length / 2;
-                    mesh.material = proto.material;
-                    mesh.isPickable = false;
-                    mesh.metadata = { contactLimb: side + 1 };
-                    rig.limbMeshes[side + 1].push(mesh);
-                    trackCharacterShadow(rig, mesh);
-                }
-                continue;
-            }
-            const clone = proto.clone(proto.name.replace('model-', 'char-') + '-' + entry.root.name);
-            clone.isVisible = true;
-            clone.isPickable = false;
-            const pivot = rig.attachments[group] || entry.root;
-            clone.parent = pivot;
-            clone.position.set(0, 0, 0);
-            if (pivot !== entry.root) { clone.position.copyFrom(pivot.metadata.modelOffset); }
-            if (rig.elbows.length && (group === 'hand-left' || group === 'hand-right')) {
-                const limb = group === 'hand-left' ? 1 : 2;
-                clone.metadata = { contactLimb: limb };
-                rig.limbMeshes[limb].push(clone);
-            }
-            trackCharacterShadow(rig, clone);
-        }
-        for (const material of rig.fallbackLegMaterials.splice(0)) { material.dispose(); }
+        rigRenderer.mount(entry.rig, modelId, reg.protos);
     }
 
     // ---------- Fila de entrada de modelos com orçamento por frame ----------
@@ -2347,6 +2301,7 @@
 
     function buildScene(canvas) {
         scene = new BABYLON.Scene(engine);
+        rigRenderer = globalThis.UltimaCharacterRig.createRenderer(BABYLON, scene, trackCharacterShadow);
         const horizon = new BABYLON.Color3(0.60, 0.69, 0.78);   // mais escuro que o céu baixo
         scene.clearColor = new BABYLON.Color4(horizon.r, horizon.g, horizon.b, 1);
         scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
@@ -2547,103 +2502,6 @@
         root.rotation.y += Math.atan2(Math.sin(difference), Math.cos(difference)) * (1 - Math.exp(-rate * delta));
     }
 
-    function createCharacterJoint(root, name, parent, x, y, z = 0) {
-        const node = new BABYLON.TransformNode(root.name + '-' + name, scene);
-        node.parent = parent;
-        const offset = parent.metadata?.modelOffset;
-        node.position.set(x + (offset?.x ?? 0), y + (offset?.y ?? 0), z + (offset?.z ?? 0));
-        node.metadata = { modelOffset: new BABYLON.Vector3(-x, -y, -z) };
-        return node;
-    }
-
-    function createJointHierarchy(root, anatomy) {
-        const joints = new Map([['root', root]]);
-        for (const { name, parent, x, y, z, motion } of anatomy) {
-            const node = createCharacterJoint(root, name, joints.get(parent), x, y, z);
-            node.metadata.motion = motion;
-            joints.set(name, node);
-        }
-        return joints;
-    }
-
-    let faceInk;
-    function createCharacterRig(root, guardian, castsShadow, anatomy) {
-        const joints = anatomy ? createJointHierarchy(root, anatomy) : null;
-        const headRadius = guardian ? 1.7 * 0.075 : PLAYER_HEIGHT * 0.07;
-        const headBase = guardian ? 1.7 * 0.82 : PLAYER_HEIGHT - 2 * headRadius;
-        const upper = joints?.get('upper-body') ?? createCharacterJoint(root, 'upper-body', root, 0, guardian ? 1.7 * 0.52 : HIP_HEIGHT);
-        const head = joints?.get('head-pivot') ?? createCharacterJoint(root, 'head-pivot', upper, 0, headBase);
-        const eyes = joints?.get('eye-pivot') ?? createCharacterJoint(root, 'eye-pivot', head, 0, headBase + 1.1 * headRadius);
-        eyes.setEnabled(false);
-        const armX = PLAYER_HEIGHT * (0.088 + 0.026 * 1.3);
-        const shoulders = guardian ? [] : [-1, 1].map(side =>
-            joints?.get(side < 0 ? 'shoulder-left' : 'shoulder-right') ??
-                createCharacterJoint(root, side < 0 ? 'shoulder-left' : 'shoulder-right', upper, side * armX, PLAYER_HEIGHT * 0.80));
-        const elbows = shoulders.map((shoulder, i) => {
-            const side = i === 0 ? 'left' : 'right';
-            return joints?.get('elbow-' + side) ?? createCharacterJoint(root, 'elbow-' + side,
-                shoulder, (i * 2 - 1) * armX, PLAYER_HEIGHT * 0.63);
-        });
-        const wrists = elbows.map((elbow, i) => {
-            const side = i === 0 ? 'left' : 'right';
-            return joints?.get('wrist-' + side) ?? createCharacterJoint(root, 'wrist-' + side,
-                elbow, (i * 2 - 1) * armX, PLAYER_HEIGHT * 0.45);
-        });
-        if (shoulders.length) {
-            shoulders[0].rotation.z = -0.055;
-            shoulders[1].rotation.z = 0.055;
-        }
-        const face = new BABYLON.TransformNode(root.name + '-expression', scene);
-        face.parent = head;
-        face.setEnabled(false);
-        if (!faceInk) {
-            faceInk = new BABYLON.StandardMaterial('character-face-ink', scene);
-            faceInk.diffuseColor.set(0.10, 0.045, 0.028);
-            faceInk.emissiveColor.set(0.035, 0.014, 0.009);
-        }
-        function facialFeature(name, parent, x, y, z, width, height) {
-            const feature = BABYLON.MeshBuilder.CreateSphere(root.name + '-' + name, { diameter: 1, segments: 5 }, scene);
-            feature.parent = parent;
-            feature.position.set(x, y, z);
-            feature.scaling.set(width, height, 0.012);
-            feature.material = faceInk;
-            feature.isPickable = false;
-            return feature;
-        }
-        if (guardian) {
-            for (const side of [-1, 1]) {
-                facialFeature('eye-' + side, eyes, side * headRadius * 0.36, 0, headRadius * 0.94, 0.023, 0.018);
-            }
-        }
-        const brows = [-1, 1].map(side => facialFeature('brow-' + side, face,
-            side * headRadius * 0.36, headRadius * 1.34, headRadius * 0.9, 0.038, 0.009));
-        const mouth = facialFeature('mouth', face, 0, headRadius * 0.68, headRadius * 0.96, 0.048, 0.008);
-        const attachments = {
-            torso: upper, tunic: upper, neck: upper, head, hair: head, hood: head, skin: head, eyes,
-            'arm-left': shoulders[0], 'hand-left': wrists[0],
-            'arm-right': shoulders[1], 'hand-right': wrists[1]
-        };
-        const legs = guardian ? [] : buildCharacterLegs(root, joints);
-        const rig = {
-            root, upper, head, eyes, shoulders, elbows, wrists, face, brows, mouth, attachments, castsShadow, shadowMeshes: [],
-            limbMeshes: [[], [], [], [], []],
-            legs, fallbackLegMaterials: legs.length ? [legs[0].thigh.material, legs[0].shoe.material] : [],
-            clock: 0, gaitPhase: 0, gaitWeight: 0, speaking: 0, action: null
-        };
-        for (const [index, { thigh, shin, shoe }] of legs.entries()) {
-            if (joints) {
-                const limb = 3 + index;
-                for (const mesh of [thigh, shin, shoe]) mesh.metadata = { contactLimb: limb };
-                rig.limbMeshes[limb].push(thigh, shin, shoe);
-            }
-            trackCharacterShadow(rig, thigh);
-            trackCharacterShadow(rig, shin);
-            trackCharacterShadow(rig, shoe);
-        }
-        characterRigs.set(root, rig);
-        return rig;
-    }
-
     const fallbackActions = {
         inspect: { duration: 0.56, bend: 0.17, reach: 0.42, markers: [] },
         gather: { duration: 0.44, bend: 0.23, reach: 0.84, markers: [
@@ -2691,8 +2549,8 @@
                 distance, delta, root.name.length, listening, frozen, action?.bend ?? 0, action?.reach ?? 0,
                 rig.legs.length > 0, root === player, worldTunnels.length > 0);
         }
-        const [phase, weight, torsoX, torsoZ, headX, headZ, eyesY, mouthX, mouthY, browZ, leftArm, rightArm,
-            clock, speech, elapsed, previous, progress] = frame;
+        const [phase, weight] = frame;
+        const clock = frame[12], speech = frame[13], elapsed = frame[14], previous = frame[15], progress = frame[16];
         rig.gaitPhase = phase;
         rig.gaitWeight = weight;
         rig.clock = clock;
@@ -2710,21 +2568,7 @@
             }
             if (progress >= 1) { rig.action = null; }
         }
-        rig.upper.rotation.x = torsoX;
-        rig.upper.rotation.z = torsoZ;
-        if (root === player) { rig.upper.rotation.y = frame[45]; }
-        rig.head.rotation.x = headX;
-        rig.head.rotation.z = headZ;
-        rig.eyes.scaling.y = eyesY;
-        rig.mouth.scaling.y = mouthY;
-        rig.mouth.scaling.x = mouthX;
-        rig.brows[0].rotation.z = browZ;
-        rig.brows[1].rotation.z = -browZ;
-        if (rig.shoulders.length) {
-            rig.elbows[0].rotation.x = rig.elbows[1].rotation.x = 0;
-            rig.shoulders[0].rotation.x = leftArm;
-            rig.shoulders[1].rotation.x = rightArm;
-        }
+        rigRenderer.applyUpperBody(rig, frame, root === player);
     }
 
     function checkNear() {
@@ -2742,98 +2586,6 @@
             nearWanderer = nowWanderer;
             if (dotnet) { dotnet.invokeMethodAsync('OnWandererNear', nowWanderer); }
         }
-    }
-
-    function buildCharacterLegs(root, joints) {
-        const pants = new BABYLON.StandardMaterial(root.name + '-leg-pants', scene);
-        pants.diffuseColor.set(0.20, 0.22, 0.28);
-        const shoes = new BABYLON.StandardMaterial(root.name + '-leg-shoes', scene);
-        shoes.diffuseColor.set(0.13, 0.10, 0.09);
-        const radius = LEG_RADIUS;
-        return [-1, 1].map(side => {
-            const suffix = side < 0 ? 'left' : 'right';
-            let hip = joints?.get('hip-' + suffix);
-            let knee = joints?.get('knee-' + suffix);
-            let ankle = joints?.get('ankle-' + suffix);
-            if (!joints) {
-                hip = new BABYLON.TransformNode(root.name + '-hip-' + suffix, scene);
-                hip.parent = root;
-                hip.position.set(side * LEG_SPACING, HIP_HEIGHT, 0);
-                knee = new BABYLON.TransformNode(root.name + '-knee-' + suffix, scene);
-                knee.parent = hip;
-                knee.position.y = -LEG_SEGMENT;
-                ankle = new BABYLON.TransformNode(root.name + '-ankle-' + suffix, scene);
-                ankle.parent = knee;
-                ankle.position.y = -LEG_SEGMENT;
-            }
-
-            let hipRoll = null;
-            if (joints) {
-                hipRoll = new BABYLON.TransformNode(root.name + '-hip-roll-' + suffix, scene);
-                hipRoll.parent = hip.parent;
-                hipRoll.position.copyFrom(hip.position);
-                hip.parent = hipRoll;
-                hip.position.set(0, 0, 0);
-                hip.rotationQuaternion = BABYLON.Quaternion.Identity();
-                ankle.rotationQuaternion = BABYLON.Quaternion.Identity();
-            }
-            const options = { height: LEG_SEGMENT + 0.085, radius, subdivisions: 4 };
-            const thigh = BABYLON.MeshBuilder.CreateCapsule(root.name + '-thigh-' + suffix, options, scene);
-            const shin = BABYLON.MeshBuilder.CreateCapsule(root.name + '-shin-' + suffix, options, scene);
-            thigh.parent = hip;
-            shin.parent = knee;
-            thigh.position.y = shin.position.y = -LEG_SEGMENT / 2;
-            thigh.material = shin.material = pants;
-            const shoe = BABYLON.MeshBuilder.CreateSphere(root.name + '-shoe-' + suffix,
-                { diameter: 2.5 * radius, segments: 8 }, scene);
-            shoe.parent = ankle;
-            shoe.position.z = SHOE_OFFSET;
-            shoe.scaling.set(1, 0.55, 1.9);
-            shoe.material = shoes;
-            for (const mesh of [thigh, shin, shoe]) {
-                mesh.isPickable = false;
-            }
-            return { side, hip, hipRoll, knee, ankle, thigh, shin, shoe, stride: new Float64Array(6) };
-        });
-    }
-
-    const undoLegPitch = new BABYLON.Quaternion(), undoHipRoll = new BABYLON.Quaternion();
-    const soleRotation = new BABYLON.Quaternion(), ankleBase = new BABYLON.Quaternion();
-
-    const hipPitch = new BABYLON.Quaternion(), kneeTwist = new BABYLON.Quaternion();
-    const undoKneeTwist = new BABYLON.Quaternion(), undoLegAxes = new BABYLON.Quaternion();
-    const legAxis = new BABYLON.Vector3();
-
-    function applyLeg(leg, angles, i, roll, yaw, swivel) {
-        const hip = angles[i], knee = angles[i + 1], ankle = angles[i + 2];
-        leg.knee.rotation.x = knee;
-        if (!leg.hipRoll) {
-            leg.hip.rotation.x = hip;
-            leg.ankle.rotation.x = ankle;
-            return;
-        }
-        leg.hipRoll.rotation.z = roll;
-        BABYLON.Quaternion.RotationYawPitchRollToRef(0, hip, 0, hipPitch);
-        BABYLON.Quaternion.RotationYawPitchRollToRef(0, 0, -roll, undoHipRoll);
-        let undoAxes = undoHipRoll;
-        if (swivel) {
-            // Segmentos de mesmo comprimento: a bissetriz aponta ao longo do eixo da perna.
-            // Girar nesse eixo alinha o joelho sem alterar o alvo do tornozelo.
-            const axisPitch = hip + knee * 0.5;
-            legAxis.set(0, Math.cos(axisPitch), Math.sin(axisPitch));
-            BABYLON.Quaternion.RotationAxisToRef(legAxis, swivel, kneeTwist);
-            kneeTwist.multiplyToRef(hipPitch, leg.hip.rotationQuaternion);
-            undoKneeTwist.set(-kneeTwist.x, -kneeTwist.y, -kneeTwist.z, kneeTwist.w);
-            undoKneeTwist.multiplyToRef(undoHipRoll, undoLegAxes);
-            undoAxes = undoLegAxes;
-        } else {
-            leg.hip.rotationQuaternion.copyFrom(hipPitch);
-        }
-        // Cancela a rotação da perna antes de orientar a sola no rumo do apoio.
-        BABYLON.Quaternion.RotationYawPitchRollToRef(0, -hip - knee, 0, undoLegPitch);
-        BABYLON.Quaternion.RotationYawPitchRollToRef(yaw, hip + knee + ankle, 0, soleRotation);
-        undoLegPitch.multiplyToRef(undoAxes, ankleBase);
-        ankleBase.multiplyToRef(soleRotation, leg.ankle.rotationQuaternion);
     }
 
     function applyCharacterLegs(rig, frame, delta) {
@@ -2856,18 +2608,7 @@
                 i = 0;
             }
         }
-        const [left, right] = rig.legs;
-        root.position.y = angles[i];
-        if (root === player) {
-            left.stride[0] = frame[28]; right.stride[0] = frame[33];
-            left.stride[1] = frame[41]; right.stride[1] = frame[42];
-            left.stride[2] = frame[29]; right.stride[2] = frame[34];
-            left.stride[3] = frame[35]; right.stride[3] = frame[36];
-            left.stride[4] = frame[39]; right.stride[4] = frame[40];
-            left.stride[5] = frame[43]; right.stride[5] = frame[44];
-        }
-        applyLeg(left, angles, i + 1, i === 0 ? angles[7] : frame[37], frame[39], frame[43]);
-        applyLeg(right, angles, i + 4, i === 0 ? angles[8] : frame[38], frame[40], frame[44]);
+        rigRenderer.applyLegs(rig, frame, angles, i, root === player);
     }
 
     // Tronco provisório enquanto o pacote de malhas do personagem é carregado.
@@ -3062,7 +2803,7 @@
             const wz = z - side * sin + shortened * cos + SHOE_OFFSET * Math.cos(player.rotation.y + yaw);
             const ground = worldTunnels.length ? terrain.VolumeFloor(wx, wz, y, KNEE_HEIGHT) : terrainHeight(wx, wz);
             const angles = terrain.SolveShortenedFoot(y, stepSurfaceAt(wx, wz, ground), shortened, lateral, lift, pitch);
-            applyLeg(leg, angles, 0, angles[3], yaw, swivel);
+            rigRenderer.applyLeg(leg, angles, 0, angles[3], yaw, swivel);
             if (tryLimbPose(-1, rig, limb)) {
                 terrain.OnFootContact(Math.abs(forward - shortened));
                 return;

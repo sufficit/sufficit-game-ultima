@@ -16,7 +16,7 @@ internal static class ArticulatedStep
             fixture.start = { x, z };
             leg.stride.set([0.38, 0, 0.065, 0, 0]);
             const pose = terrain.SolveShortenedFoot(y, terrainHeight(x,z), 0.38, 0, 0.065, 0);
-            applyLeg(leg, pose, 0, pose[3], 0);
+            rigRenderer.applyLeg(leg, pose, 0, pose[3], 0);
             leg.shoe.computeWorldMatrix(true);
             const parentInverse = obstacle.parent.computeWorldMatrix(true).clone().invert();
             BABYLON.Vector3.TransformCoordinatesToRef(leg.shoe.getAbsolutePosition(), parentInverse, obstacle.position);

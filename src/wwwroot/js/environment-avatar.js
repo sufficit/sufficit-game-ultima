@@ -1,12 +1,8 @@
-export function createAvatar(B, scene, descriptor) {
+export function createAvatar(B, scene, descriptor, anatomy) {
     const root = new B.TransformNode('environment-player', scene);
     root.metadata = { modelId: descriptor.id, category: descriptor.category };
-    const joints = ['leg-left', 'leg-right', 'arm-left', 'arm-right'].map((name, index) => {
-        const joint = new B.TransformNode(name, scene);
-        joint.parent = root;
-        joint.position.y = index < 2 ? .77 : 1.4;
-        return joint;
-    });
+    const renderer = globalThis.UltimaCharacterRig.createRenderer(B, scene, () => {});
+    const rig = renderer.create(root, false, false, anatomy);
 
     const materials = new Map(descriptor.materials.map(definition => {
         const material = new B.StandardMaterial('avatar-' + definition.id, scene);
@@ -16,17 +12,22 @@ export function createAvatar(B, scene, descriptor) {
         return [definition.id, material];
     }));
 
-    for (const group of descriptor.groups) {
-        for (const part of group.parts) {
-            const parent = jointFor(group.id, part.x) ?? root;
-            const shape = createPart(part);
-            shape.parent = parent;
-            shape.position.set(part.x, part.baseY + part.height * part.scaleY / 2 - parent.position.y, part.z);
-            shape.scaling.set(part.scaleX, part.scaleY, part.scaleZ);
-            shape.material = materials.get(group.material);
-            shape.isPickable = false;
-        }
-    }
+    const protos = descriptor.groups.map(group => {
+        const parts = group.parts.map(part => {
+            const mesh = createPart(part);
+            mesh.position.set(part.x, part.baseY + part.height * part.scaleY / 2, part.z);
+            mesh.scaling.set(part.scaleX, part.scaleY, part.scaleZ);
+            return mesh;
+        });
+        const proto = parts.length === 1 ? parts[0] : B.Mesh.MergeMeshes(parts, true, true);
+        if (parts.length === 1) proto.bakeCurrentTransformIntoVertices();
+        proto.name = 'model-' + descriptor.id + '-' + group.id;
+        proto.material = materials.get(group.material);
+        proto.isVisible = false;
+        return proto;
+    });
+    renderer.mount(rig, descriptor.id, protos);
+    for (const proto of protos) proto.dispose();
 
     const shadow = B.MeshBuilder.CreateGround('player-contact-shadow', { width: .9, height: .68 }, scene);
     shadow.parent = root;
@@ -51,28 +52,22 @@ export function createAvatar(B, scene, descriptor) {
 
     return {
         setVisible(visible) { root.setEnabled(visible); },
-        apply(x, z, yaw, stride, leftArm, rightArm) {
-            root.position.set(x, 0, z);
-            root.rotation.y = yaw;
-            joints[0].rotation.x = stride;
-            joints[1].rotation.x = -stride;
-            joints[2].rotation.x = leftArm;
-            joints[3].rotation.x = rightArm;
+        apply(frame) {
+            const offset = 10;
+            root.position.x = frame[0];
+            root.position.z = frame[1];
+            root.rotation.y = frame[2];
+            renderer.applyLegs(rig, frame, frame, offset + 17, true, offset);
+            renderer.applyUpperBody(rig, frame, true, offset);
+            shadow.position.y = .035 - root.position.y;
         }
     };
-
-    function jointFor(group, x) {
-        if (group === 'legs' || group === 'shoes') return joints[x < 0 ? 0 : 1];
-        if (group === 'arm-left' || group === 'hand-left') return joints[2];
-        if (group === 'arm-right' || group === 'hand-right') return joints[3];
-        return undefined;
-    }
 
     function createPart(part) {
         switch (part.shape) {
             case 'capsule':
                 return B.MeshBuilder.CreateCapsule(part.id, { height: part.height, radius: part.diameterBottom / 2,
-                    subdivisions: part.subdivisions, tessellation: 10 }, scene);
+                    subdivisions: part.subdivisions, tessellation: part.crowdSides }, scene);
             case 'cylinder':
                 return B.MeshBuilder.CreateCylinder(part.id, { height: part.height, diameterTop: part.diameterTop,
                     diameterBottom: part.diameterBottom, tessellation: part.tessellation }, scene);

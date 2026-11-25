@@ -76,8 +76,9 @@ export function attachWalk(B, canvas, scene, avatar, exports) {
     const target = new B.Vector3();
     let activeView = -1;
     function applyPose(pose) {
-        const [x, z, yaw, stride, leftArm, rightArm, cameraX, cameraY, cameraZ, targetX, targetY, targetZ, view] = pose;
-        avatar.apply(x, z, yaw, stride, leftArm, rightArm);
+        const cameraX = pose[3], cameraY = pose[4], cameraZ = pose[5];
+        const targetX = pose[6], targetY = pose[7], targetZ = pose[8], view = pose[9];
+        avatar.apply(pose);
         camera.position.set(cameraX, cameraY, cameraZ);
         target.set(targetX, targetY, targetZ);
         if (activeView !== view) {

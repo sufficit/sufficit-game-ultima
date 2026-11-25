@@ -1,56 +1,62 @@
 using Ultima.Terrain;
+using System.Runtime.Versioning;
 
 namespace Ultima.Environments;
 
+[SupportedOSPlatform("browser")]
 internal sealed partial class SceneWalk(SceneWalkSettings settings, SceneBox[] boxes)
 {
     private const double Radius = .26;
     private const double Height = 1.75;
-    private const double Speed = 3.1;
-    private const double SprintSpeed = 4.8;
 
     private readonly Obstacle[] _solids = boxes.Where(box => box.Solid).Select(box => new Obstacle(
         box.X - box.Width / 2, box.X + box.Width / 2, box.Y - box.Height / 2, box.Y + box.Height / 2,
         box.Z - box.Depth / 2, box.Z + box.Depth / 2)).ToArray();
 
     private double _x = settings.X, _z = settings.Z, _yaw = settings.Yaw, _pitch;
-    private double _heading = settings.Yaw, _phase, _weight;
-    private readonly double[] _gait = new double[12];
+    private double _heading = settings.Yaw, _phase, _weight, _clock, _bodyY = .03;
+    private Func<double, double, double, double, (double X, double Z)>? _resolve;
 
     internal void Advance(Span<double> result, double side, double forward, bool sprint,
         double yawDelta, double pitchDelta, double seconds)
     {
         _yaw = Math.IEEERemainder(_yaw + yawDelta, Math.Tau);
         _pitch = Math.Clamp(_pitch + pitchDelta, -.66, .63);
-        var scale = Math.Max(1, double.Hypot(side, forward));
         var delta = Math.Clamp(seconds, 0, .05);
-        var distance = (sprint ? SprintSpeed : Speed) * delta / scale;
         var (sin, cos) = Math.SinCos(_yaw);
-        var dx = (side * cos + forward * sin) * distance;
-        var dz = (forward * cos - side * sin) * distance;
-
-        var x = Math.Clamp(_x + dx, settings.MinX + Radius, settings.MaxX - Radius);
-        var z = Math.Clamp(_z + dz, settings.MinZ + Radius, settings.MaxZ - Radius);
-        var oldX = _x;
-        var oldZ = _z;
-        if (!Blocked(x, _z)) _x = x;
-        if (!Blocked(_x, z)) _z = z;
-
-        var travelled = double.Hypot(_x - oldX, _z - oldZ);
-        if (travelled > .00001)
+        var distance = 0d;
+        if (delta > 0)
         {
-            var desired = Math.Atan2(_x - oldX, _z - oldZ);
-            _heading += Math.IEEERemainder(desired - _heading, Math.Tau) * (1 - Math.Exp(-18 * delta));
+            var motion = BrowserExports.MoveInteriorPlayer(_x, _bodyY, _z, _heading, sin, cos,
+                side, forward, sprint, delta, _resolve ??= Resolve);
+            (_x, _z, distance) = (motion.X, motion.Z, motion.Distance);
+            if (motion.Pivot) _heading = motion.Yaw;
+            else if (double.IsFinite(motion.Yaw))
+                _heading += Math.IEEERemainder(motion.Yaw - _heading, Math.Tau) * (1 - Math.Exp(-16 * delta));
         }
 
-        PlayerPose.Animate(_gait, _phase, _weight, 0, travelled, delta, 0, false, false, 0, 0, 0, playerGait: true);
-        (_phase, _weight) = (_gait[0], _gait[1]);
+        var animation = result[10..];
+        BrowserExports.AnimateInteriorPlayer(animation, _x, _bodyY, _z, _heading, _phase, _weight, _clock, distance, delta);
+        (_phase, _weight, _clock, _bodyY) = (animation[0], animation[1], animation[12], animation[17]);
         (result[0], result[1], result[2]) = (_x, _z, _heading);
-        (result[3], result[4], result[5]) = (Math.Sin(_phase) * _weight * .32, _gait[10], _gait[11]);
         Follow(result, sin, cos);
     }
 
-    internal void StopAnimation() => _weight = 0;
+    internal void StopAnimation()
+    {
+        BrowserExports.StopPlayer();
+        BrowserExports.ResetFootContacts();
+        _weight = 0;
+    }
+
+    private (double X, double Z) Resolve(double x, double z, double dx, double dz)
+    {
+        var nextX = Math.Clamp(x + dx, settings.MinX + Radius, settings.MaxX - Radius);
+        var nextZ = Math.Clamp(z + dz, settings.MinZ + Radius, settings.MaxZ - Radius);
+        if (Blocked(nextX, z)) nextX = x;
+        if (Blocked(nextX, nextZ)) nextZ = z;
+        return (nextX, nextZ);
+    }
 
     private bool Blocked(double x, double z)
     {

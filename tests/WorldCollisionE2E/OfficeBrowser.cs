@@ -71,6 +71,13 @@ internal static class OfficeBrowser
             }
             """), "The signed garden player model is visible in the office.");
         Check(await FillsViewportAsync(), "The office fills the desktop viewport.");
+        Check(await page.EvaluateAsync<bool>("""
+            () => {
+                const scene = BABYLON.EngineStore.LastCreatedScene;
+                return ['upper-body', 'hip-left', 'knee-left', 'ankle-left', 'elbow-right', 'wrist-right'].every(
+                    joint => !!scene.getTransformNodeByName('environment-player-' + joint));
+            }
+            """), "The office avatar has the articulated garden joints.");
         if (Environment.GetEnvironmentVariable("ULTIMA_INTERIOR_CAPTURE") is { Length: > 0 } interior)
             await page.ScreenshotAsync(new() { Path = interior });
         await canvas.FocusAsync();
@@ -82,7 +89,23 @@ internal static class OfficeBrowser
             }
             """);
         Check(nearWall.Z <= 7.74 && nearWall.Y > .3, "The follow camera stays inside at the reception wall.", nearWall);
+        await page.EvaluateAsync("""
+            () => {
+                const scene = BABYLON.EngineStore.LastCreatedScene;
+                const knee = scene.getTransformNodeByName('environment-player-knee-left');
+                const ankle = scene.getTransformNodeByName('environment-player-ankle-left');
+                globalThis.officeJointSample = { min: knee.rotation.x, max: knee.rotation.x, ankle: false };
+                const sample = globalThis.officeJointSample;
+                scene.onAfterRenderObservable.add(() => {
+                    sample.min = Math.min(sample.min, knee.rotation.x);
+                    sample.max = Math.max(sample.max, knee.rotation.x);
+                    sample.ankle ||= Math.abs(ankle.rotationQuaternion.x) > .05;
+                });
+            }
+            """);
         await WalkUntilAsync("w", pose => pose.Z < -.35, "Reception connects to the workspace.");
+        Check(await page.EvaluateAsync<bool>("() => officeJointSample.max - officeJointSample.min > .15 && officeJointSample.ankle"),
+            "Knees flex and the ankle rotates during the shared walk cycle.");
         var aisle = await PoseAsync();
         Check(Math.Abs(aisle.X) < .1 && aisle.Z > -1.02, "The player is aligned with the meeting room door.", aisle);
         await WalkUntilAsync("a", pose => pose.X > 3.86, "The player can enter the meeting room through its doorway.");

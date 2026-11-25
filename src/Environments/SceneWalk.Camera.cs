@@ -15,10 +15,10 @@ internal sealed partial class SceneWalk
         if (_view == PlayerCameraView.FirstPerson)
         {
             var horizontal = Math.Cos(_pitch);
-            (result[6], result[7], result[8]) = (_x, PlayerCameraViews.EyeHeight, _z);
-            (result[9], result[10], result[11]) = (_x + sin * horizontal,
+            (result[3], result[4], result[5]) = (_x, PlayerCameraViews.EyeHeight, _z);
+            (result[6], result[7], result[8]) = (_x + sin * horizontal,
                 PlayerCameraViews.EyeHeight - Math.Sin(_pitch), _z + cos * horizontal);
-            result[12] = (int)_view;
+            result[9] = (int)_view;
             return;
         }
 
@@ -41,10 +41,10 @@ internal sealed partial class SceneWalk
             }
         }
 
-        (result[6], result[7], result[8]) =
+        (result[3], result[4], result[5]) =
             (_x + dx * fraction, TargetHeight + dy * fraction, _z + dz * fraction);
-        (result[9], result[10], result[11]) = (_x, TargetHeight, _z);
-        result[12] = (int)_view;
+        (result[6], result[7], result[8]) = (_x, TargetHeight, _z);
+        result[9] = (int)_view;
     }
 
     private double CameraFraction(double dx, double dy, double dz)

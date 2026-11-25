@@ -14,7 +14,8 @@ export async function create(canvas, settings, selectedStation, avatarDescriptor
         ]);
         const runtime = window.getDotnetRuntime(0);
         const assembly = await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName);
-        const avatar = createAvatar(B, scene, JSON.parse(avatarDescriptor));
+        const anatomy = JSON.parse(assembly.Ultima.Terrain.BrowserExports.GetAnatomy('humano', 1.75));
+        const avatar = createAvatar(B, scene, JSON.parse(avatarDescriptor), anatomy);
         walk = attachWalk(B, canvas, scene, avatar, assembly.Ultima.Environments.EnvironmentExports);
     } else {
         const view = settings.camera;
