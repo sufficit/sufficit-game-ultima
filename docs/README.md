@@ -20,7 +20,6 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
-- [NPC dialogue](PLAN-NPC-DIALOGUE.md) — authored choices for the Guardian and Wanderer.
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
 
@@ -40,6 +39,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Authored NPC dialogue topics](activities/202611251914-npc-dialogue.md)
 
 - [Entrada de teclado, toque e gamepad](activities/202611251906-entrada-multidispositivo.md).
 
