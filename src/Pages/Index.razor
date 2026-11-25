@@ -568,7 +568,11 @@
 
     private Task UndoSurfaceAsync() => WorkshopService.UndoSurfaceAsync(_browserLifetime.Token);
 
-    private void OnWorkshopToggled(bool open) => _workshopOpen = open;
+    private Task OnWorkshopToggled(bool open)
+    {
+        _workshopOpen = open;
+        return SaveLocalPreferencesAsync();
+    }
     private async Task BuildModeAsync(string? mode, object? options = null)
     {
         await JS.InvokeVoidAsync("game.build.mode", mode, options);
@@ -585,10 +589,29 @@
         }
     }
     private Task RefreshBuildAssetsAsync() => WorkshopService.RefreshBuildAssetsAsync(_browserLifetime.Token);
-    private void OnUploadScaleChanged(double value) => _uploadScale = value;
-    private void OnBrushRadiusChanged(double value) { _brushRadius = value; _ = BuildModeAsync(null, new { r = value }); }
-    private void OnPaintMaterialChanged(string? value) { _paintMaterial = value ?? "sand"; _ = BuildModeAsync(null, new { mat = _paintMaterial }); }
-    private void OnBuildAssetChanged(string? value) => _buildAsset = value ?? string.Empty;
+    private Task OnUploadScaleChanged(double value)
+    {
+        _uploadScale = value;
+        return SaveLocalPreferencesAsync();
+    }
+
+    private Task OnBrushRadiusChanged(double value)
+    {
+        _brushRadius = value;
+        return Task.WhenAll(BuildModeAsync(null, new { r = value }), SaveLocalPreferencesAsync());
+    }
+
+    private Task OnPaintMaterialChanged(string? value)
+    {
+        _paintMaterial = value ?? "sand";
+        return Task.WhenAll(BuildModeAsync(null, new { mat = _paintMaterial }), SaveLocalPreferencesAsync());
+    }
+
+    private Task OnBuildAssetChanged(string? value)
+    {
+        _preferredBuildAsset = _buildAsset = value ?? string.Empty;
+        return SaveLocalPreferencesAsync();
+    }
 
     // Abre o seletor de arquivo do InputFile escondido (o botão visível é da UI).
     private Task PickWorkshopFileAsync() => JS.InvokeVoidAsync("game.browser.pickFile", "workshop-file").AsTask();
@@ -693,7 +716,8 @@
     private void ShowBuildAssets(string[] ids) => _ = InvokeAsync(() =>
     {
         _buildAssets = [.. ids];
-        if (!_buildAssets.Contains(_buildAsset)) _buildAsset = _buildAssets.FirstOrDefault() ?? string.Empty;
+        if (_buildAssets.Contains(_preferredBuildAsset)) _buildAsset = _preferredBuildAsset;
+        else if (!_buildAssets.Contains(_buildAsset)) _buildAsset = _buildAssets.FirstOrDefault() ?? string.Empty;
         StateHasChanged();
     });
     private string StatusTitle() => string.IsNullOrWhiteSpace(_playerName) ? "Ultima" : (_playerName.Length > 24 ? _playerName[..24] : _playerName);
@@ -751,7 +775,11 @@
     private void ToggleStatus() => _statusExpanded = !_statusExpanded;
     private void TogglePanel() => _panelOpen = !_panelOpen;
     private void ToggleMenu() => _menuOpen = !_menuOpen;
-    private void OnDevToggled(bool value) => _devHud = value;
+    private Task OnDevToggled(bool value)
+    {
+        _devHud = value;
+        return SaveLocalPreferencesAsync();
+    }
 
     private sealed record AnnouncementDto(string? Text);
     private sealed record AnnouncementsDto(AnnouncementDto[]? Items);
@@ -803,6 +831,7 @@
     {
         if (!firstRender || _bridge is null) return;
 
+        await LoadLocalPreferencesAsync();
         await GameUpdates.InitializeAsync(_browserLifetime.Token);
         BuildId = GameUpdates.Build.StartsWith("__", StringComparison.Ordinal) ? "dev"
             : GameUpdates.Build[..Math.Min(10, GameUpdates.Build.Length)];
@@ -821,6 +850,7 @@
         {
             return;   // sem motor não há o que registrar — evita o spam de "cena ainda não criada"
         }
+        await BuildModeAsync(null, new { r = _brushRadius, mat = _paintMaterial });
         await JS.InvokeVoidAsync("game.backpack.init", _bridge);
         await BackpackState.SynchronizeAsync();
         _ = Models.LoadAllAsync();   // modelos 3D (DLLs C#) chegam em paralelo e entram na cena
@@ -1135,7 +1165,7 @@
             case "theme":
                 _windowContrast = !_windowContrast;
                 UpdateWindowThemeLabel();
-                break;
+                return SaveLocalPreferencesAsync();
         }
         return Task.CompletedTask;
     }

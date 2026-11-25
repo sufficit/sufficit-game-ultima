@@ -27,6 +27,36 @@
     const calls = new Map();    // request id -> resolve (diagnósticos no modo worker)
     let callSeq = 0;
 
+    // Usa a batida de pose existente. A chave separa os mapas servidos por APIs distintas.
+    const defaultPose = { x: 0, z: 0, ry: 0 };
+    let poseKey, lastSavedPose, latestPose, nextPoseWrite = 0;
+
+    function validPose(pose) {
+        return pose && Number.isFinite(pose.x) && Math.abs(pose.x) <= 400 &&
+            Number.isFinite(pose.z) && Math.abs(pose.z) <= 400 &&
+            Number.isFinite(pose.ry) && Math.abs(pose.ry) <= 2 * Math.PI;
+    }
+
+    function restorePose() {
+        poseKey = 'ultima.posicao.v1:' + window.game.live.api();
+        let saved;
+        try { saved = JSON.parse(window.game.browser.read(poseKey)); } catch { /* registro inválido */ }
+        lastSavedPose = latestPose = validPose(saved) ? saved : defaultPose;
+        return latestPose;
+    }
+
+    function savePose() {
+        if (!latestPose || latestPose === lastSavedPose) return;
+        window.game.browser.write(poseKey, JSON.stringify(latestPose));
+        lastSavedPose = latestPose;
+        nextPoseWrite = performance.now() + 1000;
+    }
+
+    window.addEventListener('pagehide', savePose);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') savePose();
+    });
+
     const SCENERY_PREF_KEY = 'ultima.cenario';
     function sceneryPref() {
         try { return localStorage.getItem(SCENERY_PREF_KEY) === 'lowpoly' ? 'lowpoly' : 'procedural'; }
@@ -69,6 +99,17 @@
 
     // Pose do jogador → rede P2P e presença (módulos da main thread).
     function sendPose(x, z, ry) {
+        if (latestPose) {
+            const savedX = Math.round(x * 1000) / 1000;
+            const savedZ = Math.round(z * 1000) / 1000;
+            const angle = Math.abs(ry) > Math.PI + 0.00005 ? Math.atan2(Math.sin(ry), Math.cos(ry)) : ry;
+            const savedYaw = Math.round(angle * 10000) / 10000;
+            if (savedX !== latestPose.x || savedZ !== latestPose.z || savedYaw !== latestPose.ry) {
+                const pose = { x: savedX, z: savedZ, ry: savedYaw };
+                if (validPose(pose)) latestPose = pose;
+            }
+            if (latestPose !== lastSavedPose && performance.now() >= nextPoseWrite) savePose();
+        }
         const g = window.game;
         if (g && g.net && g.net.sendPos) { g.net.sendPos(x, z, ry); }
         if (g && g.live && g.live.pose) { g.live.pose(x, z, ry); }
@@ -132,7 +173,7 @@
         });
     }
 
-    function startMain(canvas) {
+    function startMain(canvas, spawn) {
         return loadBabylon().then(function () {
             return new Promise(function (resolve, reject) {
                 mode = 'main';
@@ -145,6 +186,7 @@
                     graphics: graphicsPref(),
                     gpuOff: GPU_OFF,
                     weather: weatherPref(),
+                    spawn,
                     global: window,
                     dom: true,
                     postEvent: postEventToDotnet,
@@ -167,7 +209,7 @@
         return { width: Math.max(1, canvas.clientWidth || 1280), height: Math.max(1, canvas.clientHeight || 720), dpr: window.devicePixelRatio || 1 };
     }
 
-    function startWorker(canvas) {
+    function startWorker(canvas, spawn) {
         const off = canvas.transferControlToOffscreen();
         // Mesma versão dos scripts da página (?v=<build>): sem isso o cache HTTP
         // (10 min) pode entregar um worker/motor antigos junto com o shell novo logo
@@ -184,7 +226,7 @@
                 reject(new Error('worker: ' + (e && e.message || 'erro')));
             };
             worker.postMessage(
-                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref() },
+                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref(), spawn },
                 [off]);
         });
     }
@@ -533,9 +575,10 @@
                 showEngineFailure(err);
                 return Promise.resolve(false);
             }
+            const spawn = restorePose();
             const canWorker = !!canvas.transferControlToOffscreen && typeof Worker !== 'undefined';
             const start = (canWorker && FORCE !== 'main')
-                ? startWorker(canvas).then(function (ok) {
+                ? startWorker(canvas, spawn).then(function (ok) {
                         // No worker o core não tem DOM: o input é capturado aqui.
                         setupInput(canvas);
                         watchSize(canvas);   // resolução de render casada com a tela (CSS × dpr)
@@ -547,12 +590,15 @@
                             sessionStorage.setItem('ultima-worker-fallback', '1');
                             // gpu=0: o canvas desta página pode ter ficado presa numa
                             // tentativa WebGPU — a próxima carga vai direto pro WebGL.
-                            location.replace(location.pathname + '?render=main&gpu=0');
+                            const fallback = new URL(location.href);
+                            fallback.searchParams.set('render', 'main');
+                            fallback.searchParams.set('gpu', '0');
+                            location.replace(fallback.href);
                             return new Promise(function () { /* página vai recarregar */ });
                         }
                         throw err;
                     })
-                : startMain(canvas).then(function (ok) {
+                : startMain(canvas, spawn).then(function (ok) {
                         setupWorldPointer(canvas);
                         watchSizeMain(canvas);
                         return ok;

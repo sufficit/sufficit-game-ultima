@@ -564,10 +564,6 @@
         }
     }
 
-    function buildTerrain() {
-        ensureChunksAround(0, 0);
-    }
-
     // (A paleta e o grão do chão vivem na textura de cada chunk — paintChunkTexture.)
 
     // ---------- Aplicação de edições e objetos plantados (F4/F6) ----------
@@ -2373,7 +2369,8 @@
 
         const sky = skyDome();
         if (usePbr) { setupProceduralEnv(); }
-        buildTerrain();   // grade de chunks na fila com orçamento por frame
+        const spawn = host.spawn ?? { x: 0, z: 0, ry: 0 };
+        ensureChunksAround(spawn.x, spawn.z);   // grade de chunks com orçamento por frame
         void loadGroundMaterials();
         const updateWeather = weatherUpdate(sun, hemi, sky, horizon, softwareRenderer ? 240 : 520);
         scene.registerBeforeRender(function () {
@@ -2392,7 +2389,7 @@
         // Jogador: humanoide de 1,75 m — modelo C# (character.villager) carregado em runtime;
         // enquanto a DLL não chega, o protótipo JS serve de fallback. Origem do root = pés.
         player = spawnFromModel('character.villager', 'player',
-            new BABYLON.Vector3(0, terrainHeight(0, 0) + 0.03, 0), 0,
+            new BABYLON.Vector3(spawn.x, terrainHeight(spawn.x, spawn.z) + FOOT_GAP, spawn.z), spawn.ry,
             () => { const m = buildHumanoid('player-js', { shirt:new BABYLON.Color3(0.20,0.50,0.92), skin:new BABYLON.Color3(0.90,0.72,0.58) }); m.position.y = PLAYER_HEIGHT / 2; return m; },
             true, JSON.parse(terrain.GetAnatomy('humano', PLAYER_HEIGHT)));
 
@@ -2416,6 +2413,10 @@
         marker.material = markerMat;
         scene.registerBeforeRender(() => { marker.rotation.y += 0.02; });
 
+        terrain.SetCharacterPositions(spawn.x, player.position.y, spawn.z,
+            guardianRoot.position.x, guardianRoot.position.y, guardianRoot.position.z,
+            wandererRoot.position.x, wandererRoot.position.y, wandererRoot.position.z);
+        placePlayer(spawn.x, spawn.z);
         camera.target.copyFrom(player.position).addInPlace(CAM_UP);
         if (advancedGraphics && BABYLON.SSAO2RenderingPipeline?.IsSupported) {
             try {
