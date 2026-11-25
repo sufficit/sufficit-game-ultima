@@ -19,7 +19,6 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
-- [Entrada de teclado, toque e gamepad](PLAN-ENTRADA-MULTIDISPOSITIVO.md).
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
 
@@ -39,6 +38,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Entrada de teclado, toque e gamepad](activities/202611251906-entrada-multidispositivo.md).
 
 - [Atualização da documentação do Ultima](activities/202611251852-documentacao-do-jogo.md)
 
