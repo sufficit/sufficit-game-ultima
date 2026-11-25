@@ -209,6 +209,20 @@ sealed partial class GameWorld
         return ((t ^ (t >> 14)) & 0xFFFFFF) / 16777216.0;
     }
 
+    /// <summary>
+    /// Semente estável do chunk: FNV-1a sobre "seed:cx,cz" (o mesmo seedHash do cliente).
+    /// HashCode.Combine muda a cada processo do .NET; com ele a cristalização era
+    /// sorteada no boot, violando a decisão world-builder-v5 (mesmo chunk, mesmo mundo).
+    /// </summary>
+    const string WorldSeed = "ultima";
+    static uint ChunkSeed(long cx, long cz)
+    {
+        var text = WorldSeed + ":" + cx + "," + cz;   // só ASCII
+        uint hash = 2166136261;
+        foreach (var c in text) { hash ^= c; hash *= 16777619; }
+        return hash & 0x7FFFFFFF;
+    }
+
     /// <summary>Chama-se dentro do lock do tick; devolve true quando cristalizou um chunk.</summary>
     public bool CrystallizeIfNew(double x, double z)
     {
@@ -217,7 +231,7 @@ sealed partial class GameWorld
         if (Math.Abs(cx) > 12 || Math.Abs(cz) > 12) return false;   // ±384 m
         var key = cx + "," + cz;
         if (!_visitedChunks.Add(key)) return false;
-        var seed = (uint)(HashCode.Combine(cx, cz) & 0x7FFFFFFF);
+        var seed = ChunkSeed(cx, cz);
         var rnd = new Func<double>(() => ChunkRnd(seed++));
         var by = "Guardiã";
         var now = J.Now;

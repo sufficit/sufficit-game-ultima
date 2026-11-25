@@ -87,6 +87,9 @@ sealed class JournalWorldStore : IWorldStore
                 // Linha parcial (crash no meio do append): o que foi lido vale, o resto ignora.
                 _log.LogWarning("journal: linha ilegível ignorada: {Msg}", ex.Message);
             }
+            // A chave "op" é a sequência do journal; a edição servida não a leva, nem antes
+            // nem depois do boot (snapshots gravados antes desta regra podem contê-la).
+            foreach (var edit in state.SurfaceEdits) edit.Remove("op");
             // Contador sempre à frente do maior seq já visto — appends nunca reutilizam
             // número de op (o replay pula ops já consumidas por seq, não por posição).
             _seq = Math.Max(_seq, maxSeq);
