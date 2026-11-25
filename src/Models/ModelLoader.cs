@@ -15,8 +15,10 @@ namespace Ultima.Models;
 /// </summary>
 public sealed class ModelLoader(HttpClient http, IJSRuntime js)
 {
+    public const string PlayerModelId = "character.villager";
+
     /// <summary>Modelos que o mundo atual espera encontrar no catálogo.</summary>
-    private static readonly string[] Expected = ["tree.pine", "rock.boulder", "scenery.grass", "character.villager", "character.wanderer", "character.guardian"];
+    private static readonly string[] Expected = ["tree.pine", "rock.boulder", "scenery.grass", PlayerModelId, "character.wanderer", "character.guardian"];
 
     /// <summary>Instâncias carregadas por id — permitem reconstruir com outros parâmetros (variação paramétrica).</summary>
     private readonly Dictionary<string, IModel> _models = new(StringComparer.Ordinal);
@@ -28,8 +30,7 @@ public sealed class ModelLoader(HttpClient http, IJSRuntime js)
         var registered = new HashSet<string>(StringComparer.Ordinal);
         try
         {
-            var catalog = await http.GetFromJsonAsync("models/models.json?v=" + DateTime.UtcNow.Ticks, ModelJsonContext.Default.ModelCatalog)
-                          ?? new ModelCatalog();
+            var catalog = await ReadCatalogAsync();
             foreach (var pkg in catalog.Packages)
             {
                 await LoadPackageAsync(pkg, registered);
@@ -48,7 +49,34 @@ public sealed class ModelLoader(HttpClient http, IJSRuntime js)
         await js.InvokeVoidAsync("game.models.loaderDone", Log);
     }
 
-    private async Task LoadPackageAsync(ModelPackageEntry pkg, HashSet<string> registered)
+    public async Task<string> DescribeAsync(string id)
+    {
+        if (!_models.ContainsKey(id))
+        {
+            try
+            {
+                var catalog = await ReadCatalogAsync();
+                var registered = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var package in catalog.Packages)
+                {
+                    await LoadPackageAsync(package, registered, id);
+                    if (registered.Contains(id)) break;
+                }
+            }
+            catch (Exception exception)
+            {
+                Note($"catálogo indisponível: {exception.Message}");
+            }
+        }
+        var model = _models.TryGetValue(id, out var loaded) ? loaded : new PlaceholderModel(id);
+        return ModelJsonContext.Serialize(model.Build(ModelParams.Default));
+    }
+
+    private async Task<ModelCatalog> ReadCatalogAsync() =>
+        await http.GetFromJsonAsync("models/models.json?v=" + DateTime.UtcNow.Ticks, ModelJsonContext.Default.ModelCatalog)
+        ?? new ModelCatalog();
+
+    private async Task LoadPackageAsync(ModelPackageEntry pkg, HashSet<string> registered, string? onlyId = null)
     {
         try
         {
@@ -65,10 +93,10 @@ public sealed class ModelLoader(HttpClient http, IJSRuntime js)
                 try
                 {
                     var model = (IModel)Activator.CreateInstance(type)!;
+                    if (onlyId is not null && model.Id != onlyId) continue;
                     if (model.RequiredCoreApi != ModelCore.ApiVersion) { Note($"{model.Id}: pede Core v{model.RequiredCoreApi}"); continue; }
                     if (registered.Contains(model.Id)) { Note($"{model.Id}: duplicado, ignorado"); continue; }
-                    var descriptor = model.Build(ModelParams.Default);
-                    await RegisterAsync(descriptor, placeholder: false);
+                    if (onlyId is null) await RegisterAsync(model.Build(ModelParams.Default), placeholder: false);
                     _models[model.Id] = model;
                     registered.Add(model.Id);
                     Note($"{model.Id} v{model.Version} carregado de {pkg.File}");

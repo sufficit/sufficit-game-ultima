@@ -63,11 +63,25 @@ internal static class OfficeBrowser
             }
             """), "The 3D office loaded independently of its API.");
         var canvas = page.Locator(".environment__scene canvas");
-        var start = await PoseAsync();
-        Check(Math.Abs(start.Y - 1.62) < .01, "The office starts at human eye height.");
+        await WaitAsync(() => page.EvaluateAsync<bool>("""
+            () => {
+                const avatar = BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('environment-player');
+                return avatar?.metadata?.modelId === 'character.villager' &&
+                    avatar.metadata.category === 'character' && avatar.getChildMeshes().length > 10;
+            }
+            """), "The signed garden player model is visible in the office.");
+        Check(await FillsViewportAsync(), "The office fills the desktop viewport.");
         if (Environment.GetEnvironmentVariable("ULTIMA_INTERIOR_CAPTURE") is { Length: > 0 } interior)
             await page.ScreenshotAsync(new() { Path = interior });
         await canvas.FocusAsync();
+        await WalkUntilAsync("s", pose => pose.Z > 7.43, "The player can reach the reception wall.");
+        var nearWall = await ReadAsync<CameraPose>(page, """
+            () => {
+                const { x, y, z } = BABYLON.EngineStore.LastCreatedScene.activeCamera.position;
+                return { x, y, z };
+            }
+            """);
+        Check(nearWall.Z <= 7.74 && nearWall.Y > .3, "The follow camera stays inside at the reception wall.", nearWall);
         await WalkUntilAsync("w", pose => pose.Z < -.35, "Reception connects to the workspace.");
         var aisle = await PoseAsync();
         Check(Math.Abs(aisle.X) < .1 && aisle.Z > -1.02, "The player is aligned with the meeting room door.", aisle);
@@ -111,8 +125,7 @@ internal static class OfficeBrowser
         await page.GetByText("Agente de revisão", new() { Exact = false }).WaitForAsync();
 
         await page.SetViewportSizeAsync(390, 844);
-        Check(await page.EvaluateAsync<bool>("() => document.querySelector('.environment').scrollWidth <= innerWidth"),
-            "The office fits a mobile viewport.");
+        await WaitAsync(FillsViewportAsync, "The office fills the mobile viewport.");
         if (Environment.GetEnvironmentVariable("ULTIMA_OFFICE_CAPTURE") is { Length: > 0 } capture)
         {
             await page.SetViewportSizeAsync(1360, 860);
@@ -131,8 +144,16 @@ internal static class OfficeBrowser
 
         Task<CameraPose> PoseAsync() => ReadAsync<CameraPose>(page, """
             () => {
-                const { x, y, z } = BABYLON.EngineStore.LastCreatedScene.activeCamera.position;
+                const { x, y, z } = BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('environment-player').position;
                 return { x, y, z };
+            }
+            """);
+
+        Task<bool> FillsViewportAsync() => page.EvaluateAsync<bool>("""
+            () => {
+                const canvas = document.querySelector('.environment__scene canvas').getBoundingClientRect();
+                return canvas.x === 0 && canvas.y === 0 &&
+                    Math.abs(canvas.width - innerWidth) < 1 && Math.abs(canvas.height - innerHeight) < 1;
             }
             """);
 

@@ -1,6 +1,4 @@
-import { attachWalk } from './environment-walk.js';
-
-export async function create(canvas, settings, selectedStation, eyeHeight) {
+export async function create(canvas, settings, selectedStation, avatarDescriptor) {
     await window.game.loadBabylon();
     const B = window.BABYLON;
     const engine = new B.Engine(canvas, true, { adaptToDeviceRatio: true, stencil: false });
@@ -9,9 +7,15 @@ export async function create(canvas, settings, selectedStation, eyeHeight) {
 
     let walk;
     if (settings.walk) {
+        const version = new URL(import.meta.url).search;
+        const [{ attachWalk }, { createAvatar }] = await Promise.all([
+            import('./environment-walk.js' + version),
+            import('./environment-avatar.js' + version)
+        ]);
         const runtime = window.getDotnetRuntime(0);
         const assembly = await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName);
-        walk = attachWalk(B, canvas, scene, settings.walk, eyeHeight, assembly.Ultima.Environments.EnvironmentExports);
+        const avatar = createAvatar(B, scene, JSON.parse(avatarDescriptor));
+        walk = attachWalk(B, canvas, scene, avatar, assembly.Ultima.Environments.EnvironmentExports);
     } else {
         const view = settings.camera;
         const camera = new B.ArcRotateCamera('environment-camera', view.alpha, view.beta, view.radius,

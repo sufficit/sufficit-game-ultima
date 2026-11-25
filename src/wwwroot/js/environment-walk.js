@@ -1,6 +1,5 @@
-export function attachWalk(B, canvas, scene, spawn, eyeHeight, exports) {
-    const camera = new B.UniversalCamera('environment-camera', new B.Vector3(spawn.x, eyeHeight, spawn.z), scene);
-    camera.rotation.y = spawn.yaw;
+export function attachWalk(B, canvas, scene, avatar, exports) {
+    const camera = new B.UniversalCamera('environment-camera', B.Vector3.Zero(), scene);
     camera.minZ = .04;
     camera.fov = .98;
 
@@ -60,18 +59,35 @@ export function attachWalk(B, canvas, scene, spawn, eyeHeight, exports) {
         });
     }
 
+    const target = new B.Vector3();
+    function applyPose(pose) {
+        const [x, z, yaw, stride, leftArm, rightArm, cameraX, cameraY, cameraZ, targetY] = pose;
+        avatar.apply(x, z, yaw, stride, leftArm, rightArm);
+        camera.position.set(cameraX, cameraY, cameraZ);
+        target.set(x, targetY, z);
+        camera.setTarget(target);
+    }
+    applyPose(exports.WalkFrame(0, 0, 0, 0, 0, 0, 0));
+
+    let finishingStep = false;
     return {
         step(dt) {
-            if (document.activeElement !== canvas || document.hidden) return;
+            if (document.hidden) return;
+            if (document.activeElement !== canvas) {
+                if (finishingStep) {
+                    applyPose(exports.WalkFrame(0, 0, 0, 0, 0, 0, 0));
+                    finishingStep = false;
+                }
+                return;
+            }
+            finishingStep = true;
             let pad;
             try { pad = navigator.getGamepads?.().find(candidate => candidate?.connected); }
             catch { /* Gamepad access can be blocked by browser policy. */ }
             const axes = pad?.axes;
-            const [x, z, yaw, pitch] = exports.WalkFrame(joystick?.side ?? (axes?.[0] || 0),
-                joystick?.forward ?? -(axes?.[1] || 0), axes?.[2] || 0, axes?.[3] || 0, dx, dy, dt);
+            applyPose(exports.WalkFrame(joystick?.side ?? (axes?.[0] || 0),
+                joystick?.forward ?? -(axes?.[1] || 0), axes?.[2] || 0, axes?.[3] || 0, dx, dy, dt));
             dx = dy = 0;
-            camera.position.set(x, eyeHeight, z);
-            camera.rotation.set(pitch, yaw, 0);
         },
         dispose() {
             listeners.abort();

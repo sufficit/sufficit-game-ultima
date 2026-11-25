@@ -15,6 +15,7 @@ public partial class EnvironmentBrowser : IAsyncDisposable
     [Inject] private NavigationManager Navigation { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private HttpClient Http { get; set; } = default!;
+    [Inject] private Ultima.Models.ModelLoader Models { get; set; } = default!;
 
     [SupplyParameterFromQuery(Name = "id")] private string? EnvironmentId { get; set; }
     private EnvironmentCatalog? _catalog;
@@ -64,7 +65,9 @@ public partial class EnvironmentBrowser : IAsyncDisposable
 
             _module = module;
             EnvironmentExports.Configure(definition);
-            var scene = await module.InvokeAsync<IJSObjectReference>("create", _canvas, definition, _station, SceneWalk.EyeHeight);
+            var avatar = definition.Walk is null ? null : await Models.DescribeAsync(Ultima.Models.ModelLoader.PlayerModelId);
+            if (_disposed) return;
+            var scene = await module.InvokeAsync<IJSObjectReference>("create", _canvas, definition, _station, avatar);
             if (_disposed) await DisposeSceneAsync(scene);
             else _scene = scene;
         }

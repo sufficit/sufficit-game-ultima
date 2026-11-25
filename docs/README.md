@@ -21,6 +21,7 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
+- [Interior player view](PLAN-INTERIOR-PLAYER-VIEW.md).
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
 

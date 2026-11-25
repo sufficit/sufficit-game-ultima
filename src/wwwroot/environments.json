@@ -124,7 +124,7 @@
           {"x": 8, "y": -0.005, "z": 3, "width": 1.997, "height": 0.018, "depth": 1.997, "color": "#B8B8AA", "material": "stone"},
           {"x": 8, "y": -0.005, "z": 5, "width": 1.997, "height": 0.018, "depth": 1.997, "color": "#B8B8AA", "material": "stone"},
           {"x": 8, "y": -0.005, "z": 7, "width": 1.997, "height": 0.018, "depth": 1.03, "color": "#B8B8AA", "material": "stone"},
-          {"x": 0, "y": 3.18, "z": 0.25, "width": 18, "height": 0.14, "depth": 15.5, "color": "#DBDAD2"},
+          {"x": 0, "y": 3.18, "z": 0.25, "width": 18, "height": 0.14, "depth": 15.5, "color": "#DBDAD2", "solid": true},
           {"x": -6.65, "y": 3.078, "z": 0.1, "width": 0.042, "height": 0.028, "depth": 15, "color": "#273236"},
           {"x": -3.35, "y": 3.078, "z": 0.1, "width": 0.042, "height": 0.028, "depth": 15, "color": "#273236"},
           {"x": 0, "y": 3.078, "z": 0.1, "width": 0.042, "height": 0.028, "depth": 15, "color": "#273236"},
@@ -463,7 +463,7 @@
         ],
         "walk": {
           "x": 0,
-          "z": 6.9,
+          "z": 5.0,
           "yaw": 3.141592653589793,
           "minX": -8.95,
           "maxX": 8.95,

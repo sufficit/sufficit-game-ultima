@@ -70,21 +70,52 @@
     .environment__header { flex-wrap: wrap; }
 }
 
-.environment--walk .environment__workplace {
-    position: relative;
-    grid-template-columns: minmax(0, 1fr);
+.environment.environment--walk {
+    position: fixed;
+    inset: 0;
+    height: auto;
+    overflow: hidden;
+    padding: 0;
+    isolation: isolate;
 }
 
+.environment--walk .environment__workplace,
 .environment--walk .environment__scene {
-    height: max(26rem, calc(100dvh - 10rem));
+    position: absolute;
+    inset: 0;
+    height: auto;
+    max-width: none;
+    display: block;
+    border-radius: 0;
 }
+
+.environment--walk .environment__header {
+    position: absolute;
+    z-index: 2;
+    top: max(.8rem, env(safe-area-inset-top));
+    left: max(.8rem, env(safe-area-inset-left));
+    right: max(.8rem, env(safe-area-inset-right));
+    width: auto;
+    max-width: none;
+    pointer-events: none;
+}
+
+.environment--walk .environment__header > * {
+    pointer-events: auto;
+    border-radius: .65rem;
+    background: rgb(17 25 24 / 92%);
+    padding: .42rem .7rem;
+}
+
+.environment--walk .environment__header h1 { font-size: clamp(1.15rem, 2vw, 1.6rem); }
+.environment--walk .environment__header p { display: none; }
 
 .environment--walk .environment__workplace aside {
     position: absolute;
-    top: .85rem;
-    right: .85rem;
+    top: calc(max(.8rem, env(safe-area-inset-top)) + 4.3rem);
+    right: max(.8rem, env(safe-area-inset-right));
     width: min(23rem, calc(100% - 1.7rem));
-    max-height: calc(100% - 8rem);
+    max-height: calc(100% - 9rem);
     overflow: auto;
 }
 
@@ -107,6 +138,7 @@
     .environment__controls-touch { display: inline; }
     .environment__controls-desktop { display: none; }
 }
-@media (max-width: 780px) {
-    .environment--walk .environment__scene { height: max(23rem, calc(100dvh - 12rem)); }
+@media (max-width: 480px) {
+    .environment--walk .environment__header { gap: .35rem; }
+    .environment--walk .environment__workplace aside { top: 6rem; }
 }

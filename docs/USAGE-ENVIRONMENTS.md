@@ -1,7 +1,7 @@
 # Environments and missions
 
 Open **Painel → Ambientes → Escritório** in Ultima. The office opens in
-first person at the reception. Follow the central aisle to the workstations
+third person at the reception, with the garden player avatar. Follow the central aisle to the workstations
 and enter the glass meeting room through the open doorway.
 
 - On desktop, focus the scene and use WASD or the arrow keys to walk.
