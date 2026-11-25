@@ -1,40 +1,38 @@
 namespace Ultima.Npc;
 
-/// <summary>Uma fala do diálogo (quem fala e o texto).</summary>
+/// <summary>A spoken line with its speaker and text.</summary>
 public sealed record DialogLine(string Speaker, string Text);
 
-/// <summary>
-/// Estado do diálogo visto pela UI: a fonte da verdade é o cérebro do NPC; a UI é casca.
-/// </summary>
+/// <summary>Dialogue state supplied to the UI by the NPC brain.</summary>
 public sealed record DialogView(
     string Speaker,
     IReadOnlyList<DialogLine> Lines,
     int CurrentLine,
     bool Thinking,
-    string ReplySource);
+    string ReplySource,
+    IReadOnlyList<DialogChoice> Choices);
 
-/// <summary>Comando que o loop do jogo aplica no mundo/UI como consequência de uma decisão.</summary>
+/// <summary>An effect that the game applies after an NPC decision.</summary>
 public abstract record NpcCommand;
 
-/// <summary>Abrir o diálogo (congela o movimento do jogador).</summary>
+/// <summary>Open the dialogue and suspend player movement.</summary>
 public sealed record OpenDialog : NpcCommand;
 
-/// <summary>Exibir (e falar em voz alta, se ligada) a linha indicada.</summary>
+/// <summary>Display the line and read it aloud when speech is enabled.</summary>
 public sealed record ShowLine(int LineIndex) : NpcCommand;
 
-/// <summary>Fechar o diálogo (libera o movimento).</summary>
+/// <summary>Close the dialogue and resume player movement.</summary>
 public sealed record CloseDialog : NpcCommand;
 
-/// <summary>O jogador falou e a resposta está sendo produzida: linha vira reticências.</summary>
+/// <summary>Show that a reply to the player is pending.</summary>
 public sealed record BeginThinking(int LineIndex) : NpcCommand;
 
-/// <summary>A resposta do produtor caro chegou: substitui a linha de reticências.</summary>
+/// <summary>Replace the pending line with the reply.</summary>
 public sealed record SetReply(int LineIndex, string Text, string Source) : NpcCommand;
 
 /// <summary>
-/// Decisão de um cérebro de NPC para um evento: comandos a aplicar e o estado do diálogo
-/// depois deles. Custo alto de produzir (LLM) nunca acontece aqui — produtores caros
-/// entregam <see cref="ReplyArrived"/> pela fila.
+/// Commands and dialogue state produced in response to an event.
+/// Asynchronous providers submit <see cref="ReplyArrived"/> through the queue.
 /// </summary>
 public sealed record NpcDecision(IReadOnlyList<NpcCommand> Commands, DialogView? View)
 {

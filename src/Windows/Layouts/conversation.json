@@ -3,6 +3,7 @@
   "title": "Conversa",
   "controls": [
     { "type": "transcript" },
+    { "type": "dialogue-topics", "disabledWhen": "busy" },
     { "type": "note", "bind": "guardianAi", "when": "guardianAi" },
     { "type": "row", "when": "guardianAi", "children": [
       { "type": "button", "bind": "enableGpu", "when": "enableGpu", "style": "outline", "action": "guardian-gpu", "disabledWhen": "busy" },

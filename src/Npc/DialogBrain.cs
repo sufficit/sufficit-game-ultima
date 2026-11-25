@@ -1,13 +1,6 @@
 namespace Ultima.Npc;
 
-/// <summary>
-/// Cérebro de diálogo genérico de um NPC conversável: máquina de estados das falas
-/// que decide sobre snapshots e eventos, e devolve comandos. As falas de abertura
-/// moram no cérebro; a WebLLM da GPU do jogador e a API do jogo são produtores
-/// externos de respostas, que chegam como <see cref="ReplyArrived"/> e viram
-/// <see cref="SetReply"/>. Ver <see cref="GuardianBrain"/> e
-/// <see cref="WandererBrain"/> para os NPCs concretos.
-/// </summary>
+/// <summary>Runs authored dialogue and accepts asynchronous replies as game events.</summary>
 public abstract class DialogBrain
 {
     private const string Player = "Você";
@@ -16,15 +9,19 @@ public abstract class DialogBrain
     private readonly string _speaker;
     private IReadOnlyList<DialogLine> _opening;
     private readonly List<DialogLine> _lines;
-    private int _line = -1;          // -1 = diálogo fechado
+    private readonly IReadOnlyList<DialogTopic> _topics;
+    private readonly IReadOnlyList<DialogChoice> _choices;
+    private int _line = -1;          // -1 means the dialogue is closed.
     private bool _thinking;
     private string _replySource = string.Empty;
 
-    protected DialogBrain(string speaker, IReadOnlyList<DialogLine> openingLines)
+    protected DialogBrain(string speaker, IReadOnlyList<DialogLine> openingLines, IReadOnlyList<DialogTopic> topics)
     {
         _speaker = speaker;
         _opening = openingLines;
         _lines = [.. openingLines];
+        _topics = topics;
+        _choices = Array.AsReadOnly(topics.Select(topic => new DialogChoice(topic.Id, topic.Prompt)).ToArray());
     }
 
     public string Speaker => _speaker;
@@ -33,6 +30,7 @@ public abstract class DialogBrain
     {
         PlayerInteracted => OnInteracted(s),
         DialogClosedByPlayer => OnClosed(),
+        DialogTopicSelected selected => OnTopicSelected(selected.Id),
         PlayerSpoke spoke => OnPlayerSpoke(spoke),
         ReplyArrived reply => OnReply(reply),
         IntroLinesChanged changed => OnIntroChanged(changed),
@@ -49,7 +47,7 @@ public abstract class DialogBrain
             _line = 0;
             return View([new OpenDialog(), new ShowLine(0)]);
         }
-        if (_thinking) { return View([]); }              // resposta pendente: ignora avanços
+        if (_thinking) { return View([]); }
         if (_line + 1 < _lines.Count)
         {
             _line += 1;
@@ -64,7 +62,22 @@ public abstract class DialogBrain
     {
         _line = -1;
         _thinking = false;
-        return NpcDecision.Empty;                        // a UI já fechou; cérebro apenas sincroniza
+        return NpcDecision.Empty;
+    }
+
+    private NpcDecision OnTopicSelected(string id)
+    {
+        if (_line < 0 || _thinking) return NpcDecision.Empty;
+        var topic = _topics.FirstOrDefault(topic => topic.Id == id);
+        if (topic is null) return NpcDecision.Empty;
+
+        // Preserve the transcript up to the line the player has actually seen.
+        _lines.RemoveRange(_line + 1, _lines.Count - _line - 1);
+        _lines.Add(new DialogLine(Player, topic.Prompt));
+        _lines.Add(new DialogLine(_speaker, topic.Reply));
+        _line = _lines.Count - 1;
+        _replySource = string.Empty;
+        return View([new ShowLine(_line)]);
     }
 
     private NpcDecision OnPlayerSpoke(PlayerSpoke spoke)
@@ -101,5 +114,5 @@ public abstract class DialogBrain
     }
 
     private NpcDecision View(IReadOnlyList<NpcCommand> commands) =>
-        new(commands, new DialogView(_speaker, [.. _lines], _line, _thinking, _replySource));
+        new(commands, new DialogView(_speaker, [.. _lines], _line, _thinking, _replySource, _line >= 0 && !_thinking ? _choices : []));
 }

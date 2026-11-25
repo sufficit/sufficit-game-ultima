@@ -79,6 +79,21 @@ internal static class DeclarativeWindows
         var draft = conversation.GetByRole(AriaRole.Textbox, new() { Name = "Escreva para a Guardiã" });
         var testAi = Button(conversation, "Testar IA");
         Check(!await testAi.IsEnabledAsync(), "teste indisponível antes de ativar um modelo");
+        var topics = conversation.GetByRole(AriaRole.Group, new() { Name = "Assuntos da conversa" });
+        var collect = Button(topics, "Como recolho materiais?");
+        await collect.FocusAsync();
+        await page.Keyboard.PressAsync("Enter");
+        await conversation.Locator(".ultima-dialog__line").GetByText("Abra a Mochila", new() { Exact = false }).WaitForAsync();
+        await Button(topics, "Como ilumino a entrada?").ClickAsync();
+        await conversation.Locator(".ultima-dialog__line").GetByText("Use Iluminar o jardim", new() { Exact = false }).WaitForAsync();
+        await conversation.GetByRole(AriaRole.Region, new() { Name = "Histórico da conversa" })
+            .GetByText("Como recolho materiais?", new() { Exact = true }).WaitForAsync();
+        Check(await page.EvaluateAsync<bool>("() => typeof window.guardianProbe === 'undefined'"),
+            "Authored choices work before enabling a model.");
+        await CloseAsync(conversation);
+        await page.Locator("#game-canvas").FocusAsync();
+        await page.Keyboard.PressAsync("e");
+        await conversation.WaitForAsync();
         await Button(conversation, "Ativar IA na CPU").ClickAsync();
         await conversation.GetByText("IA local pronta na CPU.").WaitForAsync();
         await testAi.ClickAsync();

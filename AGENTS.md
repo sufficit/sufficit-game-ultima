@@ -1,57 +1,62 @@
-# Instruções do agente — Ultima (sufficit-game-ultima)
+# Agent instructions for Ultima
 
-Jogo open source em C# / Blazor WebAssembly com mundo 3D em Babylon.js
-(WebGL/WebGPU), sem servidor de jogo. Contexto completo em
-[PROJECT.md](PROJECT.md); mapa do repositório no [README.md](README.md).
+Ultima is an open-source C# and Blazor WebAssembly game. Babylon.js renders its
+3D world through WebGL or WebGPU. See [PROJECT.md](PROJECT.md) for the game
+overview and [README.md](README.md) for the repository map.
 
-## Build e validação
+## Build and validation
 
-- SDK .NET 10; `dotnet publish src/Ultima.csproj -c Release` tem que passar
-  sem erro antes de qualquer checkpoint de código.
-- Publicação é automática no push da `main` (GitHub Pages). O jogador não
-  acessa previews locais: **validar sempre o site ao vivo**
-  https://sufficit.github.io/sufficit-game-ultima/ e reportar só URLs de
-  produção; push não comprova deploy.
-- DLLs de modelos (`models/`) têm SHA-256 verificado em runtime e recusa com
-  fallback para marcadores; nunca enfraquecer essa verificação.
-- Tests em `tests/` (ex.: `tests/RulesSmoke`): rodar os relevantes ao escopo.
+- Use the .NET 10 SDK. Run `dotnet publish src/Ultima.csproj -c Release`
+  successfully before committing code.
+- A push to `main` triggers GitHub Pages. Always verify the live build before
+  reporting a deployment. Use the [production game](https://sufficit.github.io/sufficit-game-ultima/)
+  in player-facing reports.
+- Model assemblies under `models/` are verified by SHA-256 at runtime. Preserve
+  the verification and the marker fallback.
+- Run the relevant suites under `tests/`, including RulesSmoke when game
+  behavior changes.
 
-## Planos e atividades
+## Documentation and plans
 
-- Planos de trabalho vivem em `docs/PLAN-*.md`, um arquivo por frente; índice
-  em [docs/README.md](docs/README.md). Cada plano traz objetivo/critérios de
-  aceite, checkpoints numerados com estado (`[pendente]`, `[parcialmente
-  bloqueado]`, `[concluído]`) e uma próxima ação.
-- **Um plano permanece aberto enquanto tiver pendências** — atualize os
-  checkpoints nele a cada progresso; não abra plano novo para trabalho que já
-  tem plano.
-- **Ao concluir o escopo inteiro de um plano, convertê-lo em documento de
-  atividade** em `docs/activities/AAAAMMDDHHMM-slug.md` (fuso
-  America/Sao_Paulo), preservando as evidências e corrigindo os links: o plano
-  sai do índice de ativos e o `docs/README.md` passa a apontar para a
-  atividade. Não encerrar trabalho de outra sessão.
-- Formato da atividade: título descritivo e seções **Investigação**,
-  **Alterações** e **Validação e entrega** (o que foi feito, o que mudou, e a
-  evidência: testes, medidas, commit/URL de produção validada).
+- Write all repository documentation and inline code comments in English.
+  Keep player-facing text in its intended locale.
+- Put execution plans in `docs/PLAN-*.md` and link them from
+  [docs/README.md](docs/README.md). Give each plan an objective, acceptance
+  criteria, numbered checkpoints with status, and the next action. Reuse the
+  plan for the existing workstream and update it as checkpoints change.
+- Keep a plan open while any checkpoint is pending, blocked, or unverified.
+  Once every checkpoint is verified, convert the plan into
+  `docs/activities/YYYYMMDDHHmm-description.md` using America/Sao_Paulo time.
+  Preserve decisions, evidence, delivery references, and limitations.
+  Remove the completed plan, update all links including the documentation
+  index, and verify the files and diff before committing. Leave plans from
+  other sessions open until their own acceptance criteria are verified.
+- Use **Investigation**, **Changes**, and **Validation and delivery** in
+  activity files. Store historical design decisions in `decisions/` and
+  record a new decision when revising one.
 
-## Regras do projeto
+## Code and interface
 
-- Falar português nos documentos e nos commits; commits na `main` com escopo
-  pequeno e mensagem descritiva.
-- Decisões de design históricas em `decisions/`; não reabrir decisão registrada
-  sem registrar a nova.
-- `app/` (API opcional em ASP.NET Core; a implementação anterior em Python
-  fica em `app-python/`) é fallback-friendly: o jogo nunca pode depender
-  dela para iniciar.
-- Priorizar o tempo de quadro nas migrações para C#. Agrupar chamadas na ponte
-  JavaScript–WASM e comparar o custo antes e depois em cena equivalente.
-  Validar worker e fallback conforme a [arquitetura](ARCHITECTURE.md).
-- **Interface do jogo = Sufficit.Blazor.UI.** Painéis, botões, campos, seletores e
-  interruptores usam os componentes da biblioteca (versão fixada no `.csproj`), nunca
-  HTML cru estilizado à mão; o estado dos controles mora no Blazor e chega ao motor por
-  JS interop (o JavaScript não lê nem altera o DOM dos controles). Padrão de referência:
-  a Oficina do mundo e o Painel do jogo em `src/Pages/Index.razor`; motivação e limites
-  em `docs/activities/202611230037-menus-sufficit-blazor-ui.md`. O parâmetro `Subtitle`
-  dos painéis de expansão cola título e subtítulo nesta versão: não usar.
-- Aproximação técnica do Ultima sempre publicável sem confirmação extra
-  (decisão do mantenedor), desde que validada no site de produção.
+- Prefer C# for new logic and migrate existing code to C# wherever practical.
+  Use Blazor or WebAssembly for client-side logic. Keep JavaScript focused on
+  browser and rendering APIs that require it. Batch JavaScript–WebAssembly
+  calls, compare frame cost in equivalent scenes, and validate the worker and
+  main-thread fallback. See [ARCHITECTURE.md](ARCHITECTURE.md).
+- Aim for at most 400 lines per source file. Split by responsibility, using
+  partial classes and `Type.Concern.cs` files when the code belongs to one
+  type. Split large Razor components with focused code-behind files.
+- The ASP.NET Core API in `app/` is optional. The game must start
+  independently of it. The previous Python implementation lives in
+  `app-python/`.
+- Use Sufficit.Blazor.UI for panels, buttons, fields, selectors, and switches.
+  Use the version pinned in the project. Keep control state in Blazor and
+  pass it to the engine through interop. Use the World Workshop and Game
+  Panel in `src/Pages/Index.razor` as references. The current expansion-panel
+  `Subtitle` parameter joins the title and subtitle, so omit it.
+  [Interface design history](docs/activities/202611230037-menus-sufficit-blazor-ui.md)
+
+## Delivery
+
+- Keep commits on `main` focused and descriptive. Preserve parallel work.
+- The maintainer authorizes publication of technical changes to Ultima
+  when the production site can be verified.

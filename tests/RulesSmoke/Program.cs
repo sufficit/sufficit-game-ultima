@@ -141,6 +141,7 @@ Check("1d4 horas de espera", Enumerable.Range(0, 50).Select(i => new Rng((ulong)
 
 // IA de NPCs: decisões sobre snapshot com budget por tick (docs/activities/202611220040-ia-npcs-decisoes.md)
 WorldSnapshot Snap(bool near = true, bool open = false, bool ai = false, bool nearWanderer = false) => new(0, -12, near, nearWanderer, open, ai, 1000);
+DialogueTopicsSmoke.Run(Check);
 var npc = new NpcScheduler();
 npc.Submit(new PlayerInteracted(1000));
 var open = npc.Tick(Snap()).Single();

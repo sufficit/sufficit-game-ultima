@@ -7,6 +7,17 @@
         case "transcript" when State.Conversation is { } conversation:
             <ConversationTranscript View="conversation" Archived="State.ArchivedTurns" />
             break;
+        case "dialogue-topics" when State.Conversation is { Choices.Count: > 0 } dialogue:
+            <SUIStack Row="true" Spacing="2" Wrap="true" role="group" aria-label="Assuntos da conversa">
+                @foreach (var choice in dialogue.Choices)
+                {
+                    <SUIButton @key="choice.Id" VariantValue="SUIVariant.Outlined" SizeValue="SUISize.Small"
+                               Disabled="@Disabled" OnClick="() => SelectTopic(choice.Id)">
+                        @choice.Text
+                    </SUIButton>
+                }
+            </SUIStack>
+            break;
         case "status":
             <SUIText Typo="SUITypo.caption" role="status">@State.Content(Control)</SUIText>
             break;
@@ -63,6 +74,7 @@
         }
     </text>;
 
+    private Task SelectTopic(string id) => OnAction.InvokeAsync($"topic:{id}");
     private Task Dispatch() => Control.Action is { } action ? OnAction.InvokeAsync(action) : Task.CompletedTask;
     private Task Edit(string value) => Control.Bind is { } key ? OnEdit.InvokeAsync((key, value)) : Task.CompletedTask;
 }
