@@ -69,3 +69,44 @@
     .environment__scene { height: clamp(17rem, 49vh, 27rem); }
     .environment__header { flex-wrap: wrap; }
 }
+
+.environment--walk .environment__workplace {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.environment--walk .environment__scene {
+    height: max(26rem, calc(100dvh - 10rem));
+}
+
+.environment--walk .environment__workplace aside {
+    position: absolute;
+    top: .85rem;
+    right: .85rem;
+    width: min(23rem, calc(100% - 1.7rem));
+    max-height: calc(100% - 8rem);
+    overflow: auto;
+}
+
+.environment--walk .environment__stations { bottom: 3.5rem; }
+.environment__walk-note {
+    position: absolute;
+    bottom: .45rem;
+    left: .85rem;
+    margin: 0;
+    padding: .5rem .75rem;
+    border-radius: .35rem;
+    color: #fff;
+    background: rgb(17 25 24 / 88%);
+    font-size: .875rem;
+    pointer-events: none;
+}
+
+.environment__controls-touch { display: none; }
+@media (pointer: coarse) {
+    .environment__controls-touch { display: inline; }
+    .environment__controls-desktop { display: none; }
+}
+@media (max-width: 780px) {
+    .environment--walk .environment__scene { height: max(23rem, calc(100dvh - 12rem)); }
+}

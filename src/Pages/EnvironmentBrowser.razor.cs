@@ -22,6 +22,9 @@ public partial class EnvironmentBrowser : IAsyncDisposable
     private ElementReference _canvas;
     private IJSObjectReference? _module, _scene;
     private CancellationTokenSource? _connection;
+    private bool _missionPanel;
+    private void ToggleMissionPanel() => _missionPanel = !_missionPanel;
+
     private bool _sceneStarting, _sceneError, _connecting, _connected, _disposed;
     private string _endpoint = "https://w-5bee2eba74174628a92a487c6a938f9b.run.sufficit.com.br";
     private string _draftKey = "", _status = "", _station = "";
@@ -60,7 +63,8 @@ public partial class EnvironmentBrowser : IAsyncDisposable
             }
 
             _module = module;
-            var scene = await module.InvokeAsync<IJSObjectReference>("create", _canvas, definition, _station);
+            EnvironmentExports.Configure(definition);
+            var scene = await module.InvokeAsync<IJSObjectReference>("create", _canvas, definition, _station, SceneWalk.EyeHeight);
             if (_disposed) await DisposeSceneAsync(scene);
             else _scene = scene;
         }

@@ -59,9 +59,37 @@ internal static class OfficeBrowser
         await WaitAsync(() => page.EvaluateAsync<bool>("""
             () => {
                 const scene = window.BABYLON?.EngineStore.LastCreatedScene;
-                return scene?.activeCamera?.name === 'environment-camera' && scene.meshes.length >= 40;
+                return scene?.activeCamera?.getClassName() === 'UniversalCamera' && scene.getTotalVertices() > 1500;
             }
             """), "The 3D office loaded independently of its API.");
+        var canvas = page.Locator(".environment__scene canvas");
+        var start = await PoseAsync();
+        Check(Math.Abs(start.Y - 1.62) < .01, "The office starts at human eye height.");
+        if (Environment.GetEnvironmentVariable("ULTIMA_INTERIOR_CAPTURE") is { Length: > 0 } interior)
+            await page.ScreenshotAsync(new() { Path = interior });
+        await canvas.FocusAsync();
+        await WalkUntilAsync("w", pose => pose.Z < -.35, "Reception connects to the workspace.");
+        var aisle = await PoseAsync();
+        Check(Math.Abs(aisle.X) < .1 && aisle.Z > -1.02, "The player is aligned with the meeting room door.", aisle);
+        await WalkUntilAsync("a", pose => pose.X > 3.86, "The player can enter the meeting room through its doorway.");
+        await WalkUntilAsync("w", pose => pose.Z < -4, "The player can walk alongside the meeting table.");
+        await page.Keyboard.DownAsync("d");
+        try { await Task.Delay(1000); }
+        finally { await page.Keyboard.UpAsync("d"); }
+        var atGlass = await PoseAsync();
+        Check(atGlass.X is > 3.60 and < 3.96, "The glass wall stops the player.", atGlass);
+        var beforeLook = await page.EvaluateAsync<double>("() => BABYLON.EngineStore.LastCreatedScene.activeCamera.rotation.y");
+        var region = await canvas.BoundingBoxAsync() ?? throw new InvalidOperationException("Missing office canvas.");
+        await page.Mouse.MoveAsync(region.X + region.Width * .5f, region.Y + region.Height * .5f);
+        await page.Mouse.DownAsync();
+        await page.Mouse.MoveAsync(region.X + region.Width * .5f + 100, region.Y + region.Height * .5f, new() { Steps = 4 });
+        await page.Mouse.UpAsync();
+        await WaitAsync(async () =>
+        {
+            var after = await page.EvaluateAsync<double>("() => BABYLON.EngineStore.LastCreatedScene.activeCamera.rotation.y");
+            return Math.Abs(Math.IEEERemainder(after - beforeLook, Math.Tau)) > .20;
+        }, "Dragging turns the camera.");
+        await Button("Missões").ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Revisão" }).ClickAsync();
         Check(await Button("Revisão").GetAttributeAsync("aria-pressed") == "true", "Station selection is visible.");
         var api = new UriBuilder(page.Url) { Path = "/", Query = "" };
@@ -99,8 +127,24 @@ internal static class OfficeBrowser
         await WaitAsync(() => page.EvaluateAsync<bool>("async () => !!(await window.game?.playerState?.())"),
             "The terrain profile loaded after returning to the garden.");
         Check(errors.IsEmpty, "Browser page errors", errors);
-        Log(new { build, office = true, board = true, desktop = true, mobile = true });
+        Log(new { build, office = true, board = true, desktop = true, mobile = true, atGlass });
+
+        Task<CameraPose> PoseAsync() => ReadAsync<CameraPose>(page, """
+            () => {
+                const { x, y, z } = BABYLON.EngineStore.LastCreatedScene.activeCamera.position;
+                return { x, y, z };
+            }
+            """);
+
+        async Task WalkUntilAsync(string keyName, Func<CameraPose, bool> reached, string description)
+        {
+            await page.Keyboard.DownAsync(keyName);
+            try { await WaitAsync(async () => reached(await PoseAsync()), description, 16_000, 25); }
+            finally { await page.Keyboard.UpAsync(keyName); }
+        }
 
         ILocator Button(string name) => page.GetByRole(AriaRole.Button, new() { Name = name, Exact = true });
     }
+
+    private sealed record CameraPose(double X, double Y, double Z);
 }

@@ -40,20 +40,36 @@ public sealed record MapPoint(double X, double Z);
 public sealed record SpawnPoint(double X, double Z, double Ry);
 public sealed record SceneStation(string Id, string Name);
 public sealed record SceneCamera(double Alpha, double Beta, double Radius, double TargetX, double TargetY, double TargetZ);
-public sealed record SceneBox(double X, double Y, double Z, double Width, double Height, double Depth, string Color, string? Station);
-public sealed record SceneSettings(SceneCamera Camera, string Background, SceneStation[] Stations, SceneBox[] Boxes)
+public sealed record SceneBox(double X, double Y, double Z, double Width, double Height, double Depth,
+    string Color, string? Station, string? Material = null, bool Solid = false);
+public sealed record SceneWalkSettings(double X, double Z, double Yaw, double MinX, double MaxX, double MinZ, double MaxZ)
+{
+    internal bool IsValid() => new[] { X, Z, Yaw, MinX, MaxX, MinZ, MaxZ }.All(value => Math.Abs(value) <= 500) &&
+        X > MinX + .26 && X < MaxX - .26 && Z > MinZ + .26 && Z < MaxZ - .26;
+}
+public sealed record SceneSign(string Text, double X, double Y, double Z, double Width, double Height);
+public sealed record SceneLight(double X, double Y, double Z, double Intensity);
+public sealed record SceneSettings(SceneCamera Camera, string Background, SceneStation[] Stations, SceneBox[] Boxes,
+    SceneWalkSettings? Walk = null, SceneSign[]? Signs = null, SceneLight[]? Lights = null)
 {
     private static readonly Regex Hex = new("^#[0-9a-fA-F]{6}$", RegexOptions.CultureInvariant);
 
     internal bool IsValid() => Camera is { Radius: >= 1 and <= 100, Beta: > 0 and < 3.14 } &&
         new[] { Camera.Alpha, Camera.TargetX, Camera.TargetY, Camera.TargetZ }.All(value => Math.Abs(value) <= 500) &&
-        IsColor(Background) && Stations is { Length: <= 32 } && Boxes is { Length: >= 1 and <= 512 } &&
+        IsColor(Background) && (Walk is null || Walk.IsValid()) &&
+        (Signs is null || Signs.Length <= 24 && Signs.All(sign => sign is not null && sign.Text is { Length: > 0 and <= 64 } &&
+            At(sign.X, sign.Y, sign.Z) && sign.Width is > 0 and <= 16 && sign.Height is > 0 and <= 8)) &&
+        (Lights is null || Lights.Length <= 12 && Lights.All(light => light is not null &&
+            At(light.X, light.Y, light.Z) && light.Intensity is > 0 and <= 4)) &&
+        Stations is { Length: <= 32 } && Boxes is { Length: >= 1 and <= 512 } &&
         Stations.All(station => station is not null && EnvironmentDefinition.ValidId(station.Id) &&
             !string.IsNullOrWhiteSpace(station.Name) && station.Name.Length <= 80) &&
         Stations.Select(station => station.Id).Distinct().Count() == Stations.Length &&
         Boxes.All(box => box is not null && box.Width is > 0 and <= 500 && box.Height is > 0 and <= 500 &&
             box.Depth is > 0 and <= 500 && Math.Abs(box.X) <= 500 && Math.Abs(box.Y) <= 500 && Math.Abs(box.Z) <= 500 &&
-            IsColor(box.Color) && (box.Station is null || Stations.Any(station => station.Id == box.Station)));
+            IsColor(box.Color) && box.Material is (null or "wood" or "carpet" or "stone" or "glass" or "light" or "screen") && (box.Station is null || Stations.Any(station => station.Id == box.Station)));
+
+    private static bool At(double x, double y, double z) => Math.Abs(x) <= 500 && Math.Abs(y) <= 500 && Math.Abs(z) <= 500;
 
     private static bool IsColor(string? color) => color is { Length: 7 } && Hex.IsMatch(color);
 }

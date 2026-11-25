@@ -4,7 +4,7 @@
 
 <PageTitle>@(_environment?.Name ?? "Ambientes") · Ultima</PageTitle>
 
-<main class="environment">
+<main class="environment @(_environment?.Scene?.Walk is not null ? "environment--walk" : "")">
     <header class="environment__header">
         <div>
             <h1>@(_environment?.Name ?? "Ambientes")</h1>
@@ -12,7 +12,14 @@
         </div>
         @if (_environment is not null)
         {
-            <SUIButton VariantValue="SUIVariant.Outlined" OnClick="ShowCatalog">Trocar ambiente</SUIButton>
+            <SUIStack Row="true" Spacing="2" Wrap="true">
+                @if (_environment.Scene?.Walk is not null)
+                {
+                    <SUIButton VariantValue="SUIVariant.Outlined" aria-expanded="@(_missionPanel ? "true" : "false")"
+                               OnClick="ToggleMissionPanel">Missões</SUIButton>
+                }
+                <SUIButton VariantValue="SUIVariant.Outlined" OnClick="ShowCatalog">Trocar ambiente</SUIButton>
+            </SUIStack>
         }
     </header>
 
@@ -37,12 +44,20 @@
     {
         <div class="environment__workplace">
             <section class="environment__scene" aria-label="Estações de trabalho">
-                <canvas @ref="_canvas" aria-label="Vista 3D do ambiente"></canvas>
+                <canvas @ref="_canvas" tabindex="0" aria-label="Vista 3D do ambiente"
+                        aria-describedby="@(definition.Walk is null ? null : "environment-controls")"></canvas>
+                @if (definition.Walk is not null)
+                {
+                    <p id="environment-controls" class="environment__walk-note">
+                        <span class="environment__controls-desktop">Clique na cena · WASD ou setas para andar · arraste para olhar</span>
+                        <span class="environment__controls-touch">Arraste à esquerda para andar · à direita para olhar</span>
+                    </p>
+                }
                 @if (_sceneError)
                 {
                     <p class="environment__scene-error" role="status">A vista 3D está indisponível neste navegador.</p>
                 }
-                <div class="environment__stations">
+                <div class="environment__stations" hidden="@(definition.Walk is not null && !_missionPanel)">
                     <SUIStack Row="true" Spacing="2" Wrap="true">
                         @foreach (var station in definition.Stations)
                         {
@@ -55,7 +70,7 @@
                 </div>
             </section>
 
-            <aside aria-label="Painel de missões">
+            <aside aria-label="Painel de missões" hidden="@(definition.Walk is not null && !_missionPanel)">
                 <SUICard Elevation="2">
                     <SUICardContent>
                         <SUIStack Spacing="2">

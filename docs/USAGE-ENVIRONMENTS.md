@@ -1,16 +1,26 @@
 # Environments and missions
 
-Open **Painel → Ambientes → Escritório** in Ultima. The office has a separate 3D scene
-with an orbit camera and stations for **Operações**, **Pesquisa**, and
-**Revisão**. Station buttons filter the mission board. The scene and switching
-back to the garden are available independently of the API.
+Open **Painel → Ambientes → Escritório** in Ultima. The office opens in
+first person at the reception. Follow the central aisle to the workstations
+and enter the glass meeting room through the open doorway.
+
+- On desktop, focus the scene and use WASD or the arrow keys to walk.
+  Drag the mouse to look and hold Shift to move faster.
+- On touchscreens, drag on the left to walk and on the right to look.
+- With the scene focused, the controller's left stick moves and its right
+  stick turns the camera.
+
+Open **Missões** to see the board and filter by station. Use
+**Trocar ambiente** to return to the environment picker. The office can
+be explored without a connection to the mission API.
 
 ## Author an environment
 
 The built-in [catalog](../src/wwwroot/environments.json) contains the garden and
 the office. Each record declares its ID, name, description, and either terrain
 settings or an object scene. The latter specifies camera, background, geometry,
-and optional stations. Add another record to make it selectable in **Ambientes**.
+and optional stations. A scene may also declare walking bounds, a spawn point,
+solid furniture, material finishes, signs, and lights. Add another record to make it selectable in **Ambientes**.
 The game uses the same scene renderer for every object scene. Additional terrain
 presets open locally. The garden API's existing shared terrain and NPC rules remain
 attached to the default terrain preset.
