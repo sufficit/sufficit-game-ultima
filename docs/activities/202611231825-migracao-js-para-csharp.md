@@ -31,7 +31,7 @@ dentro do motor, com o Blazor recebendo eventos em vez de chamadas por quadro.
 ## Validação e entrega
 
 - Publish Release, RulesSmoke, sintaxe JavaScript e diff limpo passaram.
-- O [ensaio de serviços do navegador](../../tests/browser-services.e2e.cjs)
+- O [ensaio de serviços do navegador](https://github.com/sufficit/sufficit-game-ultima/blob/296891feef444f5dbbb16646dfc5a8aafd13392e/tests/browser-services.e2e.cjs)
   usou uma API isolada para validar sessão e mapa, presença, chat, edição,
   criação e upload de GLB, rejeição por SHA-256, convite, aviso de atualização
   e confirmação da fila anterior após uma falha de envio.

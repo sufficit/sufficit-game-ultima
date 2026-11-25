@@ -158,7 +158,7 @@ coleta e terreno em worker e main pelos [testes no navegador](tests).
 A [suíte de navegador em C#](tests/WorldCollisionE2E) usa Microsoft.Playwright.
 Ela cobre colisão e marcha, passo articulado, relógio e clima, mochila e coleta,
 câmera e streaming, cache OPFS, emendas, túnel, histórico de edições, modo cinema,
-multidões, janelas declarativas e HUD.
+multidões, janelas declarativas, HUD e serviços do navegador.
 O runner controla o Chromium e calcula as métricas em C#. As sondas JavaScript
 consultam APIs do navegador e dados da cena do Babylon.js no contexto em que
 são atualizados.
@@ -179,6 +179,7 @@ dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- graphics
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- crowd
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- declarative-windows
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- hud-status
+dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- browser-services
 ```
 
 O cenário padrão é `collision`. Nos cenários que aceitam os dois renderizadores, use `ULTIMA_MODE=main`
@@ -194,6 +195,7 @@ O cenário `hud-status` usa a thread principal e, por padrão, SwiftShader.
 Ele interrompe a importação da IA na CPU para verificar a transição entre
 download e erro. Em `declarative-windows`, `ULTIMA_DIAGNOSTIC=1` exibe os
 logs do navegador.
+O cenário `browser-services` simula as respostas da API no Playwright.
 
 Use `ULTIMA_COUNTS` para ajustar a carga de `crowd` (padrão `100,300`).
 O cenário `remote-performance` recebe duas URLs base em sequência, mede

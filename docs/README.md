@@ -29,6 +29,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Migração do teste de serviços do navegador para C#](activities/202611242209-testes-servicos-navegador-csharp.md)
+
 - [Migração dos testes de janelas e HUD para C#](activities/202611242159-testes-janelas-hud-csharp.md)
 
 - [Migração dos testes de multidão e avatares para C#](activities/202611242149-testes-multidao-avatares-csharp.md)

@@ -76,8 +76,11 @@ try
         case "hud-status":
             await HudStatus.RunAsync(browser);
             break;
+        case "browser-services":
+            await BrowserServices.RunAsync(browser);
+            break;
         default:
-            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance, declarative-windows, hud-status.");
+            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance, declarative-windows, hud-status, browser-services.");
     }
     return 0;
 }
