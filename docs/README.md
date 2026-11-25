@@ -10,7 +10,6 @@ Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
-- [Estabilização vertical da câmera](PLAN-ESTABILIZACAO-CAMERA.md).
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
@@ -31,6 +30,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Estabilização vertical da câmera](activities/202611251826-estabilizacao-da-camera.md)
 
 - [Plugin de memória da Guardiã no navegador](activities/202611251430-plugin-memoria-navegador.md)
 - [Migração dos testes de mobile e de registro de conversas para C#](activities/202611251151-testes-mobile-e-dialogo-csharp.md)
