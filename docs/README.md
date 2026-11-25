@@ -10,7 +10,6 @@ Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
-- [Histórico da conversa e diagnóstico](PLAN-CONVERSA-DIAGNOSTICO.md).
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
@@ -31,6 +30,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Conversa com histórico e relatos de diagnóstico](activities/202611250122-conversa-e-diagnosticos.md)
 
 - [Personalização de modelos por instância](activities/202611250007-personalizacao-modelos.md)
 
