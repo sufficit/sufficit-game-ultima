@@ -10,10 +10,14 @@ try
     var scenario = args.FirstOrDefault() ?? "collision";
     if (scenario != "remote-performance" && args.Length > 1)
         throw new ArgumentException("Informe apenas um cenário.");
-    var browserArgs = scenario == "remote-performance" && RemotePerformance.UsesSwiftShader
-        ? RemotePerformance.SwiftShaderArgs
-        : (Environment.GetEnvironmentVariable("ULTIMA_CHROMIUM_ARGS") ?? "")
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    var browserArgs = (Environment.GetEnvironmentVariable("ULTIMA_CHROMIUM_ARGS") ?? "")
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    browserArgs = scenario switch
+    {
+        "remote-performance" when RemotePerformance.UsesSwiftShader => RemotePerformance.SwiftShaderArgs,
+        "hud-status" when browserArgs.Length == 0 => HudStatus.DefaultBrowserArgs,
+        _ => browserArgs
+    };
     using var playwright = await Playwright.CreateAsync();
     await using var browser = await playwright.Chromium.LaunchAsync(new()
     {
@@ -66,8 +70,14 @@ try
         case "remote-performance":
             await RemotePerformance.RunAsync(browser, args[1..]);
             break;
+        case "declarative-windows":
+            await DeclarativeWindows.RunAsync(browser);
+            break;
+        case "hud-status":
+            await HudStatus.RunAsync(browser);
+            break;
         default:
-            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance.");
+            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance, declarative-windows, hud-status.");
     }
     return 0;
 }

@@ -21,7 +21,7 @@ superfície por janela, com componentes da biblioteca.
 ## Validação e entrega
 
 - Publish Release e RulesSmoke passaram.
-- O [teste de janelas](../../tests/declarative-windows.e2e.cjs) confirmou
+- O [teste de janelas](https://github.com/sufficit/sufficit-game-ultima/blob/989aec9f11df1a83515ebff19b0cc4085278cc44/tests/declarative-windows.e2e.cjs) confirmou
   o Diário vazio, a troca real de contraste, o avanço da fala, o envio
   para a Guardiã, a origem da resposta e a aparição da resposta no Diário.
   O teste passou localmente e no build `c630ebb`.

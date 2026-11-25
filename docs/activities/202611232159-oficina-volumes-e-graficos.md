@@ -32,7 +32,7 @@ também descartava a preferência de PBR e a textura ambiente dependia do DOM.
   migração, job retomado, replay, dono do undo, catálogo segregado, aprovação
   por SHA-256 e limpeza de órfão sem tocar no arquivo catalogado.
 - Em `105c2a7`, o [teste de gráficos](https://github.com/sufficit/sufficit-game-ultima/blob/47c98430d94012f1c8f27239cb5cb855015f58f4/tests/graphics.e2e.cjs) confirmou
-  os efeitos na GPU AMD com WebGL 2, e o [teste de janelas](../../tests/declarative-windows.e2e.cjs)
+  os efeitos na GPU AMD com WebGL 2, e o [teste de janelas](https://github.com/sufficit/sufficit-game-ultima/blob/989aec9f11df1a83515ebff19b0cc4085278cc44/tests/declarative-windows.e2e.cjs)
   confirmou a proposta local e a aplicação por clique.
   [Workflow](https://github.com/sufficit/sufficit-game-ultima/actions/runs/45299630450).
 - Em `4646276`, [corredor](https://github.com/sufficit/sufficit-game-ultima/blob/47c98430d94012f1c8f27239cb5cb855015f58f4/tests/tunnel.e2e.cjs) passou em worker e

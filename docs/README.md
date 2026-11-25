@@ -29,6 +29,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Migração dos testes de janelas e HUD para C#](activities/202611242159-testes-janelas-hud-csharp.md)
+
 - [Migração dos testes de multidão e avatares para C#](activities/202611242149-testes-multidao-avatares-csharp.md)
 
 - [Migração dos testes de túnel, histórico e gráficos para C#](activities/202611241834-testes-tunel-historico-graficos-csharp.md)

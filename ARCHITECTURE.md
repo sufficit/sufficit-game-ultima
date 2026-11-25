@@ -157,8 +157,8 @@ coleta e terreno em worker e main pelos [testes no navegador](tests).
 
 A [suíte de navegador em C#](tests/WorldCollisionE2E) usa Microsoft.Playwright.
 Ela cobre colisão e marcha, passo articulado, relógio e clima, mochila e coleta,
-câmera e streaming, cache OPFS, emendas, túnel, histórico de edições, modo cinema
-e multidões.
+câmera e streaming, cache OPFS, emendas, túnel, histórico de edições, modo cinema,
+multidões, janelas declarativas e HUD.
 O runner controla o Chromium e calcula as métricas em C#. As sondas JavaScript
 consultam APIs do navegador e dados da cena do Babylon.js no contexto em que
 são atualizados.
@@ -177,9 +177,11 @@ dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- terrain-se
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- tunnel
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- graphics
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- crowd
+dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- declarative-windows
+dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- hud-status
 ```
 
-O cenário padrão é `collision`. Use `ULTIMA_MODE=main` com qualquer cenário
+O cenário padrão é `collision`. Nos cenários que aceitam os dois renderizadores, use `ULTIMA_MODE=main`
 para exercitar o fallback. Em `clock`, use `ULTIMA_MOBILE=1` para abrir o menu
 móvel em uma tela estreita e `ULTIMA_SCREENSHOTS` para gravar as capturas.
 Em `backpack`, use `ULTIMA_TOUCH=1` para coletar por toque e `ULTIMA_DPR=2`
@@ -187,6 +189,11 @@ para exercitar a projeção em alta densidade. Em `terrain-seams`, use
 `ULTIMA_PROCEDURAL=1` para confirmar o fallback sem os materiais WebP. Em `graphics`, use
 `ULTIMA_CAPTURE` para gravar uma captura. O cenário `world-undo` usa dois
 clientes worker e um backend descartável. Veja a [validação do mundo](docs/USAGE-MUNDO.md#validação).
+
+O cenário `hud-status` usa a thread principal e, por padrão, SwiftShader.
+Ele interrompe a importação da IA na CPU para verificar a transição entre
+download e erro. Em `declarative-windows`, `ULTIMA_DIAGNOSTIC=1` exibe os
+logs do navegador.
 
 Use `ULTIMA_COUNTS` para ajustar a carga de `crowd` (padrão `100,300`).
 O cenário `remote-performance` recebe duas URLs base em sequência, mede
