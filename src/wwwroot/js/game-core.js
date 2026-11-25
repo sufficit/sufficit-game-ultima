@@ -753,10 +753,10 @@
     ]);
     const softAssets = new Set(['scenery.bush', 'flora.flowers', 'flora.mushroom', 'flora.fern', 'scenery.grass2']);
 
-    function trackObstacle(mesh, proto, label, fixedRadius) {
+    function trackObstacle(mesh, proto, label, fixedRadius, footprint) {
         const bounds = proto.getBoundingInfo().boundingBox;
-        const halfX = bounds.extendSize.x * Math.abs(mesh.scaling.x);
-        const halfZ = bounds.extendSize.z * Math.abs(mesh.scaling.z);
+        const halfX = footprint?.x ?? bounds.extendSize.x * Math.abs(mesh.scaling.x);
+        const halfZ = footprint?.z ?? bounds.extendSize.z * Math.abs(mesh.scaling.z);
         const minY = mesh.position.y + bounds.minimum.y * mesh.scaling.y;
         const maxY = mesh.position.y + bounds.maximum.y * mesh.scaling.y;
         if (maxY - minY < 0.065) { return; }
@@ -790,8 +790,9 @@
     function trackGlbObstacle(mesh, proto, id, planted = false) {
         const label = solidAssets.get(id);
         if (!label && (!planted || softAssets.has(id))) { return; }
-        const trunkRadius = id === 'flora.pine' ? 0.28 * Math.abs(mesh.scaling.x) : 0;
-        trackObstacle(mesh, proto, label || 'Objeto plantado', trunkRadius);
+        const trunk = id === 'flora.pine'
+            ? { x: 0.28 * Math.abs(mesh.scaling.x), z: 0.28 * Math.abs(mesh.scaling.z) } : null;
+        trackObstacle(mesh, proto, label || 'Objeto plantado', 0, trunk);
     }
 
     const supportRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, -1, 0), KNEE_HEIGHT + 0.01);
@@ -1177,15 +1178,15 @@
         syncCarveScenery();
     }
 
-    const placements = new Map();       // uid -> InstancedMesh
-    const pendingPlacements = [];       // à espera do asset carregar
+    const placements = new Map();       // uid -> instância e dados do mapa
+    const pendingPlacements = new Map(); // à espera do asset carregar
 
     const gardenLanterns = new Map();
     const gardenLights = [];
     const lanternPrototypes = new Map();
     let lanternMetal, lanternGlass;
 
-    function lanternParameter(p, name, fallback, min, max) {
+    function placementParameter(p, name, fallback, min, max) {
         const value = p.parameters?.[name];
         return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
     }
@@ -1252,42 +1253,53 @@
 
     function spawnPlacement(p) {
         if (!p || !p.uid) { return; }
-        const existing = placements.get(p.uid);
-        let lantern = null;
-        if (p.asset === 'prop.lantern') {
-            const poleHeight = lanternParameter(p, 'poleHeight', 1.4, 0.5, 5);
-            const intensity = lanternParameter(p, 'lightIntensity', 1.05, 0, 3);
-            if (existing) {
-                const previous = gardenLanterns.get(existing);
-                if (previous?.poleHeight === poleHeight) {
-                    previous.lightIntensity = intensity;
-                    return;
-                }
-                removePlacement(p.uid);
-            }
-            lantern = gardenLantern(p, poleHeight, intensity);
-        } else if (existing) { return; }
-        const g = glbRegistry.get(p.asset);
-        if (!lantern && !g) {
-            if (!pendingPlacements.some(function (q) { return q.uid === p.uid; })) { pendingPlacements.push(p); }
+        const lamp = p.asset === 'prop.lantern';
+        const asset = glbRegistry.get(p.asset);
+        if (!lamp && !asset) {
+            pendingPlacements.set(p.uid, p);
             return;
         }
-        const inst = lantern?.mesh ?? g.proto.createInstance('place-' + p.uid);
-        inst.position.set(p.x, (p.y || terrainHeight(p.x, p.z)) - 0.02, p.z);
-        inst.rotation.y = p.rot || 0;
-        inst.scaling.setAll(p.scale || 1);
+
+        const scale = p.scale || 1;
+        const sx = placementParameter(p, 'scaleX', scale, 0.05, 8);
+        const sy = placementParameter(p, 'scaleY', scale, 0.05, 8);
+        const sz = placementParameter(p, 'scaleZ', scale, 0.05, 8);
+        const yaw = placementParameter(p, 'rotationY', p.rot || 0, -2 * Math.PI, 2 * Math.PI);
+        const poleHeight = lamp ? placementParameter(p, 'poleHeight', 1.4, 0.5, 5) : null;
+        const intensity = lamp ? placementParameter(p, 'lightIntensity', 1.05, 0, 3) : null;
+        const existing = placements.get(p.uid);
+        const sameAnchor = existing && existing.data.x === p.x && existing.data.y === p.y && existing.data.z === p.z;
+        const y = sameAnchor ? existing.mesh.position.y : (p.y || terrainHeight(p.x, p.z)) - 0.02;
+        if (existing) {
+            const mesh = existing.mesh;
+            const previous = gardenLanterns.get(mesh);
+            if (existing.data.asset === p.asset && (!lamp || previous?.poleHeight === poleHeight) &&
+                sameAnchor && mesh.rotation.y === yaw && mesh.scaling.x === sx && mesh.scaling.y === sy && mesh.scaling.z === sz) {
+                if (previous) previous.lightIntensity = intensity;
+                existing.data = p;
+                return;
+            }
+            removePlacement(p.uid);
+        }
+        const lantern = lamp ? gardenLantern(p, poleHeight, intensity) : null;
+        const inst = lantern?.mesh ?? asset.proto.createInstance('place-' + p.uid);
+        inst.position.set(p.x, y, p.z);
+        inst.rotation.y = yaw;
+        inst.scaling.set(sx, sy, sz);
         if (sceneShadows) { try { sceneShadows.addShadowCaster(inst); } catch (e) { /* já fora */ } }
-        trackGlbObstacle(inst, lantern?.proto ?? g.proto, p.asset, true);
+        trackGlbObstacle(inst, lantern?.proto ?? asset.proto, p.asset, true);
         trackGatherable(inst, 'placed:' + p.uid, p.asset, false);
-        placements.set(p.uid, inst);
+        placements.set(p.uid, { mesh: inst, data: p });
     }
 
     function flushPendingPlacements() {
-        for (const p of pendingPlacements.splice(0)) { spawnPlacement(p); }
+        const pending = Array.from(pendingPlacements.values());
+        pendingPlacements.clear();
+        for (const p of pending) { spawnPlacement(p); }
     }
 
     function removePlacement(uid) {
-        const inst = placements.get(uid);
+        const inst = placements.get(uid)?.mesh;
         if (inst) {
             if (sceneShadows) { try { sceneShadows.removeShadowCaster(inst); } catch (e) { /* já fora */ } }
             const lamp = gardenLanterns.get(inst);
@@ -1301,23 +1313,26 @@
                 }
             }
         }
-        const ix = pendingPlacements.findIndex(function (q) { return q.uid === uid; });
-        if (ix >= 0) { pendingPlacements.splice(ix, 1); }
+        pendingPlacements.delete(uid);
     }
 
     function setPlacements(list) {
         const seen = new Set();
         for (const p of list || []) { if (p && p.uid) { seen.add(p.uid); spawnPlacement(p); } }
-        for (const uid of Array.from(placements.keys())) { if (!seen.has(uid)) { removePlacement(uid); } }
-        for (let i = pendingPlacements.length - 1; i >= 0; i--) {
-            if (!seen.has(pendingPlacements[i].uid)) { pendingPlacements.splice(i, 1); }
-        }
+        for (const uid of placements.keys()) { if (!seen.has(uid)) { removePlacement(uid); } }
+        for (const uid of pendingPlacements.keys()) { if (!seen.has(uid)) { pendingPlacements.delete(uid); } }
     }
 
     function applyWorldOp(op) {
         if (!op) { return false; }
         if (op.kind === 'place') { spawnPlacement(op); return true; }
         if (op.kind === 'remove') { removePlacement(op.uid); return true; }
+        if (op.kind === 'customize') {
+            const p = placements.get(op.uid)?.data ?? pendingPlacements.get(op.uid);
+            if (!p) return false;
+            spawnPlacement({ ...p, parameters: op.parameters });
+            return true;
+        }
         if (op.rev !== undefined) { editsAppliedRev = op.rev; }
         return applySurfaceEdit(op);
     }

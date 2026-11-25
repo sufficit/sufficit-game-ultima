@@ -2,6 +2,7 @@
 import contextlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import hashlib
 from pathlib import Path
 import runpy
 import tempfile
@@ -56,9 +57,13 @@ def provider():
 def test():
     with tempfile.TemporaryDirectory(prefix="ultima-garden-test-") as tmp, provider() as settings:
         path = Path(tmp)
-        with boot(path, **settings) as url:
+        glb = (Path(__file__).resolve().parents[1] / "assets/glb/prop.stump.glb").read_bytes()
+        approved = hashlib.sha256(glb).hexdigest()
+        with boot(path, ULTIMA_UPLOAD_SHA256_ALLOWLIST=approved, **settings) as url:
             catalog = request(url, GARDEN)
             assert set(catalog["families"]) == {"terrain", "plants", "decor"}
+            assert catalog["models"]["*"]["parameters"]["scaleY"]["inherits"] == "scale"
+            assert "customize" in catalog["families"]["plants"]["actions"]
             assert catalog["models"]["prop.lantern"]["parameters"]["poleHeight"]["default"] == 1.4
             session = request(url, "/v1/game/sessions", {"name": "Jardineiro"})
             token = session["token"]
@@ -108,6 +113,22 @@ def test():
             assert second["parameters"] == {"poleHeight": 3, "lightIntensity": 1.5}
             events = request(url, f'/v1/game/events?since={observer["eventsFrom"]}&wait=0', token=observer["token"])
             assert any(event["type"] == "world_edited" and event["revision"] == final["revision"] for event in events["events"])
+            fern = next(p for p in final["placements"] if p["asset"] == "flora.fern")
+            request(url, GARDEN + "/plants", {"actions": [{"action": "customize", "uid": fern["uid"],
+                "parameters": {"poleHeight": 2}}]}, token, expect=400)
+            scaled = request(url, GARDEN + "/plants", {"actions": [{"action": "customize", "uid": fern["uid"],
+                "parameters": {"scaleY": 2, "rotationY": 1.57}}]}, token)["map"]
+            updated = next(p for p in scaled["placements"] if p["uid"] == fern["uid"])
+            assert updated == fern | {"parameters": {"scaleY": 2, "rotationY": 1.57}}
+            imported = request(url, "/v1/assets/upload?name=tronco", glb, token)["asset"]["id"]
+            assert imported in request(url, GARDEN + "/context", token=token)["prompt"]
+            placed = request(url, GARDEN + "/decor", {"actions": [{"action": "place", "asset": imported,
+                "x": 6, "z": -12, "scale": 1.25, "parameters": {"scaleX": 0.8, "scaleZ": 1.6}}]}, token)
+            uid = placed["operations"][0]["uid"]
+            final = request(url, GARDEN + "/decor", {"actions": [{"action": "customize", "uid": uid,
+                "parameters": {"scaleY": 2.25}}]}, token)["map"]
+            variant = next(p for p in final["placements"] if p["uid"] == uid)
+            assert variant["scale"] == 1.25 and variant["parameters"] == {"scaleX": 0.8, "scaleY": 2.25, "scaleZ": 1.6}
         with boot(path, NPC_SERVER_AI="off") as url:
             assert request(url, "/v1/game/map") == final
             token = request(url, "/v1/game/sessions", {"name": "Jardineiro"})["token"]

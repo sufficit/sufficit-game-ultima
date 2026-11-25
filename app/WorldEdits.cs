@@ -60,10 +60,10 @@ sealed partial class GameWorld
     const double EditBound = 400;                 // edições até 400 m do centro (mundo cresce na F3)
     const int MaxSurfaceEdits = 20_000, MaxPlacements = 500;
 
-    /// <summary>Validação de assets do catálogo dinâmico (ligado no Program após o WorldAssets existir).</summary>
-    public Func<string, bool>? AssetExists { get; set; }
+    /// <summary>IDs do catálogo dinâmico para validar colocações e informar a Guardiã.</summary>
+    public Func<IReadOnlyList<string>>? ImportedAssetIds { get; set; }
 
-    bool AssetAllowed(string id) => BuiltinAssets.Contains(id) || (AssetExists?.Invoke(id) ?? false);
+    bool AssetAllowed(string id) => BuiltinAssets.Contains(id) || (ImportedAssetIds?.Invoke().Contains(id, StringComparer.Ordinal) ?? false);
 
     static bool InEditBounds(double x, double z) => Math.Abs(x) <= EditBound && Math.Abs(z) <= EditBound;
 

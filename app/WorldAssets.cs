@@ -88,6 +88,11 @@ sealed class WorldAssets(string dataDir, GameWorld game, ILogger log)
         lock (_lock) return new JsonObject { ["version"] = 1, ["assets"] = AssetsOf(LoadCatalog()).DeepClone() };
     }
 
+    public string[] Ids()
+    {
+        lock (_lock) return AssetsOf(LoadCatalog()).OfType<JsonObject>().Select(asset => J.Str(asset["id"])).ToArray();
+    }
+
     // Armazena bytes já validados sob id único endereçado por conteúdo (id-sha8.glb).
     // A entrada recebida é completada (arquivo/hora) e devolvida já consistente.
     JsonObject Store(byte[] bytes, string sha, JsonObject entry)

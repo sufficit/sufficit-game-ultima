@@ -8,7 +8,7 @@ o jardim pelo `GET /v1/game/garden`. O mapa compartilhado está em
 | Família | Rota de escrita | Ações |
 | --- | --- | --- |
 | Terreno | `POST /v1/game/garden/terrain` | `paint`, `sculpt`, `path` |
-| Plantas | `POST /v1/game/garden/plants` | `place`, `remove` |
+| Plantas | `POST /v1/game/garden/plants` | `place`, `remove`, `customize` |
 | Decoração | `POST /v1/game/garden/decor` | `place`, `remove`, `customize` |
 | Composição | `POST /v1/game/garden/edits` | Lote que combina as famílias |
 | Guardiã | `POST /v1/game/garden/dialog` | Diálogo com IA e aplicação no mesmo turno |
@@ -49,21 +49,33 @@ O plano local usa a mesma rota de edição e as mesmas validações.
 
 ## Modelos que aceitam personalização
 
-A seção `models` do catálogo lista parâmetros, valores padrão, unidades e
-limites. A luminária `prop.lantern` aceita `poleHeight` de 0,5 a 5 m antes
-da escala do objeto e `lightIntensity` de 0 a 3. Os valores padrão são
-1,4 m e 1,05. Use `parameters` em `place` para criar uma variante ou em
-`customize` para alterar um objeto existente pelo UID.
+A seção `models["*"]` do catálogo descreve o contrato comum para qualquer
+objeto colocável. Isso inclui modelos importados pela Oficina. Use
+`parameters` em `place` para criar uma variante do mesmo asset ou em
+`customize` para alterar a instância pelo UID. Campos omitidos conservam
+seu valor. O UID e a posição são preservados.
+
+- `scaleX`, `scaleY`, `scaleZ` ajustam largura, altura e profundidade
+  separadamente com multiplicadores entre 0,05 e 8. Cada eixo sem override
+  herda a escala uniforme original, `scale`.
+- `rotationY` ajusta a rotação horizontal em radianos, de -2π a 2π. Sem
+  override, herda `rot`.
+- Um modelo que implementa `IEditablePlacementModel` pode declarar campos
+  adicionais com unidade, valor padrão e limites, e controlar a validação
+  e aplicação do ajuste. Registre a implementação em `PlacementModels`
+  para expô-la no catálogo e no contexto da Guardiã. Um parâmetro que
+  modifica uma parte específica precisa de suporte no modelo renderizado.
+- A luminária declara `poleHeight` de 0,5 a 5 m antes da escala e
+  `lightIntensity` de 0 a 3, com padrões de 1,4 m e 1,05.
 
 ```json
-{"actions":[{"action":"customize","uid":"uid-da-luminaria","parameters":{"poleHeight":2,"lightIntensity":1.31}}]}
+{"actions":[{"action":"customize","uid":"uid-da-samambaia","parameters":{"scaleY":2,"rotationY":1.2}}]}
 ```
 
-O ajuste mantém posição, rotação, escala e UID. Campos omitidos preservam
-o valor atual. A frase “quero luminárias mais altas e um pouco mais fortes”
-ajusta até duas luminárias próximas no jardim. Ela acrescenta 0,6 m às
-hastes e aumenta a luz em aproximadamente 25%, respeitando os limites.
-O mesmo contrato fica disponível ao planejador da Guardiã para pedidos livres.
+A frase “quero luminárias mais altas e um pouco mais fortes” ajusta até duas
+luminárias próximas. O pedido acrescenta 0,6 m ao parâmetro da haste e cerca
+de 25% à intensidade, respeitando os limites. A IA usa o mesmo contrato
+para pedidos livres sobre qualquer modelo colocável.
 
 A família de jogo continua em `/v1/game/command` para movimento, interação,
 construção e escavação avançada, e a família de modelos em `/v1/assets`.

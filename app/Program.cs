@@ -49,7 +49,7 @@ var worldStore = new JournalWorldStore(dataDir, log);
 var game = new GameWorld(worldStore, content, chat, log);
 var net = new Signaling();
 var assetsSvc = new WorldAssets(dataDir, game, log);
-game.AssetExists = id => (assetsSvc.Catalog()["assets"] as JsonArray)?.Any(a => a is JsonObject o && J.Str(o["id"]) == id) == true;
+game.ImportedAssetIds = assetsSvc.Ids;
 game.Start(app.Lifetime.ApplicationStopping);
 if (int.TryParse(Environment.GetEnvironmentVariable("ULTIMA_ASSET_GC_DAYS"), out var days) && days >= 7)
     _ = assetsSvc.PruneOrphansAsync(TimeSpan.FromDays(days), app.Lifetime.ApplicationStopping);

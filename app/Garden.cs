@@ -21,14 +21,11 @@ sealed partial class GameWorld
         ["families"] = new JsonObject
         {
             ["terrain"] = new JsonObject { ["route"] = GardenRoute + "/terrain", ["actions"] = J.StrArr(["paint", "sculpt", "path"]), ["materials"] = J.StrArr(PaintMaterials) },
-            ["plants"] = new JsonObject { ["route"] = GardenRoute + "/plants", ["actions"] = J.StrArr(["place", "remove"]), ["assets"] = J.StrArr(Plants) },
+            ["plants"] = new JsonObject { ["route"] = GardenRoute + "/plants", ["actions"] = J.StrArr(["place", "remove", "customize"]), ["assets"] = J.StrArr(Plants) },
             ["decor"] = new JsonObject { ["route"] = GardenRoute + "/decor", ["actions"] = J.StrArr(["place", "remove", "customize"]), ["assets"] = J.StrArr(Decorations) },
         },
-        ["models"] = new JsonObject
-        {
-            [LanternAsset] = new JsonObject { ["parameters"] = new JsonObject
-                { ["poleHeight"] = PoleHeight.Describe("m"), ["lightIntensity"] = LightIntensity.Describe("intensidade") } }
-        },
+        ["models"] = ModelCatalog(),
+        ["assetCatalog"] = "/v1/assets",
         ["edits"] = GardenRoute + "/edits",
         ["dialog"] = GardenRoute + "/dialog",
     };
@@ -37,7 +34,7 @@ sealed partial class GameWorld
     {
         var placed = _placements.Where(p => InGarden(p.X, p.Z)).TakeLast(36)
             .Select(p => new JsonObject { ["uid"] = p.Uid, ["asset"] = p.AssetId, ["x"] = p.X, ["z"] = p.Z,
-                ["parameters"] = p.Parameters?.DeepClone() });
+                ["scale"] = p.Scale, ["rot"] = p.Rot, ["parameters"] = p.Parameters?.DeepClone() });
         return """
             Você é a Guardiã do Jardim de Ultima. Converse em português e, quando o jogador pedir mudanças, planeje e execute com o catálogo abaixo.
             Retorne somente JSON no formato {"reply":"resposta curta","actions":[]}. Para conversa ou pedido sem informação suficiente, use actions vazio.
@@ -51,11 +48,15 @@ sealed partial class GameWorld
             {"action":"sculpt","x":-4,"z":-10,"r":2,"dh":0.5}
             {"action":"path","mat":"rock","r":1.2,"points":[{"x":0,"z":-13},{"x":1,"z":-8},{"x":0,"z":-2}]}
             {"action":"remove","uid":"id existente"}
-            Use customize para modificar objetos existentes por UID, preservando a posição. Os parâmetros e limites ficam em models.
+            {"action":"customize","uid":"uid real da planta","parameters":{"scaleY":1.5}}
+            Use customize para modificar qualquer objeto colocado pelo UID. models["*"] vale para todos, inclusive importados.
+            scaleX/Y/Z substituem scale no eixo indicado; rotationY substitui rot. Preserve os demais campos omitindo-os.
+            Para criar uma variante de objeto existente, use place com o mesmo asset e os parâmetros desejados.
             Em pedidos relativos, use os valores atuais ou os defaults do catálogo e faça um ajuste moderado.
             Para substituir uma planta colocada, remova pelo uid e coloque outra na mesma posição. Plantas nativas não têm uid.
             Catálogo:
-            """ + "\n" + GardenCatalog().ToJsonString(J.Opts) + "\nObjetos colocados no jardim: " + J.Arr(placed).ToJsonString(J.Opts);
+            """ + "\n" + GardenCatalog().ToJsonString(J.Opts) + "\nObjetos colocados no jardim: " + J.Arr(placed).ToJsonString(J.Opts)
+            + "\nModelos recentes da Oficina: " + J.StrArr(ImportedAssetIds?.Invoke().TakeLast(16) ?? []).ToJsonString(J.Opts);
     }
 
     public (int, JsonObject) GardenContext(string? token)

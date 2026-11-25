@@ -24,6 +24,16 @@ internal static class Garden
                     ? { state: 'ready', progress: 1, detail: 'Motor de teste' } : status();
                 game.aiCpu.garden = (prompt, text) => {
                     window.lastGardenCpuPrompt = text;
+                    if (text === 'Deixe a samambaia duas vezes mais alta e gire um pouco') {
+                        const prefix = 'Objetos colocados no jardim: ';
+                        const line = prompt.split('\n').find(item => item.startsWith(prefix));
+                        const fern = JSON.parse(line.slice(prefix.length)).find(p => p.asset === 'flora.fern' && p.x === 3);
+                        return JSON.stringify({ reply: 'Ajustei a samambaia.',
+                            actions: [{action: 'customize', uid: fern.uid, parameters: {scaleY: 2, rotationY: 1.2}}] });
+                    }
+                    if (text === 'Plante outra samambaia mantendo o tamanho padrão')
+                        return JSON.stringify({ reply: 'Plantei a outra samambaia.',
+                            actions: [{action: 'place', asset: 'flora.fern', x: 6, z: -12}] });
                     return prompt.includes('prop.lantern') && text === 'Plante uma samambaia'
                         ? JSON.stringify({ reply: 'Uma samambaia para o jardim.',
                             actions: [{action: 'place', asset: 'flora.fern', x: 3, z: -12}] })
@@ -124,7 +134,24 @@ internal static class Garden
         Check((await MapAsync(page)).Revision == edited.Revision, "resposta inválida preserva o jardim");
         await AskAsync("Plante uma samambaia");
         await page.GetByText("✦ origem da resposta: CPU do jogador").WaitForAsync();
-        Check((await MapAsync(page)).Placements.Any(p => p.Asset == "flora.fern"), "plano da CPU aplicado pela API");
+        var fern = (await MapAsync(page)).Placements.Single(p => p.Asset == "flora.fern");
+        await AskAsync("Plante outra samambaia mantendo o tamanho padrão");
+        await page.GetByText("Plantei a outra samambaia.", new() { Exact = false }).WaitForAsync();
+        var original = (await MapAsync(page)).Placements.Single(p => p.Asset == "flora.fern" && p.Uid != fern.Uid);
+        await AskAsync("Deixe a samambaia duas vezes mais alta e gire um pouco");
+        await page.GetByText("Ajustei a samambaia.", new() { Exact = false }).WaitForAsync();
+        var changed = (await MapAsync(page)).Placements.Single(p => p.Uid == fern.Uid);
+        Check(changed.Parameters is { ScaleY: 2, RotationY: 1.2 }, "o plano alterou os parâmetros da mesma samambaia");
+        await WaitAsync(() => RenderAsync<bool>(page, """
+            ([uid, defaultUid]) => {
+                const scene = BABYLON.EngineStore.LastCreatedScene;
+                const mesh = scene.getMeshByName('place-' + uid);
+                const other = scene.getMeshByName('place-' + defaultUid);
+                return mesh?.isVisible && mesh.scaling.x === 1 && mesh.scaling.y === 2 &&
+                    mesh.scaling.z === 1 && mesh.rotation.y === 1.2 &&
+                    other?.isVisible && other.scaling.y === 1 && other.rotation.y === 0;
+            }
+            """, new[] { fern.Uid, original.Uid }), "a samambaia alterada e a variante padrão coexistem");
         Check(errors.IsEmpty, "erros no navegador", errors);
         Log(new { mode = Mode, edited.Revision, lantern = lantern.Uid, flowers = flowers.Uid });
     }
@@ -134,5 +161,5 @@ internal static class Garden
 
     private sealed record Map(long Revision, Placement[] Placements);
     private sealed record Placement(string Uid, string Asset, Parameters? Parameters);
-    private sealed record Parameters(double PoleHeight, double LightIntensity);
+    private sealed record Parameters(double PoleHeight, double LightIntensity, double ScaleY, double RotationY);
 }

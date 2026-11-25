@@ -1,38 +1,57 @@
 using System.Text.Json.Nodes;
+using Ultima.Models.Core;
 
 namespace Ultima.Server;
 
 sealed partial class GameWorld
 {
-    const string LanternAsset = "prop.lantern";
-    static readonly ModelParameter PoleHeight = new(0.5, 5, 1.4);
-    static readonly ModelParameter LightIntensity = new(0, 3, 1.05);
-
-    readonly record struct ModelParameter(double Min, double Max, double Default)
+    static readonly IEditablePlacementModel DefaultPlacementModel = new PlacementModel();
+    static readonly Dictionary<string, IEditablePlacementModel> PlacementModels = new(StringComparer.Ordinal)
     {
-        public JsonObject Describe(string unit) => new()
-        { ["min"] = Min, ["max"] = Max, ["default"] = Default, ["unit"] = unit };
+        [LanternPlacementModel.AssetId] = new LanternPlacementModel()
+    };
 
-        public double Current(JsonObject? parameters, string key) =>
-            J.TryFloat(parameters?[key], out var value) ? Math.Clamp(value, Min, Max) : Default;
+    static JsonObject DescribeModel(IEditablePlacementModel model)
+    {
+        var parameters = new JsonObject();
+        foreach (var parameter in model.Parameters)
+        {
+            var definition = new JsonObject { ["label"] = parameter.Label, ["unit"] = parameter.Unit,
+                ["min"] = parameter.Min, ["max"] = parameter.Max, ["default"] = parameter.Default };
+            if (parameter.Inherits is not null) definition["inherits"] = parameter.Inherits;
+            parameters[parameter.Key] = definition;
+        }
+        return new JsonObject { ["parameters"] = parameters };
+    }
+
+    static JsonObject ModelCatalog()
+    {
+        var result = new JsonObject { ["*"] = DescribeModel(DefaultPlacementModel) };
+        foreach (var (asset, model) in PlacementModels) result[asset] = DescribeModel(model);
+        return result;
+    }
+
+    static Dictionary<string, double>? ModelValues(JsonObject? values)
+    {
+        var result = new Dictionary<string, double>(StringComparer.Ordinal);
+        if (values is not null)
+            foreach (var (key, node) in values)
+            {
+                if (!J.TryFloat(node, out var value)) return null;
+                result[key] = value;
+            }
+        return result;
     }
 
     static JsonObject? ReadGardenParameters(string asset, JsonNode? input, JsonObject? existing)
     {
-        if (asset != LanternAsset || input is not JsonObject { Count: > 0 } values) return null;
-        var result = existing?.DeepClone() as JsonObject ?? new JsonObject();
-        foreach (var (key, node) in values)
-        {
-            var definition = key switch
-            {
-                "poleHeight" => PoleHeight,
-                "lightIntensity" => LightIntensity,
-                _ => (ModelParameter?)null
-            };
-            if (definition is not { } bounds || !J.TryFloat(node, out var value) ||
-                value < bounds.Min || value > bounds.Max) return null;
-            result[key] = J.R(value, 2);
-        }
+        if (input is not JsonObject { Count: > 0 } parameters ||
+            ModelValues(parameters) is not { } patch || ModelValues(existing) is not { } current)
+            return null;
+        var model = PlacementModels.GetValueOrDefault(asset, DefaultPlacementModel);
+        if (model.Apply(current, patch) is not { } next) return null;
+        var result = new JsonObject();
+        foreach (var (key, value) in next) result[key] = value;
         return result;
     }
 
@@ -40,17 +59,20 @@ sealed partial class GameWorld
     // usam a mesma revisão, inclusive quando dois jogadores fazem o pedido juntos.
     (int, JsonObject) AdjustNearbyLanterns(string? token, double x, double z)
     {
-        var nearby = _placements.Where(p => p.AssetId == LanternAsset && InGarden(p.X, p.Z))
+        var nearby = _placements.Where(p => p.AssetId == LanternPlacementModel.AssetId && InGarden(p.X, p.Z))
             .OrderBy(p => double.Hypot(p.X - x, p.Z - z)).Take(2);
         var actions = new JsonArray();
         foreach (var lamp in nearby)
         {
             var parameters = new JsonObject();
-            var height = PoleHeight.Current(lamp.Parameters, "poleHeight");
-            var intensity = LightIntensity.Current(lamp.Parameters, "lightIntensity");
-            if (height < PoleHeight.Max) parameters["poleHeight"] = Math.Min(PoleHeight.Max, height + 0.6);
-            if (intensity < LightIntensity.Max)
-                parameters["lightIntensity"] = Math.Min(LightIntensity.Max, Math.Max(0.25, intensity * 1.25));
+            var current = ModelValues(lamp.Parameters) ?? [];
+            var pole = LanternPlacementModel.PoleHeight;
+            var light = LanternPlacementModel.LightIntensity;
+            var height = pole.Read(current);
+            var intensity = light.Read(current);
+            if (height < pole.Max) parameters["poleHeight"] = Math.Min(pole.Max, height + 0.6);
+            if (intensity < light.Max)
+                parameters["lightIntensity"] = Math.Min(light.Max, Math.Max(0.25, intensity * 1.25));
             if (parameters.Count > 0)
                 actions.Add(new JsonObject { ["action"] = "customize", ["uid"] = lamp.Uid, ["parameters"] = parameters });
         }
