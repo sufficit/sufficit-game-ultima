@@ -21,7 +21,6 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
-- [Keyboard look controls](PLAN-KEYBOARD-LOOK.md).
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
 
@@ -42,6 +41,7 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Keyboard movement and camera look](activities/202611252057-keyboard-look.md)
 - [Shared articulated player](activities/202611252051-shared-player-rig.md)
 
 - [Camera perspectives in the garden and interiors](activities/202611252041-camera-perspectives.md)
