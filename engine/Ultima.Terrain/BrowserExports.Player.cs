@@ -13,6 +13,7 @@ internal static partial class BrowserExports
 
     private static readonly PlayerFootContacts PlayerFeet = new();
     private static readonly PlayerCamera Camera = new();
+    private static readonly PlayerCameraObstacles CameraObstacles = new();
     private static readonly double[] CameraResult = new double[9];
     private static double _kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset;
 
@@ -32,6 +33,7 @@ internal static partial class BrowserExports
             (kneeHeight, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset);
         _remoteAvatars = new(_surface, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset, _characters);
         Camera.Reset();
+        CameraObstacles.Set([], 0);
         PlayerFeet.Reset();
     }
 
@@ -97,6 +99,14 @@ internal static partial class BrowserExports
 
     [JSExport]
     internal static void OnFootContact(double shortening) => _movement.TripOnFootContact(shortening);
+
+    [JSExport]
+    internal static void SetCameraObstacles(double[] bounds, double clearance)
+        => CameraObstacles.Set(bounds, clearance);
+
+    [JSExport]
+    internal static int[] QueryCameraObstacles(double minX, double minZ, double maxX, double maxZ)
+        => CameraObstacles.Query(minX, minZ, maxX, maxZ);
 
     [JSExport]
     internal static void ResetCamera() => Camera.Reset();

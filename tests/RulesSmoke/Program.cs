@@ -557,6 +557,17 @@ PlayerPose.FootTargets(feet, Math.PI, 0, 1, 0, .091, .06, playerStride);
 Check("cruzamento de pernas levanta o pé e separa o apoio",
     contacts.Apply(feet, alignment, 0, .091, .06, .016) && feet[5] > 0.05 && alignment[1] - alignment[0] + 0.182 >= 0.17);
 
+var cameraObstacles = new PlayerCameraObstacles();
+cameraObstacles.Set([
+    1, -1, 2, 1, 5, -1, 6, 1, -3, -1, -2, 1, 1, 4, 2, 5, 1, -5, 2, -4
+], 0.28);
+Check("índice da câmera preserva a folga nas bordas da região",
+    cameraObstacles.Query(0, 1.2, 3, 1.5).SequenceEqual(new[] { 0 }));
+Check("índice da câmera descarta as malhas das regiões vizinhas",
+    cameraObstacles.Query(-4, -0.5, 0, 0.5).SequenceEqual(new[] { 2 }));
+cameraObstacles.Set([], 0.28);
+Check("remoção de malhas limpa o índice da câmera", cameraObstacles.Query(-4, -4, 4, 4).Length == 0);
+
 var camera = new PlayerCamera();
 Span<double> orbit = stackalloc double[9];
 camera.Advance(orbit, -Math.PI / 2, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0, 0);

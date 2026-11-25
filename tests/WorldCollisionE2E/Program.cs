@@ -8,13 +8,13 @@ using static BrowserTest;
 try
 {
     var scenario = args.FirstOrDefault() ?? "collision";
-    if (scenario != "remote-performance" && args.Length > 1)
+    if (scenario is not ("remote-performance" or "camera-performance") && args.Length > 1)
         throw new ArgumentException("Informe apenas um cenário.");
     var browserArgs = (Environment.GetEnvironmentVariable("ULTIMA_CHROMIUM_ARGS") ?? "")
         .Split(' ', StringSplitOptions.RemoveEmptyEntries);
     browserArgs = scenario switch
     {
-        "remote-performance" when RemotePerformance.UsesSwiftShader => RemotePerformance.SwiftShaderArgs,
+        "remote-performance" or "camera-performance" when RemotePerformance.UsesSwiftShader => RemotePerformance.SwiftShaderArgs,
         "hud-status" when browserArgs.Length == 0 => HudStatus.DefaultBrowserArgs,
         _ => browserArgs
     };
@@ -42,6 +42,9 @@ try
             break;
         case "backpack":
             await new Backpack(browser).RunAsync();
+            break;
+        case "camera-performance":
+            await CameraPerformance.RunAsync(browser, args[1..]);
             break;
         case "camera-streaming":
             await CameraStreaming.RunAsync(browser);
@@ -89,7 +92,7 @@ try
             await DialogLogLive.RunAsync(browser);
             break;
         default:
-            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance, declarative-windows, hud-status, browser-services, local-preferences, mobile-layout, dialog-log.");
+            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, camera-performance, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance, declarative-windows, hud-status, browser-services, local-preferences, mobile-layout, dialog-log.");
     }
     return 0;
 }

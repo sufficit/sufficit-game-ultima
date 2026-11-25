@@ -88,9 +88,10 @@ A simulação continua atualizando posições e poses. Avatares próximos podem
 projetar sombras na cena mesmo fora do campo de visão.
 [Simulação dos avatares remotos](engine/Ultima.Terrain/PlayerRemoteAvatars.cs)
 
-O C# calcula rotação, zoom, órbita e retorno suave da câmera. O Babylon.js
-consulta a geometria visível, aplica o recuo imediato em caso de colisão e
-atualiza a câmera da cena. Quando a órbita estabiliza, o adaptador reutiliza o
+O C# calcula rotação, zoom, órbita e retorno suave da câmera. Também indexa
+as caixas dos obstáculos no plano do terreno. O adaptador consulta o índice
+por setor e alcance de zoom, reutiliza a lista de candidatos e usa Babylon.js
+para testar os triângulos e aplicar o recuo imediato em caso de colisão. Quando a órbita estabiliza, o adaptador reutiliza o
 resultado até que ângulo, posição radial ou entrada mudem. A consulta de colisão
 é reaproveitada enquanto os pontos do raio e a revisão da geometria coincidirem.
 O JavaScript recebe os eventos de entrada e despacha as marcas de animação para
@@ -209,6 +210,14 @@ defina `ULTIMA_CHROMIUM_ARGS` para os argumentos adequados ao navegador.
 
 ```bash
 dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- remote-performance "$URL_REFERENCIA" "$URL_CANDIDATA"
+```
+
+O cenário `camera-performance` compara dois builds em uma órbita com
+1.800 raios fixos, repete cinco lotes após aquecer a cena e confere as
+distâncias de colisão. Os tempos em JSON separam malhas e terreno.
+
+```bash
+dotnet run --project tests/WorldCollisionE2E -c Release --no-build -- camera-performance "$URL_REFERENCIA" "$URL_CANDIDATA"
 ```
 
 A instalação do Chromium é feita uma vez por versão do Playwright. Defina

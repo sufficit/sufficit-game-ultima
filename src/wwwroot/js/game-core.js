@@ -62,6 +62,7 @@
     let cameraFrame = null;
     let cameraFloor = 0;
     let cameraGeometryRevision = 0;
+    let cameraObstaclesDirty = true;
     let zoomTarget = 7.5;    // zoom escolhido pelo jogador, independente do recuo por colisão
     const padState = { x: 0, y: 0, lookX: 0, lookY: 0 };
     // Eventos para fora (UI C#, rede) saem todos por aqui — idêntico nos dois modos.
@@ -480,7 +481,8 @@
         const indices = words.subarray(indexStart, indexStart + count);
         vd.indices = vertices > 65535 ? indices : Uint16Array.from(indices);
         const volume = worldTunnels.length > 0 && terrain.HasVolume(cx, cz);
-        mesh.metadata = { volume, terrainCells: cellCount ? words.subarray(indexStart + count) : null,
+        mesh.metadata = { volume, terrainPositions: vd.positions, terrainIndices: cellCount ? indices : null,
+            terrainCells: cellCount ? words.subarray(indexStart + count) : null,
             meshSource: fromCache ? 'opfs' : 'generated' };
         vd.applyToMesh(mesh, true);
         mesh.refreshBoundingInfo();
@@ -710,6 +712,7 @@
     let carveRock = null;
     function syncCarveRoofs() {
         cameraGeometryRevision++;
+        cameraObstaclesDirty = true;
         for (const roof of carveRoofs.splice(0)) { roof.dispose(); }
         for (const op of worldCarves) {
             const segments = 24;
@@ -747,6 +750,7 @@
         terrain.SetColliders(new Float64Array(values));
         collidersDirty = false;
         cameraGeometryRevision++;
+        cameraObstaclesDirty = true;
     }
     const solidAssets = new Map([
         ['flora.pine', 'Pinheiro'], ['rock.boulder2', 'Pedra'],
@@ -809,6 +813,42 @@
             : terrainHeight(x, z);
     }
 
+    const cameraMeshes = [];
+    const cameraSectorSize = 8;
+    const cameraSector = { x: NaN, z: NaN, reach: 0, candidates: [] };
+    function syncCameraObstacles() {
+        cameraMeshes.length = 0;
+        const bounds = [];
+        function add(mesh) {
+            if (!mesh.isEnabled()) { return; }
+            const { minimumWorld: min, maximumWorld: max } = mesh.getBoundingInfo().boundingBox;
+            cameraMeshes.push({ mesh, min, max });
+            bounds.push(min.x, min.z, max.x, max.z);
+        }
+        for (const mesh of obstacles.keys()) { add(mesh); }
+        for (const mesh of carveRoofs) {
+            mesh.computeWorldMatrix(true);
+            add(mesh);
+        }
+        terrain.SetCameraObstacles(new Float64Array(bounds), cameraClearance);
+        cameraObstaclesDirty = false;
+        cameraSector.x = NaN;
+    }
+
+    function cameraCandidates(from, length) {
+        const x = Math.floor(from.x / cameraSectorSize + 0.5) * cameraSectorSize;
+        const z = Math.floor(from.z / cameraSectorSize + 0.5) * cameraSectorSize;
+        if (x !== cameraSector.x || z !== cameraSector.z || length > cameraSector.reach) {
+            const reach = Math.ceil(length / cameraSectorSize) * cameraSectorSize;
+            const margin = cameraSectorSize / 2 + reach;
+            cameraSector.x = x;
+            cameraSector.z = z;
+            cameraSector.reach = reach;
+            cameraSector.candidates = terrain.QueryCameraObstacles(x - margin, z - margin, x + margin, z + margin);
+        }
+        return cameraSector.candidates;
+    }
+
     function traceWorld(from, to) {
         if (cameraTrace.revision === cameraGeometryRevision && cameraTrace.from.equals(from) && cameraTrace.to.equals(to)) {
             return cameraTrace.limit;
@@ -820,16 +860,15 @@
         cameraRay.origin.copyFrom(from);
         cameraRay.length = length;
 
-        // Testa primeiro os limites das malhas, antes de procurar a face atingida.
-        function traceMesh(mesh) {
-            if (!mesh.isEnabled()) { return; }
-            const { minimumWorld, maximumWorld } = mesh.getBoundingInfo().boundingBox;
-            if (!cameraRay.intersectsBoxMinMax(minimumWorld, maximumWorld, cameraClearance)) { return; }
-            const hit = cameraRay.intersectsMesh(mesh);
-            if (hit.hit && hit.distance < cameraRay.length) { cameraRay.length = hit.distance; }
+        if (cameraObstaclesDirty) { syncCameraObstacles(); }
+        if (cameraMeshes.length) {
+            for (const index of cameraCandidates(from, length)) {
+                const { mesh, min, max } = cameraMeshes[index];
+                if (!cameraRay.intersectsBoxMinMax(min, max, cameraClearance)) { continue; }
+                const hit = cameraRay.intersectsMesh(mesh);
+                if (hit.hit && hit.distance < cameraRay.length) { cameraRay.length = hit.distance; }
+            }
         }
-        for (const mesh of obstacles.keys()) { traceMesh(mesh); }
-        for (const mesh of carveRoofs) { traceMesh(mesh); }
 
         let distance = cameraRay.length;
         // A altura interpolada é a mesma superfície visível, inclusive em escavações.
@@ -919,7 +958,10 @@
         if (mesh.isEnabled(false) !== enabled) {
             mesh.setEnabled(enabled);
             if (obstacles.has(mesh)) { collidersDirty = true; }
-            if (carveRoofs.includes(mesh)) { cameraGeometryRevision++; }
+            if (carveRoofs.includes(mesh)) {
+                cameraGeometryRevision++;
+                cameraObstaclesDirty = true;
+            }
         }
     }
 
@@ -1056,17 +1098,18 @@
     function visibleGroundHeight(x, z) {
         const cx = Math.floor(x / CHUNK + 0.5), cz = Math.floor(z / CHUNK + 0.5);
         const chunk = chunkMap.get(chunkKey(cx, cz));
-        const vertices = chunk?.mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+        const data = chunk?.mesh.metadata;
+        const vertices = data?.terrainPositions;
         if (!vertices) { return terrainHeight(x, z); }
-        if (chunk.mesh.metadata?.volume) { return playerFloor(x, z); }
+        if (data.volume) { return playerFloor(x, z); }
         const gx = Math.max(0, Math.min(CHUNK_SUB, (x - (cx * CHUNK - CHUNK / 2)) / CHUNK_STEP));
         const gz = Math.max(0, Math.min(CHUNK_SUB, (z - (cz * CHUNK - CHUNK / 2)) / CHUNK_STEP));
         const i = Math.min(Math.floor(gx), CHUNK_SUB - 1);
         const j = Math.min(Math.floor(gz), CHUNK_SUB - 1);
-        const starts = chunk.mesh.metadata?.terrainCells;
+        const starts = data.terrainCells;
         if (starts) {
             const cell = j * CHUNK_SUB + i;
-            const indices = chunk.mesh.getIndices();
+            const indices = data.terrainIndices;
             for (let index = starts[cell]; index < starts[cell + 1]; index += 3) {
                 const a = indices[index] * 3, b = indices[index + 1] * 3, c = indices[index + 2] * 3;
                 const bx = vertices[b] - vertices[c], bz = vertices[b + 2] - vertices[c + 2];
