@@ -28,7 +28,8 @@ também descartava a preferência de PBR e a textura ambiente dependia do DOM.
 ## Validação e entrega
 
 - Release do backend e do cliente e RulesSmoke passaram. O
-  [teste de integração](../../tests/world-store.integration.py) confirmou
+  [teste de integração](https://github.com/sufficit/sufficit-game-ultima/blob/cd132a66c6f87e3d91e6c14d4c1be2e7141f2acd/tests/world-store.integration.py)
+  (em Python na época; hoje em C# em `tests/ServerIntegration`) confirmou
   migração, job retomado, replay, dono do undo, catálogo segregado, aprovação
   por SHA-256 e limpeza de órfão sem tocar no arquivo catalogado.
 - Em `105c2a7`, o [teste de gráficos](https://github.com/sufficit/sufficit-game-ultima/blob/47c98430d94012f1c8f27239cb5cb855015f58f4/tests/graphics.e2e.cjs) confirmou

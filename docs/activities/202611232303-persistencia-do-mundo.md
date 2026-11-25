@@ -46,7 +46,8 @@ cristalização IA, sculpt/carve).
 - [x] `map.json` legado com tile+job → boot → snapshot criado, backup `.migrated`,
       job retomado (progresso por tempo de parede).
 - [x] Replay == estado em memória (revisão, tiles, jobs) após edições mistas
-  e reversões. [Teste de integração](../../tests/world-store.integration.py).
+  e reversões. [Teste de integração](https://github.com/sufficit/sufficit-game-ultima/blob/cd132a66c6f87e3d91e6c14d4c1be2e7141f2acd/tests/world-store.integration.py)
+  (em Python na época; hoje em C# em `tests/ServerIntegration`).
 - [x] Correção publicada no Run. O PVC permaneceu vinculado, e o mapa e catálogo foram recuperados pela nova release.
 
 ## Fora de escopo (fases seguintes do WORLD-BUILDER)

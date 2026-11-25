@@ -153,7 +153,9 @@ Agrupe operações que dependem dos mesmos dados e mantenha consultas a malhas e
 recursos de GPU junto ao Babylon.js. Evite chamadas por vértice, osso ou
 amostra de terreno. Preserve a compatibilidade de mapas e dados persistidos.
 Valide regras com [RulesSmoke](tests/RulesSmoke) e exercite câmera, colisão,
-coleta e terreno em worker e main pelos [testes no navegador](tests).
+coleta e terreno em worker e main pelos [testes no navegador](tests). A API do
+servidor é coberta pelos [testes de integração](tests/ServerIntegration), que
+sobem o build Release em porta efêmera com diretório de dados temporário.
 
 A [suíte de navegador em C#](tests/WorldCollisionE2E) usa Microsoft.Playwright.
 Ela cobre colisão e marcha, passo articulado, relógio e clima, mochila e coleta,

@@ -73,8 +73,10 @@ cena do jogador e fica salvo no mesmo navegador.
 
 ## Validação
 
-Com o app em Release, execute `python3 tests/world-store.integration.py`.
-O teste sobe servidores em portas efêmeras com diretórios temporários.
+Com o servidor em Release, execute
+`dotnet run --project tests/ServerIntegration -c Release`.
+O teste sobe o servidor em portas efêmeras com diretórios temporários e cobre
+persistência do mundo, catálogo de assets, jardim e relatos de diagnóstico.
 O cenário `world-undo` da suíte C# usa dois clientes em worker para
 verificar alterações e reversões nas malhas. Para rodá-lo, suba o
 servidor Release com um diretório de dados descartável e use seu endereço

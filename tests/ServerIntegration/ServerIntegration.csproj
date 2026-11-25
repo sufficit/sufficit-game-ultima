@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <!-- Sem pacotes externos: o servidor sob teste é o build Release de app/ (processo
+       externo) e o provedor de IA fictício usa o HttpListener do próprio runtime. -->
+</Project>
