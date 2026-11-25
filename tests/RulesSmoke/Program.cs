@@ -340,6 +340,32 @@ var axes = PlayerMovement.Stick(0.8, -0.8);
 Check("zona morta radial preserva diagonal", PlayerMovement.Stick(0.1, 0.1) == (0, 0)
     && Math.Abs(axes.X + axes.Y) < 1e-12
     && Math.Abs(double.Hypot(axes.X, axes.Y) - 1) < 1e-12);
+var playerInput = new PlayerInput();
+Span<double> inputFrame = stackalloc double[7];
+playerInput.SetKey("KeyW", true);
+playerInput.SetKey("ArrowUp", true);
+playerInput.SetKey("ShiftRight", true);
+playerInput.SetKey("KeyW", false);
+playerInput.Read(inputFrame);
+Check("soltar uma tecla equivalente mantém direção e corrida", inputFrame[1] == 1 && inputFrame[6] == 1);
+playerInput.SetKey("KeyS", true);
+playerInput.SetTouch(false, 0.1, 0.1);
+playerInput.SetGamepad(0.1, -0.1, 0.1, -0.1, 0, 0);
+playerInput.Read(inputFrame);
+Check("teclas opostas e ruído dos analógicos não deslocam o jogador",
+    inputFrame[..6].SequenceEqual(new double[6]));
+playerInput.SetTouch(true, 1, 0);
+playerInput.SetGamepad(0, -1, 0, 0.5, 1, 0);
+playerInput.Read(inputFrame);
+Check("controle e toque combinam movimento e órbita",
+    inputFrame[2] == 1 && inputFrame[3] == 1 && inputFrame[4] == 1 && inputFrame[5] > 0);
+playerInput.Clear(keepPad: true);
+playerInput.Read(inputFrame);
+Check("pausa limpa as teclas e o toque sem descartar a leitura do controle",
+    inputFrame[2] == 1 && inputFrame[4] == 0 && inputFrame[6] == 0);
+playerInput.Clear();
+playerInput.Read(inputFrame);
+Check("perda de foco limpa todos os dispositivos", inputFrame.SequenceEqual(new double[7]));
 Check("alcance de coleta considera os três eixos", PlayerPose.CanCollect(0, 2.1, 2.8)
     && !PlayerPose.CanCollect(0, 2.2, 2.8));
 

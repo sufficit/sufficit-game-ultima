@@ -9,7 +9,8 @@ internal static partial class BrowserExports
     private static PlayerMovement _movement = new(0, 0, 0);
     private static readonly double[] SpawnResult = new double[2];
     private static readonly double[] MovementResult = new double[5];
-    private static readonly double[] PadResult = new double[4];
+    private static readonly PlayerInput Input = new();
+    private static readonly double[] InputResult = new double[7];
 
     private static readonly PlayerFootContacts PlayerFeet = new();
     private static readonly PlayerCamera Camera = new();
@@ -35,6 +36,7 @@ internal static partial class BrowserExports
         Camera.Reset();
         CameraObstacles.Set([], 0);
         PlayerFeet.Reset();
+        Input.Clear();
     }
 
     [JSExport]
@@ -126,11 +128,23 @@ internal static partial class BrowserExports
     internal static void SetColliders(double[] colliders) => _movement.SetColliders(colliders);
 
     [JSExport]
-    internal static double[] GamepadAxes(double x, double y, double lookX, double lookY)
+    internal static bool SetPlayerInputKey(string code, bool down) => Input.SetKey(code, down);
+
+    [JSExport]
+    internal static bool SetPlayerInputTouch(bool look, double x, double y) => Input.SetTouch(look, x, y);
+
+    [JSExport]
+    internal static int SetPlayerInputPad(double x, double y, double lookX, double lookY, double dpadX, double dpadY)
+        => Input.SetGamepad(x, y, lookX, lookY, dpadX, dpadY);
+
+    [JSExport]
+    internal static void ClearPlayerInput(bool keepPad) => Input.Clear(keepPad);
+
+    [JSExport]
+    internal static double[] ReadPlayerInput()
     {
-        (PadResult[0], PadResult[1]) = PlayerMovement.Stick(x, y);
-        (PadResult[2], PadResult[3]) = PlayerMovement.Stick(lookX, lookY);
-        return PadResult;
+        Input.Read(InputResult);
+        return InputResult;
     }
 
     [JSExport]

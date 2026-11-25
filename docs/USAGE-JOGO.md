@@ -8,12 +8,16 @@ aproxima de um personagem ou objeto.
 
 | Ação | Teclado e mouse | Controle | Toque |
 | --- | --- | --- | --- |
-| Andar | WASD ou setas | Analógico esquerdo | Analógico esquerdo na tela |
+| Andar | WASD ou setas | Analógico esquerdo ou direcional | Analógico esquerdo na tela |
 | Correr | Shift enquanto anda | | |
 | Girar a câmera | Arrastar com o mouse | Analógico direito | Analógico direito na tela |
 | Aproximar ou afastar | Roda do mouse | | |
 | Conversar ou examinar | E | A / ✕ | Botão A |
 | Fechar o diálogo | Esc | B / ○ | Botão B |
+
+As dicas de interação acompanham o último controle usado. Ao mudar de aba ou
+focar um campo de texto, as teclas de movimento são soltas. Feche um diálogo
+com Esc ou B mesmo com o campo de mensagem em foco.
 
 A câmera acompanha a altura do terreno e recua quando um obstáculo fica
 entre ela e o personagem. Use a órbita para olhar em volta em um caminho

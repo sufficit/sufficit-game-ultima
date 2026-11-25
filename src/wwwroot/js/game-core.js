@@ -27,7 +27,6 @@
     const CAM_UP = new BABYLON.Vector3(0, PLAYER_HEIGHT / 2, 0);
     const TICK_MS = 200;
     // Zona morta radial dos sticks virtuais de toque (o gamepad usa a mesma em PlayerMovement.Stick, C#).
-    const DEADZONE = 0.18;
     // Orçamento de CPU por frame para subir modelos (texturas, malhas, scatter). Referência:
     // lineage-rust amortiza a entrada de personagens com 4 ms/frame (CHARACTER_BUDGET_MS).
     const MODEL_BUDGET_MS = 4.0;
@@ -64,7 +63,8 @@
     let cameraGeometryRevision = 0;
     let cameraObstaclesDirty = true;
     let zoomTarget = 7.5;    // zoom escolhido pelo jogador, independente do recuo por colisão
-    const padState = { x: 0, y: 0, lookX: 0, lookY: 0 };
+    let inputFrame = null;
+    let inputDirty = true;
     // Eventos para fora (UI C#, rede) saem todos por aqui — idêntico nos dois modos.
     const dotnet = { invokeMethodAsync: function (name) { host.postEvent(name, Array.prototype.slice.call(arguments, 1)); } };
     // No worker, caminhos relativos resolveriam contra /js/ (URL do script do worker):
@@ -77,9 +77,6 @@
     let wanderT = Math.random() * Math.PI * 2;
     let frozen = false;
     let lastTick = 0;
-    let actionWasDown = false;
-    let moveStick = { x: 0, y: 0 };
-    let lookStick = { x: 0, y: 0 };
     let remoteSerial = 0;
     const remotes = new Map();
     const remoteSlots = new Map();
@@ -97,91 +94,9 @@
         }
         return true;
     }
-    const keys = Object.create(null);
-
-    const gameCodes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
-    const editable = (el) => !!(el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)));
-
     function interact() {
         if (!frozen && !near && !nearWanderer && nearbyObject) { playCharacterAction('inspect'); }
         if (dotnet) { dotnet.invokeMethodAsync('OnInteract'); }
-    }
-
-    function onKeyDown(e) {
-        setActiveInput('keyboard');
-        if (editable(e.target)) {
-            if (e.code === 'Escape') { e.preventDefault(); if (dotnet) { dotnet.invokeMethodAsync('OnClose'); } }
-            return;
-        }
-        if (gameCodes.includes(e.code)) {
-            keys[e.code] = true;
-            e.preventDefault();
-        } else if (e.code === 'KeyE') {
-            e.preventDefault();
-            interact();
-        } else if (e.code === 'Escape') {
-            e.preventDefault();
-            if (dotnet) { dotnet.invokeMethodAsync('OnClose'); }
-        }
-    }
-
-    function onKeyUp(e) {
-        if (gameCodes.includes(e.code)) {
-            keys[e.code] = false;
-            e.preventDefault();
-        }
-    }
-
-    function setupVirtualStick(hostId, thumbId, get, set) {
-        const host = document.getElementById(hostId);
-        const thumb = document.getElementById(thumbId);
-        if (!host || !thumb) { return; }
-        let pointer = null;
-        const reset = () => { pointer = null; set({ x: 0, y: 0 }); thumb.style.transform = 'translate(0, 0)'; };
-        host.addEventListener('pointerdown', (e) => {
-            setActiveInput('touch');
-            pointer = e.pointerId;
-            try { host.setPointerCapture(pointer); } catch (err) { /* captura opcional */ }
-            e.preventDefault();
-            update(e);
-        });
-        host.addEventListener('pointermove', (e) => { if (e.pointerId === pointer) { update(e); } });
-        host.addEventListener('pointerup', (e) => { if (e.pointerId === pointer) { reset(); } });
-        host.addEventListener('pointercancel', (e) => { if (e.pointerId === pointer) { reset(); } });
-        // Perda de captura ou de foco da janela não pode deixar o stick preso.
-        host.addEventListener('lostpointercapture', (e) => { if (e.pointerId === pointer) { reset(); } });
-        window.addEventListener('blur', reset);
-        function update(e) {
-            const r = host.getBoundingClientRect();
-            const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-            const radius = Math.min(r.width, r.height) * 0.37;
-            let dx = (e.clientX - cx) / radius, dy = (e.clientY - cy) / radius;
-            const length = Math.hypot(dx, dy);
-            if (length > 1) { dx /= length; dy /= length; }
-            // Zona morta radial: o polegar segue o dedo e o jogo recebe o vetor reescalado.
-            const magnitude = Math.hypot(dx, dy);
-            const scaled = magnitude <= DEADZONE ? 0 : Math.min(1, (magnitude - DEADZONE) / (1 - DEADZONE));
-            thumb.style.transform = `translate(${dx * radius}px, ${dy * radius}px)`;
-            const dir = magnitude > 0 ? scaled / magnitude : 0;
-            set({ x: dx * dir, y: -dy * dir });
-        }
-        void get;
-    }
-
-    function setupTouchControls() {
-        setupVirtualStick('move-stick', 'move-thumb', () => moveStick, (v) => { moveStick = v; });
-        setupVirtualStick('look-stick', 'look-thumb', () => lookStick, (v) => { lookStick = v; });
-        const action = document.getElementById('touch-action');
-        if (action) {
-            action.addEventListener('pointerdown', (e) => { setActiveInput('touch'); e.preventDefault(); interact(); });
-        }
-        const cancelBtn = document.getElementById('touch-cancel');
-        if (cancelBtn) {
-            cancelBtn.addEventListener('pointerdown', (e) => {
-                setActiveInput('touch'); e.preventDefault();
-                if (dotnet) { dotnet.invokeMethodAsync('OnClose'); }
-            });
-        }
     }
 
     function clampWorld(value) { return Math.max(-WORLD_HALF, Math.min(WORLD_HALF, value)); }
@@ -895,8 +810,8 @@
     }
 
     function advanceCamera(delta, pad) {
-        const lookX = frozen ? 0 : pad.lookX + lookStick.x;
-        const lookY = frozen ? 0 : pad.lookY + lookStick.y;
+        const lookX = frozen ? 0 : pad[4];
+        const lookY = frozen ? 0 : pad[5];
         const { dx, dy, wheel } = camPending;
         if (cameraFrame?.[7] && cameraFrame[8] === cameraFloor && !lookX && !lookY && !dx && !dy && !wheel &&
             camera.alpha === cameraFrame[0] && camera.beta === cameraFrame[1] && camera.radius === cameraFrame[6]) {
@@ -2576,51 +2491,13 @@
         activeInput = kind;
         if (host.onInputMode) { host.onInputMode(kind); }
     }
-    let cancelWasDown = false;
-
-    function applyGamepadAxes(x, y, lookX, lookY, dpadX, dpadY) {
-        if (!terrain) { return; }
-        if (x || y || lookX || lookY) {
-            [x, y, lookX, lookY] = terrain.GamepadAxes(x, y, lookX, lookY);
-        }
-        padState.x = x + dpadX;
-        padState.y = -y + dpadY;
-        padState.lookX = lookX;
-        padState.lookY = lookY;
-        if (padState.x || padState.y || lookX || lookY) { setActiveInput('gamepad'); }
-    }
-
-    function pollGamepad() {
-        let action = false, cancel = false, connected = false;
-        try {
-            const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-            const pad = Array.from(pads || []).find((p) => p && p.connected);
-            if (pad) {
-                connected = true;
-                const down = (i) => Number(!!pad.buttons[i]?.pressed);
-                applyGamepadAxes(pad.axes[0] || 0, pad.axes[1] || 0, pad.axes[2] || 0, pad.axes[3] || 0,
-                    down(15) - down(14), down(12) - down(13));
-                action = !!down(0);
-                cancel = !!(down(1) || down(9));
-                if (action || cancel) { setActiveInput('gamepad'); }
-            }
-        } catch (e) { /* Gamepad API indisponível */ }
-        if (!connected) { applyGamepadAxes(0, 0, 0, 0, 0, 0); }
-        if (action && !actionWasDown) { interact(); }
-        if (cancel && !cancelWasDown) { dotnet.invokeMethodAsync('OnClose'); }
-        actionWasDown = action;
-        cancelWasDown = cancel;
-    }
-
     function movePlayer(delta, pad) {
         if (frozen || !player) { return 0; }
-        const ix = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
-        const iz = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
+        const [ix, iz, analogX, analogZ] = pad;
         const { x, y, z } = player.position;
-        const analogX = pad.x + moveStick.x, analogZ = pad.y + moveStick.y;
         const { x: fx, z: fz } = ix || iz || analogX || analogZ ? camera.getForwardRay().direction : BABYLON.Vector3.ZeroReadOnly;
         const [nextX, nextZ, yaw, travelled, pivot] = terrain.MovePlayer(x, y, z, player.rotation.y, fx, fz, ix, iz, analogX, analogZ,
-            !!(keys.ShiftLeft || keys.ShiftRight), delta, worldTunnels.length > 0);
+            !!pad[6], delta, worldTunnels.length > 0);
         player.position.x = nextX;
         player.position.z = nextZ;
         if (pivot) { player.rotation.y = yaw; }
@@ -3435,33 +3312,22 @@
             // a registrar modelos com a cena garantida (antes: "cena ainda não criada").
             if (host.onCoreReady) { host.onCoreReady(); }
             void glbLoadAll();   // assets GLB CC0 do catálogo assinado (fire-and-forget)
-            if (dom) {
-                setupTouchControls();
-                window.addEventListener('gamepaddisconnected', () => { actionWasDown = false; cancelWasDown = false; setActiveInput('keyboard'); });
-                window.addEventListener('keydown', onKeyDown);
-                window.addEventListener('keyup', onKeyUp);
-                window.addEventListener('blur', () => {
-                    terrain?.StopPlayer();
-                    for (const k of Object.keys(keys)) { keys[k] = false; }
-                    moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 };
-                });
-                window.addEventListener('resize', () => engine.resize());
-            }
-
             engine.runRenderLoop(() => {
                 const frameStart = performance.now();
                 drainModelQueue(frameStart);
                 const delta = Math.min(0.05, engine.getDeltaTime() / 1000);
-                if (dom) { pollGamepad(); }
-                const pad = padState;
+                if (inputDirty) {
+                    inputFrame = terrain.ReadPlayerInput();
+                    inputDirty = false;
+                }
                 syncColliders();
-                const travelled = movePlayer(delta, pad);
+                const travelled = movePlayer(delta, inputFrame);
                 if (player) {
                     const { x, z } = player.position;
                     updateCharacterPose(player, delta, travelled);
                     ensureChunksAround(x, z);
                 }
-                advanceCamera(delta, pad);
+                advanceCamera(delta, inputFrame);
                 updateOtherCharacters(delta);
                 const p = player.position, g = guardianRoot.position, w = wandererRoot.position;
                 terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
@@ -3494,18 +3360,31 @@
         }
     }
 
-    // Entrada vinda da ponte (modo worker): teclas, analógicos virtuais, gamepad e
-    // câmera por arrasto/roda; os handlers de DOM da main thread chamam os mesmos métodos.
+    // A ponte do navegador entrega a mesma entrada ao motor nos dois modos.
     const input = {
-        key(code, down) { if (gameCodes.includes(code)) { keys[code] = !!down; } },
-        stick(which, x, y) { if (which === 'move') { moveStick = { x: x, y: y }; } else if (which === 'look') { lookStick = { x: x, y: y }; } },
-        pad: applyGamepadAxes,
+        key(code, down) {
+            if ((!frozen || !down) && terrain?.SetPlayerInputKey(code, !!down)) { inputDirty = true; }
+        },
+        stick(which, x, y) {
+            if ((!frozen || (!x && !y)) && terrain?.SetPlayerInputTouch(which === 'look', x, y)) { inputDirty = true; }
+        },
+        pad(x, y, lookX, lookY, dpadX, dpadY) {
+            const state = terrain?.SetPlayerInputPad(x, y, lookX, lookY, dpadX, dpadY) ?? 0;
+            if (state & 1) { inputDirty = true; }
+            if (state & 2) { setActiveInput('gamepad'); }
+        },
+        padDisconnected() { if (activeInput === 'gamepad') { setActiveInput('keyboard'); } },
         camera(dx, dy, wheel, deltaMode) { camPending.dx += dx || 0; camPending.dy += dy || 0; camPending.wheel += (wheel || 0) * (deltaMode === 1 ? 40 : 1); },
         action() { interact(); },
         terrainClick(sx, sy) { terrainClickImpl(sx, sy); },
         terrainHover(point) { setCollectionPointer(point); },
         cancel() { dotnet.invokeMethodAsync('OnClose'); },
-        clear() { terrain?.StopPlayer(); for (const k of Object.keys(keys)) { keys[k] = false; } moveStick = { x: 0, y: 0 }; lookStick = { x: 0, y: 0 }; },
+        clear() {
+            terrain?.StopPlayer();
+            terrain?.ClearPlayerInput(false);
+            camPending.dx = camPending.dy = camPending.wheel = 0;
+            inputDirty = true;
+        },
         resize(w, h, dpr) {
             if (!engine) { return; }
             if (dom) { engine.resize(); } else { applySize(w, h, dpr || (host.size && host.size.dpr) || 1); }
@@ -3548,7 +3427,10 @@
             frozen = !!value;
             dialoguePartner = !frozen ? null : speaker === 'Andarilho' ? wandererRoot : guardianRoot;
             terrain?.StopPlayer();
-            if (frozen) { for (const k of Object.keys(keys)) { keys[k] = false; } }
+            if (frozen) {
+                terrain?.ClearPlayerInput(true);
+                inputDirty = true;
+            }
         },
         characterAction: playCharacterAction,
         characterDialogueLine(speaker, length) {

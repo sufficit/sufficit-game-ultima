@@ -308,48 +308,97 @@
 
     function setupInput(canvas) {
         window.addEventListener('keydown', function (e) {
-            deliver('inputMode', ['keyboard']);
-            if (editable(e.target)) {
-                if (e.code === 'Escape') { e.preventDefault(); postEventToDotnet('OnClose', []); }
+            if (e.code === 'Escape') {
+                e.preventDefault();
+                if (!e.repeat) { postEventToDotnet('OnClose', []); }
                 return;
             }
-            if (gameCodes.includes(e.code)) { deliver('key', [e.code, true]); e.preventDefault(); }
-            else if (e.code === 'KeyE') { e.preventDefault(); deliver('action', []); }
-            else if (e.code === 'Escape') { e.preventDefault(); postEventToDotnet('OnClose', []); }
+            if (editable(e.target) || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) { return; }
+            if (!gameCodes.includes(e.code) && e.code !== 'KeyE') { return; }
+            e.preventDefault();
+            if (e.repeat) { return; }
+            deliver('inputMode', ['keyboard']);
+            if (e.code === 'KeyE') { deliver('action', []); }
+            else { deliver('key', [e.code, true]); }
         });
         window.addEventListener('keyup', function (e) {
-            if (gameCodes.includes(e.code)) { deliver('key', [e.code, false]); e.preventDefault(); }
+            if (!gameCodes.includes(e.code)) { return; }
+            deliver('key', [e.code, false]);
+            if (!editable(e.target) && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); }
         });
-        window.addEventListener('blur', function () { deliver('clear', []); });
 
-        // Gamepad (não existe em worker): o poll roda aqui, os eixos vão pela ponte.
+        let blurred = false;
+        const padValues = [0, 0, 0, 0, 0, 0];
+        function clear() {
+            padValues.fill(0);
+            deliver('clear', []);
+        }
+        window.addEventListener('blur', function () { blurred = true; clear(); });
+        window.addEventListener('focus', function () { blurred = false; });
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden) { clear(); }
+        });
+        document.addEventListener('focusin', function (e) {
+            if (editable(e.target)) { clear(); }
+        });
+
         let actionWasDown = false, cancelWasDown = false;
-        let hadPad = false;
-        (function pollPad() {
+        let padIndex = null;
+        function samplePad(x, y, lookX, lookY, dpadX, dpadY) {
+            if (x === padValues[0] && y === padValues[1] && lookX === padValues[2] &&
+                lookY === padValues[3] && dpadX === padValues[4] && dpadY === padValues[5]) { return; }
+            padValues[0] = x;
+            padValues[1] = y;
+            padValues[2] = lookX;
+            padValues[3] = lookY;
+            padValues[4] = dpadX;
+            padValues[5] = dpadY;
+            deliver('pad', padValues);
+        }
+        function pollPad() {
             window.requestAnimationFrame(pollPad);
-            let pad = null;
+            let pad;
             try {
-                const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-                pad = Array.from(pads || []).find(function (p) { return p && p.connected; });
-            } catch (e) { /* Gamepad API indisponível */ }
-            if (!pad) {
-                if (hadPad) {
-                    deliver('pad', [0, 0, 0, 0, 0, 0]);
-                    deliver('inputMode', ['keyboard']);
+                const pads = navigator.getGamepads?.();
+                if (pads) {
+                    for (const candidate of pads) {
+                        if (candidate?.connected) { pad = candidate; break; }
+                    }
                 }
-                hadPad = actionWasDown = cancelWasDown = false;
-                return;
+            } catch { /* Gamepad API indisponível */ }
+            const nextIndex = pad?.index ?? null;
+            if (nextIndex !== padIndex) {
+                if (padIndex !== null) {
+                    samplePad(0, 0, 0, 0, 0, 0);
+                    deliver('padDisconnected', []);
+                }
+                padIndex = nextIndex;
+                actionWasDown = cancelWasDown = false;
             }
-            hadPad = true;
-            const down = (i) => Number(!!pad.buttons[i]?.pressed);
-            deliver('pad', [pad.axes[0] || 0, pad.axes[1] || 0, pad.axes[2] || 0, pad.axes[3] || 0,
-                down(15) - down(14), down(12) - down(13)]);
-            const action = !!down(0), cancel = !!(down(1) || down(9));
-            if (action || cancel) { deliver('inputMode', ['gamepad']); }
-            if (action && !actionWasDown) { deliver('action', []); }
-            if (cancel && !cancelWasDown) { postEventToDotnet('OnClose', []); }
-            actionWasDown = action; cancelWasDown = cancel;
-        })();
+            if (!pad) { return; }
+            const buttons = pad.buttons;
+            const action = !!buttons[0]?.pressed;
+            const cancel = !!(buttons[1]?.pressed || buttons[9]?.pressed);
+            if (!blurred && !document.hidden) {
+                if (!editable(document.activeElement)) {
+                    const axes = pad.axes;
+                    samplePad(axes[0] || 0, axes[1] || 0, axes[2] || 0, axes[3] || 0,
+                        Number(!!buttons[15]?.pressed) - Number(!!buttons[14]?.pressed),
+                        Number(!!buttons[12]?.pressed) - Number(!!buttons[13]?.pressed));
+                    if (action && !actionWasDown) {
+                        deliver('inputMode', ['gamepad']);
+                        deliver('action', []);
+                    }
+                }
+                if (cancel && !cancelWasDown) {
+                    deliver('inputMode', ['gamepad']);
+                    postEventToDotnet('OnClose', []);
+                }
+            }
+            actionWasDown = action;
+            cancelWasDown = cancel;
+        }
+        window.requestAnimationFrame(pollPad);
 
         setupWorldPointer(canvas);
 
@@ -531,6 +580,7 @@
         let pointer = null;
         const reset = function () { pointer = null; set(0, 0); thumb.style.transform = 'translate(0, 0)'; };
         host.addEventListener('pointerdown', function (e) {
+            if (pointer !== null || e.button !== 0) { return; }
             deliver('inputMode', ['touch']);
             pointer = e.pointerId;
             try { host.setPointerCapture(pointer); } catch (err) { /* captura opcional */ }
@@ -542,6 +592,7 @@
         host.addEventListener('pointercancel', function (e) { if (e.pointerId === pointer) { reset(); } });
         host.addEventListener('lostpointercapture', function (e) { if (e.pointerId === pointer) { reset(); } });
         window.addEventListener('blur', reset);
+        document.addEventListener('visibilitychange', () => { if (document.hidden) { reset(); } });
         function update(e) {
             const r = host.getBoundingClientRect();
             const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
@@ -549,12 +600,8 @@
             let dx = (e.clientX - cx) / radius, dy = (e.clientY - cy) / radius;
             const length = Math.hypot(dx, dy);
             if (length > 1) { dx /= length; dy /= length; }
-            const magnitude = Math.hypot(dx, dy);
-            const dead = 0.18;
-            const scaled = magnitude <= dead ? 0 : Math.min(1, (magnitude - dead) / (1 - dead));
             thumb.style.transform = 'translate(' + (dx * radius) + 'px, ' + (dy * radius) + 'px)';
-            const dir = magnitude > 0 ? scaled / magnitude : 0;
-            set(dx * dir, -dy * dir);
+            set(dx, -dy);
         }
     }
 
@@ -599,7 +646,7 @@
                         throw err;
                     })
                 : startMain(canvas, spawn).then(function (ok) {
-                        setupWorldPointer(canvas);
+                        setupInput(canvas);
                         watchSizeMain(canvas);
                         return ok;
                     });
