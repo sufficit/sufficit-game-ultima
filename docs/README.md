@@ -21,7 +21,6 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
-- [Walkable interior environments](PLAN-WALKABLE-INTERIORS.md).
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
 
@@ -41,6 +40,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Walkable office interior](activities/202611252024-walkable-office.md)
 
 - [Hosted mission API rollout](activities/202611252005-mission-api-rollout.md)
 
