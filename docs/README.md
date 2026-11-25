@@ -21,7 +21,6 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
-- [Data-driven environments and missions](PLAN-ENVIRONMENT-MISSIONS.md).
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
 
@@ -41,6 +40,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Data-driven environments and missions](activities/202611251942-environment-missions.md)
 
 - [Authored NPC dialogue topics](activities/202611251914-npc-dialogue.md)
 
