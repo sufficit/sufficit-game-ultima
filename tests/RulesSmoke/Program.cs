@@ -346,9 +346,17 @@ Span<double> inputFrame = stackalloc double[7];
 playerInput.SetKey("KeyW", true);
 playerInput.SetKey("ArrowUp", true);
 playerInput.SetKey("ShiftRight", true);
-playerInput.SetKey("KeyW", false);
 playerInput.Read(inputFrame);
-Check("soltar uma tecla equivalente mantém direção e corrida", inputFrame[1] == 1 && inputFrame[6] == 1);
+Check("WASD movement combines with arrow-key look and sprint",
+    inputFrame[1] == 1 && inputFrame[5] == -1 && inputFrame[6] == 1);
+playerInput.SetKey("KeyW", false);
+playerInput.SetKey("ArrowRight", true);
+playerInput.Read(inputFrame);
+Check("Arrow keys turn and tilt the camera without moving",
+    inputFrame[0] == 0 && inputFrame[1] == 0 && inputFrame[4] == 1 && inputFrame[5] == -1);
+playerInput.SetKey("ArrowUp", false);
+playerInput.SetKey("ArrowRight", false);
+playerInput.SetKey("KeyW", true);
 playerInput.SetKey("KeyS", true);
 playerInput.SetTouch(false, 0.1, 0.1);
 playerInput.SetGamepad(0.1, -0.1, 0.1, -0.1, 0, 0);

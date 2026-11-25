@@ -4,8 +4,8 @@ Open **Painel → Ambientes → Escritório** in Ultima. The office opens in
 third person at the reception, with the garden player avatar. Follow the central aisle to the workstations
 and enter the glass meeting room through the open doorway.
 
-- On desktop, focus the scene and use WASD or the arrow keys to walk.
-  Drag the mouse to look and hold Shift to move faster.
+- On desktop, focus the scene and use WASD to walk.
+  Use the arrow keys or drag the mouse to look and hold Shift to move faster.
 - On touchscreens, drag on the left to walk and on the right to look.
 - With the scene focused, the controller's left stick moves and its right
   stick turns the camera.

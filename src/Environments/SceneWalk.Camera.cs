@@ -7,8 +7,14 @@ internal sealed partial class SceneWalk
     private const double TargetHeight = 1.18;
     private const double CameraClearance = .10;
     private PlayerCameraView _view;
+    private double _frontYawOrigin;
 
-    internal int CycleCameraView() => (int)(_view = PlayerCameraViews.Next(_view));
+    internal int CycleCameraView()
+    {
+        _view = PlayerCameraViews.Next(_view);
+        if (_view == PlayerCameraView.Front) _frontYawOrigin = _yaw;
+        return (int)_view;
+    }
 
     private void Follow(Span<double> result, double sin, double cos)
     {
@@ -23,7 +29,7 @@ internal sealed partial class SceneWalk
         }
 
         var dy = 1.04 - 1.65 * Math.Sin(_pitch);
-        var (anchorX, anchorZ) = _view == PlayerCameraView.Front ? Math.SinCos(_heading) : (-sin, -cos);
+        var (anchorX, anchorZ) = _view == PlayerCameraView.Front ? Math.SinCos(_heading + _yaw - _frontYawOrigin) : (-sin, -cos);
         var dx = anchorX * 2.8;
         var dz = anchorZ * 2.8;
         var fraction = CameraFraction(dx, dy, dz);

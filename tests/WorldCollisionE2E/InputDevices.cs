@@ -59,9 +59,7 @@ internal static class InputDevices
         await canvas.FocusAsync();
         var start = (await PositionAsync())!;
         await page.Keyboard.DownAsync("w");
-        await page.Keyboard.DownAsync("ArrowUp");
-        await page.Keyboard.UpAsync("w");
-        await MovedAsync(start, "soltar W interrompeu a seta ainda pressionada");
+        await MovedAsync(start, "W moves the player.");
         await page.EvaluateAsync("""
             () => {
                 const input = document.createElement('input');
@@ -71,7 +69,7 @@ internal static class InputDevices
             }
             """);
         await StableAsync("o personagem continuou andando ao focar campo de texto");
-        await page.Keyboard.UpAsync("ArrowUp");
+        await page.Keyboard.UpAsync("w");
         await page.EvaluateAsync("() => document.getElementById('input-test-field').remove()");
         await canvas.FocusAsync();
 

@@ -56,6 +56,7 @@
     let camera = null;
     let perspectiveCamera = null;
     let cameraView = 0;
+    let frontOrbitOrigin = 0;
     const PLAYER_LAYER = 0x08000000;
     const G = host.global;
     const dom = !!host.dom;
@@ -845,7 +846,7 @@
             return;
         }
 
-        const heading = player.rotation.y;
+        const heading = player.rotation.y + frontOrbitOrigin - camera.alpha;
         const horizontal = Math.hypot(cameraFrame[3], cameraFrame[5]);
         viewTarget.copyFrom(camera.target);
         orbitEye.set(viewTarget.x + Math.sin(heading) * horizontal, viewTarget.y + cameraFrame[4],
@@ -3155,6 +3156,7 @@
         cycleCameraView() {
             if (!camera || !perspectiveCamera || frozen) return;
             cameraView = terrain.CycleCameraView();
+            if (cameraView === 2) frontOrbitOrigin = camera.alpha;
             cameraFrame = null;
             perspectiveCamera.layerMask = cameraView === 1 ? camera.layerMask & ~PLAYER_LAYER : camera.layerMask;
             scene.activeCamera = cameraView === 0 ? camera : perspectiveCamera;
@@ -3228,6 +3230,7 @@
                 terrain.ResetCamera();
                 cameraFrame = null;
                 camera.alpha = -Math.PI / 2;
+                frontOrbitOrigin = camera.alpha;
                 camera.beta = 1.12;
                 camera.radius = zoomTarget = 7.5;
             }

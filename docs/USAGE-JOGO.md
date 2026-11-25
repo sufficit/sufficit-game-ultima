@@ -8,9 +8,9 @@ aproxima de um personagem ou objeto.
 
 | Ação | Teclado e mouse | Controle | Toque |
 | --- | --- | --- | --- |
-| Andar | WASD ou setas | Analógico esquerdo ou direcional | Analógico esquerdo na tela |
+| Andar | WASD | Analógico esquerdo ou direcional | Analógico esquerdo na tela |
 | Correr | Shift enquanto anda | | |
-| Girar a câmera | Arrastar com o mouse | Analógico direito | Analógico direito na tela |
+| Ajustar a câmera | Setas direcionais ou arrastar com o mouse | Analógico direito | Analógico direito na tela |
 | Aproximar ou afastar | Roda do mouse | | |
 | Conversar ou examinar | E | A / ✕ | Botão A |
 | Fechar o diálogo | Esc | B / ○ | Botão B |

@@ -42,7 +42,7 @@ internal static partial class EnvironmentExports
         var stick = PlayerMovement.Stick(side, forward);
         var look = PlayerMovement.Stick(lookX, lookY);
         _walk?.Advance(Pose, Intent[0] + stick.X, Intent[1] + stick.Y, Intent[6] != 0,
-            dx * .003 + look.X * 1.8 * dt, dy * .003 + look.Y * 1.6 * dt, dt);
+            dx * .003 + (Intent[4] + look.X) * 1.8 * dt, dy * .003 + (Intent[5] + look.Y) * 1.6 * dt, dt);
         return Pose;
     }
 }

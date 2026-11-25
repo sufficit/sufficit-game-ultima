@@ -16,10 +16,6 @@ internal sealed class PlayerInput
         Right = 1 << 7,
         ShiftLeft = 1 << 8,
         ShiftRight = 1 << 9,
-        Forward = W | Up,
-        Backward = S | Down,
-        StrafeLeft = A | Left,
-        StrafeRight = D | Right,
         Sprint = ShiftLeft | ShiftRight,
     }
 
@@ -64,12 +60,12 @@ internal sealed class PlayerInput
 
     internal void Read(Span<double> result)
     {
-        result[0] = Pressed(Key.StrafeRight) - Pressed(Key.StrafeLeft);
-        result[1] = Pressed(Key.Forward) - Pressed(Key.Backward);
+        result[0] = Pressed(Key.D) - Pressed(Key.A);
+        result[1] = Pressed(Key.W) - Pressed(Key.S);
         result[2] = _padMove.X + _touchMove.X;
         result[3] = _padMove.Y + _touchMove.Y;
-        result[4] = _padLook.X + _touchLook.X;
-        result[5] = _padLook.Y + _touchLook.Y;
+        result[4] = _padLook.X + _touchLook.X + Pressed(Key.Right) - Pressed(Key.Left);
+        result[5] = _padLook.Y + _touchLook.Y + Pressed(Key.Down) - Pressed(Key.Up);
         result[6] = Pressed(Key.Sprint);
     }
 
