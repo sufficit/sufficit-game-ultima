@@ -33,6 +33,11 @@ internal static class CameraStreaming
                 return { radius: camera.radius, alpha: camera.alpha };
             }
             """);
+        var walk = await ObserveWalkAsync(page);
+        await page.EvaluateAsync("() => game.resetPlayer()");
+        await WaitAsync(() => RenderAsync<bool>(page, """
+            () => BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('player').position.lengthSquared() < 1
+            """), "jogador voltou à clareira", timeout);
         Orbit clear = null!, blocked = null!;
         await WaitAsync(async () => (clear = await CameraAsync()).Radius > 6, "a órbita inicial está bloqueada", timeout);
         var trees = new[] { -.6, 0, .6 }.Select((x, i) => new
@@ -77,9 +82,41 @@ internal static class CameraStreaming
         var chunks = new { count = names.Length, unique = names.Distinct().Count(), window.Fog };
         Check(chunks.count == chunks.unique && chunks.Fog > 0, "chunks sem duplicatas e com neblina", chunks);
         Check(errors.IsEmpty, "erros no navegador", errors);
-        Log(new { build, mode = Mode, clear, blocked, chunks });
+        Log(new { build, mode = Mode, walk, clear, blocked, chunks });
     }
 
+    private static async Task<object> ObserveWalkAsync(IPage page)
+    {
+        await page.Locator("#game-canvas").FocusAsync();
+        await RenderAsync<object?>(page, """
+            () => {
+                const scene = BABYLON.EngineStore.LastCreatedScene;
+                const root = scene.getTransformNodeByName('player');
+                const frames = [];
+                globalThis.ultimaCameraWalk = frames;
+                const subscription = scene.onAfterRenderObservable.add(() => {
+                    const target = scene.activeCamera.target;
+                    frames.push({ z: root.position.z, body: root.position.y, camera: target.y });
+                    if (frames.length >= 240) scene.onAfterRenderObservable.remove(subscription);
+                });
+            }
+            """);
+        await page.Keyboard.DownAsync("w");
+        try { await page.WaitForTimeoutAsync(1700); }
+        finally { await page.Keyboard.UpAsync("w"); }
+
+        var frames = await RenderAsync<WalkFrame[]>(page, "() => globalThis.ultimaCameraWalk");
+        var moving = frames.Where(frame => frame.Z > frames[0].Z + .2).ToArray();
+        Check(moving.Length >= 6 && moving[^1].Z - moving[0].Z > .7, "amostra de caminhada insuficiente", new { frames = frames.Length });
+        static double Variation(WalkFrame[] samples, Func<WalkFrame, double> height) =>
+            samples.Zip(samples.Skip(1), (a, b) => Math.Abs(height(b) - height(a))).Sum();
+        var body = Variation(moving, frame => frame.Body);
+        var camera = Variation(moving, frame => frame.Camera);
+        Check(camera < body * .8, "a câmera deve oscilar menos que o corpo durante a caminhada", new { body, camera });
+        return new { frames = moving.Length, body, camera };
+    }
+
+    private sealed record WalkFrame(double Z, double Body, double Camera);
     private sealed record SceneAssets(AssetsState? Glb, ModelsState? Models);
     private sealed record Orbit(double Radius, double Alpha);
     private sealed record ChunkWindow(string[] Names, double Fog);

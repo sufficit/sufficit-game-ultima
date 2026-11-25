@@ -6,11 +6,21 @@ internal sealed class PlayerCamera
     private double _orbit = DefaultRadius;
     private double _zoom = DefaultRadius;
 
-    internal void Reset() => _orbit = _zoom = DefaultRadius;
+    private const double MaxVerticalLag = 0.24;
+    private const double FollowRate = 8;
+    private double _floor = double.NaN;
+
+    internal void Reset()
+    {
+        _orbit = _zoom = DefaultRadius;
+        ResetFollow();
+    }
+
+    internal void ResetFollow() => _floor = double.NaN;
 
     // Ângulos em radianos, arrasto em pixels CSS e raio em metros.
     internal void Advance(Span<double> output, double alpha, double beta, double radius, double maxZoom,
-        double delta, bool frozen, double lookX, double lookY, double dragX, double dragY, double wheel)
+        double delta, bool frozen, double lookX, double lookY, double dragX, double dragY, double wheel, double floor)
     {
         var maxBeta = Math.PI / 2.15;
         if (!frozen)
@@ -44,6 +54,11 @@ internal sealed class PlayerCamera
         output[6] = Math.Abs(_orbit - radius) <= 1e-6
             ? _orbit
             : radius + (_orbit - radius) * (1 - Math.Exp(-12 * delta));
-        output[7] = output[6] == _orbit && _orbit == _zoom && beta >= 0.18 && beta <= maxBeta ? 1 : 0;
+        var difference = floor - _floor;
+        _floor = !double.IsFinite(_floor) || Math.Abs(difference) < 0.0001
+            ? floor
+            : floor - Math.Clamp(difference * Math.Exp(-FollowRate * delta), -MaxVerticalLag, MaxVerticalLag);
+        output[8] = _floor;
+        output[7] = _floor == floor && output[6] == _orbit && _orbit == _zoom && beta >= 0.18 && beta <= maxBeta ? 1 : 0;
     }
 }

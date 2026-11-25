@@ -60,6 +60,7 @@
     const dom = !!host.dom;
     const camPending = { dx: 0, dy: 0, wheel: 0 };
     let cameraFrame = null;
+    let cameraFloor = 0;
     let cameraGeometryRevision = 0;
     let zoomTarget = 7.5;    // zoom escolhido pelo jogador, independente do recuo por colisão
     const padState = { x: 0, y: 0, lookX: 0, lookY: 0 };
@@ -858,12 +859,12 @@
         const lookX = frozen ? 0 : pad.lookX + lookStick.x;
         const lookY = frozen ? 0 : pad.lookY + lookStick.y;
         const { dx, dy, wheel } = camPending;
-        if (cameraFrame?.[7] && !lookX && !lookY && !dx && !dy && !wheel &&
+        if (cameraFrame?.[7] && cameraFrame[8] === cameraFloor && !lookX && !lookY && !dx && !dy && !wheel &&
             camera.alpha === cameraFrame[0] && camera.beta === cameraFrame[1] && camera.radius === cameraFrame[6]) {
             return;
         }
         cameraFrame = terrain.AdvanceCamera(camera.alpha, camera.beta, camera.radius, camera.upperRadiusLimit,
-            delta, frozen, lookX, lookY, dx, dy, wheel);
+            delta, frozen, lookX, lookY, dx, dy, wheel, cameraFloor);
         camera.alpha = cameraFrame[0];
         camera.beta = cameraFrame[1];
         zoomTarget = cameraFrame[2];
@@ -2887,6 +2888,10 @@
             const leftFloor = frame[27], rightFloor = frame[32];
             const leftSupport = stepSurfaceAt(frame[25], frame[26], leftFloor);
             const rightSupport = stepSurfaceAt(frame[30], frame[31], rightFloor);
+            // A câmera segue o piso e apoios estáveis, sem herdar o movimento do quadril.
+            const platform = leftSupport > leftFloor && rightSupport > rightFloor
+                ? Math.min(leftSupport, rightSupport) : ground;
+            cameraFloor = Math.max(ground, platform) + FOOT_GAP;
             if (leftSupport > leftFloor || rightSupport > rightFloor) {
                 angles = terrain.SolveSupportedLegs(ground, root.position.y, delta,
                     frame[28], frame[29], leftFloor, leftSupport, frame[33], frame[34], rightFloor, rightSupport,
@@ -3406,7 +3411,6 @@
                 const delta = Math.min(0.05, engine.getDeltaTime() / 1000);
                 if (dom) { pollGamepad(); }
                 const pad = padState;
-                advanceCamera(delta, pad);
                 syncColliders();
                 const travelled = movePlayer(delta, pad);
                 if (player) {
@@ -3414,14 +3418,14 @@
                     updateCharacterPose(player, delta, travelled);
                     ensureChunksAround(x, z);
                 }
-                camera.target.set(player.position.x, player.position.y + CAM_UP.y, player.position.z);
-                orbitEye.set(camera.target.x + cameraFrame[3], camera.target.y + cameraFrame[4], camera.target.z + cameraFrame[5]);
-                camera.radius = Math.min(traceWorld(camera.target, orbitEye), cameraFrame[6]);
+                advanceCamera(delta, pad);
                 updateOtherCharacters(delta);
                 const p = player.position, g = guardianRoot.position, w = wandererRoot.position;
                 terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
                 syncCharacterHitboxes();
-                camera.target.set(p.x, p.y + CAM_UP.y, p.z);
+                camera.target.set(p.x, cameraFrame[8] + CAM_UP.y, p.z);
+                orbitEye.set(camera.target.x + cameraFrame[3], camera.target.y + cameraFrame[4], camera.target.z + cameraFrame[5]);
+                camera.radius = Math.min(traceWorld(camera.target, orbitEye), cameraFrame[6]);
                 checkNear();
                 updateNearbyObject();
                 if (crowdCount) { updateCrowd(delta); }
@@ -3491,7 +3495,9 @@
 
     function placePlayer(x, z) {
         const [clearX, clearZ] = terrain.PlacePlayer(x, terrainHeight(x, z) + FOOT_GAP, z);
-        player.position.set(clearX, terrainHeight(clearX, clearZ) + FOOT_GAP, clearZ);
+        cameraFloor = terrainHeight(clearX, clearZ) + FOOT_GAP;
+        player.position.set(clearX, cameraFloor, clearZ);
+        cameraFrame = null;
     }
 
     const api = {

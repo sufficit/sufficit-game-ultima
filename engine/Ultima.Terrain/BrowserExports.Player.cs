@@ -13,7 +13,7 @@ internal static partial class BrowserExports
 
     private static readonly PlayerFootContacts PlayerFeet = new();
     private static readonly PlayerCamera Camera = new();
-    private static readonly double[] CameraResult = new double[8];
+    private static readonly double[] CameraResult = new double[9];
     private static double _kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset;
 
     private static PlayerRemoteAvatars? _remoteAvatars;
@@ -47,6 +47,7 @@ internal static partial class BrowserExports
     {
         (SpawnResult[0], SpawnResult[1]) = _characters.Place(PlayerCharacterSpace.Player, x, y, z);
         _characters.Set(PlayerCharacterSpace.Player, SpawnResult[0], y, SpawnResult[1]);
+        Camera.ResetFollow();
         return SpawnResult;
     }
 
@@ -102,9 +103,9 @@ internal static partial class BrowserExports
 
     [JSExport]
     internal static double[] AdvanceCamera(double alpha, double beta, double radius, double maxZoom,
-        double delta, bool frozen, double lookX, double lookY, double dragX, double dragY, double wheel)
+        double delta, bool frozen, double lookX, double lookY, double dragX, double dragY, double wheel, double floor)
     {
-        Camera.Advance(CameraResult, alpha, beta, radius, maxZoom, delta, frozen, lookX, lookY, dragX, dragY, wheel);
+        Camera.Advance(CameraResult, alpha, beta, radius, maxZoom, delta, frozen, lookX, lookY, dragX, dragY, wheel, floor);
         return CameraResult;
     }
 

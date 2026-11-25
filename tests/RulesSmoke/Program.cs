@@ -558,16 +558,27 @@ Check("cruzamento de pernas levanta o pé e separa o apoio",
     contacts.Apply(feet, alignment, 0, .091, .06, .016) && feet[5] > 0.05 && alignment[1] - alignment[0] + 0.182 >= 0.17);
 
 var camera = new PlayerCamera();
-Span<double> orbit = stackalloc double[8];
-camera.Advance(orbit, -Math.PI / 2, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0);
+Span<double> orbit = stackalloc double[9];
+camera.Advance(orbit, -Math.PI / 2, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0, 0);
 Check("órbita conserva o raio e o sentido inicial",
     Math.Abs(double.Hypot(double.Hypot(orbit[3], orbit[4]), orbit[5]) - 7.5) < 1e-12 && orbit[5] < 0 && orbit[7] == 1);
-camera.Advance(orbit, 0, 1.12, 1.25, 40, 0.04, true, 1, 1, 20, -200, -12000);
+camera.Advance(orbit, 0, 1.12, 1.25, 40, 0.04, true, 1, 1, 20, -200, -12000, 0);
 Check("câmera congelada mantém arrasto, limita zoom e amortece retorno",
     orbit[0] == -0.20 && orbit[1] == 0.18 && orbit[2] == 2.4 && orbit[6] > 1.25 && orbit[6] < 7.5 && orbit[7] == 0);
 camera.Reset();
-camera.Advance(orbit, 0, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0);
+camera.Advance(orbit, 0, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0, 0);
 Check("reiniciar restaura o zoom da câmera", orbit[2] == 7.5 && orbit[6] == 7.5);
+
+camera.Advance(orbit, 0, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0, 0.1);
+Check("a câmera amortece um degrau sem deslocar a órbita", orbit[8] is > 0 and < 0.1 && orbit[6] == 7.5);
+for (var i = 0; i < 40; i++)
+    camera.Advance(orbit, 0, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0, 0.1);
+Check("a câmera alcança a nova altura e volta a repousar", orbit[8] == 0.1 && orbit[7] == 1);
+camera.Advance(orbit, 0, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0, -2);
+Check("a câmera limita a distância vertical em uma descida", Math.Abs(orbit[8] + 1.76) < 1e-12);
+camera.ResetFollow();
+camera.Advance(orbit, 0, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0, 5);
+Check("teletransporte reposiciona a câmera sem arrasto vertical", orbit[8] == 5);
 
 var pausedAction = PlayerPose.AdvanceAction(0.125, 0.5, 0.15, frozen: true);
 Check("diálogo congela o avanço das ações", pausedAction == (0.125, 0.25, 0.25));
