@@ -17,6 +17,17 @@ internal static class Garden
         };
         var page = await browser.NewPageAsync(new() { ViewportSize = new() { Width = 960, Height = 540 } });
         var errors = TrackErrors(page);
+        await page.AddInitScriptAsync("""
+            document.addEventListener('DOMContentLoaded', () => {
+                const status = game.aiCpu.status;
+                game.aiCpu.status = () => window.gardenCpuReady
+                    ? { state: 'ready', progress: 1, detail: 'Motor de teste' } : status();
+                game.aiCpu.garden = (prompt, text) => prompt.includes('prop.lantern') && text === 'Plante uma samambaia'
+                    ? JSON.stringify({ reply: 'Uma samambaia para o jardim.',
+                        actions: [{action: 'place', asset: 'flora.fern', x: 3, z: -12}] })
+                    : 'Resposta de teste sem JSON';
+            }, { once: true });
+            """);
         await page.GotoAsync(url.Uri.AbsoluteUri, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
         await WaitAsync(() => page.EvaluateAsync<bool>("() => !!window.game?.live?.token()"), "sessão do jardim ativa");
         await WaitAsync(() => page.EvaluateAsync<bool>("async () => (await game.build.state())?.chunks >= 25"), "jardim carregado");
@@ -58,6 +69,13 @@ internal static class Garden
                     scene.lights.some(light => light.name.startsWith('garden-light-') && light.isEnabled());
             }
             """, new[] { lantern.Uid, flowers.Uid }), "luminária ligada e flores aplicadas à cena");
+        await page.EvaluateAsync("() => { window.gardenCpuReady = true; }");
+        await AskAsync("provedor fora");
+        await page.GetByText("A IA local está ativa, mas não gerou um plano válido", new() { Exact = false }).WaitForAsync();
+        Check((await MapAsync(page)).Revision == edited.Revision, "resposta inválida preserva o jardim");
+        await AskAsync("Plante uma samambaia");
+        await page.GetByText("✦ origem da resposta: CPU do jogador").WaitForAsync();
+        Check((await MapAsync(page)).Placements.Any(p => p.Asset == "flora.fern"), "plano da CPU aplicado pela API");
         Check(errors.IsEmpty, "erros no navegador", errors);
         Log(new { mode = Mode, edited.Revision, lantern = lantern.Uid, flowers = flowers.Uid });
     }

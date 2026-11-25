@@ -651,12 +651,12 @@
         _gfxStyle = await JS.InvokeAsync<string>("game.graphics.set", style);
         _gfxDirty = true;
     }
-    private Task EnableAiAsync() => JS.InvokeVoidAsync("game.ai.load", _browserLifetime.Token).AsTask();
+    private Task EnableAiAsync() => LoadLocalAiAsync("ai", "load");
     private Task DisableAiAsync() => JS.InvokeVoidAsync("game.ai.disable").AsTask();
-    private Task RetryAiAsync() => JS.InvokeVoidAsync("game.ai.retry", _browserLifetime.Token).AsTask();
-    private Task EnableAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.load", _browserLifetime.Token).AsTask();
+    private Task RetryAiAsync() => LoadLocalAiAsync("ai", "retry");
+    private Task EnableAiCpuAsync() => LoadLocalAiAsync("aiCpu", "load");
     private Task DisableAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.disable").AsTask();
-    private Task RetryAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.retry", _browserLifetime.Token).AsTask();
+    private Task RetryAiCpuAsync() => LoadLocalAiAsync("aiCpu", "retry");
     private string _aiCpuModel = "gemma270";
     // Dois modelos, propostas diferentes (t48): leveza máxima vs. melhor conversa em português.
     private static readonly Dictionary<string, (string Label, string Why)> AiCpuModels = new()
@@ -664,10 +664,10 @@
         ["gemma270"] = ("Gemma 3 270M", "leve, ~241 MB, rápido"),
         ["qwen05b"] = ("Qwen2.5 0.5B", "melhor português, ~469 MB"),
     };
-    private Task SelectAiCpuModelAsync(string key)
+    private async Task SelectAiCpuModelAsync(string key)
     {
-        _aiCpuModel = key;
-        return JS.InvokeVoidAsync("game.aiCpu.setModel", key).AsTask();
+        if (await JS.InvokeAsync<bool>("game.aiCpu.setModel", key))
+            _aiCpuModel = key;
     }
     private string ActiveEngine() => _aiState == "ready" ? "webgpu" : _aiCpuState == "ready" ? "cpu-wllama" : "IA do servidor, se disponível";
 
@@ -972,7 +972,7 @@
         }
     }
 
-    private Task OnInteractAsync()
+    private async Task OnInteractAsync()
     {
         if (_view is null && !_near && !_nearWanderer && _nearObject is { } label)
         {
@@ -980,9 +980,14 @@
         }
         else
         {
+            var wasOpen = GuardianOpen;
             Dispatch(new PlayerInteracted(NowMs()));
+            if (!wasOpen && GuardianOpen)
+            {
+                await RefreshLocalAiAsync(_browserLifetime.Token);
+                StateHasChanged();
+            }
         }
-        return Task.CompletedTask;
     }
 
     private CancellationTokenSource? _guardianTurn;
@@ -995,7 +1000,23 @@
     private string _guardianAiTest = "";
     private bool GuardianOpen => _view is { Speaker: not "Andarilho" };
     private bool GuardianBusy => _view?.Thinking == true || (GuardianOpen && _testingGuardianAi);
-    private static bool AiLoading(string state) => state is "checking" or "downloading" or "compiling" or "thinking";
+    private static bool AiLoading(string state) => state is "checking" or "downloading" or "compiling" or "loading" or "thinking";
+    private sealed record LocalAiStatus(string State, double Progress, string Detail);
+
+    private async Task LoadLocalAiAsync(string engine, string action)
+    {
+        await JS.InvokeVoidAsync($"game.{engine}.{action}", _browserLifetime.Token);
+        await RefreshLocalAiAsync(_browserLifetime.Token);
+    }
+
+    private async Task RefreshLocalAiAsync(CancellationToken token)
+    {
+        var gpu = JS.InvokeAsync<LocalAiStatus>("game.ai.status", token).AsTask();
+        var cpu = JS.InvokeAsync<LocalAiStatus>("game.aiCpu.status", token).AsTask();
+        await Task.WhenAll(gpu, cpu);
+        (_aiState, _aiProgress, _aiDetail) = await gpu;
+        (_aiCpuState, _aiCpuProgress, _aiCpuDetail) = await cpu;
+    }
 
     private string GuardianAiStatus()
     {
@@ -1005,20 +1026,26 @@
         if (AiLoading(_aiCpuState)) return _aiCpuDetail;
         if (_aiState is "error" or "stalled") return _aiDetail;
         if (_aiCpuState is "error" or "stalled") return _aiCpuDetail;
-        return "Ative a IA local para conversar quando a IA do servidor estiver indisponível.";
+        return "Ative a IA local para conversar mesmo sem conexão com o servidor.";
     }
 
     private async Task TestGuardianAiAsync()
     {
         if (!GuardianOpen || GuardianBusy) return;
-        var engine = _aiState == "ready" ? "ai" : _aiCpuState == "ready" ? "aiCpu" : null;
-        if (engine is null) return;
         _testingGuardianAi = true;
-        _guardianAiTest = "Testando a resposta da IA local…";
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_browserLifetime.Token);
-            timeout.CancelAfter(TimeSpan.FromSeconds(60));
+            await RefreshLocalAiAsync(timeout.Token);
+            var engine = _aiState == "ready" ? "ai" : _aiCpuState == "ready" ? "aiCpu" : null;
+            if (engine is null)
+            {
+                _guardianAiTest = "Aguarde o modelo local ficar pronto para testar.";
+                return;
+            }
+            _guardianAiTest = "Testando a resposta da IA local…";
+            StateHasChanged();
+            timeout.CancelAfter(TimeSpan.FromSeconds(engine == "ai" ? 60 : 120));
             var text = await JS.InvokeAsync<string?>($"game.{engine}.garden", timeout.Token,
                 "Responda com uma saudação curta em português.", "Olá!", 32);
             _guardianAiTest = !string.IsNullOrWhiteSpace(text)
@@ -1136,6 +1163,7 @@
         _guardianTurn = turn;
         try
         {
+            await RefreshLocalAiAsync(turn.Token);
             var (reply, source) = await WorkshopService.TalkToGuardianAsync(text, recent, _aiState == "ready", _aiCpuState == "ready", turn.Token);
             if (!turn.IsCancellationRequested && _view?.Thinking == true)
                 Dispatch(new ReplyArrived(NowMs(), reply, source));

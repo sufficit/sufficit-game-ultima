@@ -13,7 +13,13 @@ internal static class DeclarativeWindows
             document.addEventListener('DOMContentLoaded', () => {
                 const init = game.aiCpu.init;
                 game.aiCpu.init = bridge => {
-                    game.aiCpu.load = () => bridge.invokeMethodAsync('OnAiCpuState', 'ready', 1, 'Modelo de teste pronto');
+                    const status = game.aiCpu.status;
+                    let ready = false;
+                    game.aiCpu.load = () => { ready = true; };
+                    game.aiCpu.status = () => ready
+                        ? { state: 'ready', progress: 1, detail: 'Modelo de teste pronto' }
+                        : status();
+                    game.live.token = () => null;
                     game.aiCpu.garden = (_, text, tokens) => {
                         window.guardianProbe = { text, tokens };
                         return 'Olá, caminhante.';
@@ -82,7 +88,10 @@ internal static class DeclarativeWindows
         await WaitAsync(async () => await line.InnerTextAsync() != first, "avança para a fala seguinte");
         await conversation.GetByRole(AriaRole.Textbox, new() { Name = "Escreva para a Guardiã" }).FillAsync("Quero novas árvores");
         await Button(conversation, "Enviar para a Guardiã").ClickAsync();
-        await conversation.GetByText("Conecte-se ao servidor do jogo").WaitForAsync();
+        await conversation.GetByText("Olá, caminhante. Conecte-se ao servidor do jogo para aplicar alterações no jardim.").WaitForAsync();
+        await conversation.GetByText("✦ origem da resposta: CPU do jogador").WaitForAsync();
+        Check(await page.EvaluateAsync<bool>("() => guardianProbe.text === 'Quero novas árvores' && guardianProbe.tokens === 120"),
+            "conversa sem sessão usa a IA local com contexto curto");
         var reply = await line.InnerTextAsync();
         await CloseAsync(conversation);
         await OpenJournalAsync();

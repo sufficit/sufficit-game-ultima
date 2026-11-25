@@ -89,8 +89,8 @@
     }
 
     async function load() {
-        if (inst) { emit('ready', 1, modelLabel + ' pronta na sua CPU (' + (tokensPerSec ? tokensPerSec + ' tok/s na última resposta' : 'motor WASM') + ')'); return true; }
         if (loading) return loading;
+        if (inst) return state === 'ready';
         loading = (async () => {
             try {
                 const key = modelKeyDefault(), m = MODELS[key];
@@ -104,11 +104,12 @@
                 emit('downloading', progress, 'Baixando ' + m.label + '…');
                 // n_gpu_layers: 0 => CPU pura; n_threads: 1 => single-thread (Pages não tem COOP/COEP)
                 await inst.loadModelFromUrl(m.url, {
-                    n_gpu_layers: 0, n_threads: 1, n_ctx: 1024, n_batch: 256,
+                    n_gpu_layers: 0, n_threads: 1, n_ctx: 4096, n_batch: 256,
                     progressCallback: onProgress, useCache: true
                 });
                 stopWatchdog();
                 emit('loading', 1, 'Preparando ' + m.label + ' na memória…');
+                localStorage.setItem(PREF, '1');
                 emit('ready', 1, m.label + ' pronta na sua CPU (WASM, 1 thread)');
                 log('modelo pronto', m.label);
                 return true;
@@ -128,7 +129,6 @@
     }
     async function retry() {
         log('retry', 'estado=' + state);
-        if (inst) { emit('ready', 1, modelLabel + ' pronta na sua CPU'); return true; }
         if (loading) { beat(); emit('downloading', progress, 'Retomando… ' + detail); return loading; }
         return load();
     }
@@ -190,7 +190,7 @@
 
     // Troca de modelo pelo painel: grava a escolha e descarrega o modelo anterior.
     async function setModel(key) {
-        if (!MODELS[key]) return false;
+        if (!MODELS[key] || loading) return false;
         localStorage.setItem(PREF + '-modelo', key);
         modelKey = key;
         if (inst) { try { await inst.exit(); } catch { } inst = null; }

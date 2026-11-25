@@ -8,6 +8,10 @@ namespace Ultima.Browser;
 public sealed partial class Workshop
 {
     private const string GardenRoute = "/v1/game/garden";
+    private const string OfflineGarden = "Conecte-se ao servidor do jogo para aplicar alterações no jardim.";
+    private const string OfflinePrompt =
+        "Você é a Guardiã do Jardim de Ultima. Responda em português do Brasil com até duas frases curtas. " +
+        "Converse e sugira ideias. Você está sem conexão com o jardim e não pode fazer alterações.";
 
     public async Task<(string Reply, string Source)> TalkToGuardianAsync(
         string text, string recent, bool gpu, bool cpu, CancellationToken token)
@@ -16,7 +20,7 @@ public sealed partial class Workshop
         {
             var endpoint = await EndpointAsync(token);
             if (string.IsNullOrEmpty(endpoint.Token))
-                return ("Conecte-se ao servidor do jogo para conversar comigo e editar o jardim.", "");
+                return await TalkOfflineAsync(text, recent, gpu, cpu, token);
             if (gpu || cpu)
             {
                 var context = await GetAsync<JsonElement>(endpoint, GardenRoute + "/context", 8, token);
@@ -37,6 +41,7 @@ public sealed partial class Workshop
         {
             return ex.Code switch
             {
+                "ai_unavailable" when gpu || cpu => ("A IA local está ativa, mas não gerou um plano válido para este pedido. Tente pedir uma mudança por vez.", ""),
                 "ai_unavailable" => ("Minha IA está indisponível. Ative um modelo local ou tente quando a IA do servidor estiver disponível.", ""),
                 "guardian_out_of_reach" => ("Aproxime-se de mim para conversar sobre o jardim.", ""),
                 "invalid_ai_response" => ("Não consegui interpretar o pedido. Tente descrevê-lo de outra forma.", ""),
@@ -51,22 +56,40 @@ public sealed partial class Workshop
         }
     }
 
+    private async Task<(string Reply, string Source)> TalkOfflineAsync(
+        string text, string recent, bool gpu, bool cpu, CancellationToken token)
+    {
+        var prompt = recent.Length == 0 ? OfflinePrompt : OfflinePrompt + "\nConversa recente:\n" + Limit(recent, 700);
+        var reply = gpu ? await GenerateLocalAsync(prompt, text, "ai", 60, 120, token) : null;
+        if (!string.IsNullOrWhiteSpace(reply))
+            return ($"{Limit(reply.Trim(), 300)} {OfflineGarden}", "GPU do jogador");
+        reply = cpu ? await GenerateLocalAsync(prompt, text, "aiCpu", 120, 120, token) : null;
+        if (!string.IsNullOrWhiteSpace(reply))
+            return ($"{Limit(reply.Trim(), 300)} {OfflineGarden}", "CPU do jogador");
+        return (gpu || cpu ? $"A IA local está ativa, mas não conseguiu responder. {OfflineGarden}"
+            : "Ative a IA local ou conecte-se ao servidor do jogo para conversar comigo.", "");
+    }
+
+    private async Task<string?> GenerateLocalAsync(string prompt, string text, string engine, int seconds,
+        int maxTokens, CancellationToken token)
+    {
+        using var timeout = TimeoutToken(seconds, token);
+        try { return await js.InvokeAsync<string?>($"game.{engine}.garden", timeout.Token, prompt, text, maxTokens); }
+        catch (Exception ex) when (!token.IsCancellationRequested && ex is JSException or OperationCanceledException) { return null; }
+    }
+
     private async Task<(string Reply, string Source)?> AskLocalGardenAsync(Endpoint endpoint, string prompt, string text,
         string engine, string source, int seconds, CancellationToken token)
     {
-        string? output;
-        using (var timeout = TimeoutToken(seconds, token))
-        {
-            try { output = await js.InvokeAsync<string?>($"game.{engine}.garden", timeout.Token, prompt, text); }
-            catch (Exception ex) when (!token.IsCancellationRequested && ex is JSException or OperationCanceledException) { return null; }
-        }
+        var output = await GenerateLocalAsync(prompt, text, engine, seconds, 1200, token);
         if (string.IsNullOrWhiteSpace(output)) return null;
         JsonDocument plan;
         try
         {
             output = output.Trim();
-            if (output.StartsWith("```json", StringComparison.Ordinal) && output.EndsWith("```", StringComparison.Ordinal))
-                output = output[7..^3].Trim();
+            if (output.StartsWith("```", StringComparison.Ordinal) && output.EndsWith("```", StringComparison.Ordinal)
+                && output.IndexOf('\n') is > 0 and var firstLine && firstLine < output.Length - 3)
+                output = output[(firstLine + 1)..^3].Trim();
             plan = JsonDocument.Parse(output);
         }
         catch (JsonException) { return null; }
