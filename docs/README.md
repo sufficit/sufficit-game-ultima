@@ -1,8 +1,16 @@
 # Documentação do Ultima
 
-- [API do jardim e da Guardiã](USAGE-API-JARDIM.md) — contratos e famílias de ações.
-- [PROJECT.md](../PROJECT.md) — visão, premissas e marcos do jogo.
-- [decisions/](../decisions/) — registros de decisão históricos (input, visual, API-first).
+## Jogar
+
+- [Guia do jogador](USAGE-JOGO.md) — controles, coleta, Guardiã e multiplayer.
+- [Edições, relógio e clima](USAGE-MUNDO.md) — Oficina do mundo e tempo local.
+
+## Contribuir
+
+- [Visão do jogo](../PROJECT.md) — objetivo e estado atual do protótipo.
+- [Design da interface](../DESIGN.md) e [arquitetura em C# e WebAssembly](../ARCHITECTURE.md).
+- [API do jardim](USAGE-API-JARDIM.md), [janelas e diagnósticos](USAGE-JANELAS.md) e [animações](USAGE-ANIMACOES.md).
+- [Decisões históricas](../decisions/) — input, visual e API.
 
 ## Planos ativos (`PLAN-*.md`)
 
@@ -30,6 +38,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Atualização da documentação do Ultima](activities/202611251852-documentacao-do-jogo.md)
 
 - [Índice espacial da câmera e medição de desempenho](activities/202611251845-indice-de-colisao-da-camera.md)
 

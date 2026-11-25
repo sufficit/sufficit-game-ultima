@@ -1,61 +1,56 @@
-# Projeto: Ultima (sufficit-game-ultima)
-
-Nome do jogo: **Ultima** (latim). Repositório: https://github.com/sufficit/sufficit-game-ultima
+# Projeto Ultima
 
 ## Objetivo
-Protótipo de jogo 3D escrito em C#, open source, que roda inteiramente no navegador
-(Blazor WebAssembly), com renderização 3D acelerada por GPU (Babylon.js via WebGL/WebGPU).
-Sem servidor centralizado: tudo no cliente. Em um marco futuro, as conversas dos personagens
-usarão LLM executada na própria placa de vídeo do jogador (WebGPU + WebLLM), e o multiplayer
-será P2P (WebRTC), também sem servidor de jogo.
 
-## Público
-Jogador individual, em navegador desktop (prévia local privada). Sem custo de infraestrutura.
+Ultima é um jogo 3D de exploração em um mundo que o jogador pode modificar.
+O jardim é o cenário inicial. A Guardiã apresenta o mundo, conversa com o
+jogador e ajuda a alterar o cenário. O jogo é aberto e roda no navegador.
+[Repositório](https://github.com/sufficit/sufficit-game-ultima) · [Jogar](https://sufficit.github.io/sufficit-game-ultima/)
 
-## Premissas
-- C# / .NET 10, Blazor WebAssembly Standalone.
-- Babylon.js fixado por versão e carregado com SRI (subresource integrity); renderização
-  acelerada por GPU pela engine (`engine.getGlInfo().renderer` para comprovar).
-- Nenhum servidor de aplicação no marco atual; HTML estático.
-- Multiplayer P2P e LLM local via WebGPU são marcos futuros, fora da fatia atual.
-- Open source: código-fonte, licença MIT e instruções de build no próprio repositório.
+## Público e plataforma
 
-## Arquitetura simples
-- `src/` — projeto Blazor WASM (`Ultima`), UI em componentes Razor.
-- `src/wwwroot/js/game.js` — camada de renderização: Babylon.js, câmera, luzes, chão,
-  personagem, NPC; movimento WASD por teclado com loop `requestAnimationFrame` em JS puro.
-- `src/wwwroot/index.html` — carrega Babylon.js (versão fixa + SRI) e `game.js`.
-- C# (Blazor) é a casca: HUD, diálogo com o NPC, status do motor. O estado de diálogo
-  (falas fixas) mora em C#, a ponte com o JS é via JSInterop.
-- `app/` — API de conteúdo dinâmico opcional (Python stdlib); o jogo é Blazor WASM puro e funciona sem ela.
+O protótipo público atende jogadores de navegador em desktop e celular.
+A exploração funciona individualmente. Jogadores também podem entrar na
+mesma sala por convite e conversar por texto ou voz.
+[Guia do jogador](docs/USAGE-JOGO.md)
 
-## Destino de publicação
-- Código: repositório público **sufficit/sufficit-game-ultima** (org Sufficit), sempre sincronizado a cada alteração.
-- Jogo: GitHub Pages via Actions (`.github/workflows/pages.yml`), https://sufficit.github.io/sufficit-game-ultima/.
-- API de conteúdo (`app/`, Python stdlib, publicada como app Sufficit): opcional; o jogo nunca depende dela e usa fallback embutido. Fornece orientações de NPC, missões, mundo/tempo e avisos em tempo real.
+## Ciclo de jogo
 
-## Marco atual (M1)
-Mundo 3D mínimo jogável no navegador:
-1. Cena Babylon.js com chão, luzes e névoa leve, GPU confirmada.
-2. Personagem (esfera) controlado por WASD/setas, com limites do mundo.
-3. NPC (cap sul) com diálogo de falas fixas acionado por proximidade + tecla E.
-4. HUD em Blazor (C#): título, instruções, painel de diálogo, status do motor.
+O jogador percorre o terreno, examina objetos e conversa com personagens.
+Pode coletar recursos para a mochila, ajustar o cenário pela Oficina do
+mundo ou pedir alterações à Guardiã. Quando há uma sessão no mundo
+compartilhado, a API valida e grava as edições para os outros jogadores.
 
-## Critérios de aceite do M1
-- `dotnet publish -c Release` determinístico concluído sem erro.
-- Servir a pasta publicada e carregar em navegador real:
-  - canvas 3D renderiza (chão, personagem, NPC visíveis);
-  - `engine.getGlInfo().renderer` retorna o adaptador de vídeo real (GPU);
-  - WASD move o personagem no mundo;
-  - tecla E abre o diálogo do NPC com pelo menos 3 falas em sequência, tudo pelo estado C#.
-- Checkpoint Git criado somente após a validação acima; workspace final sem mudanças pendentes.
+## Marco atual
 
-## Marcos futuros (fora do escopo atual)
-- M2: multiplayer P2P com WebRTC DataChannel (sem servidor centralizado; sinalização mínima).
-- M3: LLM local via WebGPU (WebLLM) para as conversas dos personagens, com fallback
-  determinístico nos navegadores sem suporte.
-- M4: conteúdo, arte e ciclo de jogo; publicação como app estático aberto.
+| Sistema | Disponível no protótipo |
+| --- | --- |
+| Exploração | Movimento, apoio dos pés, interação por proximidade e câmera orbital com estabilização vertical e recuo por colisão. |
+| Mundo | Terreno explorável, coleta, mochila e edição de solo, vegetação e objetos. |
+| Personagens | Conversas com histórico, inferência local da Guardiã por CPU ou GPU e notas de memória. |
+| Ambiente | Ciclo de Sol e Lua com referência em Greenwich, hora local e clima selecionável. |
+| Multiplayer | Salas por convite, chat e voz via WebRTC. O mundo compartilhado usa uma sessão na API. |
 
-## Notas de implementação
-- SDK instalado: .NET 10.0.404; templates `blazorwasm` disponíveis; pacotes 10.0.15.
-- O jogo vai ao GitHub Pages; só a API de conteúdo (`app/`) é publicada como app Sufficit (`python`).
+[Uso do mundo](docs/USAGE-MUNDO.md) · [API da Guardiã](docs/USAGE-API-JARDIM.md) ·
+[Evolução da câmera](docs/activities/202611251845-indice-de-colisao-da-camera.md)
+
+## Premissas e arquitetura
+
+- O cliente usa C# e Blazor WebAssembly. Regras, terreno, simulação e câmera
+  usam C#. O Babylon.js desenha a cena e acessa a geometria do renderizador.
+- A interface usa Sufficit.Blazor.UI. A cena pode rodar em um worker, com
+  fallback para a thread principal conforme o suporte do navegador.
+- A API ASP.NET Core é opcional para iniciar o jogo. Quando conectada, é a
+  autoridade do mapa compartilhado, das sessões e do catálogo do mundo.
+- O código é público sob a licença MIT. O GitHub Pages publica o cliente e o
+  Sufficit Run hospeda a API.
+
+[Arquitetura](ARCHITECTURE.md) · [Design](DESIGN.md) · [Build e publicação](README.md) ·
+[Licença](LICENSE)
+
+## Histórico e trabalho em curso
+
+O primeiro marco provou uma cena 3D navegável e o diálogo de proximidade.
+O histórico técnico de cada incremento está no índice de documentação.
+Os planos ativos incluem a evolução da Guardiã e a proposta de comportamento
+para criaturas. [Atividades e planos](docs/README.md)

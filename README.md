@@ -5,6 +5,8 @@ com **Blazor WebAssembly** e renderiza o mundo com **Babylon.js**. A API
 em **ASP.NET Core** oferece sessões e persistência no mundo compartilhado.
 
 - [Jogar no GitHub Pages](https://sufficit.github.io/sufficit-game-ultima/)
+- [Guia do jogador](docs/USAGE-JOGO.md)
+- [Visão do jogo](PROJECT.md)
 - [Design e uso da Sufficit.Blazor.UI](DESIGN.md)
 - [Arquitetura e evolução do C# no cliente](ARCHITECTURE.md)
 - [Licença MIT](LICENSE)
@@ -44,8 +46,8 @@ cd src
 dotnet run
 ```
 
-O comando acima sobe o servidor de desenvolvimento do Blazor WASM e abre o jogo
-(normalmente em `https://localhost:7xxx`; a URL exata é impressa no terminal).
+O comando acima inicia o servidor de desenvolvimento do Blazor WebAssembly.
+Abra no navegador o endereço que aparece no terminal.
 Com os artefatos já preparados, para servir o build estático execute na raiz
 do repositório:
 
@@ -61,17 +63,10 @@ principal verifica a integridade do script com SRI.
 
 ## Controles
 
-O parâmetro `?crowd=100` ou `?crowd=300` ativa a demonstração local de
-multidões esqueléticas. A demonstração coloca dois tipos de personagem
-na clareira para medir animação, LOD e culling.
+Veja teclado, mouse, controle e toque no [guia do jogador](docs/USAGE-JOGO.md#controles).
 
-| Tecla | Ação |
-| --- | --- |
-| `W` `A` `S` `D` ou setas | andar |
-| `E` | conversar com a Guardiã próxima |
-| `Esc` | fechar o diálogo |
-| arrastar o mouse | girar a câmera |
-| roda do mouse | aproximar / afastar |
+O parâmetro `?crowd=100` ou `?crowd=300` ativa a demonstração local de
+multidões esqueléticas para medir animação, LOD e culling.
 
 ## Estrutura
 
