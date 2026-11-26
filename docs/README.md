@@ -20,7 +20,6 @@ Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
-- [One engine for the garden and office](PLAN-ONE-ENGINE-ENVIRONMENTS.md).
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
@@ -42,6 +41,7 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [One engine for the garden and office](activities/202611260005-one-engine-environments.md)
 - [Foot support during aimed locomotion](activities/202611252331-player-support-balance.md)
 - [Expanded camera zoom and group framing](activities/202611252319-camera-zoom-and-group-framing.md)
 - [Fine scroll adjustment for the close camera](activities/202611252304-close-camera-zoom.md)
