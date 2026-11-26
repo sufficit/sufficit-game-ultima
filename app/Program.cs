@@ -46,7 +46,7 @@ catch (Exception ex)
 var content = new ContentStore(Path.Combine(baseDir, "content.json"));
 var chat = new NpcChat(log);
 var worldStore = new JournalWorldStore(dataDir, log);
-var game = new GameWorld(worldStore, content, chat, log);
+var game = new GameWorld(worldStore, content, chat, log, new CharacterProfiles(Path.Combine(dataDir, "character-profiles")));
 var net = new Signaling();
 var assetsSvc = new WorldAssets(dataDir, game, log);
 game.ImportedAssetIds = assetsSvc.Ids;

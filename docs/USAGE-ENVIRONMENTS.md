@@ -41,8 +41,9 @@ are future work.
 
 The top-level `playerBody` entry in [environments.json](../src/wwwroot/environments.json)
 configures the local avatar for both the garden and office. Omitted fields
-receive the current avatar's defaults. For example, this entry changes height,
-mass, build and skin tone.
+receive the current avatar's defaults. A saved
+[Characters API profile](USAGE-API-CHARACTERS.md) takes precedence when the
+server is reachable. This example changes height, mass, build and skin tone.
 
 ```json
 {

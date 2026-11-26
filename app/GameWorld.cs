@@ -22,6 +22,7 @@ sealed class Job
 sealed class Character
 {
     public string Id = "", Name = "", Token = "";
+    public string ProfileKey = "";
     public readonly string EditOwner = J.Hex(16);
     public double X, Z = 8, Yaw, Last, Since;
     public double? LastPose;
@@ -58,13 +59,15 @@ sealed partial class GameWorld
     TaskCompletionSource _changed = NewSignal();
     readonly double _start = J.Now;
     readonly IWorldStore _store;
+    readonly CharacterProfiles _characterProfiles;
     readonly ContentStore _content;
     readonly NpcChat _chat;
     readonly ILogger _log;
 
-    public GameWorld(IWorldStore store, ContentStore content, NpcChat chat, ILogger log)
+    public GameWorld(IWorldStore store, ContentStore content, NpcChat chat, ILogger log, CharacterProfiles characterProfiles)
     {
         _store = store;
+        _characterProfiles = characterProfiles;
         _content = content;
         _chat = chat;
         _log = log;
@@ -225,8 +228,9 @@ sealed partial class GameWorld
     };
 
     // ---------- sessões e leitura ----------
-    public (int, JsonObject) NewSession(string rawName)
+    public (int, JsonObject) NewSession(string rawName, string? profileKey = null)
     {
+        if (profileKey is not null && !CharacterProfiles.IsKey(profileKey)) return (400, J.Err("invalid_profile_key"));
         var now = J.Now;
         var name = J.Clean(rawName, 40);
         if (name.Length == 0) name = "Viajante";
@@ -239,13 +243,14 @@ sealed partial class GameWorld
             var ch = new Character
             {
                 Id = "c" + J.Hex(4), Name = name, Token = J.Hex(16), X = 0, Z = 8, Last = now, Since = now,
+                ProfileKey = profileKey ?? J.Hex(32),
             };
             _chars[ch.Id] = ch;
             _events[ch.Token] = [];
             Emit(new JsonObject { ["type"] = "join", ["character"] = CharPublic(ch) });
             return (200, new JsonObject
             {
-                ["token"] = ch.Token, ["character"] = CharPublic(ch), ["world"] = WorldInfo(), ["eventsFrom"] = _seq,
+                ["token"] = ch.Token, ["profileKey"] = ch.ProfileKey, ["character"] = CharPublic(ch), ["world"] = WorldInfo(), ["eventsFrom"] = _seq,
             });
         }
     }

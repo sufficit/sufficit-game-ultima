@@ -6,7 +6,7 @@ using Microsoft.JSInterop;
 
 namespace Ultima.Browser;
 
-public sealed class LiveGame(HttpClient http, IJSRuntime js)
+public sealed partial class LiveGame(HttpClient http, IJSRuntime js)
 {
     private string _api = "";
     private string? _token;
@@ -80,11 +80,15 @@ public sealed class LiveGame(HttpClient http, IJSRuntime js)
         {
             try
             {
-                var session = await SendAsync<Session>("POST", "/v1/game/sessions", new { Name = name ?? "Jogador" }, 10);
+                var context = await js.InvokeAsync<Context>("game.live.context", _lifetime);
+                var session = await SendAsync<Session>("POST", "/v1/game/sessions",
+                    new { Name = name ?? "Jogador", context.ProfileKey }, 10);
                 if (string.IsNullOrEmpty(session?.Token)) throw new InvalidDataException("Sessão sem token.");
                 _id = session.Character?.Id;
                 _since = session.EventsFrom;
                 _token = session.Token;
+                if (session.ProfileKey is { } profileKey)
+                    await js.InvokeVoidAsync("game.live.setProfileKey", _lifetime, profileKey);
                 await js.InvokeVoidAsync("game.live.setSession", _lifetime, (object?)_token);
                 _ = RefreshMapAsync();
                 return true;
@@ -216,8 +220,8 @@ public sealed class LiveGame(HttpClient http, IJSRuntime js)
     }
 
     private static long Now() => Environment.TickCount64;
-    private sealed record Context(string Api, bool Enabled, string? Token);
-    private sealed record Session(string? Token, Character? Me, Character? Character, long EventsFrom, Character[]? Characters, WorldMap? Map);
+    private sealed record Context(string Api, bool Enabled, string? Token, string? ProfileKey);
+    private sealed record Session(string? Token, string? ProfileKey, Character? Me, Character? Character, long EventsFrom, Character[]? Characters, WorldMap? Map);
     private sealed record Character(string? Id, string? Name, double X, double Z, double Yaw);
     private sealed record WorldMap(JsonElement? Tiles, JsonElement[]? Jobs, JsonElement[]? Edits, long? Revision, JsonElement[]? Placements, bool VolumeTunnels);
     private sealed record EventBatch(WorldEvent[]? Events);

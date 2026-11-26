@@ -1,5 +1,4 @@
 // Testes de integração do servidor Ultima (ASP.NET Core): sobem o build Release em um
-// dataDir temporário e exercitam a API por HTTP, com dois boots e replay do journal.
 // Uso: dotnet run --project tests/ServerIntegration -c Release -- [world] [assets] [garden] [diagnostics]
 // O servidor precisa estar compilado: dotnet build app/UltimaServer.csproj -c Release
 using System.Collections.Concurrent;
@@ -16,7 +15,7 @@ using System.Text.RegularExpressions;
 using static Kit;
 
 var wanted = args.ToHashSet(StringComparer.OrdinalIgnoreCase);
-string[] scenarios = ["world", "assets", "garden", "diagnostics", "office"];
+string[] scenarios = ["world", "assets", "garden", "diagnostics", "office", "character-profile"];
 if (wanted.Any(name => !scenarios.Contains(name)))
 {
     Console.Error.WriteLine($"Cenários disponíveis: {string.Join(", ", scenarios)}.");
@@ -44,6 +43,7 @@ try
             case "world": await World(harness, root!); break;
             case "assets": await Assets(harness, root!); break;
             case "garden": await Garden(harness, root!); break;
+            case "character-profile": await CharacterProfileIntegration.RunAsync(harness); break;
             case "office": await OfficeIntegration.RunAsync(harness); break;
             default: await Diagnostics(harness, root!); break;
         }

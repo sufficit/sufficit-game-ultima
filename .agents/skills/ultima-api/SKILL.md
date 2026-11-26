@@ -18,5 +18,6 @@ com `{"name":"Viajante"}` e envie seu token em `X-Game-Token`.
 - Para compor terreno, plantas e decoração, envie todas as ações numa
   única chamada `POST /v1/game/garden/edits`. Use as skills das famílias
   para montar cada ação.
+- Use the [Characters skill](../ultima-characters/SKILL.md) for body-profile reads and updates.
 - Leia [contratos e exemplos](../../../docs/USAGE-API-JARDIM.md) para
   erros, limites, replay, sessões e as outras famílias da API.

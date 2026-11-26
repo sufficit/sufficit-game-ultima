@@ -14,6 +14,7 @@ public partial class EnvironmentBrowser : IAsyncDisposable
 {
     [Inject] private NavigationManager Navigation { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private Ultima.Browser.LiveGame Live { get; set; } = default!;
     [Inject] private HttpClient Http { get; set; } = default!;
     [Inject] private Ultima.Models.ModelLoader Models { get; set; } = default!;
 
@@ -65,7 +66,8 @@ public partial class EnvironmentBrowser : IAsyncDisposable
                 })
             });
             _modelsRef = DotNetObjectReference.Create(new Ultima.Models.ModelsInterop(Models));
-            var profile = _catalog?.PlayerBody;
+            var profile = await Live.LoadCharacterBodyAsync(CancellationToken.None) ?? _catalog?.PlayerBody;
+            if (_disposed) return;
             Models.ConfigurePlayerBody(profile);
             _sceneError = !await JS.InvokeAsync<bool>("game.init", "game-canvas", _bridge, _modelsRef,
                 _environment.Id, _environment.Terrain, definition, profile);

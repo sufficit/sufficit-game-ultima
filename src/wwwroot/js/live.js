@@ -6,6 +6,7 @@
     const query = new URLSearchParams(location.search);
     const api = (query.get('api') || window.ULTIMA_API || fallbackApi).replace(/\/+$/, '');
     const enabled = query.get('live') !== '0';
+    const profileStorageKey = 'ultima-character-profile:' + api;
     let token = null;
     let bridge;
     let mapRevision = -1;
@@ -23,7 +24,12 @@
         context() {
             let stored = null;
             try { stored = sessionStorage.getItem('ultima-live-token'); } catch { /* opcional */ }
-            return { api, enabled, token: stored };
+            let profileKey = null;
+            try { profileKey = localStorage.getItem(profileStorageKey); } catch { /* Storage can be disabled. */ }
+            return { api, enabled, token: stored, profileKey };
+        },
+        setProfileKey(value) {
+            try { localStorage.setItem(profileStorageKey, value); } catch { /* Storage can be disabled. */ }
         },
         setSession(value) {
             if (!value) mapRevision = -1;

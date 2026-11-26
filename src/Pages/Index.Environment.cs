@@ -17,6 +17,6 @@ public partial class Index
         var requested = TerrainEnvironmentId ?? catalog.DefaultEnvironment;
         var environment = catalog.Environments.FirstOrDefault(environment => environment.Id == requested && environment.Terrain is not null)
             ?? throw new InvalidDataException("Terrain environment unavailable.");
-        return (environment, catalog.PlayerBody);
+        return (environment, await Live.LoadCharacterBodyAsync(_browserLifetime.Token) ?? catalog.PlayerBody);
     }
 }

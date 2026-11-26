@@ -6,6 +6,12 @@ internal static class HumanoidBodyChecks
 {
     internal static void Run(Action<string, bool> check)
     {
+        var root = RepositoryFileSize.Git(AppContext.BaseDirectory, "rev-parse", "--show-toplevel").TrimEnd('\r', '\n');
+        // Sufficit Run builds app/ alone, so it carries copies of the client body contracts.
+        foreach (var file in new[] { "Humanoid.cs", "HumanoidBody.cs" })
+            check($"The standalone API mirrors {file}", File.ReadLines(Path.Combine(root, "app", "Core." + file))
+                .SequenceEqual(File.ReadLines(Path.Combine(root, "models", "Ultima.Models.Core", file))));
+
         var standard = Humanoid.ResolveBody(null);
         check("Legacy characters receive the human body default",
             standard.Species == HomoSapiens.SpeciesId && standard.Height == 1.75 &&

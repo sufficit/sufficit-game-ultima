@@ -12,6 +12,7 @@
 - [Visão do jogo](../PROJECT.md) — objetivo e estado atual do protótipo.
 - [Design da interface](../DESIGN.md) e [arquitetura em C# e WebAssembly](../ARCHITECTURE.md).
 - [API do jardim](USAGE-API-JARDIM.md), [janelas e diagnósticos](USAGE-JANELAS.md) e [animações](USAGE-ANIMACOES.md).
+- [Characters API](USAGE-API-CHARACTERS.md) — read and update the owning character’s body profile.
 - [Decisões históricas](../decisions/) — input, visual e API.
 
 ## Planos ativos (`PLAN-*.md`)

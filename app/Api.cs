@@ -24,6 +24,7 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
         "POST /v1/game/sessions", "/v1/game/sessions", "/v1/game/state",
         "POST /v1/game/command", "/v1/game/events", "/v1/game/map", "POST /v1/game/map/edits",
         "POST /v1/game/leave",
+        "GET " + GameWorld.CharacterBodyRoute, "POST " + GameWorld.CharacterBodyRoute,
         "GET /v1/game/environments/{environment}/missions", "POST /v1/game/environments/{environment}/missions",
         "POST /v1/game/environments/{environment}/missions/{id}/events",
         "/v1/assets", "/v1/assets/jobs/{id}", "/v1/assets/file/{name}",
@@ -64,7 +65,7 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
         h.ContentType = "application/json; charset=utf-8";
         h.AccessControlAllowOrigin = "*";
         h.AccessControlAllowMethods = "GET, POST, DELETE, OPTIONS";
-        h.AccessControlAllowHeaders = "Content-Type, If-None-Match, X-Game-Token";
+        h.AccessControlAllowHeaders = "Content-Type, If-None-Match, X-Game-Token, " + GameWorld.CharacterProfileHeader;
         h.AccessControlExposeHeaders = "ETag, Cache-Control";
         h.CacheControl = cache;
         h.XContentTypeOptions = "nosniff";
@@ -96,7 +97,7 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
         h.ContentType = contentType;
         h.AccessControlAllowOrigin = "*";
         h.AccessControlAllowMethods = "GET, POST, DELETE, OPTIONS";
-        h.AccessControlAllowHeaders = "Content-Type, If-None-Match, X-Game-Token";
+        h.AccessControlAllowHeaders = "Content-Type, If-None-Match, X-Game-Token, " + GameWorld.CharacterProfileHeader;
         h.CacheControl = "public, max-age=31536000, immutable";
         h.XContentTypeOptions = "nosniff";
         res.ContentLength = body.Length;
@@ -104,21 +105,25 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
             await res.Body.WriteAsync(body);
     }
 
-    static async Task<JsonObject?> Body(HttpContext ctx)
+    static async Task<JsonObject?> Body(HttpContext ctx, bool allowStreaming = false)
     {
-        var len = ctx.Request.ContentLength ?? 0;
-        if (len <= 0 || len > MaxBody) return null;
+        // Bound streamed JSON as well as requests that declare a content length.
+        var len = ctx.Request.ContentLength ?? (allowStreaming ? MaxBody + 1 : 0);
+        if (len <= 0 || ctx.Request.ContentLength > MaxBody) return null;
         var buf = new byte[len];
         var read = 0;
         while (read < len)
         {
-            var n = await ctx.Request.Body.ReadAsync(buf.AsMemory(read));
+            var n = await ctx.Request.Body.ReadAsync(buf.AsMemory(read), ctx.RequestAborted);
             if (n == 0) break;
             read += n;
         }
+        if (read > MaxBody) return null;
         try { return JsonNode.Parse(buf.AsSpan(0, read)) as JsonObject; }
         catch (Exception) { return null; }
     }
+
+    static string SessionHeader(HttpContext ctx) => ctx.Request.Headers["X-Game-Token"].ToString();
 
     static string? Token(HttpContext ctx, JsonObject? body = null)
     {
@@ -163,6 +168,9 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
                 return;
             }
             case "/v1/game/sessions": await Json(ctx, game.Sessions(), 200, NoStore); return;
+            case GameWorld.CharacterBodyRoute:
+                await Json(ctx, game.ReadCharacterBody(SessionHeader(ctx), ctx.Request.Headers[GameWorld.CharacterProfileHeader].ToString()));
+                return;
             case "/v1/game/state": await Json(ctx, game.State(Token(ctx))); return;
             case GameWorld.GardenRoute: await Json(ctx, game.GardenCatalog()); return;
             case GameWorld.GardenRoute + "/context": await Json(ctx, game.GardenContext(Token(ctx))); return;
@@ -230,6 +238,13 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
     // ---------- POST ----------
     async Task PostAsync(HttpContext ctx, string path)
     {
+        if (path == GameWorld.CharacterBodyRoute)
+        {
+            var patch = await Body(ctx, allowStreaming: true);
+            if (patch is null) await Json(ctx, J.Err("bad_request"), 400, NoStore);
+            else await Json(ctx, game.UpdateCharacterBody(SessionHeader(ctx), patch));
+            return;
+        }
         if (path.StartsWith(GameWorld.GardenRoute + "/", StringComparison.Ordinal))
         {
             var family = path[(GameWorld.GardenRoute.Length + 1)..];
@@ -296,7 +311,7 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
             switch (path)
             {
                 case "/v1/game/map/edits": await Json(ctx, game.MapEdit(Token(ctx, data), data)); return;
-                case "/v1/game/sessions": await Json(ctx, game.NewSession(J.Str(data["name"]))); return;
+                case "/v1/game/sessions": await Json(ctx, game.NewSession(J.Str(data["name"]), data["profileKey"] is null ? null : J.Str(data["profileKey"]))); return;
                 case "/v1/game/command": await Json(ctx, await game.CommandAsync(Token(ctx, data), data, Ip(ctx))); return;
                 case "/v1/game/leave": await Json(ctx, game.Leave(Token(ctx, data))); return;
             }
