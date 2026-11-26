@@ -634,12 +634,27 @@ Check("Camera cycle enters first person, then close third person",
 closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 0, 0, 0, 0);
 Check("Close camera starts behind the avatar at its own distance",
     closeOrbit[3] < -2 && Math.Abs(closeOrbit[5]) < 1e-9 && closeOrbit[6] == 7.5);
-closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 100, 25, -1200, 0);
+closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 100, 25, 0, 0);
 Check("Close mouse look changes aim without altering elevated orbit angles or zoom",
     Math.Abs(closeOrbit[10] - (Math.PI / 2 + .4)) < 1e-9 &&
     closeOrbit[4] > .6 && closeOrbit[0] == 0 && closeOrbit[1] == 1.12 && closeOrbit[2] == 7.5);
+closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 0, 0, -1200, 0);
+Check("Close zoom eases toward the nearer limit and keeps rendering until settled",
+    CameraDistance(closeOrbit) is > 1.85 and < 2.15 && closeOrbit[7] == 0 && closeOrbit[2] == 7.5);
+for (var i = 0; i < 40; i++)
+    closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 0, 0, 0, 0);
+Check("Close camera settles at the nearer limit",
+    Math.Abs(CameraDistance(closeOrbit) - 1.85) < 1e-9 && closeOrbit[7] == 1);
 Check("Camera cycle restores the elevated orbit",
     closeCamera.Cycle(0) == PlayerCameraView.Rear && double.IsNaN(closeCamera.AimYaw));
+
+closeCamera.Cycle(0);
+closeCamera.Cycle(0);
+closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 0, 0, 0, 0);
+Check("Close zoom persists when switching views", Math.Abs(CameraDistance(closeOrbit) - 1.85) < 1e-9);
+
+static double CameraDistance(ReadOnlySpan<double> pose) =>
+    double.Hypot(double.Hypot(pose[3], pose[4]), pose[5]);
 
 var aimMovement = new PlayerMovement(1.75, .41, .03);
 var backpedal = aimMovement.Advance(0, .03, 0, 0, 0, 1, 0, -1, 0, 0, false, .04,

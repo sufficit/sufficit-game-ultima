@@ -64,7 +64,7 @@ internal static class CameraViews
         await VerifyPointerLockAsync(office: true);
 
         Check(errors.IsEmpty, "Perspective switches produce no page errors.", errors);
-        Log(new { build, mode = Mode, garden = true, office = true, inputs = new[] { "middle", "R3", "V", "button", "arrow-look", "mouse-look", "escape" } });
+        Log(new { build, mode = Mode, garden = true, office = true, inputs = new[] { "middle", "R3", "V", "button", "arrow-look", "mouse-look", "scroll", "escape" } });
 
         ILocator Button(string name) => page.GetByRole(AriaRole.Button, new() { Name = name, Exact = true });
         Task MiddleAsync(ILocator target) => target.ClickAsync(new() { Button = MouseButton.Middle });
@@ -91,9 +91,34 @@ internal static class CameraViews
             await VerifyAsync(office, view: 2);
             await WaitAsync(() => page.EvaluateAsync<bool>("() => document.pointerLockElement !== null && document.pointerLockElement === document.activeElement"),
                 "Keyboard selection captures the mouse without clicking the game surface.", 4_000, 25);
+            await VerifyCloseZoomAsync(office);
             await VerifyCloseMouseLookAsync(office, captured: true);
             await page.Keyboard.PressAsync("v");
             await VerifyAsync(office, view: 0);
+        }
+
+        async Task VerifyCloseZoomAsync(bool office)
+        {
+            var worker = office || MainThread ? null : page.Workers[0];
+            Task<double> DistanceAsync() => ReadAsync<double>(page, """
+                office => {
+                    const scene = BABYLON.EngineStore.LastCreatedScene;
+                    const player = scene.getTransformNodeByName(office ? 'environment-player' : 'player');
+                    const camera = scene.activeCamera;
+                    const direction = camera.getForwardRay().direction;
+                    return Math.hypot(camera.position.x - player.position.x, camera.position.z - player.position.z) /
+                        Math.hypot(direction.x, direction.z);
+                }
+                """, office, worker);
+
+            var initial = await DistanceAsync();
+            Check(Math.Abs(initial - 2.15) < .02, "The close view starts at its default distance.", new { office, initial });
+            await page.Mouse.WheelAsync(0, -1200);
+            await WaitAsync(async () => Math.Abs(await DistanceAsync() - 1.85) < .01,
+                $"Scroll in reaches the close camera's nearer limit (office={office}).", 4_000, 25);
+            await page.Mouse.WheelAsync(0, 1200);
+            await WaitAsync(async () => Math.Abs(await DistanceAsync() - 2.50) < .01,
+                $"Scroll out reaches the close camera's farther limit (office={office}).", 4_000, 25);
         }
 
         async Task VerifyCloseMouseLookAsync(bool office, bool captured = false)
@@ -189,7 +214,7 @@ internal static class CameraViews
                             if (view === 1)
                                 return Math.hypot(dx, dz) < .02 && camera.position.y - player.position.y > 1.5;
                             if (view === 2)
-                                return Math.hypot(dx, dz) < 2.16 &&
+                                return Math.hypot(dx, dz) < 2.51 &&
                                     dx * Math.sin(player.rotation.y) + dz * Math.cos(player.rotation.y) < -.1;
                             return Math.hypot(dx, dz) > .2;
                         }

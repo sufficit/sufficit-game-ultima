@@ -3,7 +3,7 @@ export function attachWalk(B, canvas, scene, avatar, exports, attachMouseLook) {
     camera.minZ = .04;
     camera.fov = .98;
 
-    let dx = 0, dy = 0, aim, joystick, viewWasDown = false;
+    let dx = 0, dy = 0, wheel = 0, aim, joystick, viewWasDown = false;
     const keys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
     const listeners = new AbortController();
     const on = (target, type, handler) => target.addEventListener(type, handler, { signal: listeners.signal });
@@ -31,7 +31,7 @@ export function attachWalk(B, canvas, scene, avatar, exports, attachMouseLook) {
     function clear() {
         exports.ClearInput();
         aim = joystick = undefined;
-        dx = dy = 0;
+        dx = dy = wheel = 0;
     }
 
     on(canvas, 'blur', clear);
@@ -39,6 +39,11 @@ export function attachWalk(B, canvas, scene, avatar, exports, attachMouseLook) {
     on(document, 'visibilitychange', () => { if (document.hidden) clear(); });
     on(canvas, 'mousedown', event => { if (event.button === 1) event.preventDefault(); });
     on(canvas, 'auxclick', event => { if (event.button === 1) event.preventDefault(); });
+    canvas.addEventListener('wheel', event => {
+        if (activeView !== 2) return;
+        event.preventDefault();
+        wheel += event.deltaY * (event.deltaMode === 1 ? 40 : 1);
+    }, { passive: false, signal: listeners.signal });
     on(canvas, 'pointerdown', event => {
         if (event.button === 1) {
             event.preventDefault();
@@ -99,11 +104,12 @@ export function attachWalk(B, canvas, scene, avatar, exports, attachMouseLook) {
         }
         camera.setTarget(target);
     }
-    applyPose(exports.WalkFrame(0, 0, 0, 0, 0, 0, 0));
+    applyPose(exports.WalkFrame(0, 0, 0, 0, 0, 0, 0, 0));
 
     function cycle(capture = true) {
+        wheel = 0;
         exports.CycleCameraView();
-        applyPose(exports.WalkFrame(0, 0, 0, 0, 0, 0, 0), capture);
+        applyPose(exports.WalkFrame(0, 0, 0, 0, 0, 0, 0, 0), capture);
     }
 
     canvas.focus({ preventScroll: true });
@@ -120,7 +126,7 @@ export function attachWalk(B, canvas, scene, avatar, exports, attachMouseLook) {
             viewWasDown = view;
             if (document.activeElement !== canvas) {
                 if (finishingStep) {
-                    applyPose(exports.WalkFrame(0, 0, 0, 0, 0, 0, 0));
+                    applyPose(exports.WalkFrame(0, 0, 0, 0, 0, 0, 0, 0));
                     finishingStep = false;
                 }
                 return;
@@ -129,8 +135,8 @@ export function attachWalk(B, canvas, scene, avatar, exports, attachMouseLook) {
             if (cyclePressed) cycle(false);
             const axes = pad?.axes;
             applyPose(exports.WalkFrame(joystick?.side ?? (axes?.[0] || 0),
-                joystick?.forward ?? -(axes?.[1] || 0), axes?.[2] || 0, axes?.[3] || 0, dx, dy, dt));
-            dx = dy = 0;
+                joystick?.forward ?? -(axes?.[1] || 0), axes?.[2] || 0, axes?.[3] || 0, dx, dy, wheel, dt));
+            dx = dy = wheel = 0;
         },
         dispose() {
             listeners.abort();

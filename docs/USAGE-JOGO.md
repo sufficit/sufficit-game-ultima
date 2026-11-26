@@ -18,7 +18,8 @@ aproxima de um personagem ou objeto.
 Press **V**, click the mouse wheel, press the controller's right stick
 (**R3**), or use **Painel → Alternar câmera** to cycle through rear third
 person (elevated orbit), first person, and close third person. In the close
-view, move the mouse to aim without holding a button. Press **Esc** to
+view, move the mouse to aim without holding a button and scroll to fine-tune
+the camera distance. Press **Esc** to
 release the pointer. Click the scene or cycle back to the close view to resume.
 
 As dicas de interação acompanham o último controle usado. Ao mudar de aba ou

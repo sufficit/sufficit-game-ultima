@@ -18,16 +18,16 @@ internal sealed partial class SceneWalk(SceneWalkSettings settings, SceneBox[] b
     private Func<double, double, double, double, (double X, double Z)>? _resolve;
 
     internal void Advance(Span<double> result, double side, double forward, bool sprint,
-        double yawDelta, double pitchDelta, double mouseX, double mouseY, double seconds)
+        double yawDelta, double pitchDelta, double mouseX, double mouseY, double wheel, double seconds)
     {
         var close = _view == PlayerCameraView.Close;
-        if (close) _closeLook.Advance(yawDelta, pitchDelta, mouseX, mouseY);
+        var delta = Math.Clamp(seconds, 0, .05);
+        if (close) _closeLook.Advance(yawDelta, pitchDelta, mouseX, mouseY, wheel, delta);
         else
         {
             _yaw = Math.IEEERemainder(_yaw + yawDelta + mouseX * .003, Math.Tau);
             _pitch = Math.Clamp(_pitch + pitchDelta + mouseY * .003, -.66, .63);
         }
-        var delta = Math.Clamp(seconds, 0, .05);
         var (sin, cos) = Math.SinCos(close ? _closeLook.Yaw : _yaw);
         var distance = 0d;
         if (delta > 0)

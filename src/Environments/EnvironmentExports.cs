@@ -36,13 +36,13 @@ internal static partial class EnvironmentExports
 
     [SupportedOSPlatform("browser")]
     [JSExport]
-    internal static double[] WalkFrame(double side, double forward, double lookX, double lookY, double dx, double dy, double dt)
+    internal static double[] WalkFrame(double side, double forward, double lookX, double lookY, double dx, double dy, double wheel, double dt)
     {
         Input.Read(Intent);
         var stick = PlayerMovement.Stick(side, forward);
         var look = PlayerMovement.Stick(lookX, lookY);
         _walk?.Advance(Pose, Intent[0] + stick.X, Intent[1] + stick.Y, Intent[6] != 0,
-            (Intent[4] + look.X) * 1.8 * dt, (Intent[5] + look.Y) * 1.6 * dt, dx, dy, dt);
+            (Intent[4] + look.X) * 1.8 * dt, (Intent[5] + look.Y) * 1.6 * dt, dx, dy, wheel, dt);
         return Pose;
     }
 }

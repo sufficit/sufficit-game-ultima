@@ -7,12 +7,12 @@ internal sealed partial class SceneWalk
     private const double TargetHeight = 1.18;
     private const double CameraClearance = .10;
     private PlayerCameraView _view;
-    private PlayerCloseCamera _closeLook;
+    private PlayerCloseCamera _closeLook = new(0);
 
     internal int CycleCameraView()
     {
         _view = PlayerCameraViews.Next(_view);
-        if (_view == PlayerCameraView.Close) _closeLook = new(_heading);
+        if (_view == PlayerCameraView.Close) _closeLook.Align(_heading);
         return (int)_view;
     }
 

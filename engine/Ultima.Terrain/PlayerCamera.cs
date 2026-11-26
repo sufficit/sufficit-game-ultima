@@ -10,7 +10,7 @@ internal sealed class PlayerCamera
     private const double FollowRate = 8;
     private double _floor = double.NaN;
     private double _firstPersonPitch;
-    private PlayerCloseCamera _closeLook;
+    private PlayerCloseCamera _closeLook = new(0);
 
     internal double AimYaw => View == PlayerCameraView.Close ? _closeLook.Yaw : double.NaN;
 
@@ -19,7 +19,7 @@ internal sealed class PlayerCamera
     internal PlayerCameraView Cycle(double facing)
     {
         View = PlayerCameraViews.Next(View);
-        if (View == PlayerCameraView.Close) _closeLook = new(facing);
+        if (View == PlayerCameraView.Close) _closeLook.Align(facing);
         return View;
     }
 
@@ -39,8 +39,8 @@ internal sealed class PlayerCamera
         var maxBeta = Math.PI / 2.15;
         if (View == PlayerCameraView.Close)
         {
-            if (!frozen)
-                _closeLook.Advance(lookX * delta * 2.2, lookY * delta * 1.7, dragX, dragY);
+            _closeLook.Advance(frozen ? 0 : lookX * delta * 2.2, frozen ? 0 : lookY * delta * 1.7,
+                frozen ? 0 : dragX, frozen ? 0 : dragY, frozen ? 0 : wheel, delta);
         }
         else
         {
@@ -90,6 +90,6 @@ internal sealed class PlayerCamera
         if (output.Length > 9) output[9] = _firstPersonPitch;
         if (output.Length > 10) output[10] = AimYaw;
         if (output.Length > 11) output[11] = PlayerCloseCamera.TargetHeight;
-        output[7] = _floor == floor && output[6] == _orbit && _orbit == _zoom && beta >= 0.18 && beta <= maxBeta ? 1 : 0;
+        output[7] = (View != PlayerCameraView.Close || _closeLook.Settled) && _floor == floor && output[6] == _orbit && _orbit == _zoom && beta >= 0.18 && beta <= maxBeta ? 1 : 0;
     }
 }
