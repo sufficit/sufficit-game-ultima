@@ -6,7 +6,8 @@ internal static class Garden
 {
     internal static async Task RunAsync(IBrowser browser)
     {
-        // O cenário grava no journal. Exige uma API de teste na própria máquina.
+        // The scenario writes to a disposable loopback API. Use a provider fixture
+        // that returns 503 for "provedor fora" and a path, lamp, and flowers for the garden request.
         var api = Environment.GetEnvironmentVariable("ULTIMA_GARDEN_API");
         if (!Uri.TryCreate(api, UriKind.Absolute, out var endpoint) || !endpoint.IsLoopback)
             throw new InvalidOperationException("ULTIMA_GARDEN_API deve apontar para a API de teste em loopback.");
@@ -113,12 +114,16 @@ internal static class Garden
             """, lampIds), "hastes mais altas e intensidade aplicada na cena");
 
         await page.EvaluateAsync("() => { window.gardenCpuReady = false; }");
-        var response = page.WaitForResponseAsync(r => r.Url.EndsWith("/v1/game/garden/dialog") && r.Status == 200);
+        var response = page.WaitForResponseAsync(r => r.Url.EndsWith("/v1/game/garden/dialog") && r.Request.Method == "POST");
         await AskAsync("Luminária, flores e trilha");
-        await page.GetByText("Apliquei as mudanças no jardim.", new() { Exact = false }).WaitForAsync();
-        var edited = await MapAsync(page);
-        using var reply = JsonDocument.Parse(await (await response).TextAsync());
+        var result = await response;
+        var body = await result.TextAsync();
+        Check(result.Ok, "The local test backend must use a provider fixture for the garden plan", new { result.Status, body });
+        using var reply = JsonDocument.Parse(body);
         Check(reply.RootElement.GetProperty("applied").GetInt32() == 7, "diálogo gravou cinco pincéis e dois objetos");
+        var answer = reply.RootElement.GetProperty("reply").GetString();
+        await page.GetByText($"Apliquei as mudanças no jardim. {answer}", new() { Exact = true }).WaitForAsync();
+        var edited = await MapAsync(page);
         var previous = lit.Placements.Select(p => p.Uid).ToHashSet(StringComparer.Ordinal);
         var lantern = edited.Placements.Single(p => p.Asset == "prop.lantern" && !previous.Contains(p.Uid));
         var flowers = edited.Placements.Single(p => p.Asset == "flora.flowers" && !previous.Contains(p.Uid));

@@ -19,22 +19,34 @@ internal static class Graphics
         await WaitAsync(async () => (await ReadAsync<MapState?>(page, "() => window.game?.build?.state?.()"))?.Chunks >= 25,
             "cena indisponível", 25_000);
         var status = await ReadAsync<JsonElement>(page, "() => game.graphicsStatus()");
-        var expected = JsonSerializer.SerializeToElement(new { style = "cinema", env = true, csm = true, ssao = true, depthOfField = true });
-        Check(JsonElement.DeepEquals(status, expected), "perfil cinema completo", status);
         Check(await page.EvaluateAsync<string>("() => game.mode") == Mode, "modo do renderizador", Mode);
 
         var detail = await RenderAsync<GraphicsDetail>(page, """
             () => {
                 const scene = BABYLON.EngineStore.LastCreatedScene;
-                const shadow = scene.getLightByName('sun').getShadowGenerator(scene.activeCamera);
-                return { cascades: shadow?.numCascades, fps: scene.getEngine().getFps(), gpu: scene.getEngine().getGlInfo().renderer };
+                const sun = scene.getLightByName('sun');
+                const shadow = sun.getShadowGenerator(scene.activeCamera) ?? sun.getShadowGenerator();
+                const engine = scene.getEngine();
+                const info = engine.getGlInfo();
+                return { cascades: shadow?.numCascades, fps: engine.getFps(),
+                    gpu: info.renderer || info.vendor, webGlVersion: engine.webGLVersion,
+                    supportsCsm: !!BABYLON.CascadedShadowGenerator?.IsSupported,
+                    supportsSsao: !!BABYLON.SSAO2RenderingPipeline?.IsSupported };
             }
             """);
-        Check(detail.Cascades == 3, "sombras com três cascatas", detail);
+        // Software renderers deliberately retain basic shadows and skip expensive effects.
+        var software = Regex.IsMatch(detail.Gpu, "swiftshader|llvmpipe|softpipe|software", RegexOptions.IgnoreCase);
+        var advanced = !software && detail.WebGlVersion >= 2;
+        var csm = advanced && detail.SupportsCsm;
+        var expected = JsonSerializer.SerializeToElement(new
+            { style = "cinema", env = true, csm, ssao = advanced && detail.SupportsSsao, depthOfField = advanced });
+        Check(JsonElement.DeepEquals(status, expected), "cinema settings respect renderer capabilities", new { status, expected, detail });
+        Check(csm ? detail.Cascades == 3 : detail.Cascades is null, "shadow generator matches the selected profile", detail);
         Task<string[]> CastersAsync() => RenderAsync<string[]>(page, """
             () => {
                 const scene = BABYLON.EngineStore.LastCreatedScene;
-                const map = scene.getLightByName('sun').getShadowGenerator(scene.activeCamera).getShadowMap();
+                const sun = scene.getLightByName('sun');
+                const map = (sun.getShadowGenerator(scene.activeCamera) ?? sun.getShadowGenerator()).getShadowMap();
                 return map.renderList.map(mesh => mesh.name);
             }
             """);
@@ -47,9 +59,9 @@ internal static class Graphics
                 game.updateRemote('shadow-cascade', 1, 3, 0);
             }
             """);
-        await WaitAsync(AvatarShadowAsync, "avatar próximo deve projetar sombra em cascata", 3000, 100);
+        await WaitAsync(AvatarShadowAsync, "nearby avatar casts a shadow", 3000, 100);
         await page.EvaluateAsync("() => game.updateRemote('shadow-cascade', 40, 3, 0)");
-        await WaitAsync(async () => !await AvatarShadowAsync(), "avatar distante deve sair do mapa de sombras em cascata", 3000, 100);
+        await WaitAsync(async () => !await AvatarShadowAsync(), "distant avatar leaves the shadow map", 3000, 100);
         await page.EvaluateAsync("() => game.removeRemote('shadow-cascade')");
         Check(errors.IsEmpty, "erros de página, shader ou framebuffer", errors);
         if (Environment.GetEnvironmentVariable("ULTIMA_CAPTURE") is { Length: > 0 } path)
@@ -57,5 +69,5 @@ internal static class Graphics
         Log(new { build, mode = Mode, status, detail });
     }
 
-    private sealed record GraphicsDetail(int Cascades, double Fps, string Gpu);
+    private sealed record GraphicsDetail(int? Cascades, double Fps, string Gpu, double WebGlVersion, bool SupportsCsm, bool SupportsSsao);
 }

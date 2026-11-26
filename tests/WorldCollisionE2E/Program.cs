@@ -151,7 +151,9 @@ internal sealed partial class WorldCollision(IPage page)
         await page.GetByRole(AriaRole.Button, new() { Name = "detalhes", Exact = true }).ClickAsync();
         await page.Locator("#game-canvas").FocusAsync();
         await ContactsAsync();
-        await GaitAsync();
+        await Probe<bool?>("gaitClock", true);
+        try { await GaitAsync(); }
+        finally { await Probe<bool?>("gaitClock", false); }
         await TerrainAsync(build);
         await RemoteAsync();
         CheckPageErrors();

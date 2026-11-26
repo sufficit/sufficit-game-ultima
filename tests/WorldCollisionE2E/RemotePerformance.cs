@@ -40,6 +40,7 @@ internal static partial class RemotePerformance
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ULTIMA_BUILD"))) await CheckBuildAsync(page);
         await WaitAsync(async () =>
         {
+            Check(errors.IsEmpty, "the instrumented render loop starts without errors", errors);
             var world = await ReadAsync<RemoteWorld?>(page, """
                 async () => {
                     if (window.game?.mode !== 'worker' || !game.models?.status) return null;
@@ -126,11 +127,16 @@ internal static partial class RemotePerformance
                 }
                 function updateOtherCharacters(delta) {
             """);
-        body = ReplaceAnchor(body, "                updateOtherCharacters(delta);", """
+        // Keep sample state at render-loop scope. The remote update may run inside an environment branch.
+        body = ReplaceAnchor(body, "                const frameStart = performance.now();", """
+                            const frameStart = performance.now();
                             const probe = globalThis.__remotePerf;
+                            let remoteMs = 0;
+            """);
+        body = ReplaceAnchor(body, "                updateOtherCharacters(delta);", """
                             const remoteStart = probe && performance.now();
                             updateOtherCharacters(delta);
-                            const remoteMs = probe && performance.now() - remoteStart;
+                            if (probe) remoteMs = performance.now() - remoteStart;
             """);
         body = ReplaceAnchor(body, "                framePerf(performance.now() - frameStart);", """
                             if (probe) {

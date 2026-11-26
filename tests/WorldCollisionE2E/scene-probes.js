@@ -4,6 +4,8 @@
     const node = name => scene.getTransformNodeByName(name);
     const mesh = name => scene.getMeshByName(name);
     const player = node('player');
+    const engine = scene.getEngine();
+    const getDeltaTime = engine.getDeltaTime;
     const torso = node('player-upper-body');
     const sides = ['left', 'right'];
     const ankles = sides.map(side => node('player-ankle-' + side));
@@ -102,6 +104,10 @@
 
     globalThis.ultimaCollisionProbes = {
         position,
+        gaitClock(fixed) {
+            // Use a stable simulation step for gait measurements across renderers.
+            engine.getDeltaTime = fixed ? () => 1000 / 60 : getDeltaTime;
+        },
         nodePosition: name => node(name) ? xyz(node(name).position) : null,
         meshExists: name => !!mesh(name),
         advance(seconds) {
@@ -154,7 +160,16 @@
             return frames;
         },
         resetShoulder() { node('player-shoulder-right').rotation.z = 0.055; },
-        boundsGap: ({remote, axis}) => boundsGap(remote, axis, true),
+        sideContactFrames(remote) {
+            let elapsed = 0;
+            const frames = [];
+            // Capture position and clearance together during the approach.
+            return sampleUntil(30000, 'lateral approach did not finish', () => {
+                elapsed += clock();
+                frames.push({ x: player.position.x, gap: boundsGap(remote, 'x', true) });
+                if (elapsed >= 1.8) return frames;
+            });
+        },
         parents: names => names.map(name => node('player-' + name)?.parent?.name ?? null),
         torsoBend: () => torso.rotation.x,
         async logContact(positions) {

@@ -99,18 +99,18 @@ async Task World(Harness h, string root)
         var bob = await h.Json(url, "/v1/game/sessions", new JsonObject { ["name"] = "Bob" });
         var (a, b) = (Str(alice["token"]), Str(bob["token"]));
         const string command = "/v1/game/command";
-        // Anda até o chunk da Guardiã: a cristalização do tick de fundo grava uma edição sem
-        // dono, e o replay precisa devolvê-la sem o número da operação do journal.
+        // Both occupied chunks must finish crystallizing before the test captures the map.
+        // Their edits have no owner, and replay must keep them free of journal sequence numbers.
         await h.Json(url, command, new JsonObject { ["action"] = "pose", ["x"] = 0, ["z"] = -12 }, a);
-        JsonObject? map = null;
+        bool ready = false;
         for (var attempt = 0; attempt < 50; attempt++)
         {
-            map = await h.Json(url, "/v1/game/map");
-            if (Arr(map["edits"]).Select(Obj).Any(op => Str(op["chk"]) == "0,-1")) break;
+            var map = await h.Json(url, "/v1/game/map");
+            var chunks = Arr(map["edits"]).Select(Obj).Select(op => Str(op["chk"])).ToHashSet();
+            if (ready = chunks.Contains("0,-1") && chunks.Contains("0,0")) break;
             await Task.Delay(100);
         }
-        Check(map is not null && Arr(map["edits"]).Select(Obj).Any(op => Str(op["chk"]) == "0,-1"),
-            "cristalização do chunk (0,-1)", map?["edits"]);
+        Require(ready, "The garden and spawn chunks must crystallize before comparing revisions.");
         tile = await h.Json(url, "/v1/game/map/edits", new JsonObject
         {
             ["edits"] = new JsonArray(new JsonObject { ["cx"] = 3, ["cz"] = 3, ["type"] = "path" }),
@@ -174,7 +174,7 @@ async Task World(Harness h, string root)
         var url = s.Url;
         var replay = await h.Json(url, "/v1/game/map");
         foreach (var key in new[] { "revision", "tiles", "edits", "placements" })
-            Check(Same(replay[key], final[key]), "replay de " + key, replay[key]);
+            Check(Same(replay[key], final[key]), "replay de " + key, new { expected = final[key], actual = replay[key] });
         var job = Obj(Arr(replay["jobs"])[0]);
         Check(Str(job["id"]) == "jlegacy" && Num(job["progress"]) >= Num(Obj(Arr(initial["jobs"])[0])["progress"]), "job segue o relógio após replay", job);
         var token = Str((await h.Json(url, "/v1/game/sessions", new JsonObject { ["name"] = "Alice" }))["token"]);

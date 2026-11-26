@@ -84,9 +84,12 @@ internal sealed partial class WorldCollision
         await AddRemoteAsync("contact-side", "Contato lateral", 1.8, 0);
         await WaitAsync(async () => (await Probe<Position?>("nodePosition", "remote-contact-side"))?.X == 1.8,
             "personagem lateral pronto");
-        var sideContact = await WalkAsync(["d"], 900, false);
-        var sideGap = await Probe<double>("boundsGap", new { remote = "remote-contact-side", axis = "x" });
-        Check(sideContact.X is > 1 and < 1.66 && sideGap < .14, "chega junto ao corpo de lado", new { sideContact, sideGap });
+        SideContact[] contacts = [];
+        await WithKeysAsync(["d"], false, async () => contacts = await Probe<SideContact[]>("sideContactFrames", "remote-contact-side"));
+        Check(contacts.Any(frame => frame.X is > 1 and < 1.66 && frame.Gap < .14) &&
+            contacts.All(frame => frame.X < 1.66), "reaches the lateral blocker without passing through",
+            contacts.OrderBy(frame => frame.Gap).Take(3));
+        var sideContact = contacts[^1];
         await RemoveRemoteAsync("contact-side");
         await ResetAsync();
         await SettleAsync();
@@ -98,7 +101,7 @@ internal sealed partial class WorldCollision
             "passagem entre personagens pronta");
         var throughGap = await TraverseAsync("w", 1.37, "z", 3.45);
         Check(throughGap.Z > 3.45 && Math.Abs(throughGap.X) < .15, "passa entre dois corpos com espaço livre", throughGap);
-        Log(new { sideContact, sideGap, beside, around, throughGap });
+        Log(new { sideContact, beside, around, throughGap });
         await RemoveRemoteAsync("contact-gap-left");
         await RemoveRemoteAsync("contact-gap-right");
         await ResetAsync();
@@ -110,4 +113,5 @@ internal sealed partial class WorldCollision
 
     private sealed record ArmPose(bool Overlap, Position Player, Position Remote, double LeftBend, double RightBend);
     private sealed record Impact(double Z, double Bend, double Gap);
+    private sealed record SideContact(double X, double Gap);
 }
