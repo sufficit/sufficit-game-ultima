@@ -837,8 +837,9 @@
         var motorOk = false;
         try
         {
-            var environment = await LoadTerrainAsync();
-            motorOk = await JS.InvokeAsync<bool>("game.init", "game-canvas", _bridge, _modelsRef, environment.Id, environment.Terrain);
+            var (environment, profile) = await LoadTerrainAsync();
+            Models.ConfigurePlayerBody(profile);
+            motorOk = await JS.InvokeAsync<bool>("game.init", "game-canvas", _bridge, _modelsRef, environment.Id, environment.Terrain, null, profile);
         }
         catch (Exception ex) when (ex is JSException or HttpRequestException or System.Text.Json.JsonException or InvalidDataException)
         {

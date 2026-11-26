@@ -29,10 +29,10 @@
         }
 
         let faceInk;
-        function createCharacterRig(root, guardian, castsShadow, anatomy) {
+        function createCharacterRig(root, guardian, castsShadow, anatomy, body) {
             const joints = anatomy ? createJointHierarchy(root, anatomy) : null;
-            const headRadius = guardian ? 1.7 * 0.075 : PLAYER_HEIGHT * 0.07;
-            const headBase = guardian ? 1.7 * 0.82 : PLAYER_HEIGHT - 2 * headRadius;
+            const headRadius = guardian ? 1.7 * 0.075 : (body?.height ?? PLAYER_HEIGHT) * 0.07;
+            const headBase = guardian ? 1.7 * 0.82 : (body?.height ?? PLAYER_HEIGHT) - 2 * headRadius;
             const upper = joints?.get('upper-body') ?? createCharacterJoint(root, 'upper-body', root, 0, guardian ? 1.7 * 0.52 : HIP_HEIGHT);
             const head = joints?.get('head-pivot') ?? createCharacterJoint(root, 'head-pivot', upper, 0, headBase);
             const eyes = joints?.get('eye-pivot') ?? createCharacterJoint(root, 'eye-pivot', head, 0, headBase + 1.1 * headRadius);
@@ -78,18 +78,18 @@
                 }
             }
             const brows = [-1, 1].map(side => facialFeature('brow-' + side, face,
-                side * headRadius * 0.36, headRadius * 1.34, headRadius * 0.9, 0.038, 0.009));
+                side * headRadius * 0.36 * (body?.faceWidth ?? 1), headRadius * 1.34, headRadius * 0.9, 0.038, 0.009));
             const mouth = facialFeature('mouth', face, 0, headRadius * 0.68, headRadius * 0.96, 0.048, 0.008);
             const attachments = {
-                torso: upper, tunic: upper, neck: upper, head, hair: head, hood: head, skin: head, eyes,
+                torso: upper, tunic: upper, neck: upper, head, ears: head, hair: head, hood: head, skin: head, eyes,
                 'arm-left': shoulders[0], 'hand-left': wrists[0],
                 'arm-right': shoulders[1], 'hand-right': wrists[1]
             };
-            const legs = guardian ? [] : buildCharacterLegs(root, joints);
+            const legs = guardian ? [] : buildCharacterLegs(root, joints, body);
             const rig = {
                 root, upper, head, eyes, shoulders, elbows, wrists, face, brows, mouth, attachments, castsShadow, shadowMeshes: [],
                 limbMeshes: [[], [], [], [], []],
-                legs, fallbackLegMaterials: legs.length ? [legs[0].thigh.material, legs[0].shoe.material] : [],
+                body, legs, fallbackLegMaterials: legs.length ? [legs[0].thigh.material, legs[0].shoe.material] : [],
                 clock: 0, gaitPhase: 0, gaitWeight: 0, speaking: 0, action: null
             };
             for (const [index, { thigh, shin, shoe }] of legs.entries()) {
@@ -105,12 +105,13 @@
             return rig;
         }
 
-        function buildCharacterLegs(root, joints) {
+        function buildCharacterLegs(root, joints, body) {
             const pants = new BABYLON.StandardMaterial(root.name + '-leg-pants', scene);
             pants.diffuseColor.set(0.20, 0.22, 0.28);
             const shoes = new BABYLON.StandardMaterial(root.name + '-leg-shoes', scene);
             shoes.diffuseColor.set(0.13, 0.10, 0.09);
-            const radius = LEG_RADIUS;
+            const radius = body?.legRadius ?? LEG_RADIUS;
+            const segment = body?.legSegment ?? LEG_SEGMENT;
             return [-1, 1].map(side => {
                 const suffix = side < 0 ? 'left' : 'right';
                 let hip = joints?.get('hip-' + suffix);
@@ -138,17 +139,17 @@
                     hip.rotationQuaternion = BABYLON.Quaternion.Identity();
                     ankle.rotationQuaternion = BABYLON.Quaternion.Identity();
                 }
-                const options = { height: LEG_SEGMENT + 0.085, radius, subdivisions: 4 };
+                const options = { height: segment + 0.085, radius, subdivisions: 4 };
                 const thigh = BABYLON.MeshBuilder.CreateCapsule(root.name + '-thigh-' + suffix, options, scene);
                 const shin = BABYLON.MeshBuilder.CreateCapsule(root.name + '-shin-' + suffix, options, scene);
                 thigh.parent = hip;
                 shin.parent = knee;
-                thigh.position.y = shin.position.y = -LEG_SEGMENT / 2;
+                thigh.position.y = shin.position.y = -segment / 2;
                 thigh.material = shin.material = pants;
                 const shoe = BABYLON.MeshBuilder.CreateSphere(root.name + '-shoe-' + suffix,
                     { diameter: 2.5 * radius, segments: 8 }, scene);
                 shoe.parent = ankle;
-                shoe.position.z = SHOE_OFFSET;
+                shoe.position.z = body?.shoeOffset ?? SHOE_OFFSET;
                 shoe.scaling.set(1, 0.55, 1.9);
                 shoe.material = shoes;
                 for (const mesh of [thigh, shin, shoe]) {
@@ -249,7 +250,7 @@
                 if (rig.elbows.length && (group === 'arm-left' || group === 'arm-right')) {
                     const side = group === 'arm-left' ? 0 : 1;
                     const name = proto.name.replace('model-', 'char-') + '-' + rig.root.name;
-                    const radius = PLAYER_HEIGHT * 0.026;
+                    const radius = rig.body?.armRadius ?? PLAYER_HEIGHT * 0.026;
                     const segments = [
                         [name, rig.shoulders[side], -rig.elbows[side].position.y],
                         [name + '-forearm', rig.elbows[side], -rig.wrists[side].position.y]

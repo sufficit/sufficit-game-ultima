@@ -65,8 +65,10 @@ public partial class EnvironmentBrowser : IAsyncDisposable
                 })
             });
             _modelsRef = DotNetObjectReference.Create(new Ultima.Models.ModelsInterop(Models));
+            var profile = _catalog?.PlayerBody;
+            Models.ConfigurePlayerBody(profile);
             _sceneError = !await JS.InvokeAsync<bool>("game.init", "game-canvas", _bridge, _modelsRef,
-                _environment.Id, _environment.Terrain, definition);
+                _environment.Id, _environment.Terrain, definition, profile);
             if (!_disposed && !_sceneError && definition.Walk is not null)
             {
                 var avatar = await Models.DescribeAsync(Ultima.Models.ModelLoader.PlayerModelId);

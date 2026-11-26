@@ -18,21 +18,29 @@ public abstract class VillagerBase : ModelBase
         _shirt = shirt; _pants = pants; _skin = skin; _hair = hair;
     }
 
-    public override int Version => 2;
+    public override int Version => 3;
 
     protected override void Compose(ModelBuilder b)
     {
-        const double H = 1.75;                      // PLAYER_HEIGHT do jogo
-        const double legH = H * 0.44, torsoH = H * 0.38, armH = H * 0.36, headR = H * 0.07;
-        const double legR = H * 0.040, torsoR = H * 0.088, armR = H * 0.026;
-        const double legX = torsoR * 0.5, armX = torsoR + armR * 1.3;
+        var body = b.Params.Body ?? Humanoid.ResolveBody(null);
+        var height = body.Height;
+        var legH = body.HipHeight;
+        var torsoH = height * .82 - legH;
+        var armH = height * .36;
+        var headR = height * .07;
+        var legR = height * .040 * body.Build;
+        var torsoR = body.TorsoRadius;
+        var armR = body.ArmRadius;
+        var legX = torsoR * .5;
+        var armX = body.ArmOffset;
+        var faceWidth = body.FaceWidth;
 
         b.Material("pants", color: _pants, specular: 0.08)
          .Material("shirt", color: _shirt, specular: 0.08)
-         .Material("skin", color: _skin, specular: 0.08)
+         .Material("skin", color: b.Params.Body?.Skin.ToArray() ?? _skin, specular: 0.08)
          .Material("shoe", color: [0.13, 0.10, 0.09], specular: 0.08)
-         .Material("hair", color: _hair, specular: 0.08)
-         .Material("eye", color: [0.05, 0.05, 0.06], specular: 0.08);
+         .Material("hair", color: b.Params.Body?.Hair.ToArray() ?? _hair, specular: 0.08)
+         .Material("eye", color: body.Eyes.ToArray(), specular: 0.08);
 
         // Pernas: cápsulas apoiadas no chão; braços e tronco se apoiam no topo da perna
         // (no original os braços começam exatamente no topo das pernas: torsoH - 0,20·H = armH/2).
@@ -50,8 +58,8 @@ public abstract class VillagerBase : ModelBase
         b.Group("neck", "skin")
          .CylinderOn("neck", "torso", 0, 0.9 * headR, 0.9 * headR, 0.7 * headR, tessellation: 10);
         b.Group("head", "skin")
-         .SphereAt("head", "neck", 2 * headR, H - 2 * headR, segments: 8);
-        const double handBase = legH + torsoH - 0.20 * H - armH / 2 - 1.3 * armR;
+         .SphereAt("head", "neck", 2 * headR, height - 2 * headR, segments: 8, scaleX: faceWidth);
+        var handBase = legH + torsoH - 0.20 * height - armH / 2 - 1.3 * armR;
         b.Group("hand-left", "skin")
          .SphereAt("hand-l", "leg-l", 2.6 * armR, handBase, x: -armX, segments: 8);
         b.Group("hand-right", "skin")
@@ -65,16 +73,25 @@ public abstract class VillagerBase : ModelBase
          .SphereAt("shoe-r", "", 2.5 * legR, 0.55 * legR - 0.6875 * legR, x: legX, z: 0.9 * legR, segments: 8, scaleX: 1, scaleY: 0.55, scaleZ: 1.9);
 
         b.Group("eyes", "eye")
-         .SphereAt("eye-l", "head", 0.22 * headR, H - headR + 0.1 * headR - 0.11 * headR, x: -0.36 * headR, z: 0.9 * headR, segments: 6)
-         .SphereAt("eye-r", "head", 0.22 * headR, H - headR + 0.1 * headR - 0.11 * headR, x: 0.36 * headR, z: 0.9 * headR, segments: 6);
+         .SphereAt("eye-l", "head", 0.22 * headR, height - headR + 0.1 * headR - 0.11 * headR, x: -0.36 * headR * faceWidth, z: 0.9 * headR, segments: 6)
+         .SphereAt("eye-r", "head", 0.22 * headR, height - headR + 0.1 * headR - 0.11 * headR, x: 0.36 * headR * faceWidth, z: 0.9 * headR, segments: 6);
 
         // Cabelo: esfera 2,18·headR levemente achatada (0,82) e deslocada para trás
         // (base = centro − raio vertical já escalado).
         b.Group("hair", "hair")
-         .SphereAt("hair", "head", 2.18 * headR, H - headR + 0.28 * headR - 1.09 * headR * 0.82, z: -0.14 * headR, segments: 10, scaleX: 1, scaleY: 0.82, scaleZ: 1.02);
+         .SphereAt("hair", "head", 2.18 * headR, height - headR + 0.28 * headR - 1.09 * headR * 0.82, z: -0.14 * headR, segments: 10, scaleX: faceWidth, scaleY: 0.82, scaleZ: 1.02);
 
-        b.Collision(0.25);
-        b.BakeCrowdWalk(legH, H * 0.8);
+        if (body.EarScale > 0)
+        {
+            var earSize = .45 * headR * body.EarScale;
+            var earX = .94 * headR * faceWidth;
+            b.Group("ears", "skin")
+             .SphereAt("ear-l", "head", earSize, height - 1.30 * headR, x: -earX, segments: 8, scaleY: 1.4)
+             .SphereAt("ear-r", "head", earSize, height - 1.30 * headR, x: earX, segments: 8, scaleY: 1.4);
+        }
+
+        b.Collision(body.ColliderRadius);
+        b.BakeCrowdWalk(legH, height * 0.8);
         b.Action("inspect", new(0.56, 0.17, 0.42, []));
         b.Action("gather", new(0.44, 0.23, 0.84, [new("hit", 0.50, "collect"), new("sound", 0.66, "gather")]));
         b.Action("dig", new(0.50, 0.34, 0.62, [new("hit", 0.50, "collect"), new("sound", 0.62, "dig")]));

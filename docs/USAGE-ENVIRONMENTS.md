@@ -37,6 +37,42 @@ Players can design environment definitions as JSON. The pilot loads a published
 catalog. The in-game editor and publishing permissions for player environments
 are future work.
 
+## Player body
+
+The top-level `playerBody` entry in [environments.json](../src/wwwroot/environments.json)
+configures the local avatar for both the garden and office. Omitted fields
+receive the current avatar's defaults. For example, this entry changes height,
+mass, build and skin tone.
+
+```json
+{
+  "playerBody": {
+    "species": "homo-sapiens",
+    "height": 1.9,
+    "mass": 86,
+    "build": 1.08,
+    "skin": { "red": 0.47, "green": 0.29, "blue": 0.20 }
+  }
+}
+```
+
+| Field | Valid values | Default |
+| --- | --- | --- |
+| `species` | `homo-sapiens` | `homo-sapiens` |
+| `height` | 1.45–2.10 m | 1.75 m |
+| `mass` | 35–220 kg | 70 kg |
+| `build` | 0.80–1.20 body-width multiplier | 1.00 |
+| `legRatio` | 0.40–0.48 of total height | 0.44 |
+| `faceWidth` | 0.85–1.15 head-width multiplier | 1.00 |
+| `earScale` | 0–1.40 ear-size multiplier | 0 (legacy silhouette) |
+| `skin`, `eyes`, `hair` | RGB object with `red`, `green`, `blue` channels from 0 to 1 | Current avatar palette |
+
+The catalog rejects an invalid profile. The game resolves dimensions at
+scene startup, before building the avatar. Height and build feed movement
+and collision. Mass remains available in the body profile for future
+force and inertia rules. Clothing and accessories use the existing model
+appearance. [Species and body design](../decisions/humanoid-species-and-body.md)
+
 ## Game API
 
 The hosted office uses the

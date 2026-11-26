@@ -43,7 +43,7 @@ internal static class ArticulatedStep
         await WaitAsync(async () =>
         {
             var models = await ReadAsync<ModelsState?>(page, "() => window.game?.models?.status?.()");
-            return models is { Queue: 0 } && models.Loaded.Contains("character.villager v2") &&
+            return models is { Queue: 0 } && models.Loaded.Contains("character.villager v3") &&
                 models.Loaded.Any(name => name.StartsWith("character.wanderer", StringComparison.Ordinal));
         }, "modelos humanoides prontos", timeoutMs: 24_000, intervalMs: 200);
         Check(await page.EvaluateAsync<string>("() => game.mode") == Mode, "modo do renderizador", Mode);

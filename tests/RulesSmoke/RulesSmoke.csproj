@@ -13,4 +13,7 @@
     <Compile Include="../../engine/Ultima.Terrain/Player*.cs" Link="Terrain/%(Filename)%(Extension)" />
     <Compile Include="../../engine/Ultima.Terrain/World*.cs" Link="Terrain/%(Filename)%(Extension)" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../models/Ultima.Models.Characters/Ultima.Models.Characters.csproj" />
+  </ItemGroup>
 </Project>

@@ -33,3 +33,12 @@ system. Its inputs will include the resolved body and its attachment points.
 The present scope is the species hierarchy and body properties.
 
 [Humanoid customization research](../docs/activities/202611261015-humanoid-parameter-research.md)
+
+
+## Implementation
+
+The catalog now accepts a `playerBody` profile for the local avatar.
+`HomoSapiens` validates the profile, and the shared C# body description
+supplies the signed model, rig, camera and collision measurements. Current
+NPCs and remote avatars use their existing presets.
+[Author a player body](../docs/USAGE-ENVIRONMENTS.md#player-body)

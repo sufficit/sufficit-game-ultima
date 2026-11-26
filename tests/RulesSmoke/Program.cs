@@ -518,6 +518,7 @@ Check("inversão em ambos os sentidos alterna apoio com base compacta",
     turnKeepsSupport && maxPivotWidth < .28);
 
 PlayerSupportChecks.Run(Check);
+HumanoidBodyChecks.Run(Check);
 SceneCollisionChecks.Run(Check);
 
 const double minimumGap = PlayerCharacterSpace.TorsoDepth * 2;

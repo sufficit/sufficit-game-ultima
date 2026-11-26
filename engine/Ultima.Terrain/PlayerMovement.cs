@@ -1,10 +1,10 @@
 namespace Ultima.Terrain;
 
-internal sealed partial class PlayerMovement(double height, double kneeHeight, double footGap, PlayerCharacterSpace? characters = null)
+internal sealed partial class PlayerMovement(double height, double kneeHeight, double footGap, PlayerCharacterSpace? characters = null, double radius = .25)
 {
     internal const double WalkSpeed = 3.5;
     internal const double RunSpeed = 6.5;
-    private const double Radius = 0.25;
+    private readonly double _radius = radius;
     private const double Deadzone = 0.18;
     internal const int ColliderStride = 6;
     private double[] _colliders = [];
@@ -197,7 +197,7 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
             if (!TouchesHeight(y, minY, maxY) || CanStep(minY, maxY, ground)) continue;
             var offsetX = x - _colliders[i];
             var offsetZ = z - _colliders[i + 1];
-            var radius = Radius + _colliders[i + 2];
+            var radius = _radius + _colliders[i + 2];
             var reach = distance + radius;
             if (Math.Abs(offsetX) > reach || Math.Abs(offsetZ) > reach) continue;
             var toward = offsetX * dx + offsetZ * dz;
@@ -248,8 +248,8 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
         var length = double.Hypot(dx, dz);
         if (length < 1e-5) return true;
         var head = floor + height - 0.10;
-        var sideX = -dz * Radius / length;
-        var sideZ = dx * Radius / length;
+        var sideX = -dz * _radius / length;
+        var sideZ = dx * _radius / length;
         return !volumes.Blocks(nextX, head, nextZ, 0.06) &&
             !volumes.Blocks(nextX + sideX, head, nextZ + sideZ, 0.03) &&
             !volumes.Blocks(nextX - sideX, head, nextZ - sideZ, 0.03);

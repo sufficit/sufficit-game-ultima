@@ -23,13 +23,7 @@
     const PLAYER_HEIGHT = 1.75;
     const FOOT_GAP = 0.03;
     const HIP_HEIGHT = PLAYER_HEIGHT * 0.44;
-    const LEG_RADIUS = PLAYER_HEIGHT * 0.039;
-    const SHOE_OFFSET = 0.9 * LEG_RADIUS;
-    const ANKLE_HEIGHT = LEG_RADIUS * 1.25 * 0.55;
-    const SOLE_CLEARANCE = 0.004;
-    const LEG_SEGMENT = (HIP_HEIGHT - ANKLE_HEIGHT + 0.004) / 2;
-    const KNEE_HEIGHT = HIP_HEIGHT - LEG_SEGMENT;
-    const LEG_SPACING = PLAYER_HEIGHT * 0.052;
+    let playerBody, playerAnatomy;
     // Alvo da câmera fica na altura do peito (o root do personagem agora é os pés).
     const CAM_UP = new BABYLON.Vector3(0, PLAYER_HEIGHT / 2, 0);
     const TICK_MS = 200;
@@ -726,7 +720,7 @@
         trackObstacle(mesh, proto, label || 'Objeto plantado', 0, trunk);
     }
 
-    const supportRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, -1, 0), KNEE_HEIGHT + 0.01);
+    const supportRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, -1, 0), 0);
     const cameraRay = new BABYLON.Ray(BABYLON.Vector3.Zero(), BABYLON.Vector3.Zero());
     const orbitEye = BABYLON.Vector3.Zero();
     const cameraClearance = 0.28;
@@ -735,7 +729,7 @@
 
     function playerFloor(x, z) {
         return worldTunnels.length && player
-            ? terrain.VolumeFloor(x, z, player.position.y, KNEE_HEIGHT)
+            ? terrain.VolumeFloor(x, z, player.position.y, playerBody.kneeHeight)
             : terrainHeight(x, z);
     }
 
@@ -848,7 +842,7 @@
 
         if (cameraView === 1) {
             const yaw = Math.atan2(-Math.cos(camera.alpha), -Math.sin(camera.alpha));
-            const eye = position.y + 1.62;
+            const eye = position.y + playerBody.eyeHeight;
             perspectiveCamera.position.set(position.x, eye, position.z);
             perspectiveCamera.rotation.set(cameraFrame[9], yaw, 0);
             return;
@@ -1639,11 +1633,11 @@
     // cada grupo vira clone visível filho do root. Se o modelo ainda não chegou, entra na
     // fila e usa o fallback JS imediatamente; quando o modelo chega, o fallback é
     // substituído. makeFallback deve devolver uma malha já posicionada (centro na origem).
-    function spawnFromModel(modelId, name, groundPos, rotationY, makeFallback, castsShadow = true, anatomy = null) {
+    function spawnFromModel(modelId, name, groundPos, rotationY, makeFallback, castsShadow = true, anatomy = null, body = null) {
         const root = new BABYLON.TransformNode(name, scene);
         root.position.copyFrom(groundPos);
         root.rotation.y = rotationY || 0;
-        const rig = rigRenderer.create(root, modelId === 'character.guardian', castsShadow, anatomy);
+        const rig = rigRenderer.create(root, modelId === 'character.guardian', castsShadow, anatomy, body);
         characterRigs.set(root, rig);
         const entry = { root, rig, onFallback: null };
         root.onDisposeObservable.addOnce(() => {
@@ -1657,7 +1651,7 @@
         } else {
             const fallback = makeFallback();   // malha centrada, y local já definido
             fallback.parent = rig.legs.length ? rig.upper : root;
-            if (rig.legs.length) { fallback.position.y -= HIP_HEIGHT; }
+            if (rig.legs.length) { fallback.position.y -= body?.hipHeight ?? HIP_HEIGHT; }
             entry.onFallback = fallback;
             trackCharacterShadow(rig, fallback);
             if (!modelRegistry.has(modelId)) {
@@ -2428,8 +2422,15 @@
         // enquanto a DLL não chega, o protótipo JS serve de fallback. Origem do root = pés.
         player = spawnFromModel('character.villager', 'player',
             new BABYLON.Vector3(spawn.x, terrainHeight(spawn.x, spawn.z) + FOOT_GAP, spawn.z), spawn.ry,
-            () => { const m = buildHumanoid('player-js', { shirt:new BABYLON.Color3(0.20,0.50,0.92), skin:new BABYLON.Color3(0.90,0.72,0.58) }); m.position.y = PLAYER_HEIGHT / 2; return m; },
-            true, JSON.parse(terrain.GetAnatomy('humano', PLAYER_HEIGHT)));
+            () => {
+                const rgb = color => new BABYLON.Color3(color.red, color.green, color.blue);
+                const mesh = buildHumanoid('player-js', {
+                    body: playerBody, shirt: new BABYLON.Color3(.20, .50, .92),
+                    skin: rgb(playerBody.skin), hair: rgb(playerBody.hair), eyes: rgb(playerBody.eyes)
+                });
+                mesh.position.y = playerBody.height / 2;
+                return mesh;
+            }, true, playerAnatomy, playerBody);
 
         // Guardiã: figura encapuzada dourada (1,7 m) com anel de destaque no chão —
         // modelo C# (character.guardian) carregado em runtime, fallback JS centrado.
@@ -2662,8 +2663,10 @@
 
     // Tronco provisório enquanto o pacote de malhas do personagem é carregado.
     function buildHumanoid(name, colors) {
-        const H=colors.height||PLAYER_HEIGHT, legH=H*0.44, torsoH=H*0.38, armH=H*0.36, headR=H*0.07;
-        const torsoR=H*0.088, armR=H*0.026, feet=-H/2;
+        const body = colors.body;
+        const H=body?.height ?? PLAYER_HEIGHT, legH=body?.hipHeight ?? H*0.44, torsoH=H*.82-legH, armH=H*0.36, headR=H*0.07;
+        const torsoR=body?.torsoRadius ?? H*0.088, armR=body?.armRadius ?? H*0.026, feet=-H/2;
+        const faceWidth = body?.faceWidth ?? 1;
         const mat=(label,c)=>{const m=new BABYLON.StandardMaterial(name+'-'+label,scene);m.diffuseColor=c;m.specularColor=new BABYLON.Color3(0.08,0.08,0.08);return m;};
         const shirt=mat('shirt',colors.shirt), skin=mat('skin',colors.skin), parts=[];
         for(const sx of [-1,1]){
@@ -2673,20 +2676,20 @@
         const torso=BABYLON.MeshBuilder.CreateCapsule(name+'-torso',{height:torsoH,radius:torsoR,subdivisions:5},scene);
         torso.position.y=feet+legH+torsoH/2;torso.material=shirt;parts.push(torso);
         const head=BABYLON.MeshBuilder.CreateSphere(name+'-head',{diameter:headR*2,segments:8},scene);
-        head.position.y=H/2-headR;head.material=skin;parts.push(head);
+        head.position.y=H/2-headR;head.scaling.x=faceWidth;head.material=skin;parts.push(head);
         // v3: sapatos, mãos, cabelo e olhos para leitura de silhueta e rosto.
-        const hairMat=mat('hair',colors.hair||new BABYLON.Color3(0.20,0.13,0.08)), eyeMat=mat('eye',new BABYLON.Color3(0.05,0.05,0.06));
+        const hairMat=mat('hair',colors.hair||new BABYLON.Color3(0.20,0.13,0.08)), eyeMat=mat('eye',colors.eyes ?? new BABYLON.Color3(0.05,0.05,0.06));
         for(const sx of [-1,1]){
             const hand=BABYLON.MeshBuilder.CreateSphere(name+'-hand',{diameter:armR*2.6,segments:8},scene);
             hand.position.set(sx*(torsoR+armR*1.3),feet+legH+torsoH-H*0.20-armH/2,0);hand.material=skin;parts.push(hand);
             const eye=BABYLON.MeshBuilder.CreateSphere(name+'-eye',{diameter:headR*0.22,segments:6},scene);
-            eye.position.set(sx*headR*0.36,H/2-headR+headR*0.1,headR*0.9);eye.material=eyeMat;parts.push(eye);
+            eye.position.set(sx*headR*0.36*faceWidth,H/2-headR+headR*0.1,headR*0.9);eye.material=eyeMat;parts.push(eye);
         }
         const neck=BABYLON.MeshBuilder.CreateCylinder(name+'-neck',{diameter:headR*0.9,height:headR*0.7,tessellation:10},scene);
         neck.position.y=H/2-headR*2+headR*0.1;neck.material=skin;parts.push(neck);
         const hair=BABYLON.MeshBuilder.CreateSphere(name+'-hair',{diameter:headR*2.18,segments:10},scene);
-        hair.scaling.set(1,0.82,1.02);hair.position.set(0,H/2-headR+headR*0.28,-headR*0.14);hair.material=hairMat;parts.push(hair);
-        const body=BABYLON.Mesh.MergeMeshes(parts,true,true,undefined,true,true);body.name=name;return body;
+        hair.scaling.set(faceWidth,0.82,1.02);hair.position.set(0,H/2-headR+headR*0.28,-headR*0.14);hair.material=hairMat;parts.push(hair);
+        const mesh=BABYLON.Mesh.MergeMeshes(parts,true,true,undefined,true,true);mesh.name=name;return mesh;
     }
 
     // Guardiã com manto, túnica, rosto e capuz em escala de 1,7 m.
@@ -2845,12 +2848,12 @@
         const ankle = leg.ankle.rotationQuaternion.clone();
         const { x, y, z } = player.position;
         const sin = Math.sin(player.rotation.y), cos = Math.cos(player.rotation.y);
-        const side = leg.side * LEG_SPACING + lateral;
+        const side = leg.side * playerBody.legSpacing + lateral;
         for (const scale of [0.65, 0.35, 0]) {
             const shortened = forward * scale;
-            const wx = x + side * cos + shortened * sin + SHOE_OFFSET * Math.sin(player.rotation.y + yaw);
-            const wz = z - side * sin + shortened * cos + SHOE_OFFSET * Math.cos(player.rotation.y + yaw);
-            const ground = worldTunnels.length ? terrain.VolumeFloor(wx, wz, y, KNEE_HEIGHT) : terrainHeight(wx, wz);
+            const wx = x + side * cos + shortened * sin + playerBody.shoeOffset * Math.sin(player.rotation.y + yaw);
+            const wz = z - side * sin + shortened * cos + playerBody.shoeOffset * Math.cos(player.rotation.y + yaw);
+            const ground = worldTunnels.length ? terrain.VolumeFloor(wx, wz, y, playerBody.kneeHeight) : terrainHeight(wx, wz);
             const angles = terrain.SolveShortenedFoot(y, stepSurfaceAt(wx, wz, ground), shortened, lateral, lift, pitch);
             rigRenderer.applyLeg(leg, angles, 0, angles[3], yaw, swivel);
             if (tryLimbPose(-1, rig, limb)) {
@@ -3107,8 +3110,11 @@
                 terrain = await host.terrainRuntime;
             }
             terrain.Reset(!!authored);
-            terrain.ConfigurePlayer(PLAYER_HEIGHT, KNEE_HEIGHT, FOOT_GAP, HIP_HEIGHT, LEG_SEGMENT,
-                ANKLE_HEIGHT + SOLE_CLEARANCE, LEG_SPACING, SHOE_OFFSET);
+            const { body, anatomy } = JSON.parse(terrain.ConfigurePlayer(JSON.stringify(host.bodyProfile ?? null)));
+            playerBody = body;
+            playerAnatomy = anatomy;
+            CAM_UP.y = body.height / 2;
+            supportRay.length = body.kneeHeight + .01;
             if (G.game && G.game.assets) {
                 await G.game.assets.init(host.build);
                 if (!authored) await warmTextures();
@@ -3295,7 +3301,7 @@
             resetPlayerGait();
             placePlayer(NPC_POSITION.x, NPC_POSITION.z + 2.0);
             player.rotation.y = Math.PI;
-            camera.target.set(player.position.x, player.position.y + PLAYER_HEIGHT / 2, player.position.z);
+            camera.target.set(player.position.x, player.position.y + CAM_UP.y, player.position.z);
             checkNear();
             return true;
         },
@@ -3481,6 +3487,7 @@
         assetsReport() { return assetsReal ? assetsReal.report() : null; },
         renderSize() { return engine ? { width: engine.getRenderWidth(), height: engine.getRenderHeight(), canvasW: host.canvas.width, canvasH: host.canvas.height, scaling: engine.getHardwareScalingLevel() } : null; },
         cameraState() { return camera ? { alpha: camera.alpha, beta: camera.beta, radius: camera.radius, zoom: zoomTarget, view: cameraView } : null; },
+        playerBody() { return playerBody; },
         playerState() { return player ? { x: player.position.x, z: player.position.z, ry: player.rotation.y } : null; },
         coreId() { return CORE_ID; }
     };

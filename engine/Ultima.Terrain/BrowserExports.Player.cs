@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices.JavaScript;
 using System.Text.Json;
 
+using Ultima.Models.Core;
+
 namespace Ultima.Terrain;
 
 internal static partial class BrowserExports
@@ -12,7 +14,9 @@ internal static partial class BrowserExports
     private static readonly PlayerInput Input = new();
     private static readonly double[] InputResult = new double[7];
 
-    private static readonly PlayerFootContacts PlayerFeet = new();
+    private static readonly HumanoidBody DefaultBody = Humanoid.ResolveBody(null);
+    private static HumanoidBody _body = DefaultBody;
+    private static PlayerFootContacts PlayerFeet = new();
     private static readonly PlayerCamera Camera = new();
     private static readonly PlayerCameraObstacles CameraObstacles = new();
     private static readonly double[] CameraResult = new double[12];
@@ -25,18 +29,23 @@ internal static partial class BrowserExports
         => JsonSerializer.Serialize(PlayerAnatomy.Create(kind, height), AnatomyJsonContext.Default.AnatomyJointArray);
 
     [JSExport]
-    internal static void ConfigurePlayer(double height, double kneeHeight, double footGap,
-        double hipHeight, double legLength, double ankleOffset, double spacing, double shoeOffset)
+    internal static string ConfigurePlayer(string profile)
     {
+        var body = Humanoid.ResolveBody(JsonSerializer.Deserialize(profile, PlayerBodyJson.Default.HumanoidProfile));
+        _body = body;
         _characters = new();
-        _movement = new(height, kneeHeight, footGap, _characters);
+        _movement = new(body.Height, body.KneeHeight, body.FloorOffset, _characters, body.ColliderRadius);
         (_kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset) =
-            (kneeHeight, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset);
-        _remoteAvatars = new(_surface, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset, _characters);
+            (body.KneeHeight, body.FloorOffset, body.HipHeight, body.LegSegment, body.AnkleHeight + HumanoidBody.SoleClearance,
+                body.LegSpacing, body.ShoeOffset);
+        _remoteAvatars = new(_surface, DefaultBody.FloorOffset, DefaultBody.HipHeight, DefaultBody.LegSegment,
+            DefaultBody.AnkleHeight + HumanoidBody.SoleClearance, DefaultBody.LegSpacing, DefaultBody.ShoeOffset, _characters);
         Camera.SetDefaultRadius(PlayerCamera.DefaultRadius);
         CameraObstacles.Set([], 0);
-        PlayerFeet.Reset();
+        PlayerFeet = new(body.LegSegment / DefaultBody.LegSegment, body.Build * body.Height / DefaultBody.Height);
         Input.Clear();
+        return JsonSerializer.Serialize(new PlayerBodyFrame(body, PlayerAnatomy.Create("humano", body.Height, body)),
+            PlayerBodyJson.Default.PlayerBodyFrame);
     }
 
     [JSExport]
@@ -49,6 +58,7 @@ internal static partial class BrowserExports
     [JSExport]
     internal static double[] PlacePlayer(double x, double y, double z)
     {
+        (x, z) = _movement.ClampPosition(x, z);
         (SpawnResult[0], SpawnResult[1]) = _characters.Place(PlayerCharacterSpace.Player, x, y, z);
         _characters.Set(PlayerCharacterSpace.Player, SpawnResult[0], y, SpawnResult[1]);
         Camera.ResetFollow();
@@ -121,6 +131,7 @@ internal static partial class BrowserExports
         double delta, bool frozen, double lookX, double lookY, double dragX, double dragY, double wheel, double floor)
     {
         Camera.Advance(CameraResult, alpha, beta, radius, maxZoom, delta, frozen, lookX, lookY, dragX, dragY, wheel, floor);
+        CameraResult[11] = _body.CameraTargetHeight;
         return CameraResult;
     }
 
@@ -241,7 +252,7 @@ internal static partial class BrowserExports
         clock += delta;
         speech = Math.Max(0, speech - delta);
         var (next, previous, progress) = PlayerPose.AdvanceAction(elapsed, duration, delta, frozen);
-        var strideLength = isPlayer ? PlayerFootContacts.StrideLength : PlayerPose.StrideLength;
+        var strideLength = isPlayer ? PlayerFeet.Stride : PlayerPose.StrideLength;
         var pivot = isPlayer ? _movement.PivotProgress : -1;
         if (isPlayer)
         {
@@ -259,7 +270,9 @@ internal static partial class BrowserExports
         if (!hasLegs) return;
 
         Span<double> feet = stackalloc double[10];
-        PlayerPose.FootTargets(feet, yaw, result[0], result[1], delta > 0 ? distance / delta : 0, _spacing, _shoeOffset, strideLength);
+        var spacing = isPlayer ? _spacing : DefaultBody.LegSpacing;
+        var shoeOffset = isPlayer ? _shoeOffset : DefaultBody.ShoeOffset;
+        PlayerPose.FootTargets(feet, yaw, result[0], result[1], delta > 0 ? distance / delta : 0, spacing, shoeOffset, strideLength);
         Span<double> contact = stackalloc double[4];
         if (isPlayer)
         {
@@ -283,7 +296,8 @@ internal static partial class BrowserExports
         var rightFloor = Floor(rightX, rightZ, y, useVolume);
         if (!isPlayer)
         {
-            PlayerPose.SolveLegs(result[17..24], ground, y, delta, _footGap, _hipHeight, _legLength, _ankleOffset,
+            PlayerPose.SolveLegs(result[17..24], ground, y, delta, DefaultBody.FloorOffset,
+                DefaultBody.HipHeight, DefaultBody.LegSegment, DefaultBody.AnkleHeight + HumanoidBody.SoleClearance,
                 feet[0], feet[1], leftFloor, false, feet[4], feet[5], rightFloor, false, feet[8], feet[9]);
             return;
         }

@@ -178,7 +178,7 @@
     let mouseLook;
     const onCameraView = (view, capture) => mouseLook?.setActive(view === 2, capture);
 
-    function startMain(canvas, spawn, terrainSettings, authoredScene) {
+    function startMain(canvas, spawn, terrainSettings, authoredScene, bodyProfile) {
         return loadBabylon().then(function () {
             return new Promise(function (resolve, reject) {
                 mode = 'main';
@@ -194,6 +194,7 @@
                     spawn,
                     terrainSettings,
                     authoredScene,
+                    bodyProfile,
                     baseUrl: document.baseURI,
                     global: window,
                     dom: true,
@@ -218,7 +219,7 @@
         return { width: Math.max(1, canvas.clientWidth || 1280), height: Math.max(1, canvas.clientHeight || 720), dpr: window.devicePixelRatio || 1 };
     }
 
-    function startWorker(canvas, spawn, terrainSettings, authoredScene) {
+    function startWorker(canvas, spawn, terrainSettings, authoredScene, bodyProfile) {
         const off = canvas.transferControlToOffscreen();
         // Mesma versão dos scripts da página (?v=<build>): sem isso o cache HTTP
         // (10 min) pode entregar um worker/motor antigos junto com o shell novo logo
@@ -235,7 +236,7 @@
                 reject(new Error('worker: ' + (e && e.message || 'erro')));
             };
             worker.postMessage(
-                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref(), spawn, terrainSettings, authoredScene, baseUrl: document.baseURI },
+                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref(), spawn, terrainSettings, authoredScene, bodyProfile, baseUrl: document.baseURI },
                 [off]);
         });
     }
@@ -636,7 +637,7 @@
     Object.assign(window.game, {
         loadBabylon,
         buildStamp,
-        async init(canvasId, dotnetRef, modelsRef, environment, terrainSettings, authoredScene) {
+        async init(canvasId, dotnetRef, modelsRef, environment, terrainSettings, authoredScene, bodyProfile) {
             const canvas = document.getElementById(canvasId);
             if (!canvas) { return Promise.reject(new Error('canvas ' + canvasId + ' não encontrado')); }
             dotnet = dotnetRef;
@@ -658,7 +659,7 @@
             const spawn = authoredScene && !walk ? defaultPose : restorePose(environment, defaultPose, walk);
             const canWorker = !!canvas.transferControlToOffscreen && typeof Worker !== 'undefined';
             const start = (canWorker && FORCE !== 'main')
-                ? startWorker(canvas, spawn, terrainSettings, authoredScene).then(function (ok) {
+                ? startWorker(canvas, spawn, terrainSettings, authoredScene, bodyProfile).then(function (ok) {
                         // No worker o core não tem DOM: o input é capturado aqui.
                         setupInput(canvas, attachMouseLook);
                         watchSize(canvas);   // resolução de render casada com a tela (CSS × dpr)
@@ -678,7 +679,7 @@
                         }
                         throw err;
                     })
-                : startMain(canvas, spawn, terrainSettings, authoredScene).then(function (ok) {
+                : startMain(canvas, spawn, terrainSettings, authoredScene, bodyProfile).then(function (ok) {
                         setupInput(canvas, attachMouseLook);
                         watchSizeMain(canvas);
                         return ok;
@@ -771,6 +772,7 @@
         cycleCameraView() { deliver('cycleCameraView', []); },
         selectStation(id) { post('selectStation', [id]); },
         cameraState() { return query('cameraState'); },
+        playerBody() { return query('playerBody'); },
         playerState() { return query('playerState'); }
     });
     Object.defineProperty(window.game, 'mode', { get: function () { return mode; } });

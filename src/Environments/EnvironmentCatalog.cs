@@ -2,9 +2,11 @@ using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
+using Ultima.Models.Core;
+
 namespace Ultima.Environments;
 
-public sealed record EnvironmentCatalog(string DefaultEnvironment, EnvironmentDefinition[] Environments)
+public sealed record EnvironmentCatalog(string DefaultEnvironment, EnvironmentDefinition[] Environments, HumanoidProfile? PlayerBody = null)
 {
     public static async Task<EnvironmentCatalog> LoadAsync(HttpClient http, CancellationToken token)
     {
@@ -14,6 +16,8 @@ public sealed record EnvironmentCatalog(string DefaultEnvironment, EnvironmentDe
             catalog.Environments.Select(environment => environment.Id).Distinct().Count() != catalog.Environments.Length ||
             !catalog.Environments.Any(environment => environment.Id == catalog.DefaultEnvironment && environment.Terrain is not null))
             throw new InvalidDataException("Invalid environment catalog.");
+        try { _ = Humanoid.ResolveBody(catalog.PlayerBody); }
+        catch (ArgumentException error) { throw new InvalidDataException("Invalid player body profile.", error); }
         return catalog;
     }
 }

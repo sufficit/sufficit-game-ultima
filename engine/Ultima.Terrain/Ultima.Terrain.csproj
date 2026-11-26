@@ -8,4 +8,7 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <WasmMainJSPath>host.js</WasmMainJSPath>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../models/Ultima.Models.Core/Ultima.Models.Core.csproj" />
+  </ItemGroup>
 </Project>

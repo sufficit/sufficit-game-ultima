@@ -24,6 +24,14 @@ public sealed class ModelLoader(HttpClient http, IJSRuntime js)
     private readonly Dictionary<string, IModel> _models = new(StringComparer.Ordinal);
 
     public List<string> Log { get; } = [];
+    private HumanoidBody? _playerBody;
+
+    internal void ConfigurePlayerBody(HumanoidProfile? profile) =>
+        _playerBody = profile is null ? null : Humanoid.ResolveBody(profile);
+
+    private ModelParams ParametersFor(string id) => id == PlayerModelId && _playerBody is not null
+        ? new ModelParams { Body = _playerBody }
+        : ModelParams.Default;
 
     public async Task LoadAllAsync()
     {
@@ -69,7 +77,7 @@ public sealed class ModelLoader(HttpClient http, IJSRuntime js)
             }
         }
         var model = _models.TryGetValue(id, out var loaded) ? loaded : new PlaceholderModel(id);
-        return ModelJsonContext.Serialize(model.Build(ModelParams.Default));
+        return ModelJsonContext.Serialize(model.Build(ParametersFor(id)));
     }
 
     private async Task<ModelCatalog> ReadCatalogAsync() =>
@@ -96,7 +104,7 @@ public sealed class ModelLoader(HttpClient http, IJSRuntime js)
                     if (onlyId is not null && model.Id != onlyId) continue;
                     if (model.RequiredCoreApi != ModelCore.ApiVersion) { Note($"{model.Id}: pede Core v{model.RequiredCoreApi}"); continue; }
                     if (registered.Contains(model.Id)) { Note($"{model.Id}: duplicado, ignorado"); continue; }
-                    if (onlyId is null) await RegisterAsync(model.Build(ModelParams.Default), placeholder: false);
+                    if (onlyId is null) await RegisterAsync(model.Build(ParametersFor(model.Id)), placeholder: false);
                     _models[model.Id] = model;
                     registered.Add(model.Id);
                     Note($"{model.Id} v{model.Version} carregado de {pkg.File}");
@@ -126,7 +134,8 @@ public sealed class ModelLoader(HttpClient http, IJSRuntime js)
     {
         if (!_models.TryGetValue(id, out var model)) return null;
         detail = Math.Clamp(detail, 0.25, 2.0);
-        var descriptor = model.Build(new ModelParams { Seed = seed, Detail = detail });
+        var descriptor = model.Build(new ModelParams
+        { Seed = seed, Detail = detail, Body = ParametersFor(id).Body });
         return ModelJsonContext.Serialize(descriptor);
     }
 

@@ -33,6 +33,7 @@ public interface IModel
 public sealed class ModelParams
 {
     public int Seed { get; init; }
+    public HumanoidBody? Body { get; init; }
     /// <summary>Nível de detalhe de 0,25 a 2 (multiplica a tesselação).</summary>
     public double Detail { get; init; } = 1.0;
     public static ModelParams Default { get; } = new();

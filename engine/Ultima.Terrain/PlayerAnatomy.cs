@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 
+using Ultima.Models.Core;
+
 namespace Ultima.Terrain;
 
 // Pivôs na pose neutra, em metros no espaço do modelo. Os pais precedem os filhos.
@@ -7,7 +9,7 @@ internal sealed record AnatomyJoint(string Name, string Parent, double X, double
 
 internal static class PlayerAnatomy
 {
-    internal static AnatomyJoint[] Create(string kind, double height)
+    internal static AnatomyJoint[] Create(string kind, double height, HumanoidBody? body = null)
     {
         if (!double.IsFinite(height) || height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
         var joints = new List<AnatomyJoint>();
@@ -17,25 +19,26 @@ internal static class PlayerAnatomy
         switch (kind)
         {
             case "humano":
-                Add("pelvis", "root", 0, .44, 0);
-                Add("upper-body", "pelvis", 0, .44, 0);
+                var hip = body?.LegRatio ?? .44;
+                Add("pelvis", "root", 0, hip, 0);
+                Add("upper-body", "pelvis", 0, hip, 0);
                 Add("chest", "upper-body", 0, .70, 0);
                 Add("neck-pivot", "chest", 0, .82, 0);
                 Add("head-pivot", "neck-pivot", 0, .86, 0);
                 Add("eye-pivot", "head-pivot", 0, .937, 0);
                 Add("jaw", "head-pivot", 0, .9, .035, "hinge");
-                var ankle = .039 * 1.25 * .55 - .004 / height;
+                var ankle = body is null ? .039 * 1.25 * .55 - .004 / height : body.AnkleJoint / height;
                 foreach (var side in new[] { "left", "right" })
                 {
                     var sign = side == "left" ? -1 : 1;
-                    var arm = sign * (.088 + .026 * 1.3);
-                    var leg = sign * .052;
+                    var arm = sign * (body is null ? .088 + .026 * 1.3 : body.ArmOffset / height);
+                    var leg = sign * (body is null ? .052 : body.LegSpacing / height);
                     Add("clavicle-" + side, "chest", sign * .025, .80, 0);
                     Add("shoulder-" + side, "clavicle-" + side, arm, .80, 0);
                     Add("elbow-" + side, "shoulder-" + side, arm, .63, 0, "hinge");
                     Add("wrist-" + side, "elbow-" + side, arm, .45, 0);
-                    Add("hip-" + side, "pelvis", leg, .44, 0);
-                    Add("knee-" + side, "hip-" + side, leg, (.44 + ankle) / 2, 0, "hinge");
+                    Add("hip-" + side, "pelvis", leg, hip, 0);
+                    Add("knee-" + side, "hip-" + side, leg, (hip + ankle) / 2, 0, "hinge");
                     Add("ankle-" + side, "knee-" + side, leg, ankle, 0);
                     Add("ball-" + side, "ankle-" + side, leg, .009, .065, "hinge");
                     for (var digit = 1; digit <= 5; digit++)

@@ -1,11 +1,12 @@
 namespace Ultima.Terrain;
 
 // The sole keeps its world position and orientation during support.
-internal sealed partial class PlayerFootContacts
+internal sealed partial class PlayerFootContacts(double strideScale = 1, double widthScale = 1)
 {
     internal const double StrideLength = 1.16;
     private const double ResumeDuration = 0.18;
-    internal double AimedStride => StrideLength - .54 * Math.Abs(_travelLateral) + .26 * Math.Min(0, _travelForward);
+    internal double Stride => StrideLength * strideScale;
+    internal double AimedStride => (StrideLength - .54 * Math.Abs(_travelLateral) + .26 * Math.Min(0, _travelForward)) * strideScale;
 
     private readonly Contact[] _feet = new Contact[2];
     private bool _ready, _moving, _aimed;
@@ -83,7 +84,7 @@ internal sealed partial class PlayerFootContacts
                 var progress = (swingPhase - contact.SwingStart) / (1 - contact.SwingStart);
                 var blend = SwingBlend(progress);
                 // Aterrissagem na ponta do próximo apoio, adiantada pela distância que ainda falta.
-                var lead = (_aimed ? AimedStride : StrideLength) * (0.25 + 0.5 * (1 - swingPhase));
+                var lead = (_aimed ? AimedStride : Stride) * (0.25 + 0.5 * (1 - swingPhase));
                 var (landingX, landingZ) = _aimed ? AimStep(side, shoeOffset, lead, sin, cos)
                     : (_x + side * cos + (shoeOffset + lead) * sin, _z - side * sin + (shoeOffset + lead) * cos);
                 x = contact.X + (landingX - contact.X) * blend;
@@ -151,7 +152,7 @@ internal sealed partial class PlayerFootContacts
     {
         var ankleGap = 2 * spacing + extra[1] - extra[0];
         var shoeGap = (feet[6] - feet[2]) * cos - (feet[7] - feet[3]) * sin;
-        var correction = Math.Max(0.14 - ankleGap, ShoeWidth(extra[2]) + ShoeWidth(extra[3]) - shoeGap);
+        var correction = Math.Max(0.14 * widthScale - ankleGap, (ShoeWidth(extra[2]) + ShoeWidth(extra[3])) * widthScale - shoeGap);
         if (correction <= 0) return false;
 
         // Preserva a sola em apoio e desvia a que estiver avançando.

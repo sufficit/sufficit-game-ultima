@@ -9,8 +9,11 @@ internal sealed partial class PlayerMovement
     {
         if (bounds.Length != 4) return;
         (_minX, _maxX, _minZ, _maxZ) =
-            (bounds[0] + Radius, bounds[1] - Radius, bounds[2] + Radius, bounds[3] - Radius);
+            (bounds[0] + _radius, bounds[1] - _radius, bounds[2] + _radius, bounds[3] - _radius);
     }
+
+    internal (double X, double Z) ClampPosition(double x, double z) =>
+        (Math.Clamp(x, _minX, _maxX), Math.Clamp(z, _minZ, _maxZ));
 
     internal void SetSolidBoxes(ReadOnlySpan<double> values)
     {
@@ -31,7 +34,7 @@ internal sealed partial class PlayerMovement
         {
             if (!TouchesHeight(y, box.MinY, box.MaxY) || CanStep(box.MinY, box.MaxY, ground)) continue;
             var (minX, maxX, minZ, maxZ) =
-                (box.MinX - Radius, box.MaxX + Radius, box.MinZ - Radius, box.MaxZ + Radius);
+                (box.MinX - _radius, box.MaxX + _radius, box.MinZ - _radius, box.MaxZ + _radius);
             if (!ClipAxis(x, dx, minX, maxX, out var enterX, out var exitX) ||
                 !ClipAxis(z, dz, minZ, maxZ, out var enterZ, out var exitZ)) continue;
 

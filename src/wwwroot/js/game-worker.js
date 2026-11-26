@@ -53,6 +53,7 @@ self.addEventListener('message', function (e) {
                 spawn: msg.spawn,
                 terrainSettings: msg.terrainSettings,
                 authoredScene: msg.authoredScene,
+                bodyProfile: msg.bodyProfile,
                 baseUrl: msg.baseUrl,
                 size: msg.size || null,
                 terrainRuntime,

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Ultima.Environments;
+using Ultima.Models.Core;
 
 namespace Ultima.Pages;
 
@@ -10,11 +11,12 @@ public partial class Index
     private void OpenEnvironments() =>
         Navigation.NavigateTo("environments" + new Uri(Navigation.Uri).Query, forceLoad: true);
 
-    private async Task<EnvironmentDefinition> LoadTerrainAsync()
+    private async Task<(EnvironmentDefinition Environment, HumanoidProfile? Profile)> LoadTerrainAsync()
     {
         var catalog = await EnvironmentCatalog.LoadAsync(Http, _browserLifetime.Token);
         var requested = TerrainEnvironmentId ?? catalog.DefaultEnvironment;
-        return catalog.Environments.FirstOrDefault(environment => environment.Id == requested && environment.Terrain is not null)
+        var environment = catalog.Environments.FirstOrDefault(environment => environment.Id == requested && environment.Terrain is not null)
             ?? throw new InvalidDataException("Terrain environment unavailable.");
+        return (environment, catalog.PlayerBody);
     }
 }
