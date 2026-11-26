@@ -8,15 +8,16 @@ export async function create(canvas, settings, selectedStation, avatarDescriptor
     let walk;
     if (settings.walk) {
         const version = new URL(import.meta.url).search;
-        const [{ attachWalk }, { createAvatar }] = await Promise.all([
+        const [{ attachWalk }, { createAvatar }, { attachMouseLook }] = await Promise.all([
             import('./environment-walk.js' + version),
-            import('./environment-avatar.js' + version)
+            import('./environment-avatar.js' + version),
+            import('./mouse-look.js' + version)
         ]);
         const runtime = window.getDotnetRuntime(0);
         const assembly = await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName);
         const anatomy = JSON.parse(assembly.Ultima.Terrain.BrowserExports.GetAnatomy('humano', 1.75));
         const avatar = createAvatar(B, scene, JSON.parse(avatarDescriptor), anatomy);
-        walk = attachWalk(B, canvas, scene, avatar, assembly.Ultima.Environments.EnvironmentExports);
+        walk = attachWalk(B, canvas, scene, avatar, assembly.Ultima.Environments.EnvironmentExports, attachMouseLook);
     } else {
         const view = settings.camera;
         const camera = new B.ArcRotateCamera('environment-camera', view.alpha, view.beta, view.radius,

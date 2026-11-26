@@ -10,43 +10,60 @@ internal sealed class PlayerCamera
     private const double FollowRate = 8;
     private double _floor = double.NaN;
     private double _firstPersonPitch;
+    private PlayerCloseCamera _closeLook;
+
+    internal double AimYaw => View == PlayerCameraView.Close ? _closeLook.Yaw : double.NaN;
 
     internal PlayerCameraView View { get; private set; }
 
-    internal PlayerCameraView Cycle() => View = PlayerCameraViews.Next(View);
+    internal PlayerCameraView Cycle(double facing)
+    {
+        View = PlayerCameraViews.Next(View);
+        if (View == PlayerCameraView.Close) _closeLook = new(facing);
+        return View;
+    }
 
-    internal void Reset()
+    internal void Reset(double facing = 0)
     {
         _orbit = _zoom = DefaultRadius;
+        _closeLook = new(facing);
         ResetFollow();
     }
 
     internal void ResetFollow() => _floor = double.NaN;
 
-    // Ângulos em radianos, arrasto em pixels CSS e raio em metros.
+    // Angles use radians, pointer movement uses CSS pixels, and radius uses meters.
     internal void Advance(Span<double> output, double alpha, double beta, double radius, double maxZoom,
         double delta, bool frozen, double lookX, double lookY, double dragX, double dragY, double wheel, double floor)
     {
         var maxBeta = Math.PI / 2.15;
-        if (!frozen)
+        if (View == PlayerCameraView.Close)
         {
-            alpha -= lookX * delta * 2.2;
-            if (View == PlayerCameraView.FirstPerson)
-                _firstPersonPitch = Math.Clamp(_firstPersonPitch + lookY * delta * 1.7, -.95, .95);
-            else beta = Math.Clamp(beta + lookY * delta * 1.7, 0.18, maxBeta);
+            if (!frozen)
+                _closeLook.Advance(lookX * delta * 2.2, lookY * delta * 1.7, dragX, dragY);
         }
-        if (dragX != 0 || dragY != 0)
+        else
         {
-            alpha -= dragX * 0.01;
-            if (View == PlayerCameraView.FirstPerson)
-                _firstPersonPitch = Math.Clamp(_firstPersonPitch + dragY * .006, -.95, .95);
-            else beta = Math.Clamp(beta + dragY * 0.01, 0.18, maxBeta);
-        }
-        if (wheel != 0 && View != PlayerCameraView.FirstPerson)
-        {
-            var notches = -wheel / 120;
-            _zoom *= notches > 0 ? Math.Pow(0.9015, notches) : Math.Pow(1.1212, -notches);
-            _zoom = Math.Clamp(_zoom, 2.4, maxZoom);
+            if (!frozen)
+            {
+                alpha -= lookX * delta * 2.2;
+                if (View == PlayerCameraView.FirstPerson)
+                    _firstPersonPitch = Math.Clamp(_firstPersonPitch + lookY * delta * 1.7, -.95, .95);
+                else beta = Math.Clamp(beta + lookY * delta * 1.7, 0.18, maxBeta);
+            }
+            if (dragX != 0 || dragY != 0)
+            {
+                alpha -= dragX * 0.01;
+                if (View == PlayerCameraView.FirstPerson)
+                    _firstPersonPitch = Math.Clamp(_firstPersonPitch + dragY * .006, -.95, .95);
+                else beta = Math.Clamp(beta + dragY * 0.01, 0.18, maxBeta);
+            }
+            if (wheel != 0 && View != PlayerCameraView.FirstPerson)
+            {
+                var notches = -wheel / 120;
+                _zoom *= notches > 0 ? Math.Pow(0.9015, notches) : Math.Pow(1.1212, -notches);
+                _zoom = Math.Clamp(_zoom, 2.4, maxZoom);
+            }
         }
 
         if (Math.Abs(_zoom - _orbit) <= 1e-6) _orbit = _zoom;
@@ -60,6 +77,8 @@ internal sealed class PlayerCamera
         output[3] = horizontal * cosAlpha;
         output[4] = _orbit * cosBeta;
         output[5] = horizontal * sinAlpha;
+        if (View == PlayerCameraView.Close)
+            (output[3], output[4], output[5]) = _closeLook.Offset;
         output[6] = Math.Abs(_orbit - radius) <= 1e-6
             ? _orbit
             : radius + (_orbit - radius) * (1 - Math.Exp(-12 * delta));
@@ -69,6 +88,8 @@ internal sealed class PlayerCamera
             : floor - Math.Clamp(difference * Math.Exp(-FollowRate * delta), -MaxVerticalLag, MaxVerticalLag);
         output[8] = _floor;
         if (output.Length > 9) output[9] = _firstPersonPitch;
+        if (output.Length > 10) output[10] = AimYaw;
+        if (output.Length > 11) output[11] = PlayerCloseCamera.TargetHeight;
         output[7] = _floor == floor && output[6] == _orbit && _orbit == _zoom && beta >= 0.18 && beta <= maxBeta ? 1 : 0;
     }
 }

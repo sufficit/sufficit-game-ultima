@@ -173,6 +173,9 @@
         });
     }
 
+    let mouseLook;
+    const onCameraView = (view, capture) => mouseLook?.setActive(view === 2, capture);
+
     function startMain(canvas, spawn, terrainSettings) {
         return loadBabylon().then(function () {
             return new Promise(function (resolve, reject) {
@@ -193,6 +196,7 @@
                     postEvent: postEventToDotnet,
                     sendPose: sendPose,
                     onInputMode: onInputMode,
+                    onCameraView,
                     varyModel: varyModelAsync,
                     worldOp: routeWorldOp,
                     onBuildMode: onBuildMode,
@@ -250,6 +254,8 @@
             }
         } else if (msg.type === 'pose') {
             sendPose(msg.x, msg.z, msg.ry);
+        } else if (msg.type === 'cameraView') {
+            onCameraView(msg.view, msg.capture);
         } else if (msg.type === 'inputMode') {
             onInputMode(msg.kind);
         } else if (msg.type === 'result') {
@@ -307,11 +313,14 @@
         else if (worker) { worker.postMessage({ type: 'input', method: method, args: args }); }
     }
 
-    function setupInput(canvas) {
+    function setupInput(canvas, attachMouseLook) {
+        mouseLook = attachMouseLook(canvas, (x, y) => deliver('camera', [x, y, 0]), clear);
         window.addEventListener('keydown', function (e) {
             if (e.code === 'Escape') {
                 e.preventDefault();
-                if (!e.repeat) { postEventToDotnet('OnClose', []); }
+                if (!e.repeat && !mouseLook.active && document.pointerLockElement !== canvas) {
+                    postEventToDotnet('OnClose', []);
+                } else if (!e.repeat) { mouseLook.pause(); }
                 return;
             }
             if (editable(e.target) || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) { return; }
@@ -388,7 +397,7 @@
                     samplePad(axes[0] || 0, axes[1] || 0, axes[2] || 0, axes[3] || 0,
                         Number(!!buttons[15]?.pressed) - Number(!!buttons[14]?.pressed),
                         Number(!!buttons[12]?.pressed) - Number(!!buttons[13]?.pressed));
-                    if (view && !viewWasDown) { deliver('cycleCameraView', []); }
+                    if (view && !viewWasDown) { deliver('cycleCameraView', [false]); }
                     if (action && !actionWasDown) {
                         deliver('inputMode', ['gamepad']);
                         deliver('action', []);
@@ -472,7 +481,8 @@
         function pointOnCanvas(e) {
             const rect = canvas.getBoundingClientRect();
             // scene.pick aplica a escala do renderizador às coordenadas CSS.
-            return [e.clientX - rect.left, e.clientY - rect.top];
+            return document.pointerLockElement === canvas ? [rect.width / 2, rect.height / 2]
+                : [e.clientX - rect.left, e.clientY - rect.top];
         }
         function clearHover() {
             if (!hoverPosition) { return; }
@@ -502,7 +512,7 @@
                 deliver('cycleCameraView', []);
                 return;
             }
-            if (e.button !== 0) { return; }
+            if (e.button !== 0 || e.defaultPrevented) { return; }
             unlockAnimationAudio();
             pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
             if (pointers.size === 2) {
@@ -525,7 +535,7 @@
         window.addEventListener('pointerup', solta);
         window.addEventListener('pointercancel', solta);
         window.addEventListener('pointermove', function (e) {
-            if (!pointers.has(e.pointerId)) { return; }
+            if (!pointers.has(e.pointerId) || (e.pointerType === 'mouse' && mouseLook.active)) { return; }
             if (pointers.size === 2) {
                 pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
                 const pts = Array.from(pointers.values());
@@ -622,7 +632,7 @@
     Object.assign(window.game, {
         loadBabylon,
         buildStamp,
-        init(canvasId, dotnetRef, modelsRef, environment, terrainSettings) {
+        async init(canvasId, dotnetRef, modelsRef, environment, terrainSettings) {
             const canvas = document.getElementById(canvasId);
             if (!canvas) { return Promise.reject(new Error('canvas ' + canvasId + ' não encontrado')); }
             dotnet = dotnetRef;
@@ -636,12 +646,13 @@
                 showEngineFailure(err);
                 return Promise.resolve(false);
             }
+            const { attachMouseLook } = await import('./mouse-look.js?v=' + encodeURIComponent(buildStamp()));
             const spawn = restorePose(environment, terrainSettings.spawn);
             const canWorker = !!canvas.transferControlToOffscreen && typeof Worker !== 'undefined';
             const start = (canWorker && FORCE !== 'main')
                 ? startWorker(canvas, spawn, terrainSettings).then(function (ok) {
                         // No worker o core não tem DOM: o input é capturado aqui.
-                        setupInput(canvas);
+                        setupInput(canvas, attachMouseLook);
                         watchSize(canvas);   // resolução de render casada com a tela (CSS × dpr)
                         return ok;
                     }).catch(function (err) {
@@ -660,13 +671,16 @@
                         throw err;
                     })
                 : startMain(canvas, spawn, terrainSettings).then(function (ok) {
-                        setupInput(canvas);
+                        setupInput(canvas, attachMouseLook);
                         watchSizeMain(canvas);
                         return ok;
                     });
             return start.then(function () { return true; });
         },
-        setFrozen(v, speaker) { post('setFrozen', [!!v, speaker]); },
+        setFrozen(v, speaker) {
+            if (v) mouseLook?.pause();
+            post('setFrozen', [!!v, speaker]);
+        },
         animationSound,
         characterAction(name, point) { post('characterAction', [name, point]); },
         characterDialogueLine(speaker, length) { post('characterDialogueLine', [speaker, length]); },

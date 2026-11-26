@@ -1,4 +1,4 @@
-export function attachWalk(B, canvas, scene, avatar, exports) {
+export function attachWalk(B, canvas, scene, avatar, exports, attachMouseLook) {
     const camera = new B.UniversalCamera('environment-camera', B.Vector3.Zero(), scene);
     camera.minZ = .04;
     camera.fov = .98;
@@ -7,7 +7,13 @@ export function attachWalk(B, canvas, scene, avatar, exports) {
     const keys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
     const listeners = new AbortController();
     const on = (target, type, handler) => target.addEventListener(type, handler, { signal: listeners.signal });
+    const mouseLook = attachMouseLook(canvas, (x, y) => { dx += x; dy += y; }, clear, listeners.signal);
     on(canvas, 'keydown', event => {
+        if (event.code === 'Escape' && mouseLook.active) {
+            event.preventDefault();
+            mouseLook.pause();
+            return;
+        }
         if (event.ctrlKey || event.metaKey || event.altKey) return;
         if (event.code === 'KeyV') {
             event.preventDefault();
@@ -40,7 +46,7 @@ export function attachWalk(B, canvas, scene, avatar, exports) {
             cycle();
             return;
         }
-        if (event.button !== 0) return;
+        if (event.button !== 0 || (event.pointerType === 'mouse' && mouseLook.active)) return;
         canvas.focus({ preventScroll: true });
         const rect = canvas.getBoundingClientRect();
         const point = { id: event.pointerId, x: event.clientX, y: event.clientY, side: 0, forward: 0 };
@@ -74,8 +80,8 @@ export function attachWalk(B, canvas, scene, avatar, exports) {
     }
 
     const target = new B.Vector3();
-    let activeView = -1;
-    function applyPose(pose) {
+    let activeView = -1, avatarVisible = true;
+    function applyPose(pose, capture = true) {
         const cameraX = pose[3], cameraY = pose[4], cameraZ = pose[5];
         const targetX = pose[6], targetY = pose[7], targetZ = pose[8], view = pose[9];
         avatar.apply(pose);
@@ -83,16 +89,21 @@ export function attachWalk(B, canvas, scene, avatar, exports) {
         target.set(targetX, targetY, targetZ);
         if (activeView !== view) {
             activeView = view;
-            avatar.setVisible(view !== 1);
+            mouseLook.setActive(view === 2, capture);
             camera.metadata = view;
+        }
+        const visible = view !== 1 && (view !== 2 || B.Vector3.DistanceSquared(camera.position, target) >= .38 ** 2);
+        if (visible !== avatarVisible) {
+            avatar.setVisible(visible);
+            avatarVisible = visible;
         }
         camera.setTarget(target);
     }
     applyPose(exports.WalkFrame(0, 0, 0, 0, 0, 0, 0));
 
-    function cycle() {
+    function cycle(capture = true) {
         exports.CycleCameraView();
-        applyPose(exports.WalkFrame(0, 0, 0, 0, 0, 0, 0));
+        applyPose(exports.WalkFrame(0, 0, 0, 0, 0, 0, 0), capture);
     }
 
     canvas.focus({ preventScroll: true });
@@ -115,7 +126,7 @@ export function attachWalk(B, canvas, scene, avatar, exports) {
                 return;
             }
             finishingStep = true;
-            if (cyclePressed) cycle();
+            if (cyclePressed) cycle(false);
             const axes = pad?.axes;
             applyPose(exports.WalkFrame(joystick?.side ?? (axes?.[0] || 0),
                 joystick?.forward ?? -(axes?.[1] || 0), axes?.[2] || 0, axes?.[3] || 0, dx, dy, dt));

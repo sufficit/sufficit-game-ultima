@@ -4,7 +4,7 @@ internal enum PlayerCameraView
 {
     Rear,
     FirstPerson,
-    Front
+    Close
 }
 
 internal static class PlayerCameraViews
@@ -14,7 +14,7 @@ internal static class PlayerCameraViews
     internal static PlayerCameraView Next(PlayerCameraView view) => view switch
     {
         PlayerCameraView.Rear => PlayerCameraView.FirstPerson,
-        PlayerCameraView.FirstPerson => PlayerCameraView.Front,
+        PlayerCameraView.FirstPerson => PlayerCameraView.Close,
         _ => PlayerCameraView.Rear,
     };
 }

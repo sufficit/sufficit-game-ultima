@@ -7,12 +7,12 @@ internal sealed partial class SceneWalk
     private const double TargetHeight = 1.18;
     private const double CameraClearance = .10;
     private PlayerCameraView _view;
-    private double _frontYawOrigin;
+    private PlayerCloseCamera _closeLook;
 
     internal int CycleCameraView()
     {
         _view = PlayerCameraViews.Next(_view);
-        if (_view == PlayerCameraView.Front) _frontYawOrigin = _yaw;
+        if (_view == PlayerCameraView.Close) _closeLook = new(_heading);
         return (int)_view;
     }
 
@@ -28,16 +28,15 @@ internal sealed partial class SceneWalk
             return;
         }
 
-        var dy = 1.04 - 1.65 * Math.Sin(_pitch);
-        var (anchorX, anchorZ) = _view == PlayerCameraView.Front ? Math.SinCos(_heading + _yaw - _frontYawOrigin) : (-sin, -cos);
-        var dx = anchorX * 2.8;
-        var dz = anchorZ * 2.8;
-        var fraction = CameraFraction(dx, dy, dz);
+        var close = _view == PlayerCameraView.Close;
+        var targetHeight = close ? PlayerCloseCamera.TargetHeight : TargetHeight;
+        var (dx, dy, dz) = close ? _closeLook.Offset : (-sin * 2.8, 1.04 - 1.65 * Math.Sin(_pitch), -cos * 2.8);
+        var fraction = CameraFraction(targetHeight, dx, dy, dz);
 
-        if (fraction < .34)
+        if (!close && fraction < .34)
         {
             // In a tight corner, look from a higher angle so the avatar stays framed.
-            var overhead = CameraFraction(dx * .22, 1.42, dz * .22);
+            var overhead = CameraFraction(targetHeight, dx * .22, 1.42, dz * .22);
             if (overhead * 1.42 > fraction * double.Hypot(2.8, dy))
             {
                 dx *= .22;
@@ -48,12 +47,12 @@ internal sealed partial class SceneWalk
         }
 
         (result[3], result[4], result[5]) =
-            (_x + dx * fraction, TargetHeight + dy * fraction, _z + dz * fraction);
-        (result[6], result[7], result[8]) = (_x, TargetHeight, _z);
+            (_x + dx * fraction, targetHeight + dy * fraction, _z + dz * fraction);
+        (result[6], result[7], result[8]) = (_x, targetHeight, _z);
         result[9] = (int)_view;
     }
 
-    private double CameraFraction(double dx, double dy, double dz)
+    private double CameraFraction(double targetHeight, double dx, double dy, double dz)
     {
         var fraction = 1d;
         foreach (var solid in _solids)
@@ -61,7 +60,7 @@ internal sealed partial class SceneWalk
             var start = 0d;
             var end = fraction;
             if (Clip(_x, dx, solid.MinX, solid.MaxX, ref start, ref end) &&
-                Clip(TargetHeight, dy, solid.MinY, solid.MaxY, ref start, ref end) &&
+                Clip(targetHeight, dy, solid.MinY, solid.MaxY, ref start, ref end) &&
                 Clip(_z, dz, solid.MinZ, solid.MaxZ, ref start, ref end))
                 fraction = start;
         }

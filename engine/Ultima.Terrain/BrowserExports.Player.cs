@@ -15,7 +15,7 @@ internal static partial class BrowserExports
     private static readonly PlayerFootContacts PlayerFeet = new();
     private static readonly PlayerCamera Camera = new();
     private static readonly PlayerCameraObstacles CameraObstacles = new();
-    private static readonly double[] CameraResult = new double[10];
+    private static readonly double[] CameraResult = new double[12];
     private static double _kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset;
 
     private static PlayerRemoteAvatars? _remoteAvatars;
@@ -111,10 +111,10 @@ internal static partial class BrowserExports
         => CameraObstacles.Query(minX, minZ, maxX, maxZ);
 
     [JSExport]
-    internal static int CycleCameraView() => (int)Camera.Cycle();
+    internal static int CycleCameraView(double facing) => (int)Camera.Cycle(facing);
 
     [JSExport]
-    internal static void ResetCamera() => Camera.Reset();
+    internal static void ResetCamera(double facing) => Camera.Reset(facing);
 
     [JSExport]
     internal static double[] AdvanceCamera(double alpha, double beta, double radius, double maxZoom,
@@ -155,7 +155,7 @@ internal static partial class BrowserExports
         double keyX, double keyZ, double analogX, double analogZ, bool sprint, double delta, bool hasTunnels)
     {
         (MovementResult[0], MovementResult[1], MovementResult[2], MovementResult[3]) = _movement.Advance(
-            x, y, z, facing, forwardX, forwardZ, keyX, keyZ, analogX, analogZ, sprint, delta, _surface, _volumes, hasTunnels);
+            x, y, z, facing, forwardX, forwardZ, keyX, keyZ, analogX, analogZ, sprint, delta, _surface, _volumes, hasTunnels, aimYaw: Camera.AimYaw);
         MovementResult[4] = _movement.PivotProgress >= 0 ? 1 : 0;
         return MovementResult;
     }
@@ -233,11 +233,11 @@ internal static partial class BrowserExports
 
     internal static (double X, double Z, double Yaw, double Distance, bool Pivot) MoveInteriorPlayer(
         double x, double y, double z, double facing, double forwardX, double forwardZ,
-        double side, double forward, bool sprint, double delta,
+        double side, double forward, bool sprint, double delta, double aimYaw,
         Func<double, double, double, double, (double X, double Z)> resolve)
     {
         var (nextX, nextZ, yaw, distance) = _movement.Advance(x, y, z, facing, forwardX, forwardZ,
-            side, forward, 0, 0, sprint, delta, _surface, _volumes, false, resolve);
+            side, forward, 0, 0, sprint, delta, _surface, _volumes, false, resolve, aimYaw);
         return (nextX, nextZ, yaw, distance, _movement.PivotProgress >= 0);
     }
 

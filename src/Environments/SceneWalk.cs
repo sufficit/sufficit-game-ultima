@@ -18,19 +18,24 @@ internal sealed partial class SceneWalk(SceneWalkSettings settings, SceneBox[] b
     private Func<double, double, double, double, (double X, double Z)>? _resolve;
 
     internal void Advance(Span<double> result, double side, double forward, bool sprint,
-        double yawDelta, double pitchDelta, double seconds)
+        double yawDelta, double pitchDelta, double mouseX, double mouseY, double seconds)
     {
-        _yaw = Math.IEEERemainder(_yaw + yawDelta, Math.Tau);
-        _pitch = Math.Clamp(_pitch + pitchDelta, -.66, .63);
+        var close = _view == PlayerCameraView.Close;
+        if (close) _closeLook.Advance(yawDelta, pitchDelta, mouseX, mouseY);
+        else
+        {
+            _yaw = Math.IEEERemainder(_yaw + yawDelta + mouseX * .003, Math.Tau);
+            _pitch = Math.Clamp(_pitch + pitchDelta + mouseY * .003, -.66, .63);
+        }
         var delta = Math.Clamp(seconds, 0, .05);
-        var (sin, cos) = Math.SinCos(_yaw);
+        var (sin, cos) = Math.SinCos(close ? _closeLook.Yaw : _yaw);
         var distance = 0d;
         if (delta > 0)
         {
             var motion = BrowserExports.MoveInteriorPlayer(_x, _bodyY, _z, _heading, sin, cos,
-                side, forward, sprint, delta, _resolve ??= Resolve);
+                side, forward, sprint, delta, close ? _closeLook.Yaw : double.NaN, _resolve ??= Resolve);
             (_x, _z, distance) = (motion.X, motion.Z, motion.Distance);
-            if (motion.Pivot) _heading = motion.Yaw;
+            if (close || motion.Pivot) _heading = motion.Yaw;
             else if (double.IsFinite(motion.Yaw))
                 _heading += Math.IEEERemainder(motion.Yaw - _heading, Math.Tau) * (1 - Math.Exp(-16 * delta));
         }

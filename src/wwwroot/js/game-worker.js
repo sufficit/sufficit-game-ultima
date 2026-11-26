@@ -57,6 +57,7 @@ self.addEventListener('message', function (e) {
                 dom: false,
                 postEvent: function (name, args) { self.postMessage({ type: 'event', name: name, args: args }); },
                 sendPose: function (x, z, ry) { self.postMessage({ type: 'pose', x: x, z: z, ry: ry }); },
+                onCameraView: (view, capture) => self.postMessage({ type: 'cameraView', view, capture }),
                 onInputMode: function (kind) { self.postMessage({ type: 'inputMode', kind: kind }); },
                 worldOp: function (op) { self.postMessage({ type: 'worldOp', op: op }); },
                 onBuildMode: function (mode) { self.postMessage({ type: 'buildMode', mode: mode }); },

@@ -63,7 +63,7 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
         double x, double y, double z, double facing, double forwardX, double forwardZ,
         double keyX, double keyZ, double analogX, double analogZ, bool sprint, double delta,
         TerrainSurface surface, TerrainVolumes volumes, bool hasTunnels,
-        Func<double, double, double, double, (double X, double Z)>? interior = null)
+        Func<double, double, double, double, (double X, double Z)>? interior = null, double aimYaw = double.NaN)
     {
         var inputX = keyX + analogX;
         var inputZ = keyZ + analogZ;
@@ -77,8 +77,9 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
             _directionX = dx / length;
             _directionZ = dz / length;
         }
-        if (PivotProgress >= 1) PivotProgress = -1;
-        if (PivotProgress < 0 && magnitude > 0)
+        var aiming = double.IsFinite(aimYaw);
+        if (aiming || PivotProgress >= 1) PivotProgress = -1;
+        if (!aiming && PivotProgress < 0 && magnitude > 0)
         {
             var turn = Math.IEEERemainder(Math.Atan2(_directionX, _directionZ) - facing, Math.Tau);
             if (Math.Abs(turn) >= PivotThreshold)
@@ -91,7 +92,7 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
         var running = sprint || double.Hypot(analogX, analogZ) > 0.92;
         var targetSpeed = (running ? RunSpeed : WalkSpeed) * magnitude;
         var pivoting = PivotProgress >= 0;
-        var yaw = double.NaN;
+        var yaw = aimYaw;
         if (pivoting)
         {
             PivotProgress = Math.Min(1, PivotProgress + delta / PivotDuration);
@@ -112,7 +113,7 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
         var actualX = nextX - x;
         var actualZ = nextZ - z;
         var travelled = double.Hypot(actualX, actualZ);
-        if (!pivoting)
+        if (!pivoting && !aiming)
         {
             yaw = travelled > 0.001 ? Math.Atan2(actualX, actualZ) : Math.Atan2(_directionX, _directionZ);
             var scale = TurnTravelScale(yaw - facing);

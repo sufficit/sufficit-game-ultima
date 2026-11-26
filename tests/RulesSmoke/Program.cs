@@ -626,6 +626,27 @@ camera.ResetFollow();
 camera.Advance(orbit, 0, 1.12, 7.5, 40, 0.04, false, 0, 0, 0, 0, 0, 5);
 Check("teletransporte reposiciona a câmera sem arrasto vertical", orbit[8] == 5);
 
+var closeCamera = new PlayerCamera();
+Span<double> closeOrbit = stackalloc double[12];
+Check("Camera cycle enters first person, then close third person",
+    closeCamera.Cycle(0) == PlayerCameraView.FirstPerson &&
+    closeCamera.Cycle(Math.PI / 2) == PlayerCameraView.Close);
+closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 0, 0, 0, 0);
+Check("Close camera starts behind the avatar at its own distance",
+    closeOrbit[3] < -2 && Math.Abs(closeOrbit[5]) < 1e-9 && closeOrbit[6] == 7.5);
+closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 100, 25, -1200, 0);
+Check("Close mouse look changes aim without altering elevated orbit angles or zoom",
+    Math.Abs(closeOrbit[10] - (Math.PI / 2 + .4)) < 1e-9 &&
+    closeOrbit[4] > .6 && closeOrbit[0] == 0 && closeOrbit[1] == 1.12 && closeOrbit[2] == 7.5);
+Check("Camera cycle restores the elevated orbit",
+    closeCamera.Cycle(0) == PlayerCameraView.Rear && double.IsNaN(closeCamera.AimYaw));
+
+var aimMovement = new PlayerMovement(1.75, .41, .03);
+var backpedal = aimMovement.Advance(0, .03, 0, 0, 0, 1, 0, -1, 0, 0, false, .04,
+    pivotSurface, pivotVolumes, false, (x, z, dx, dz) => (x + dx, z + dz), aimYaw: 0);
+Check("Close aim can backpedal without pivoting the character",
+    backpedal.Z < -.01 && backpedal.Yaw == 0 && aimMovement.PivotProgress < 0);
+
 var pausedAction = PlayerPose.AdvanceAction(0.125, 0.5, 0.15, frozen: true);
 Check("diálogo congela o avanço das ações", pausedAction == (0.125, 0.25, 0.25));
 var resumedAction = PlayerPose.AdvanceAction(pausedAction.Elapsed, 0.5, 0.15, frozen: false);

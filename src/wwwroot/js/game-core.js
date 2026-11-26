@@ -56,7 +56,6 @@
     let camera = null;
     let perspectiveCamera = null;
     let cameraView = 0;
-    let frontOrbitOrigin = 0;
     const PLAYER_LAYER = 0x08000000;
     const G = host.global;
     const dom = !!host.dom;
@@ -846,15 +845,13 @@
             return;
         }
 
-        const heading = player.rotation.y + frontOrbitOrigin - camera.alpha;
-        const horizontal = Math.hypot(cameraFrame[3], cameraFrame[5]);
-        viewTarget.copyFrom(camera.target);
-        orbitEye.set(viewTarget.x + Math.sin(heading) * horizontal, viewTarget.y + cameraFrame[4],
-            viewTarget.z + Math.cos(heading) * horizontal);
+        viewTarget.set(position.x, cameraFrame[8] + cameraFrame[11], position.z);
+        orbitEye.set(viewTarget.x + cameraFrame[3], viewTarget.y + cameraFrame[4], viewTarget.z + cameraFrame[5]);
         const distance = BABYLON.Vector3.Distance(viewTarget, orbitEye);
         const fraction = Math.min(1, traceWorld(viewTarget, orbitEye) / Math.max(distance, .001));
         BABYLON.Vector3.LerpToRef(viewTarget, orbitEye, fraction, perspectiveCamera.position);
         perspectiveCamera.setTarget(viewTarget);
+        perspectiveCamera.layerMask = distance * fraction < .38 ? camera.layerMask & ~PLAYER_LAYER : camera.layerMask;
     }
 
     function stepSurfaceAt(x, z, ground) {
@@ -2488,12 +2485,20 @@
         if (frozen || !player) { return 0; }
         const [ix, iz, analogX, analogZ] = pad;
         const { x, y, z } = player.position;
-        const { x: fx, z: fz } = ix || iz || analogX || analogZ ? camera.getForwardRay().direction : BABYLON.Vector3.ZeroReadOnly;
+        let fx = 0, fz = 0;
+        if (ix || iz || analogX || analogZ) {
+            if (cameraView === 2) {
+                fx = Math.sin(cameraFrame[10]);
+                fz = Math.cos(cameraFrame[10]);
+            } else {
+                ({ x: fx, z: fz } = camera.getForwardRay().direction);
+            }
+        }
         const [nextX, nextZ, yaw, travelled, pivot] = terrain.MovePlayer(x, y, z, player.rotation.y, fx, fz, ix, iz, analogX, analogZ,
             !!pad[6], delta, worldTunnels.length > 0);
         player.position.x = nextX;
         player.position.z = nextZ;
-        if (pivot) { player.rotation.y = yaw; }
+        if (pivot || cameraView === 2) { player.rotation.y = yaw; }
         else if (Number.isFinite(yaw)) { turnCharacter(player, yaw, delta, 16); }
         return travelled;
     }
@@ -3101,13 +3106,14 @@
                     inputDirty = false;
                 }
                 syncColliders();
+                if (cameraView === 2) advanceCamera(delta, inputFrame);
                 const travelled = movePlayer(delta, inputFrame);
                 if (player) {
                     const { x, z } = player.position;
                     updateCharacterPose(player, delta, travelled);
                     ensureChunksAround(x, z);
                 }
-                advanceCamera(delta, inputFrame);
+                if (cameraView !== 2) advanceCamera(delta, inputFrame);
                 updateOtherCharacters(delta);
                 const p = player.position, g = guardianRoot.position, w = wandererRoot.position;
                 terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
@@ -3153,10 +3159,10 @@
         },
         padDisconnected() { if (activeInput === 'gamepad') { setActiveInput('keyboard'); } },
         camera(dx, dy, wheel, deltaMode) { camPending.dx += dx || 0; camPending.dy += dy || 0; camPending.wheel += (wheel || 0) * (deltaMode === 1 ? 40 : 1); },
-        cycleCameraView() {
+        cycleCameraView(capture = true) {
             if (!camera || !perspectiveCamera || frozen) return;
-            cameraView = terrain.CycleCameraView();
-            if (cameraView === 2) frontOrbitOrigin = camera.alpha;
+            cameraView = terrain.CycleCameraView(player.rotation.y);
+            host.onCameraView?.(cameraView, capture);
             cameraFrame = null;
             perspectiveCamera.layerMask = cameraView === 1 ? camera.layerMask & ~PLAYER_LAYER : camera.layerMask;
             scene.activeCamera = cameraView === 0 ? camera : perspectiveCamera;
@@ -3227,10 +3233,9 @@
             resetPlayerGait();
             if (player) { placePlayer(defaultSpawn.x, defaultSpawn.z); player.rotation.y = defaultSpawn.ry; }
             if (camera) {
-                terrain.ResetCamera();
+                terrain.ResetCamera(player.rotation.y);
                 cameraFrame = null;
                 camera.alpha = -Math.PI / 2;
-                frontOrbitOrigin = camera.alpha;
                 camera.beta = 1.12;
                 camera.radius = zoomTarget = 7.5;
             }
