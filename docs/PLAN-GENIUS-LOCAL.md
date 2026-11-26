@@ -12,8 +12,7 @@ do Genius. O jogo carrega o runtime junto dos seus módulos WebAssembly.
 3. [concluído] Integrar o pacote à Guardiã e aos modelos WebLLM e wllama.
    Persistir sessões no IndexedDB, separadas por mundo, jogador e NPC.
    Manter turnos locais fora da telemetria.
-4. [em andamento] Validar o build, a conversa e a retomada no Chromium. Verificar a
-   presença da versão no GitHub Pages.
+4. [complete] Verify real local inference and history restoration in Chromium and confirm the Pages build.
 5. [em andamento] Registrar skills e ferramentas por família da API. Validar
    permissões, aplicação de edições e idempotência no jardim isolado.
 
@@ -45,22 +44,9 @@ permanecem evidências distintas.
 
 A entrega do [plugin de memória do navegador](activities/202611251430-plugin-memoria-navegador.md) foi validada no Pages.
 
-## Execution checkpoints
+## Characters API milestone
 
-1. [complete] Probe real CPU and GPU inference and reload continuity in Chromium.
-2. [complete] Add the Characters API family for reading and partially updating
-   an owned profile. Load the persisted profile in both environments.
-3. [complete] Validate authorization, persistence, and both renderer modes.
-4. [in progress] Deliver the verified changes and preserve any remaining Genius checkpoints.
-
-The real inference probes run during API implementation. Their results remain
-required for the original inference validation checkpoint.
-
-The body profile is edited through the API. Future NPCs use the same
-owner-scoped operation. The client applies the saved profile at scene startup.
-
-The [Characters API](USAGE-API-CHARACTERS.md) and its
-[repository skill](../.agents/skills/ultima-characters/SKILL.md) cover the first
-new family. The isolated server tests verified ownership, idempotency, and
-recovery after restart. Chromium loaded the saved profile in the garden and
-office in both renderer modes. Registering callable NPC tools remains open.
+The first API family and the real-inference validation are recorded in the
+[delivery activity](activities/202611261650-characters-api-and-genius-inference.md). Character edits go through the
+API and appear when the scene reloads. Callable NPC tools remain in checkpoint
+5. The hosted API needs the updated standalone backend.

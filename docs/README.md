@@ -42,6 +42,7 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Characters API and real Genius inference](activities/202611261650-characters-api-and-genius-inference.md)
 - [Ultima test suite repair](activities/202611261519-test-suite-repair.md)
 - [File-size checks in the native test suites](activities/202611261458-native-file-size-tests.md)
 - [Repository line limit and inline documentation](activities/202611261150-file-line-limit.md)
