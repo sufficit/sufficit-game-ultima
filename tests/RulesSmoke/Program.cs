@@ -653,6 +653,17 @@ closeCamera.Cycle(0);
 closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 0, 0, 0, 0);
 Check("Close zoom persists when switching views", Math.Abs(CameraDistance(closeOrbit) - 1.85) < 1e-9);
 
+closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 0, 0, 120, 0);
+for (var i = 0; i < 40; i++)
+    closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 0, 0, 0, 0);
+Check("A standard wheel step changes close distance by 0.08 m",
+    Math.Abs(CameraDistance(closeOrbit) - 1.93) < 1e-9);
+closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 0, 0, 4800, 0);
+for (var i = 0; i < 40; i++)
+    closeCamera.Advance(closeOrbit, 0, 1.12, 7.5, 40, .04, false, 0, 0, 0, 0, 0, 0);
+Check("Close zoom settles at the expanded far limit while preserving elevated zoom",
+    Math.Abs(CameraDistance(closeOrbit) - 3.80) < 1e-9 && closeOrbit[2] == 7.5 && closeOrbit[7] == 1);
+
 static double CameraDistance(ReadOnlySpan<double> pose) =>
     double.Hypot(double.Hypot(pose[3], pose[4]), pose[5]);
 

@@ -13,8 +13,9 @@ and enter the glass meeting room through the open doorway.
 Press **V**, click the mouse wheel, press the controller's right stick
 (**R3**), or select **Alternar câmera**. Each input cycles from rear
 third person to first person to close third person. The close view follows
-behind the character and aims with mouse movement. Scroll to make small
-adjustments to the camera distance. **Esc** releases the pointer.
+behind the character and aims with mouse movement. Scroll to adjust between
+1.85 m and 3.80 m in clear space. Walls can reduce the distance.
+**Esc** releases the pointer. [Camera controls](USAGE-JOGO.md#camera-views)
 
 Open **Missões** to see the board and filter by station. Use
 **Trocar ambiente** to return to the environment picker. The office can

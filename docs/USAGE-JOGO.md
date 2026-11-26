@@ -15,12 +15,23 @@ aproxima de um personagem ou objeto.
 | Conversar ou examinar | E | A / ✕ | Botão A |
 | Fechar o diálogo | Esc | B / ○ | Botão B |
 
+## Camera views
+
 Press **V**, click the mouse wheel, press the controller's right stick
-(**R3**), or use **Painel → Alternar câmera** to cycle through rear third
-person (elevated orbit), first person, and close third person. In the close
-view, move the mouse to aim without holding a button and scroll to fine-tune
-the camera distance. Press **Esc** to
-release the pointer. Click the scene or cycle back to the close view to resume.
+(**R3**), or use **Painel → Alternar câmera** to cycle through the views.
+
+- **Elevated orbit** follows the current character from above for exploration
+  and a wider view of the surroundings.
+- **First person** puts the camera at the current character's eye level.
+- **Close third person** follows behind the character. Move the mouse to aim
+  and scroll to adjust the distance from **1.85 m to 3.80 m**. The default is
+  **2.15 m**. **Esc** releases the pointer. Click the scene or cycle back to
+  the close view to resume. An obstacle can bring the camera closer.
+
+Current controls apply to one character at a time. The planned group mode
+uses the elevated view to frame and command up to five characters. The two
+closer views focus on the active member for direct control.
+[Camera framing and control scope](../decisions/camera-framing-and-control-scope.md)
 
 As dicas de interação acompanham o último controle usado. Ao mudar de aba ou
 focar um campo de texto, as teclas de movimento são soltas. Feche um diálogo

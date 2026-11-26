@@ -33,6 +33,12 @@ the environment picker still opens each place separately. A later map update
 will place the office in the world so the player can walk to it.
 [Architecture decision](decisions/one-engine-for-all-environments.md)
 
+The current camera modes follow one character. The planned group mode uses
+selection bounds in the elevated view to frame up to five controllable
+characters. First person and close third person follow the active member.
+The camera reads the selection from the shared C# simulation.
+[Camera framing and control scope](decisions/camera-framing-and-control-scope.md)
+
 ## Responsabilidades atuais
 
 | Camada | Responsabilidade |

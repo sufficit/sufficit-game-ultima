@@ -5,7 +5,7 @@ internal struct PlayerCloseCamera(double yaw)
     internal const double TargetHeight = 1.3;
     private const double DefaultDistance = 2.15;
     private const double MinDistance = 1.85;
-    private const double MaxDistance = 2.50;
+    private const double MaxDistance = 3.80;
     private const double ScrollRate = .08 / 120;
     private const double FollowRate = 14;
     private const double DefaultPitch = .25;

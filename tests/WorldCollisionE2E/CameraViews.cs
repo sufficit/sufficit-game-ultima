@@ -116,9 +116,25 @@ internal static class CameraViews
             await page.Mouse.WheelAsync(0, -1200);
             await WaitAsync(async () => Math.Abs(await DistanceAsync() - 1.85) < .01,
                 $"Scroll in reaches the close camera's nearer limit (office={office}).", 4_000, 25);
-            await page.Mouse.WheelAsync(0, 1200);
-            await WaitAsync(async () => Math.Abs(await DistanceAsync() - 2.50) < .01,
-                $"Scroll out reaches the close camera's farther limit (office={office}).", 4_000, 25);
+            await page.Mouse.WheelAsync(0, 4800);
+            if (office)
+            {
+                await WaitAsync(async () => await DistanceAsync() > 2.55,
+                    "Close zoom extends from the reception up to the back wall.", 4_000, 25);
+                Check(await DistanceAsync() < 3.75, "The office wall retracts the close camera.");
+
+                await page.Keyboard.DownAsync("w");
+                try
+                {
+                    await WaitAsync(async () => (await ReadLookAsync(office)).Z < 3.4,
+                        "The player walks away from the wall into the aisle.", 4_000, 25);
+                }
+                finally { await page.Keyboard.UpAsync("w"); }
+            }
+            await WaitAsync(async () => Math.Abs(await DistanceAsync() - 3.80) < .01,
+                $"Scroll out reaches the expanded limit in clear space (office={office}).", 4_000, 25);
+            if (office)
+                await Task.Delay(250);
         }
 
         async Task VerifyCloseMouseLookAsync(bool office, bool captured = false)
@@ -214,7 +230,7 @@ internal static class CameraViews
                             if (view === 1)
                                 return Math.hypot(dx, dz) < .02 && camera.position.y - player.position.y > 1.5;
                             if (view === 2)
-                                return Math.hypot(dx, dz) < 2.51 &&
+                                return Math.hypot(dx, dz) < 3.81 &&
                                     dx * Math.sin(player.rotation.y) + dz * Math.cos(player.rotation.y) < -.1;
                             return Math.hypot(dx, dz) > .2;
                         }
