@@ -143,13 +143,37 @@ internal static class InputDevices
         Task MovedAsync(Position origin, string message) =>
             WaitAsync(async () => (await PositionAsync())!.Distance(origin) > 0.25, message, timeout);
 
+        // Resolves after `count` frames of the renderer that runs the simulation: the page on the
+        // main thread, the worker (OffscreenCanvas) otherwise.
+        const string Frames = """
+            count => new Promise(resolve => {
+                let n = 0;
+                const step = () => { if (++n >= count) { resolve(n); return; } requestAnimationFrame(step); };
+                requestAnimationFrame(step);
+            })
+            """;
+
         async Task StableAsync(string message)
         {
-            // O movimento desacelera normalmente depois de soltar o analógico.
-            await SampleAsync(page);
-            var position = (await PositionAsync())!;
-            await SampleAsync(page);
-            Check((await PositionAsync())!.Distance(position) < 0.04, message);
+            // Releasing the stick reaches the simulation on its next frame, and the deceleration
+            // that follows takes a few frames more. Count frames of the renderer, not gamepad
+            // polls of the main thread: the two rates have no fixed relation, and with software
+            // rendering one renderer frame can outlast a whole window of polls. The player must
+            // come to rest and stay put.
+            const int window = 12;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var frames = 0;
+            var still = 0;
+            var last = (await PositionAsync())!;
+            while (still < window && frames < 240 && clock.ElapsedMilliseconds < 40_000)
+            {
+                frames += await RenderAsync<int>(page, Frames, 4);
+                var now = (await PositionAsync())!;
+                still = now.Distance(last) < 0.002 ? still + 4 : 0;
+                last = now;
+            }
+            Log(new { stable = message, frames, seconds = Math.Round(clock.Elapsed.TotalSeconds, 1) });
+            Check(still >= window, message, new { frames, still, position = last });
         }
     }
 

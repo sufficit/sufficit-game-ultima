@@ -45,6 +45,11 @@ The design rules and the measurements are recorded in the
   the canvas; [MobileLayout.cs](../../tests/WorldCollisionE2E/MobileLayout.cs)
   opens the journal from the menu sheet. The AI simulator is installed at page
   load, outside `aiCpu.init`.
+- The stability check of the `input-devices` scenario
+  ([InputDevices.cs](../../tests/WorldCollisionE2E/InputDevices.cs)) waits for
+  twelve consecutive frames of the renderer that runs the simulation, without
+  movement. It compared two positions twelve gamepad polls apart, which made
+  it fail at random on the published build (see the live validation).
 - To keep every file within the [line limit](202611261150-file-line-limit.md)
   that `main` gained meanwhile, the AI activity summary of the status card
   moved to [Index.Status.cs](../../src/Pages/Index.Status.cs), the window
@@ -106,8 +111,9 @@ bench build; the three later attempts were stopped by the memory guard of the
 executor before reaching a verdict.
 
 Known failures carried over from `main`: "cancelar o toque deixou o
-analógico ativo" (`input-devices`, non-AOT builds only), "chega junto ao
-corpo de lado" (`collision`), a 30 s timeout in the office (`office`),
+analógico ativo" (`input-devices`, at random in every build; the cause is in
+the stability check, see the live validation), "chega junto ao corpo de
+lado" (`collision`), a 30 s timeout in the office (`office`),
 "Apliquei as mudanças no jardim." matching two elements (`garden`) and
 "Scroll out reaches the expanded limit in clear space" (`camera-views`).
 
@@ -156,6 +162,62 @@ against a control build of `f053af8`.
 
 The change reaches `main` through the Git Data API and the GitHub Pages
 workflow builds it; the live build is identified by `build.json`.
+
+### Live validation on the published site
+
+Every scenario compares the build declared by the page with `ULTIMA_BUILD`.
+
+On `29c519a`:
+
+| Scenario | Renderer | Result |
+|---|---|---|
+| `browser-services` | main thread | passed, 78 s |
+| `mobile-layout` | main thread | passed, 124 s |
+| `hud-status` | main thread | passed, 68 s |
+| `declarative-windows` | worker | stopped by the memory guard at 57 s (no verdict); the repeat passed, 67 s |
+| `input-devices` | worker | failed, 50 s: "cancelar o toque deixou o analógico ativo"; the repeat passed, 61 s. A third run did not start: the site already served `1802505` |
+
+On `1802505` (same game sources), `declarative-windows` passed on the worker
+in 69 s, and `input-devices` failed twice on the worker: "cancelar o toque
+deixou o analógico ativo" (53 s) and "desconectar o controle deixou o
+analógico ativo" (45 s).
+
+The `input-devices` failure was therefore not limited to non-AOT builds, as
+this record said before: it came at random on the published build too. The
+cause is in the stability check, not in the game: the check read the
+position, waited twelve gamepad polls (`requestAnimationFrame` on the main
+thread) and read it again, while the simulation advances with the frames of
+the renderer, which is the worker with `OffscreenCanvas` in the default
+mode. The two clocks have no fixed relation: on the published build under
+software rendering the stability windows of the corrected check (12 to 20
+renderer frames) took 1.8 to 5.3 s on the worker. A window of twelve
+main-thread polls can therefore close before the release reaches the
+simulation or during the deceleration that follows it, and the distance
+exceeds the 0.04 m limit. The old window was not instrumented; the evidence
+is the code, the random failures on the same build, the four passes of the
+corrected check and its negative control. No changed line of the game
+scripts between `5e65e96` and `29c519a` touches the stick, the touch or the
+delivery of input.
+
+With the corrected check, on `7b9239b` (same game sources):
+
+| Scenario | Renderer | Result |
+|---|---|---|
+| `input-devices` | worker | passed, 68 s, 69 s and 67 s |
+| `input-devices` | main thread | passed, 74 s |
+| `input-devices`, control without the touch cancel | worker | failed, 96 s: "cancelar o toque deixou o analógico ativo" (240 frames, 40 s, player still moving) |
+
+The control is a temporary copy of the scenario that does not send the
+`pointercancel`; it was not published. It shows that the corrected check
+still rejects a stick that stays active. The stability windows took 12 to 20
+frames.
+
+The Release publish, `RulesSmoke` and the JavaScript suite passed on the
+committed tree. The commit changes no game source, so the live scenarios
+above were not repeated on it.
+
+`main` repaired other scenarios of the browser suite meanwhile; see
+[the test suite repair](202611261519-test-suite-repair.md).
 
 Limitations:
 
