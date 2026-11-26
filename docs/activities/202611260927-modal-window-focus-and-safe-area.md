@@ -213,8 +213,24 @@ still rejects a stick that stays active. The stability windows took 12 to 20
 frames.
 
 The Release publish, `RulesSmoke` and the JavaScript suite passed on the
-committed tree. The commit changes no game source, so the live scenarios
-above were not repeated on it.
+committed tree. The commit changes no game source. On `d7df89c`, the
+published commit, `input-devices` passed on the worker in 102 s. The final
+check of `declarative-windows` on it was stopped by the memory guard of the
+executor at 67 s, without a verdict (see limitations); the scenario had
+passed on the published site on `29c519a` and `1802505`, whose game sources
+are identical. It was not repeated on that commit: the baseline of the
+container had risen to about 1000 MB, and the scenario adds about 800 MB.
+
+`main` then received four commits (`3eac1ad` to `d2cb930`: character body
+profiles and shared room presence). They change none of the code of this
+front: in [the page](../../src/Pages/Index.razor) they only pass the scene
+id to `game.net.init`. On `d2cb930`, the published build, both scenarios
+passed on the worker, with no OOM kill:
+
+| Scenario | Renderer | Result |
+|---|---|---|
+| `declarative-windows` | worker | passed, 91 s |
+| `input-devices` | worker | passed, 83 s; the four stability windows took 12 to 20 renderer frames (2.6 to 4.6 s) |
 
 `main` repaired other scenarios of the browser suite meanwhile; see
 [the test suite repair](202611261519-test-suite-repair.md).
@@ -226,7 +242,11 @@ Limitations:
   of the executor (1651–1653 MB of anonymous memory) before the end. The
   fourth passed in 60 s after the bench servers of the earlier rounds were
   removed (baseline 816 MB instead of 865–957 MB, peak 1590 MB). On the change
-  alone it had passed on the worker (90 s).
+  alone it had passed on the worker (90 s). The run on the published commit
+  `d7df89c` was stopped by the same guard at 67 s, after the models had
+  loaded (baseline 879 MB, peak 1651 MB). It adds about 800 MB above the
+  baseline, so it only fits when the baseline is below about 825 MB; the
+  queue that passed on `d2cb930` started it at 817 MB (peak 1611 MB).
 - `backpack` (desktop and touch) has no verdict on the bench: it opens two
   game pages, and the 2 GB container of the executor stops it (anonymous
   memory above 1650 MB, 140 s in). Nothing after the first collection steps
