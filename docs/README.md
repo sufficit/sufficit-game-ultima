@@ -20,7 +20,6 @@ Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
-- [File-size checks in the native test suites](PLAN-NATIVE-FILE-SIZE-TESTS.md).
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
@@ -42,6 +41,7 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [File-size checks in the native test suites](activities/202611261458-native-file-size-tests.md)
 - [Repository line limit and inline documentation](activities/202611261150-file-line-limit.md)
 - [Independent humanoid proportions](activities/202611261105-humanoid-proportions.md)
 - [Humanoid body profiles](activities/202611261057-humanoid-body-profiles.md)
