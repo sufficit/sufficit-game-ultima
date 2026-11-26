@@ -74,6 +74,13 @@ The camera reads the selection from the shared C# simulation.
 
 ## Simulação e interoperabilidade
 
+### Humanoid bodies
+
+The character design defines `Humanoid` as the shared anatomy and
+`HomoSapiens` as its first species. Each character has an individual body
+profile. The same resolved dimensions will feed its model, rig, camera
+and physics. [Species and body design](decisions/humanoid-species-and-body.md)
+
 ### Regras de física dos corpos
 
 - **Nenhum corpo ocupa o mesmo lugar no espaço.** A resolução de contato

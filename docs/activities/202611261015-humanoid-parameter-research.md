@@ -21,8 +21,8 @@ Documented a proposal for Ultima. The existing
 and detail. The
 [editable placement contract](../../models/Ultima.Models.Core/PlacementModels.cs)
 already shows how to declare editable keys, defaults, ranges, and patch
-validation. Its current values are numeric. Humanoid appearance needs
-typed color values and, later, asset selections.
+validation. Its current values are numeric. Humanoid body profiles also need
+typed color values.
 
 The [current villager](../../models/Ultima.Models.Characters/Villager.cs)
 builds with fixed height, proportions and colors. The
@@ -34,13 +34,13 @@ when it initializes the local player and sets first-person eye height.
 | Proposed parameter | Consumers |
 | --- | --- |
 | Height in meters | Body geometry, joint pivots, eye height, collision height and step reach |
-| Body build | Body widths, limb girth, stance width, collider radius and clothing fit |
+| Body build | Body widths, limb girth, stance width and collider radius |
 | Mass in kilograms | A separate value for future force and inertia rules |
-| Skin, hair, eye and clothing colors | Per-instance materials. Skin tone is independent of body shape and simulation rules. |
-| Proportions, facial details, hairstyles and outfits | Later extensions using original parts or reviewed assets and matching attachment points |
+| Skin tone, natural hair color and eye color | Per-instance materials. Skin tone is independent of body shape and simulation rules. |
+| Proportions, facial and ear details | Individual variation within the species definition |
 
-Start with an editable player profile for height, body build and skin, hair
-and clothing colors. Keep the current appearance as the default for
+Start with a Homo sapiens body profile for height, build and skin, hair
+and eye colors. Keep the current appearance as the default for
 existing characters. One validated C# profile should produce the visual
 descriptor and the simulation measurements. Keep material changes local
 to the avatar instance. Share meshes for identical bodies and rebuild
@@ -49,6 +49,7 @@ geometry only when a shape parameter changes.
 The profile belongs to each character. It stays attached when the player
 changes environments or later changes the active member of a group. Keep
 appearance data separate from schedules, needs, skills and inventory.
+[Species hierarchy and body profile](../../decisions/humanoid-species-and-body.md)
 
 ## Validation and delivery
 
