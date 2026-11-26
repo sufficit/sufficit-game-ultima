@@ -1,5 +1,6 @@
 (function (root) {
     'use strict';
+    // Legacy dimensions are used by the renderer when a body packet is unavailable.
     const PLAYER_HEIGHT = 1.75;
     const HIP_HEIGHT = PLAYER_HEIGHT * .44;
     const LEG_RADIUS = PLAYER_HEIGHT * .039;
@@ -19,6 +20,7 @@
         }
 
         function createJointHierarchy(root, anatomy) {
+            // The C# packet provides ordered model-space pivots. Babylon nodes store parent-relative transforms.
             const joints = new Map([['root', root]]);
             for (const { name, parent, x, y, z, motion } of anatomy) {
                 const node = createCharacterJoint(root, name, joints.get(parent), x, y, z);
@@ -243,6 +245,7 @@
             for (const proto of protos) {
                 const group = proto.name.slice(('model-' + modelId + '-').length);
                 if (rig.legs.length && group === 'legs') {
+                    // Articulated capsules already use the body measurements. Reuse the signed material.
                     for (const leg of rig.legs) { leg.thigh.material = leg.shin.material = proto.material; }
                     continue;
                 }

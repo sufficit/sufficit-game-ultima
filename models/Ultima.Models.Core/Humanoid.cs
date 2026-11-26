@@ -1,11 +1,13 @@
 namespace Ultima.Models.Core;
 
+/// <summary>Species contract for resolving authoring overrides into measured humanoid bodies.</summary>
 public abstract class Humanoid
 {
     public abstract string Id { get; }
 
     public abstract HumanoidBody Resolve(HumanoidProfile profile);
 
+    /// <summary>Resolves a catalog profile or the default human when no profile is supplied.</summary>
     public static HumanoidBody ResolveBody(HumanoidProfile? profile)
     {
         profile ??= new HumanoidProfile();
@@ -35,6 +37,7 @@ public abstract class Humanoid
     }
 }
 
+/// <summary>Human defaults and supported ranges for the current avatar models.</summary>
 public sealed class HomoSapiens : Humanoid
 {
     public const string SpeciesId = "homo-sapiens";

@@ -1,0 +1,46 @@
+{
+  "app-python/main.py": {
+    "maxLines": 1011,
+    "reason": "Legacy Python API retained for compatibility. Keep new API features in ASP.NET Core."
+  },
+  "app/WorldAssets.cs": {
+    "maxLines": 636,
+    "reason": "Existing asset storage, catalog and serving code. Split the IO and catalog responsibilities when editing this area."
+  },
+  "app/WorldEdits.cs": {
+    "maxLines": 430,
+    "reason": "Existing edit validation and persistence code. Split those responsibilities when editing this area."
+  },
+  "decisions/ui-mobile-after.json": {
+    "maxLines": 578,
+    "reason": "Recorded mobile layout measurements kept as one evidence file for comparison."
+  },
+  "src/Pages/Index.razor": {
+    "maxLines": 985,
+    "reason": "Existing game page includes several panels. Extract one Razor component per panel when editing it."
+  },
+  "src/wwwroot/environments.json": {
+    "maxLines": 560,
+    "reason": "The current environment catalog is loaded as one manifest with embedded layouts."
+  },
+  "src/wwwroot/js/game-core.js": {
+    "maxLines": 3501,
+    "reason": "Existing shared Babylon renderer. Extract rendering modules by responsibility as the C# migration progresses."
+  },
+  "src/wwwroot/js/game.js": {
+    "maxLines": 779,
+    "reason": "Existing browser host combines input, worker communication and lifecycle. Extract adapters by responsibility."
+  },
+  "tests/RulesSmoke/Program.cs": {
+    "maxLines": 821,
+    "reason": "Existing smoke runner still contains multiple suites. Move assertions to focused test classes when extending coverage."
+  },
+  "tests/ServerIntegration/Program.cs": {
+    "maxLines": 710,
+    "reason": "Existing integration runner still contains multiple suites. Extract focused suites when extending coverage."
+  },
+  "tests/WorldCollisionE2E/MobileLayout.cs": {
+    "maxLines": 425,
+    "reason": "Existing mobile viewport and graphics scenarios. Separate assertions by scenario when extending coverage."
+  }
+}

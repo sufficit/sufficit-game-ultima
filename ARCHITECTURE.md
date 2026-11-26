@@ -81,6 +81,20 @@ C# resolves the local avatar's body profile from `playerBody` in the
 environment catalog. The model, rig, camera and collision use the resulting
 dimensions in both renderer modes. [Species and body design](decisions/humanoid-species-and-body.md)
 
+### Browser module boundaries
+
+JavaScript uses modules with one responsibility. Pass dependencies through the
+module's interface and keep private helpers inside it. For the current classic
+scripts, follow the [character rig](src/wwwroot/js/character-rig.js) pattern.
+Its factory receives Babylon, the scene, and mesh tracking, and exposes a small
+object for calls from the renderer.
+
+When extracting a shared renderer feature, load its script before the caller
+in both [index.html](src/wwwroot/index.html) and
+[game-worker.js](src/wwwroot/js/game-worker.js). Keep DOM access in the browser
+host. Use ES module imports when the entry point uses module loading. Convert
+both entry points together when changing the shared renderer's module format.
+
 ### Regras de física dos corpos
 
 - **Nenhum corpo ocupa o mesmo lugar no espaço.** A resolução de contato

@@ -31,6 +31,7 @@ internal static partial class BrowserExports
     [JSExport]
     internal static string ConfigurePlayer(string profile)
     {
+        // Resolve the catalog values once per scene. The physics state and renderer packet share this body.
         var body = Humanoid.ResolveBody(JsonSerializer.Deserialize(profile, PlayerBodyJson.Default.HumanoidProfile));
         _body = body;
         _characters = new();

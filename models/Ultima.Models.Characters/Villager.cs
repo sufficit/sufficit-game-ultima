@@ -3,11 +3,9 @@ using Ultima.Models.Core;
 namespace Ultima.Models.Characters;
 
 /// <summary>
-/// Humanoide de 1,75 m — mesmas proporções, cores e partes do protótipo em JavaScript
-/// (pernas, tronco, braços, cabeça, sapatos, mãos, olhos, pescoço e cabelo), agora
-/// descritas pelo Core com origem nos pés (y = 0). No protótipo antigo a figura era
-/// centrada (pés em -H/2); aqui todas as alturas já estão convertidas para a base.
-/// Cada cor vira um material (especular 0,08 como no original) e um grupo = uma malha.
+/// Builds a humanoid descriptor from the resolved measurements with its origin at the feet.
+/// The default profile retains the original 1.75 m proportions. Each group supplies a render mesh
+/// or the material for a corresponding articulated limb.
 /// </summary>
 public abstract class VillagerBase : ModelBase
 {
@@ -42,8 +40,7 @@ public abstract class VillagerBase : ModelBase
          .Material("hair", color: b.Params.Body?.Hair.ToArray() ?? _hair, specular: 0.08)
          .Material("eye", color: body.Eyes.ToArray(), specular: 0.08);
 
-        // Pernas: cápsulas apoiadas no chão; braços e tronco se apoiam no topo da perna
-        // (no original os braços começam exatamente no topo das pernas: torsoH - 0,20·H = armH/2).
+        // These static parts provide mesh groups for the crowd and materials for the articulated rig.
         b.Group("legs", "pants")
          .CapsuleOn("leg-l", "", 2 * legR, legH, x: -legX, subdivisions: 4)
          .CapsuleOn("leg-r", "", 2 * legR, legH, x: legX, subdivisions: 4);
@@ -51,6 +48,7 @@ public abstract class VillagerBase : ModelBase
         b.Group("torso", "shirt");
         if (body.WaistCircumference is not null)
         {
+            // Overlap the chest and abdomen. Scale their horizontal axes independently of their heights.
             var abdomenHeight = torsoH * .65;
             var waistScale = 2 * body.WaistRadius / abdomenHeight;
             b.SphereAt("abdomen", "leg-l", abdomenHeight, legH, segments: 12,
@@ -79,9 +77,7 @@ public abstract class VillagerBase : ModelBase
         b.Group("hand-right", "skin")
          .SphereAt("hand-r", "torso", 2.6 * armR, handBase, x: armX, segments: 8);
 
-        // Sapatos: esferas achatadas (55%) e alongadas (1,9) com a frente para +Z. A
-        // escala é embutida nos vértices pelo renderizador, então a base usa o raio
-        // escalado: o sapato afunda 9,6 mm no chão como no protótipo.
+        // The shoe faces +Z. Scale the sphere vertically and let its base extend slightly below the ground.
         b.Group("shoes", "shoe")
          .SphereAt("shoe-l", "", 2.5 * legR, 0.55 * legR - 0.6875 * legR, x: -legX, z: 0.9 * legR, segments: 8, scaleX: 1, scaleY: 0.55, scaleZ: 1.9)
          .SphereAt("shoe-r", "", 2.5 * legR, 0.55 * legR - 0.6875 * legR, x: legX, z: 0.9 * legR, segments: 8, scaleX: 1, scaleY: 0.55, scaleZ: 1.9);
@@ -90,8 +86,7 @@ public abstract class VillagerBase : ModelBase
          .SphereAt("eye-l", "head", 0.22 * headR, height - headR + 0.1 * headR - 0.11 * headR, x: -0.36 * headR * faceWidth, z: 0.9 * headR, segments: 6)
          .SphereAt("eye-r", "head", 0.22 * headR, height - headR + 0.1 * headR - 0.11 * headR, x: 0.36 * headR * faceWidth, z: 0.9 * headR, segments: 6);
 
-        // Cabelo: esfera 2,18·headR levemente achatada (0,82) e deslocada para trás
-        // (base = centro − raio vertical já escalado).
+        // Place the flattened hair sphere behind the face using its scaled vertical radius.
         b.Group("hair", "hair")
          .SphereAt("hair", "head", 2.18 * headR, height - headR + 0.28 * headR - 1.09 * headR * 0.82, z: -0.14 * headR, segments: 10, scaleX: faceWidth, scaleY: 0.82, scaleZ: 1.02);
 
@@ -112,7 +107,7 @@ public abstract class VillagerBase : ModelBase
     }
 }
 
-/// <summary>Personagem do jogador: camisa azul, calça escura e pele clara.</summary>
+/// <summary>Local player model with its standard colors and optional body overrides.</summary>
 public sealed class Villager : VillagerBase
 {
     public override string Id => "character.villager";
@@ -127,7 +122,7 @@ public sealed class Villager : VillagerBase
     { }
 }
 
-/// <summary>Jogador remoto (P2P): mesmas proporções, roupas roxas.</summary>
+/// <summary>Remote player model with the standard proportions and a purple shirt.</summary>
 public sealed class Wanderer : VillagerBase
 {
     public override string Id => "character.wanderer";

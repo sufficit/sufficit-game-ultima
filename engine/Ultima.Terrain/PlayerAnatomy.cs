@@ -4,7 +4,7 @@ using Ultima.Models.Core;
 
 namespace Ultima.Terrain;
 
-// Pivôs na pose neutra, em metros no espaço do modelo. Os pais precedem os filhos.
+// Neutral joint pivots in model-space meters. A parent precedes its children.
 internal sealed record AnatomyJoint(string Name, string Parent, double X, double Y, double Z, string Motion);
 
 internal static class PlayerAnatomy

@@ -46,7 +46,7 @@ internal static class PlayerPose
 
     internal static void Brace(Span<double> pose, double impact)
     {
-        // Um choque externo recua o torso. O passo cruzado inclina para a recuperação.
+        // An external impact pushes the torso back. A crossover step leans into recovery.
         pose[2] += (impact < 0 ? 0.32 : 0.5) * impact;
         pose[4] -= 0.14 * impact;
         pose[10] -= (impact < 0 ? 0.22 : 0.62) * impact;
@@ -63,10 +63,10 @@ internal static class PlayerPose
             var cycle = (phase / Math.PI + 0.5 + i) % 2;
             var swing = cycle > 1;
             var t = cycle - (swing ? 1 : 0);
-            // No apoio, o pé recua exatamente a distância que o corpo avança.
+            // During stance, the foot moves back by the distance the body advances.
             var forward = strideLength / 4 * (swing ? -1 - 2 * t + t * t * (12 - 8 * t) : 1 - 2 * t);
             var lift = swing ? Math.Sin(Math.PI * t) * Lerp(0.11, 0.17, run) * weight : 0;
-            // A sola roda para a ponta na saída e para o calcanhar ao voltar.
+            // The sole rolls toward the toe at lift-off and toward the heel at landing.
             output[8 + i] = swing ? Math.Sin(Math.Tau * t) * Math.Min(0.38, lift * 3) : 0;
             var localX = i == 0 ? -spacing : spacing;
             var offset = 4 * i;
@@ -77,10 +77,11 @@ internal static class PlayerPose
         }
     }
 
-    // Giro da perna em torno do eixo quadril–tornozelo. A resposta é contínua
-    // na passagem por ±π e fica limitada mesmo quando a sola cruza a direção do corpo.
+    // Swivel around the hip-to-ankle axis. Sine keeps the angle bounded and continuous across ±π.
     internal static double KneeSwivel(double footYaw) => 0.65 * Math.Sin(footYaw);
 
+    // Solve the body height and both legs against the sampled ankle targets.
+    // The output stores body Y, left and right hip/knee/ankle pitches, and optional hip rolls.
     internal static void SolveLegs(Span<double> output, double ground, double previousY, double delta,
         double footGap, double hipHeight, double legLength, double ankleOffset,
         double leftForward, double leftLift, double leftSupport, bool leftOnObstacle,
@@ -101,6 +102,7 @@ internal static class PlayerPose
             var riseLimit = Math.Max(bodyY, previousY) + delta * 3;
             bodyY = Math.Min(Math.Max(bodyY, top), riseLimit);
         }
+        // Lower the pelvis until both legs can reach their support points.
         bodyY = Math.Min(bodyY, Math.Min(leftReach, rightReach));
         output[0] = bodyY;
         var leftDrop = Math.Max(0.16, bodyY + hipHeight - leftAnkle);
@@ -124,15 +126,18 @@ internal static class PlayerPose
 
     private static void SetAngles(Span<double> output, double drop, double forward, double femur, double tibia, double pitch)
     {
+        // Clamp the target to the interval that can close the hip-knee-ankle triangle.
         var extent = Math.Clamp(double.Hypot(drop, forward), Math.Max(1e-8, Math.Abs(femur - tibia)), femur + tibia);
         if (femur == tibia)
         {
+            // Equal segments use the symmetric solver used by the default and remote avatars.
             var flex = Math.Acos(Math.Min(1, extent / (2 * femur)));
             output[0] = -Math.Atan2(forward, drop) - flex;
             output[1] = 2 * flex;
             output[2] = pitch - output[0] - output[1];
             return;
         }
+        // The law of cosines gives knee flexion. Project the tibia to recover hip pitch.
         var squared = extent * extent;
         var knee = Math.Acos(Math.Clamp((squared - femur * femur - tibia * tibia) / (2 * femur * tibia), -1, 1));
         var hipOffset = Math.Atan2(tibia * Math.Sin(knee), femur + tibia * Math.Cos(knee));

@@ -3,6 +3,7 @@ using Ultima.Models.Core;
 
 namespace Ultima.Terrain;
 
+// Startup packet shared by the worker and main-thread renderer. Frame updates carry pose angles.
 internal sealed record PlayerBodyFrame(HumanoidBody Body, AnatomyJoint[] Anatomy);
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]

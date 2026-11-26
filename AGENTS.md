@@ -19,7 +19,9 @@ overview and [README.md](README.md) for the repository map.
 ## Documentation and plans
 
 - Write all repository documentation and inline code comments in English.
-  Keep player-facing text in its intended locale.
+  Document public contracts, units and coordinate systems, invariants, and
+  compatibility assumptions beside the code. Keep player-facing text in its
+  intended locale.
 - Put execution plans in `docs/PLAN-*.md` and link them from
   [docs/README.md](docs/README.md). Give each plan an objective, acceptance
   criteria, numbered checkpoints with status, and the next action. Reuse the
@@ -42,9 +44,16 @@ overview and [README.md](README.md) for the repository map.
   browser and rendering APIs that require it. Batch JavaScript–WebAssembly
   calls, compare frame cost in equivalent scenes, and validate the worker and
   main-thread fallback. See [ARCHITECTURE.md](ARCHITECTURE.md).
-- Aim for at most 400 lines per source file. Split by responsibility, using
-  partial classes and `Type.Concern.cs` files when the code belongs to one
-  type. Split large Razor components with focused code-behind files.
+- Keep repository text files at or below 400 lines. Run
+  `python3 scripts/check-file-size.py` before delivery. Each exception in
+  [file-size-exceptions.json](scripts/file-size-exceptions.json) requires an
+  exact path, a reason and a maximum line count. Remove an exception after
+  its file reaches 400 lines or fewer.
+- Split C# by responsibility with partial classes and `Type.Concern.cs`
+  files when the code belongs to one type. Split large Razor files into
+  focused components and code-behind files. For JavaScript, use focused modules
+  with explicit interfaces and preserve both browser entry points.
+  [Browser module boundaries](ARCHITECTURE.md#browser-module-boundaries)
 - The ASP.NET Core API in `app/` is optional. The game must start
   independently of it. The previous Python implementation lives in
   `app-python/`.
