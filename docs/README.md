@@ -41,6 +41,7 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Humanoid customization research](activities/202611261015-humanoid-parameter-research.md)
 - [One engine for the garden and office](activities/202611260005-one-engine-environments.md)
 - [Foot support during aimed locomotion](activities/202611252331-player-support-balance.md)
 - [Expanded camera zoom and group framing](activities/202611252319-camera-zoom-and-group-framing.md)
