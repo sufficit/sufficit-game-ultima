@@ -10,7 +10,7 @@ script entry points.
 
 - Documented the humanoid profile, measurement units, model descriptors,
   joint pivots and leg solver in English beside the code.
-- Added the [400-line check](../../scripts/check-file-size.py) and
+- Added a 400-line check and
   [exact-path exceptions](../../scripts/file-size-exceptions.json). The check
   covers tracked files and new unignored files. It skips binary files and
   symlinks. Each exception records its current ceiling and the reason it

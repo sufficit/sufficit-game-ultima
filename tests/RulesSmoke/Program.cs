@@ -2,7 +2,6 @@ using Ultima.Npc;
 using Ultima.Rules;
 using Ultima.Terrain;
 using System.Runtime.InteropServices;
-
 int failures = 0;
 void Check(string name, bool ok)
 {
@@ -15,6 +14,7 @@ bool Throws<T>(Action action) where T : Exception
     try { action(); return false; }
     catch (T) { return true; }
 }
+RepositoryFileSizeChecks.Run(Check);
 
 WorldSky.Sample Sky(int month, int day, int hour, int minute = 0)
     => WorldSky.At(new DateTimeOffset(2026, month, day, hour, minute, 0, TimeSpan.Zero).ToUnixTimeMilliseconds());

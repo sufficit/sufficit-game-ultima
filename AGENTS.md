@@ -44,8 +44,9 @@ overview and [README.md](README.md) for the repository map.
   browser and rendering APIs that require it. Batch JavaScript–WebAssembly
   calls, compare frame cost in equivalent scenes, and validate the worker and
   main-thread fallback. See [ARCHITECTURE.md](ARCHITECTURE.md).
-- Keep repository text files at or below 400 lines. Run
-  `python3 scripts/check-file-size.py` before delivery. Each exception in
+- Keep repository text files at or below 400 lines. The C# suite
+  (`dotnet run --project tests/RulesSmoke -c Release`) and JavaScript suite
+  (`node --test tests/*.test.mjs`) both enforce the policy. Each exception in
   [file-size-exceptions.json](scripts/file-size-exceptions.json) requires an
   exact path, a reason and a maximum line count. Remove an exception after
   its file reaches 400 lines or fewer.
