@@ -21,7 +21,6 @@ Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
-- [Shared room presence across environments](PLAN-SHARED-ENVIRONMENT-PRESENCE.md).
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
@@ -43,6 +42,7 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Shared room presence across environments](activities/202611261701-shared-environment-presence.md)
 - [Characters API and real Genius inference](activities/202611261650-characters-api-and-genius-inference.md)
 - [Ultima test suite repair](activities/202611261519-test-suite-repair.md)
 - [File-size checks in the native test suites](activities/202611261458-native-file-size-tests.md)
