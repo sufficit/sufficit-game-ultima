@@ -93,8 +93,50 @@ internal static class CameraViews
                 "Keyboard selection captures the mouse without clicking the game surface.", 4_000, 25);
             await VerifyCloseZoomAsync(office);
             await VerifyCloseMouseLookAsync(office, captured: true);
+            await VerifyAimStanceAsync(office);
             await page.Keyboard.PressAsync("v");
             await VerifyAsync(office, view: 0);
+        }
+
+        async Task VerifyAimStanceAsync(bool office)
+        {
+            var worker = office || MainThread ? null : page.Workers[0];
+            Task<Stance> ReadStanceAsync() => ReadAsync<Stance>(page, """
+                office => {
+                    const name = office ? 'environment-player' : 'player';
+                    const scene = BABYLON.EngineStore.LastCreatedScene;
+                    const root = scene.getTransformNodeByName(name);
+                    const lateral = side => {
+                        const ankle = scene.getTransformNodeByName(name + '-ankle-' + side);
+                        ankle.computeWorldMatrix(true);
+                        const foot = ankle.getAbsolutePosition();
+                        return (foot.x - root.position.x) * Math.cos(root.rotation.y) -
+                            (foot.z - root.position.z) * Math.sin(root.rotation.y);
+                    };
+                    return { x: root.position.x, z: root.position.z, left: lateral('left'), right: lateral('right') };
+                }
+                """, office, worker);
+
+            var start = await ReadStanceAsync();
+            var current = start;
+            await page.Keyboard.DownAsync("d");
+            try
+            {
+                await WaitAsync(async () =>
+                {
+                    current = await ReadStanceAsync();
+                    Check(Math.Max(Math.Abs(current.Left), Math.Abs(current.Right)) < .54,
+                        "The rendered ankles stay within reach during aimed lateral travel.", new { office, current });
+                    return double.Hypot(current.X - start.X, current.Z - start.Z) > .8;
+                }, $"The character strafes while aiming (office={office}).", 5_000, 35);
+            }
+            finally { await page.Keyboard.UpAsync("d"); }
+
+            await WaitAsync(async () =>
+            {
+                current = await ReadStanceAsync();
+                return current.Left < -.045 && current.Right > .045 && Math.Abs(current.Left + current.Right) < .04;
+            }, $"The rendered feet return under the hips after stopping (office={office}).", 4_000, 25);
         }
 
         async Task VerifyCloseZoomAsync(bool office)
@@ -256,6 +298,8 @@ internal static class CameraViews
     }
 
     private static double AngleDelta(double a, double b) => Math.Abs(Math.IEEERemainder(a - b, Math.Tau));
+
+    private sealed record Stance(double X, double Z, double Left, double Right);
 
     private sealed record LookPose(double X, double Z, double Yaw, double Vertical, double Heading);
 }

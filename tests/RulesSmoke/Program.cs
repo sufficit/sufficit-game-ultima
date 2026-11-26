@@ -517,6 +517,8 @@ foreach (var turn in new[] { Math.PI, -Math.PI })
 Check("inversão em ambos os sentidos alterna apoio com base compacta",
     turnKeepsSupport && maxPivotWidth < .28);
 
+PlayerSupportChecks.Run(Check);
+
 const double minimumGap = PlayerCharacterSpace.TorsoDepth * 2;
 var occupied = new PlayerCharacterSpace();
 occupied.Set(PlayerCharacterSpace.Guardian, 0, 0, 2);

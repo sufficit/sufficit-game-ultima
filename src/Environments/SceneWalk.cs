@@ -41,7 +41,7 @@ internal sealed partial class SceneWalk(SceneWalkSettings settings, SceneBox[] b
         }
 
         var animation = result[10..];
-        BrowserExports.AnimateInteriorPlayer(animation, _x, _bodyY, _z, _heading, _phase, _weight, _clock, distance, delta);
+        BrowserExports.AnimateInteriorPlayer(animation, _x, _bodyY, _z, _heading, _phase, _weight, _clock, distance, delta, close);
         (_phase, _weight, _clock, _bodyY) = (animation[0], animation[1], animation[12], animation[17]);
         (result[0], result[1], result[2]) = (_x, _z, _heading);
         Follow(result, sin, cos);

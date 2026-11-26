@@ -115,3 +115,15 @@ raiz nem trocar a pose da outra perna. O solucionador recalcula o
 quadril, joelho e tornozelo com a altura do apoio naquele ponto.
 Um corte superior a 12 cm sob impulso suficiente aciona o tropeço.
 A separação corporal atende os contatos que resistem aos ajustes.
+
+
+## Aimed locomotion and support
+
+The close third-person view can aim the character independently of travel.
+The foot contact solver uses actual movement in the character's local frame
+to place the next step. Sidesteps and backward steps use a shorter stride.
+A lateral step leads with the foot on that side and keeps the other foot in its lane.
+
+When the character stops, the solver returns the feet under the hips one at
+a time. A turn with no translation uses compact steps around the body.
+Terrain and obstacle height queries still determine the contact height.

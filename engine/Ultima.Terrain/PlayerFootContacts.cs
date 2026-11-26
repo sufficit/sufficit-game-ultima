@@ -1,13 +1,15 @@
 namespace Ultima.Terrain;
 
-// A sola mantém posição e orientação no mundo durante o apoio.
+// The sole keeps its world position and orientation during support.
 internal sealed partial class PlayerFootContacts
 {
     internal const double StrideLength = 1.16;
     private const double ResumeDuration = 0.18;
+    internal double AimedStride => StrideLength - .54 * Math.Abs(_travelLateral) + .26 * Math.Min(0, _travelForward);
 
     private readonly Contact[] _feet = new Contact[2];
-    private bool _ready, _moving;
+    private bool _ready, _moving, _aimed;
+    private double _travelForward, _travelLateral;
     private double _x, _z, _yaw, _airborneBlend;
 
     internal void Reset()
@@ -16,11 +18,21 @@ internal sealed partial class PlayerFootContacts
         _resting = _pivoting = false;
     }
 
-    internal double Begin(double x, double z, double yaw, double distance)
+    internal double Begin(double x, double z, double yaw, double distance, bool aimed = false)
     {
-        if (double.Hypot(x - _x, z - _z) > distance + 0.02) Reset();
-        var turned = _ready ? Math.Abs(Math.IEEERemainder(yaw - _yaw, Math.Tau)) : 0;
-        (_x, _z, _yaw) = (x, z, yaw);
+        var dx = x - _x;
+        var dz = z - _z;
+        var translation = double.Hypot(dx, dz);
+        if (translation > distance + 0.02) Reset();
+        var turned = _ready && !aimed ? Math.Abs(Math.IEEERemainder(yaw - _yaw, Math.Tau)) : 0;
+        (_x, _z, _yaw, _aimed) = (x, z, yaw, aimed);
+        (_travelForward, _travelLateral) = (0, 0);
+        if (aimed && _ready && translation > 0.00001)
+        {
+            var (sin, cos) = Math.SinCos(yaw);
+            _travelForward = (dx * sin + dz * cos) / translation;
+            _travelLateral = (dx * cos - dz * sin) / translation;
+        }
         var travelled = Math.Max(distance, turned * 0.28);
         _moving = travelled > 0.00001;
         return travelled;
@@ -50,8 +62,8 @@ internal sealed partial class PlayerFootContacts
             var side = i == 0 ? -spacing : spacing;
             var cycle = (phase / Math.PI + 0.5 + i) % 2;
             var swing = cycle > 1;
-            var x = _x + feet[offset + 2];
-            var z = _z + feet[offset + 3];
+            var (x, z) = _aimed ? AimStep(side, shoeOffset, feet[offset], sin, cos)
+                : (_x + feet[offset + 2], _z + feet[offset + 3]);
             var yaw = _yaw;
             if (!_ready || resuming) contact.RecoveryLift = 0;
             if (resuming)
@@ -71,9 +83,9 @@ internal sealed partial class PlayerFootContacts
                 var progress = (swingPhase - contact.SwingStart) / (1 - contact.SwingStart);
                 var blend = SwingBlend(progress);
                 // Aterrissagem na ponta do próximo apoio, adiantada pela distância que ainda falta.
-                var landing = shoeOffset + StrideLength * (0.25 + 0.5 * (1 - swingPhase));
-                var landingX = _x + side * cos + landing * sin;
-                var landingZ = _z - side * sin + landing * cos;
+                var lead = (_aimed ? AimedStride : StrideLength) * (0.25 + 0.5 * (1 - swingPhase));
+                var (landingX, landingZ) = _aimed ? AimStep(side, shoeOffset, lead, sin, cos)
+                    : (_x + side * cos + (shoeOffset + lead) * sin, _z - side * sin + (shoeOffset + lead) * cos);
                 x = contact.X + (landingX - contact.X) * blend;
                 z = contact.Z + (landingZ - contact.Z) * blend;
                 yaw = contact.Yaw + Math.IEEERemainder(yaw - contact.Yaw, Math.Tau) * blend;
@@ -86,7 +98,8 @@ internal sealed partial class PlayerFootContacts
 
             contact.RecoveryLift = Math.Max(0, contact.RecoveryLift - delta * 0.6);
             var lift = feet[offset + 1] * gaitBlend + contact.ResumeLift * (1 - gaitBlend);
-            var pitch = feet[8 + i] * gaitBlend + contact.ResumePitch * (1 - gaitBlend);
+            var pitch = feet[8 + i] * gaitBlend * (_aimed ? _travelForward : 1)
+                + contact.ResumePitch * (1 - gaitBlend);
             if (contact.RecoveryLift > lift)
             {
                 lift = contact.RecoveryLift;
@@ -98,6 +111,15 @@ internal sealed partial class PlayerFootContacts
         var crossed = KeepFeetApart(feet, extra, spacing, sin, cos, _feet[0].Swing ? 0 : 1);
         RememberFeet(feet, extra);
         return crossed;
+    }
+
+    private (double X, double Z) AimStep(double side, double shoeOffset, double lead, double sin, double cos)
+    {
+        var forward = shoeOffset + lead * _travelForward;
+        var lateral = lead * _travelLateral;
+        // Each foot keeps its lane. Lead with the outward foot in a sidestep.
+        var width = side + Math.CopySign(Math.Clamp(lateral * Math.Sign(side), 0, .20), side);
+        return (_x + width * cos + forward * sin, _z - width * sin + forward * cos);
     }
 
     private void WriteFoot(Span<double> feet, Span<double> extra, int foot, double side,

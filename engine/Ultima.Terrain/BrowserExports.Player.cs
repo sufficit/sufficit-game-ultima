@@ -182,7 +182,8 @@ internal static partial class BrowserExports
         bool hasLegs, bool isPlayer, bool hasTunnels)
     {
         AnimateCharacterFrame(CharacterFrame, x, y, z, yaw, phase, weight, clock, speech, elapsed, duration,
-            distance, delta, nameLength, listening, frozen, bend, reach, hasLegs, isPlayer, hasTunnels);
+            distance, delta, nameLength, listening, frozen, bend, reach, hasLegs, isPlayer, hasTunnels,
+            aimed: isPlayer && Camera.View == PlayerCameraView.Close);
         return CharacterFrame;
     }
 
@@ -242,14 +243,14 @@ internal static partial class BrowserExports
     }
 
     internal static void AnimateInteriorPlayer(Span<double> result, double x, double y, double z, double yaw,
-        double phase, double weight, double clock, double distance, double delta)
+        double phase, double weight, double clock, double distance, double delta, bool aimed)
         => AnimateCharacterFrame(result, x, y, z, yaw, phase, weight, clock, 0, 0, 0,
-            distance, delta, "player".Length, false, false, 0, 0, true, true, false, flatFloor: true);
+            distance, delta, "player".Length, false, false, 0, 0, true, true, false, flatFloor: true, aimed: aimed);
 
     private static void AnimateCharacterFrame(Span<double> result, double x, double y, double z, double yaw,
         double phase, double weight, double clock, double speech, double elapsed, double duration,
         double distance, double delta, int nameLength, bool listening, bool frozen, double bend, double reach,
-        bool hasLegs, bool isPlayer, bool hasTunnels, bool flatFloor = false)
+        bool hasLegs, bool isPlayer, bool hasTunnels, bool flatFloor = false, bool aimed = false)
     {
         clock += delta;
         speech = Math.Max(0, speech - delta);
@@ -258,8 +259,9 @@ internal static partial class BrowserExports
         var pivot = isPlayer ? _movement.PivotProgress : -1;
         if (isPlayer)
         {
-            var strideDistance = PlayerFeet.Begin(x, z, yaw, distance);
+            var strideDistance = PlayerFeet.Begin(x, z, yaw, distance, aimed);
             if (pivot < 0) distance = strideDistance;
+            if (aimed) strideLength = PlayerFeet.AimedStride;
         }
         PlayerPose.Animate(result, phase, weight, clock, distance, delta, nameLength, listening,
             speech > 0 && listening, progress, bend, reach, strideLength, playerGait: isPlayer);
