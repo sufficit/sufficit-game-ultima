@@ -1,0 +1,15 @@
+<div class="touch-controls" aria-label="Controles táteis">
+    <div id="move-stick" class="touch-stick" aria-label="Analógico para andar"><span id="move-thumb"></span><small>ANDAR</small></div>
+    <div class="touch-right-controls">
+        <div id="look-stick" class="touch-stick look-stick" aria-label="Analógico para câmera"><span id="look-thumb"></span><small>CÂMERA</small></div>
+        @if (ShowActions)
+        {
+            <button id="touch-cancel" type="button" aria-label="Fechar diálogo">B</button>
+            <button id="touch-action" type="button" aria-label="Interagir">A</button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public bool ShowActions { get; set; } = true;
+}

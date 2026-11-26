@@ -2,13 +2,15 @@
 
 ## Context
 
-The garden uses the main game loop. The office started as an object-scene
-prototype and still starts a separate scene with its own [C# controller](../src/Environments/SceneWalk.cs).
-It already uses the same character rig and core locomotion and pose routines.
-The separate entry points explain why features added in one place can require
-extra integration in the other.
-[Garden scene](../src/wwwroot/js/game-core.js) ·
-[Office scene](../src/wwwroot/js/environment-scene.js)
+The office started as an object-scene prototype with its own
+`SceneWalk` controller and render loop. It reused the garden's character rig
+and core locomotion and pose routines. Features such as camera controls
+still needed wiring in both places.
+
+The garden and the office now use the [same game loop](../src/wwwroot/js/game-core.js).
+The office geometry and its mission board remain driven by the catalog.
+Walkable scenes use the common [collision sweep](../engine/Ultima.Terrain/PlayerMovement.cs)
+and can supply [solid boxes](../engine/Ultima.Terrain/PlayerMovement.Scene.cs) and traversal bounds.
 
 ## Decision
 

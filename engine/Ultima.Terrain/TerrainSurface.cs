@@ -2,7 +2,7 @@ using static Ultima.Terrain.TerrainNoise;
 
 namespace Ultima.Terrain;
 
-internal sealed class TerrainSurface
+internal sealed class TerrainSurface(double? flatHeight = null)
 {
     internal const int Chunk = 32;
     internal const int Cells = 64;
@@ -65,7 +65,7 @@ internal sealed class TerrainSurface
     internal double Height(double x, double z) => Height(x, z, Depth(x, z));
 
     internal double Height(double x, double z, double depth)
-        => HeightFromBase(x, z, BaseHeight(x, z), depth);
+        => HeightFromBase(x, z, flatHeight ?? BaseHeight(x, z), depth);
 
     internal double HeightFromBase(double x, double z, double natural)
         => HeightFromBase(x, z, natural, Depth(x, z));

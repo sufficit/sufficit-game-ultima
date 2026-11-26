@@ -21,16 +21,16 @@ flowchart LR
 
 ## One engine and a continuous world
 
-The target architecture uses one engine for every playable environment. Content definitions supply
-terrain, structures, lighting, spawn points, NPCs and interactions. The engine
-uses one simulation for player movement, physics, input, animation and cameras
-in C#, with Babylon.js rendering the scene.
+The garden and office open through the same engine and render loop. C#
+handles input, movement, animation, camera behavior and collision. Babylon.js
+draws the scene and resolves geometry queries. The environment catalog
+supplies the content.
 
-The current office prototype still has its own scene lifecycle and the
-`SceneWalk` controller. It reuses the player rig and parts of the garden's
-simulation. The migration will bring office content into the same engine while
-the environment picker still opens each place separately. A later map update
-will place the office in the world so the player can walk to it.
+The garden uses a procedural heightfield. The office supplies geometry,
+lights, signs and a flat floor. Solid boxes join the common player sweep,
+and the common camera and foot probes query their meshes. The selector
+still opens each place separately. The office mission board stays on the
+environment page. Connecting the office to the world map is a later step.
 [Architecture decision](decisions/one-engine-for-all-environments.md)
 
 The current camera modes follow one character. The planned group mode uses

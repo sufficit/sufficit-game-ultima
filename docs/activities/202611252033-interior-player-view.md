@@ -13,7 +13,7 @@ canvas, overlay controls, and a visible player.
 - The office uses the garden's `character.villager` descriptor through the
   existing SHA-256-verified model loader. The interior renderer applies a
   distance-driven walk cycle and displays the player in third person.
-- The [C# camera controller](../../src/Environments/SceneWalk.Camera.cs)
+- The C# camera controller at the time
   retracts the camera before solid geometry and compensates for tight
   spaces. Motion and collisions remain in C#.
 

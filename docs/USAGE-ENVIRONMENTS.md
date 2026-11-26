@@ -6,7 +6,7 @@ and enter the glass meeting room through the open doorway.
 
 - On desktop, focus the scene and use WASD to walk.
   Use the arrow keys or drag the mouse to look and hold Shift to move faster.
-- On touchscreens, drag on the left to walk and on the right to look.
+- On touchscreens, use the left stick to walk and the right stick to look.
 - With the scene focused, the controller's left stick moves and its right
   stick turns the camera.
 
@@ -28,11 +28,10 @@ the office. Each record declares its ID, name, description, and either terrain
 settings or an object scene. The latter specifies camera, background, geometry,
 and optional stations. A scene may also declare walking bounds, a spawn point,
 solid furniture, material finishes, signs, and lights. Add another record to make it selectable in **Ambientes**.
-The current object scenes use the office prototype's renderer. Additional
-terrain presets open locally. The garden API's existing shared terrain and NPC
-rules remain attached to the default terrain preset. The
-[engine architecture](../ARCHITECTURE.md#one-engine-and-a-continuous-world)
-defines how these places will use one engine.
+Authored scenes and terrain presets open through the same engine. A scene
+with walking bounds is playable. A scene without walking bounds opens as a
+station preview. The garden API's shared terrain and NPCs belong to the
+default terrain preset. [Engine architecture](../ARCHITECTURE.md#one-engine-and-a-continuous-world)
 
 Players can design environment definitions as JSON. The pilot loads a published
 catalog. The in-game editor and publishing permissions for player environments

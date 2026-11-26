@@ -45,13 +45,14 @@
     {
         <div class="environment__workplace">
             <section class="environment__scene" aria-label="Estações de trabalho">
-                <canvas @ref="_canvas" tabindex="0" aria-label="Vista 3D do ambiente"
+                <canvas id="game-canvas" tabindex="0" aria-label="Vista 3D do ambiente"
                         aria-describedby="@(definition.Walk is null ? null : "environment-controls")"></canvas>
                 @if (definition.Walk is not null)
                 {
+                    <GameTouchControls ShowActions="false" />
                     <p id="environment-controls" class="environment__walk-note">
                         <span class="environment__controls-desktop">Clique na cena · WASD para andar · setas ou arraste para olhar</span>
-                        <span class="environment__controls-touch">Arraste à esquerda para andar · à direita para olhar</span>
+                        <span class="environment__controls-touch">Use os analógicos para andar e olhar</span>
                     </p>
                 }
                 @if (_sceneError)

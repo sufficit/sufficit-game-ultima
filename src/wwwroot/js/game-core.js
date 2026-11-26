@@ -8,8 +8,16 @@
     ROOT.UltimaCore = {
         create: function (host) {
 
-    const { halfSize: WORLD_HALF, guide: NPC_POSITION, wanderer: WANDERER_HOME,
-        spawn: defaultSpawn } = host.terrainSettings;
+    const authored = host.authoredScene;
+    const preview = authored && !authored.walk;
+    const { halfSize: WORLD_HALF, guide: NPC_POSITION, wanderer: WANDERER_HOME } = host.terrainSettings ?? {};
+    const defaultSpawn = authored?.walk
+        ? { x: authored.walk.x, z: authored.walk.z, ry: authored.walk.yaw }
+        : authored ? host.spawn : host.terrainSettings.spawn;
+    const initialCamera = authored
+        ? { alpha: preview ? authored.camera.alpha : -Math.PI / 2 - authored.walk.yaw,
+            beta: authored.camera.beta, radius: authored.camera.radius }
+        : { alpha: -Math.PI / 2, beta: 1.12, radius: 7.5 };
     // Escala realista: personagem com ~1,75 m; os olhos ficam a ~1,62 m do chão.
     const NEAR_RADIUS = 3.2;
     const PLAYER_HEIGHT = 1.75;
@@ -45,6 +53,7 @@
     let engine = null;
     let scene = null;
     let sceneShadows = null;
+    let authoredGeometry = null;
     let weatherMode = host.weather || 'clear';
     let weatherTarget = null;
     let rainLevel = 0, daylight = 1, windLevel = 0.06;
@@ -64,7 +73,7 @@
     let cameraFloor = 0;
     let cameraGeometryRevision = 0;
     let cameraObstaclesDirty = true;
-    let zoomTarget = 7.5;    // zoom escolhido pelo jogador, independente do recuo por colisão
+    let zoomTarget = initialCamera.radius;    // zoom escolhido pelo jogador, independente do recuo por colisão
     let inputFrame = null;
     let inputDirty = true;
     // Eventos para fora (UI C#, rede) saem todos por aqui — idêntico nos dois modos.
@@ -830,10 +839,10 @@
     const viewTarget = new BABYLON.Vector3();
 
     function applyCameraView(position) {
-        camera.target.set(position.x, cameraFrame[8] + CAM_UP.y, position.z);
+        camera.target.set(position.x, preview ? authored.camera.targetY : cameraFrame[8] + CAM_UP.y, position.z);
         if (cameraView === 0) {
             orbitEye.set(camera.target.x + cameraFrame[3], camera.target.y + cameraFrame[4], camera.target.z + cameraFrame[5]);
-            camera.radius = Math.min(traceWorld(camera.target, orbitEye), cameraFrame[6]);
+            camera.radius = preview ? cameraFrame[6] : Math.min(traceWorld(camera.target, orbitEye), cameraFrame[6]);
             return;
         }
 
@@ -1690,6 +1699,7 @@
         if (!reg || reg.placeholder || entry.root.isDisposed()) { return; }
         disposeCharacterFallback(entry);
         rigRenderer.mount(entry.rig, modelId, reg.protos);
+        entry.root.metadata = { modelId, category: reg.desc.category };
     }
 
     // ---------- Fila de entrada de modelos com orçamento por frame ----------
@@ -2299,6 +2309,8 @@
 
     function buildScene(canvas) {
         scene = new BABYLON.Scene(engine);
+        // The shared browser input bridge owns pointer gestures on the canvas.
+        scene.preventDefaultOnPointerDown = false;
         rigRenderer = globalThis.UltimaCharacterRig.createRenderer(BABYLON, scene, trackCharacterShadow);
         const horizon = new BABYLON.Color3(0.60, 0.69, 0.78);   // mais escuro que o céu baixo
         scene.clearColor = new BABYLON.Color4(horizon.r, horizon.g, horizon.b, 1);
@@ -2308,12 +2320,16 @@
         scene.ambientColor = new BABYLON.Color3(0.18, 0.20, 0.22);
 
         // Tone mapping ACES: realça luz e sombra sem estourar os claros.
+        if (authored) {
+            scene.clearColor = BABYLON.Color4.FromHexString(authored.background + 'FF');
+            scene.fogMode = BABYLON.Scene.FOGMODE_NONE;
+        }
         const proc = scene.imageProcessingConfiguration;
-        proc.toneMappingEnabled = true;
+        proc.toneMappingEnabled = !authored;
         proc.toneMappingType = BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
         proc.exposure = 0.95;   // exposto demais lavava o terreno p/ branco (F7c)
-        proc.contrast = 1.16;
-        proc.vignetteEnabled = true;
+        proc.contrast = authored ? 1.08 : 1.16;
+        proc.vignetteEnabled = !authored;
         proc.vignetteWeight = 0.8;
 
         const hemi = new BABYLON.HemisphericLight('hemi', new BABYLON.Vector3(0.2, 1, 0.1), scene);
@@ -2336,9 +2352,17 @@
             const r = (glInfo && (glInfo.renderer || glInfo.vendor)) || '';
             softwareRenderer = /swiftshader|llvmpipe|softpipe|software/i.test(r);
         } catch (e) { /* info indisponível */ }
-        camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 1.12, 7.5, CAM_UP.clone(), scene);
+        if (authored) {
+            hemi.intensity = .72;
+            hemi.diffuse.set(1, 1, 1);
+            hemi.groundColor.set(.26, .31, .36);
+            sun.direction.set(.4, -1, -.6);
+            sun.intensity = .27;
+            sun.diffuse.set(.8, .88, 1);
+        }
+        camera = new BABYLON.ArcRotateCamera('camera', initialCamera.alpha, initialCamera.beta, initialCamera.radius, CAM_UP.clone(), scene);
         camera.lowerRadiusLimit = 0.12;
-        camera.upperRadiusLimit = 40;
+        camera.upperRadiusLimit = authored ? Math.max(3.8, initialCamera.radius * 1.5) : 40;
         camera.upperBetaLimit = Math.PI / 2.08;
         camera.minZ = 0.06;
         camera.fov = 0.85;
@@ -2367,17 +2391,31 @@
         shadows.normalBias = 0.02;
         shadows.darkness = 0.5;
 
-        const sky = skyDome();
-        if (usePbr) { setupProceduralEnv(); }
         const spawn = host.spawn ?? defaultSpawn;
-        ensureChunksAround(spawn.x, spawn.z);   // grade de chunks com orçamento por frame
-        void loadGroundMaterials();
-        const updateWeather = weatherUpdate(sun, hemi, sky, horizon, softwareRenderer ? 240 : 520);
-        scene.registerBeforeRender(function () {
-            if (waterTex) { waterTex.uOffset += engine.getDeltaTime() * 0.00003; }
-            updateWeather();
-            windTick();
-        });
+        if (authored) {
+            const boxes = [];
+            authoredGeometry = globalThis.UltimaEnvironmentGeometry.build(BABYLON, scene, authored, host.baseUrl);
+            authoredGeometry.selectStation(authored.stations[0]?.id);
+            for (const mesh of authoredGeometry.solids) {
+                const { minimumWorld: min, maximumWorld: max } = mesh.getBoundingInfo().boundingBox;
+                boxes.push(min.x, max.x, min.y, max.y, min.z, max.z);
+                obstacles.set(mesh, { circles: [], minY: min.y, maxY: max.y, minimumWorld: min, maximumWorld: max });
+            }
+            const walk = authored.walk;
+            const bounds = walk ? [walk.minX, walk.maxX, walk.minZ, walk.maxZ] : [];
+            terrain.ConfigureAuthoredScene(new Float64Array(bounds), new Float64Array(boxes), initialCamera.radius);
+        } else {
+            const sky = skyDome();
+            if (usePbr) { setupProceduralEnv(); }
+            ensureChunksAround(spawn.x, spawn.z);
+            void loadGroundMaterials();
+            const updateWeather = weatherUpdate(sun, hemi, sky, horizon, softwareRenderer ? 240 : 520);
+            scene.registerBeforeRender(function () {
+                if (waterTex) { waterTex.uOffset += engine.getDeltaTime() * 0.00003; }
+                updateWeather();
+                windTick();
+            });
+        }
 
         // Árvores: chegam como modelos C# carregados em runtime (game.models.register).
         sceneShadows = shadows;
@@ -2396,27 +2434,30 @@
         // Guardiã: figura encapuzada dourada (1,7 m) com anel de destaque no chão —
         // modelo C# (character.guardian) carregado em runtime, fallback JS centrado.
         for (const mesh of player.getChildMeshes()) mesh.layerMask = PLAYER_LAYER;
-        guardianRoot = spawnFromModel('character.guardian', 'npc',
-            new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.03, NPC_POSITION.z), 0,
-            () => { const m = buildGuardian('npc-js'); m.position.y = 0.85; return m; });
+        if (preview) player.setEnabled(false);
+        if (!authored) {
+            guardianRoot = spawnFromModel('character.guardian', 'npc',
+                new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.03, NPC_POSITION.z), 0,
+                () => { const m = buildGuardian('npc-js'); m.position.y = 0.85; return m; });
 
-        // Andarilho: segundo NPC (character.wanderer) na clareira inicial, circulando
-        // devagar — o cérebro dele (WandererBrain) vive em C#; aqui é só o corpo.
-        wandererRoot = spawnFromModel('character.wanderer', 'wanderer',
-            new BABYLON.Vector3(WANDERER_HOME.x + Math.sin(wanderT) * 1.4, terrainHeight(WANDERER_HOME.x, WANDERER_HOME.z) + FOOT_GAP,
-                WANDERER_HOME.z + Math.cos(wanderT) * 1.4), Math.PI / 2 + wanderT,
-            () => { const m = buildHumanoid('wanderer-js', { shirt:new BABYLON.Color3(0.26,0.58,0.44), skin:new BABYLON.Color3(0.86,0.67,0.50) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
+            // Andarilho: segundo NPC (character.wanderer) na clareira inicial, circulando
+            // devagar — o cérebro dele (WandererBrain) vive em C#; aqui é só o corpo.
+            wandererRoot = spawnFromModel('character.wanderer', 'wanderer',
+                new BABYLON.Vector3(WANDERER_HOME.x + Math.sin(wanderT) * 1.4, terrainHeight(WANDERER_HOME.x, WANDERER_HOME.z) + FOOT_GAP,
+                    WANDERER_HOME.z + Math.cos(wanderT) * 1.4), Math.PI / 2 + wanderT,
+                () => { const m = buildHumanoid('wanderer-js', { shirt:new BABYLON.Color3(0.26,0.58,0.44), skin:new BABYLON.Color3(0.86,0.67,0.50) }); m.position.y = PLAYER_HEIGHT / 2; return m; });
 
-        const marker = BABYLON.MeshBuilder.CreateTorus('npcMarker', { diameter: 1.5, thickness: 0.08, tessellation: 32 }, scene);
-        marker.position = new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.06, NPC_POSITION.z);
-        const markerMat = new BABYLON.StandardMaterial('markerMat', scene);
-        markerMat.emissiveColor = new BABYLON.Color3(0.95, 0.75, 0.2);
-        marker.material = markerMat;
-        scene.registerBeforeRender(() => { marker.rotation.y += 0.02; });
+            const marker = BABYLON.MeshBuilder.CreateTorus('npcMarker', { diameter: 1.5, thickness: 0.08, tessellation: 32 }, scene);
+            marker.position = new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.06, NPC_POSITION.z);
+            const markerMat = new BABYLON.StandardMaterial('markerMat', scene);
+            markerMat.emissiveColor = new BABYLON.Color3(0.95, 0.75, 0.2);
+            marker.material = markerMat;
+            scene.registerBeforeRender(() => { marker.rotation.y += 0.02; });
 
-        terrain.SetCharacterPositions(spawn.x, player.position.y, spawn.z,
-            guardianRoot.position.x, guardianRoot.position.y, guardianRoot.position.z,
-            wandererRoot.position.x, wandererRoot.position.y, wandererRoot.position.z);
+            terrain.SetCharacterPositions(spawn.x, player.position.y, spawn.z,
+                guardianRoot.position.x, guardianRoot.position.y, guardianRoot.position.z,
+                wandererRoot.position.x, wandererRoot.position.y, wandererRoot.position.z);
+        }
         placePlayer(spawn.x, spawn.z);
         camera.target.copyFrom(player.position).addInPlace(CAM_UP);
         if (advancedGraphics && BABYLON.SSAO2RenderingPipeline?.IsSupported) {
@@ -2453,6 +2494,8 @@
             }
         } catch (e) { console.warn('Pós-processamento indisponível:', e); }
 
+        if (authored) return;
+
         // v3: poeira/pólen em suspensão ao redor do jogador (textura de disco suave desenhada em canvas).
         try {
             const dot = new BABYLON.DynamicTexture('moteTex', { width: 64, height: 64 }, scene, false);
@@ -2482,7 +2525,7 @@
         if (host.onInputMode) { host.onInputMode(kind); }
     }
     function movePlayer(delta, pad) {
-        if (frozen || !player) { return 0; }
+        if (frozen || preview || !player) { return 0; }
         const [ix, iz, analogX, analogZ] = pad;
         const { x, y, z } = player.position;
         let fx = 0, fz = 0;
@@ -3045,7 +3088,7 @@
             dotnet.invokeMethodAsync('OnMoveTick', fin(player.position.x), fin(player.position.y), fin(player.position.z), fin(engine.getFps()));
         }
         if (player) {
-            updateGardenLights();
+            if (!authored) updateGardenLights();
             host.sendPose(player.position.x, player.position.z, player.rotation.y);
         }
     }
@@ -3063,12 +3106,12 @@
             } else {
                 terrain = await host.terrainRuntime;
             }
-            terrain.Reset();
+            terrain.Reset(!!authored);
             terrain.ConfigurePlayer(PLAYER_HEIGHT, KNEE_HEIGHT, FOOT_GAP, HIP_HEIGHT, LEG_SEGMENT,
                 ANKLE_HEIGHT + SOLE_CLEARANCE, LEG_SPACING, SHOE_OFFSET);
             if (G.game && G.game.assets) {
                 await G.game.assets.init(host.build);
-                await warmTextures();
+                if (!authored) await warmTextures();
             }
             // No worker o OffscreenCanvas não tem layout nem devicePixelRatio: o shell
             // mede (CSS × densidade) e o tamanho é aplicado daqui; sem isso o canvas
@@ -3096,7 +3139,7 @@
             // Cena pronta: o shell só resolve o game.init DAQUI para frente — o C# passa
             // a registrar modelos com a cena garantida (antes: "cena ainda não criada").
             if (host.onCoreReady) { host.onCoreReady(); }
-            void glbLoadAll();   // assets GLB CC0 do catálogo assinado (fire-and-forget)
+            if (!authored) void glbLoadAll();   // assets GLB CC0 do catálogo assinado (fire-and-forget)
             engine.runRenderLoop(() => {
                 const frameStart = performance.now();
                 drainModelQueue(frameStart);
@@ -3111,16 +3154,23 @@
                 if (player) {
                     const { x, z } = player.position;
                     updateCharacterPose(player, delta, travelled);
-                    ensureChunksAround(x, z);
+                    if (!authored) ensureChunksAround(x, z);
                 }
                 if (cameraView !== 2) advanceCamera(delta, inputFrame);
-                updateOtherCharacters(delta);
-                const p = player.position, g = guardianRoot.position, w = wandererRoot.position;
-                terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
-                syncCharacterHitboxes();
+                const p = player.position;
+                if (authored) {
+                    terrain.SetPlayerPosition(p.x, p.y, p.z);
+                } else {
+                    updateOtherCharacters(delta);
+                    const g = guardianRoot.position, w = wandererRoot.position;
+                    terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
+                    syncCharacterHitboxes();
+                }
                 applyCameraView(p);
-                checkNear();
-                updateNearbyObject();
+                if (!authored) {
+                    checkNear();
+                    updateNearbyObject();
+                }
                 if (crowdCount) { updateCrowd(delta); }
                 updateCollectionPreview(frameStart);
                 scene.render();
@@ -3160,7 +3210,7 @@
         padDisconnected() { if (activeInput === 'gamepad') { setActiveInput('keyboard'); } },
         camera(dx, dy, wheel, deltaMode) { camPending.dx += dx || 0; camPending.dy += dy || 0; camPending.wheel += (wheel || 0) * (deltaMode === 1 ? 40 : 1); },
         cycleCameraView(capture = true) {
-            if (!camera || !perspectiveCamera || frozen) return;
+            if (!camera || !perspectiveCamera || frozen || preview) return;
             cameraView = terrain.CycleCameraView(player.rotation.y);
             host.onCameraView?.(cameraView, capture);
             cameraFrame = null;
@@ -3235,9 +3285,9 @@
             if (camera) {
                 terrain.ResetCamera(player.rotation.y);
                 cameraFrame = null;
-                camera.alpha = -Math.PI / 2;
-                camera.beta = 1.12;
-                camera.radius = zoomTarget = 7.5;
+                camera.alpha = initialCamera.alpha;
+                camera.beta = initialCamera.beta;
+                camera.radius = zoomTarget = initialCamera.radius;
             }
         },
         teleportToGuardian() {
@@ -3275,6 +3325,7 @@
                 materials: groundMaterials.length, vegetation: windInstances.length };
         },
         // Sonda de altura (debug/validação): altura efetiva com as edições aplicadas.
+        selectStation(id) { authoredGeometry?.selectStation(id); },
         heightAt(x, z) { return Math.round(terrainHeight(x, z) * 100) / 100; },
         // Sonda de render: estado do material/vertex colors de um chunk (debug F7c).
         debugChunk(x, z) {

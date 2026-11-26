@@ -15,9 +15,9 @@ internal static partial class BrowserExports
         => AnimationTimeline.Crossed(previous, current, loops, marks);
 
     [JSExport]
-    internal static void Reset()
+    internal static void Reset(bool authored)
     {
-        _surface = new TerrainSurface();
+        _surface = authored ? new TerrainSurface(flatHeight: 0) : new TerrainSurface();
         _volumes = new(_surface);
         _palette = new(_surface);
     }

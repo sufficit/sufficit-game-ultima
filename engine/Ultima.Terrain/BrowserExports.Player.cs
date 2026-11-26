@@ -33,7 +33,7 @@ internal static partial class BrowserExports
         (_kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset) =
             (kneeHeight, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset);
         _remoteAvatars = new(_surface, footGap, hipHeight, legLength, ankleOffset, spacing, shoeOffset, _characters);
-        Camera.Reset();
+        Camera.SetDefaultRadius(PlayerCamera.DefaultRadius);
         CameraObstacles.Set([], 0);
         PlayerFeet.Reset();
         Input.Clear();
@@ -126,6 +126,18 @@ internal static partial class BrowserExports
 
     [JSExport]
     internal static void StopPlayer() => _movement.Stop();
+
+    [JSExport]
+    internal static void ConfigureAuthoredScene(double[] bounds, double[] boxes, double orbitRadius)
+    {
+        _movement.SetSceneBounds(bounds);
+        _movement.SetSolidBoxes(boxes);
+        Camera.SetDefaultRadius(orbitRadius);
+    }
+
+    [JSExport]
+    internal static void SetPlayerPosition(double x, double y, double z)
+        => _characters.Set(PlayerCharacterSpace.Player, x, y, z);
 
     [JSExport]
     internal static void SetColliders(double[] colliders) => _movement.SetColliders(colliders);
@@ -221,36 +233,10 @@ internal static partial class BrowserExports
     internal static double[] UpdateRemoteAvatars(double delta, double playerX, double playerZ)
         => _remoteAvatars!.Tick(delta, playerX, playerZ);
 
-    internal static void ConfigureInteriorPlayer()
-    {
-        const double height = 1.75;
-        const double hipHeight = height * .44;
-        const double legRadius = height * .039;
-        const double ankleHeight = legRadius * 1.25 * .55;
-        const double legLength = (hipHeight - ankleHeight + .004) / 2;
-        ConfigurePlayer(height, hipHeight - legLength, .03, hipHeight, legLength, ankleHeight + .004,
-            height * .052, .9 * legRadius);
-    }
-
-    internal static (double X, double Z, double Yaw, double Distance, bool Pivot) MoveInteriorPlayer(
-        double x, double y, double z, double facing, double forwardX, double forwardZ,
-        double side, double forward, bool sprint, double delta, double aimYaw,
-        Func<double, double, double, double, (double X, double Z)> resolve)
-    {
-        var (nextX, nextZ, yaw, distance) = _movement.Advance(x, y, z, facing, forwardX, forwardZ,
-            side, forward, 0, 0, sprint, delta, _surface, _volumes, false, resolve, aimYaw);
-        return (nextX, nextZ, yaw, distance, _movement.PivotProgress >= 0);
-    }
-
-    internal static void AnimateInteriorPlayer(Span<double> result, double x, double y, double z, double yaw,
-        double phase, double weight, double clock, double distance, double delta, bool aimed)
-        => AnimateCharacterFrame(result, x, y, z, yaw, phase, weight, clock, 0, 0, 0,
-            distance, delta, "player".Length, false, false, 0, 0, true, true, false, flatFloor: true, aimed: aimed);
-
     private static void AnimateCharacterFrame(Span<double> result, double x, double y, double z, double yaw,
         double phase, double weight, double clock, double speech, double elapsed, double duration,
         double distance, double delta, int nameLength, bool listening, bool frozen, double bend, double reach,
-        bool hasLegs, bool isPlayer, bool hasTunnels, bool flatFloor = false, bool aimed = false)
+        bool hasLegs, bool isPlayer, bool hasTunnels, bool aimed = false)
     {
         clock += delta;
         speech = Math.Max(0, speech - delta);
@@ -292,9 +278,9 @@ internal static partial class BrowserExports
         var rightX = x + feet[6];
         var rightZ = z + feet[7];
         var useVolume = isPlayer && hasTunnels;
-        var ground = flatFloor ? 0 : Floor(x, z, y, useVolume);
-        var leftFloor = flatFloor ? 0 : Floor(leftX, leftZ, y, useVolume);
-        var rightFloor = flatFloor ? 0 : Floor(rightX, rightZ, y, useVolume);
+        var ground = Floor(x, z, y, useVolume);
+        var leftFloor = Floor(leftX, leftZ, y, useVolume);
+        var rightFloor = Floor(rightX, rightZ, y, useVolume);
         if (!isPlayer)
         {
             PlayerPose.SolveLegs(result[17..24], ground, y, delta, _footGap, _hipHeight, _legLength, _ankleOffset,

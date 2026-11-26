@@ -51,49 +51,55 @@ internal static class OfficeBrowser
         await Button("Ambientes").ClickAsync();
         await Button("Ateliê de teste").ClickAsync();
         await Button("Bancada").WaitForAsync();
-        await WaitAsync(() => page.EvaluateAsync<bool>("() => window.BABYLON?.EngineStore.LastCreatedScene?.meshes.length === 1"),
+        await WaitAsync(async () => (await page.EvaluateAsync<string?>("async () => await game.coreId()")) is not null &&
+            await RenderAsync<bool>(page, """
+                () => !!BABYLON.EngineStore.LastCreatedScene?.meshes.some(mesh => mesh.name === "environment-piece")
+                """),
             "An additional scene loaded from the catalog alone.");
         await Button("Trocar ambiente").ClickAsync();
         await Button("Escritório").ClickAsync();
         await page.GetByRole(AriaRole.Heading, new() { Name = "Escritório", Exact = true }).WaitForAsync();
-        await WaitAsync(() => page.EvaluateAsync<bool>("""
-            () => {
-                const scene = window.BABYLON?.EngineStore.LastCreatedScene;
-                return scene?.activeCamera?.getClassName() === 'UniversalCamera' && scene.getTotalVertices() > 1500;
-            }
-            """), "The 3D office loaded independently of its API.");
+        await WaitAsync(async () => (await page.EvaluateAsync<string?>("async () => await game.coreId()")) is not null &&
+            await RenderAsync<bool>(page, """
+                () => {
+                    const scene = BABYLON.EngineStore.LastCreatedScene;
+                    return !!scene && scene.activeCamera?.getClassName() === 'ArcRotateCamera' &&
+                        scene.getTotalVertices() > 1500 && !scene.meshes.some(mesh => mesh.name.startsWith("ground-"));
+                }
+                """), "The main game engine loads office geometry independently of its API.");
+        Check(await page.EvaluateAsync<string>("() => game.mode") == Mode, "The office uses the requested renderer.");
         var canvas = page.Locator(".environment__scene canvas");
-        await WaitAsync(() => page.EvaluateAsync<bool>("""
+        await WaitAsync(() => RenderAsync<bool>(page, """
             () => {
-                const avatar = BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('environment-player');
+                const avatar = BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('player');
                 return avatar?.metadata?.modelId === 'character.villager' &&
                     avatar.metadata.category === 'character' && avatar.getChildMeshes().length > 10;
             }
             """), "The signed garden player model is visible in the office.");
         Check(await FillsViewportAsync(), "The office fills the desktop viewport.");
-        Check(await page.EvaluateAsync<bool>("""
+        Check(await RenderAsync<bool>(page, """
             () => {
                 const scene = BABYLON.EngineStore.LastCreatedScene;
                 return ['upper-body', 'hip-left', 'knee-left', 'ankle-left', 'elbow-right', 'wrist-right'].every(
-                    joint => !!scene.getTransformNodeByName('environment-player-' + joint));
+                    joint => !!scene.getTransformNodeByName('player-' + joint));
             }
             """), "The office avatar has the articulated garden joints.");
         if (Environment.GetEnvironmentVariable("ULTIMA_INTERIOR_CAPTURE") is { Length: > 0 } interior)
             await page.ScreenshotAsync(new() { Path = interior });
         await canvas.FocusAsync();
         await WalkUntilAsync("s", pose => pose.Z > 7.43, "The player can reach the reception wall.");
-        var nearWall = await ReadAsync<CameraPose>(page, """
+        var nearWall = await RenderAsync<CameraPose>(page, """
             () => {
                 const { x, y, z } = BABYLON.EngineStore.LastCreatedScene.activeCamera.position;
                 return { x, y, z };
             }
             """);
         Check(nearWall.Z <= 7.74 && nearWall.Y > .3, "The follow camera stays inside at the reception wall.", nearWall);
-        await page.EvaluateAsync("""
+        await RenderAsync<object?>(page, """
             () => {
                 const scene = BABYLON.EngineStore.LastCreatedScene;
-                const knee = scene.getTransformNodeByName('environment-player-knee-left');
-                const ankle = scene.getTransformNodeByName('environment-player-ankle-left');
+                const knee = scene.getTransformNodeByName('player-knee-left');
+                const ankle = scene.getTransformNodeByName('player-ankle-left');
                 globalThis.officeJointSample = { min: knee.rotation.x, max: knee.rotation.x, ankle: false };
                 const sample = globalThis.officeJointSample;
                 scene.onAfterRenderObservable.add(() => {
@@ -104,7 +110,7 @@ internal static class OfficeBrowser
             }
             """);
         await WalkUntilAsync("w", pose => pose.Z < -.35, "Reception connects to the workspace.");
-        Check(await page.EvaluateAsync<bool>("() => officeJointSample.max - officeJointSample.min > .15 && officeJointSample.ankle"),
+        Check(await RenderAsync<bool>(page, "() => officeJointSample.max - officeJointSample.min > .15 && officeJointSample.ankle"),
             "Knees flex and the ankle rotates during the shared walk cycle.");
         var aisle = await PoseAsync();
         Check(Math.Abs(aisle.X) < .1 && aisle.Z > -1.02, "The player is aligned with the meeting room door.", aisle);
@@ -115,7 +121,7 @@ internal static class OfficeBrowser
         finally { await page.Keyboard.UpAsync("d"); }
         var atGlass = await PoseAsync();
         Check(atGlass.X is > 3.60 and < 3.96, "The glass wall stops the player.", atGlass);
-        var beforeLook = await page.EvaluateAsync<double>("() => BABYLON.EngineStore.LastCreatedScene.activeCamera.rotation.y");
+        var beforeLook = await RenderAsync<double>(page, "() => BABYLON.EngineStore.LastCreatedScene.activeCamera.alpha");
         var region = await canvas.BoundingBoxAsync() ?? throw new InvalidOperationException("Missing office canvas.");
         await page.Mouse.MoveAsync(region.X + region.Width * .5f, region.Y + region.Height * .5f);
         await page.Mouse.DownAsync();
@@ -123,7 +129,7 @@ internal static class OfficeBrowser
         await page.Mouse.UpAsync();
         await WaitAsync(async () =>
         {
-            var after = await page.EvaluateAsync<double>("() => BABYLON.EngineStore.LastCreatedScene.activeCamera.rotation.y");
+            var after = await RenderAsync<double>(page, "() => BABYLON.EngineStore.LastCreatedScene.activeCamera.alpha");
             return Math.Abs(Math.IEEERemainder(after - beforeLook, Math.Tau)) > .20;
         }, "Dragging turns the camera.");
         await Button("Missões").ClickAsync();
@@ -165,9 +171,9 @@ internal static class OfficeBrowser
         Check(errors.IsEmpty, "Browser page errors", errors);
         Log(new { build, office = true, board = true, desktop = true, mobile = true, atGlass });
 
-        Task<CameraPose> PoseAsync() => ReadAsync<CameraPose>(page, """
+        Task<CameraPose> PoseAsync() => RenderAsync<CameraPose>(page, """
             () => {
-                const { x, y, z } = BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('environment-player').position;
+                const { x, y, z } = BABYLON.EngineStore.LastCreatedScene.getTransformNodeByName('player').position;
                 return { x, y, z };
             }
             """);

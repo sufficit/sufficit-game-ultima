@@ -1,11 +1,10 @@
 namespace Ultima.Terrain;
 
-internal sealed class PlayerMovement(double height, double kneeHeight, double footGap, PlayerCharacterSpace? characters = null)
+internal sealed partial class PlayerMovement(double height, double kneeHeight, double footGap, PlayerCharacterSpace? characters = null)
 {
     internal const double WalkSpeed = 3.5;
     internal const double RunSpeed = 6.5;
     private const double Radius = 0.25;
-    private const double WorldHalf = 400;
     private const double Deadzone = 0.18;
     internal const int ColliderStride = 6;
     private double[] _colliders = [];
@@ -62,8 +61,7 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
     internal (double X, double Z, double Yaw, double Distance) Advance(
         double x, double y, double z, double facing, double forwardX, double forwardZ,
         double keyX, double keyZ, double analogX, double analogZ, bool sprint, double delta,
-        TerrainSurface surface, TerrainVolumes volumes, bool hasTunnels,
-        Func<double, double, double, double, (double X, double Z)>? interior = null, double aimYaw = double.NaN)
+        TerrainSurface surface, TerrainVolumes volumes, bool hasTunnels, double aimYaw = double.NaN)
     {
         var inputX = keyX + analogX;
         var inputZ = keyZ + analogZ;
@@ -106,7 +104,7 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
         var speed = pivoting ? Math.Min(_speed, targetSpeed) : _speed;
         if (speed <= 0) return (x, z, yaw, 0);
 
-        var ground = interior is not null ? 0 : hasTunnels ? volumes.Floor(x, z, y, kneeHeight) : surface.Height(x, z);
+        var ground = hasTunnels ? volumes.Floor(x, z, y, kneeHeight) : surface.Height(x, z);
         var stepping = y - footGap > ground + 0.015;
         var distance = (stepping ? Math.Min(2.8, speed) : speed) * delta;
         var (nextX, nextZ) = Resolve(_directionX * distance, _directionZ * distance);
@@ -142,9 +140,8 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
         }
         return (nextX, nextZ, yaw, travelled);
 
-        (double X, double Z) Resolve(double dx, double dz) => interior is null
-            ? ResolveMove(x, y, z, dx, dz, ground, volumes, hasTunnels)
-            : interior(x, z, dx, dz);
+        (double X, double Z) Resolve(double dx, double dz)
+            => ResolveMove(x, y, z, dx, dz, ground, volumes, hasTunnels);
     }
 
     internal static double PivotYaw(double start, double turn, double progress)
@@ -170,8 +167,8 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
     {
         for (var pass = 0; pass < 3; pass++)
         {
-            dx = Math.Clamp(x + dx, -WorldHalf, WorldHalf) - x;
-            dz = Math.Clamp(z + dz, -WorldHalf, WorldHalf) - z;
+            dx = Math.Clamp(x + dx, _minX, _maxX) - x;
+            dz = Math.Clamp(z + dz, _minZ, _maxZ) - z;
             var lengthSquared = dx * dx + dz * dz;
             if (lengthSquared < 1e-10) break;
             var hit = FirstContact(x, y, z, dx, dz, lengthSquared, ground);
@@ -216,7 +213,7 @@ internal sealed class PlayerMovement(double height, double kneeHeight, double fo
             hit = (t, nx / normalLength, nz / normalLength);
             best = t;
         }
-        return hit;
+        return FirstBoxContact(x, y, z, dx, dz, ground, best) ?? hit;
     }
 
     internal int NearbyObstacle(double x, double y, double z)

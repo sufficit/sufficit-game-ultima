@@ -29,8 +29,8 @@
       "scene": {
         "camera": {
           "alpha": -1.91637,
-          "beta": 1.03,
-          "radius": 17,
+          "beta": 1.22,
+          "radius": 3.2,
           "targetX": 0,
           "targetY": 0.55,
           "targetZ": 0.1

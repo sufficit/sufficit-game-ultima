@@ -13,7 +13,7 @@ solid furniture, and a camera at human eye height.
   1.56 m doorway provide circulation. The interior includes a suspended
   ceiling, ceiling fixtures, office furniture, geometric skyline and
   original procedural oak, carpet and stone textures.
-- Added a reusable [C# walking controller](../../src/Environments/SceneWalk.cs)
+- Added a reusable C# walking controller (`SceneWalk`)
   for interior scenes, with collision, sliding, bounded pitch and a
   1.62 m eye-height view. Babylon.js renders the view and captures browser
   input. Static opaque geometry is grouped by material.

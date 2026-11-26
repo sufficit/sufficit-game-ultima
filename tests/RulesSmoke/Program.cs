@@ -518,6 +518,7 @@ Check("inversão em ambos os sentidos alterna apoio com base compacta",
     turnKeepsSupport && maxPivotWidth < .28);
 
 PlayerSupportChecks.Run(Check);
+SceneCollisionChecks.Run(Check);
 
 const double minimumGap = PlayerCharacterSpace.TorsoDepth * 2;
 var occupied = new PlayerCharacterSpace();
@@ -670,8 +671,9 @@ static double CameraDistance(ReadOnlySpan<double> pose) =>
     double.Hypot(double.Hypot(pose[3], pose[4]), pose[5]);
 
 var aimMovement = new PlayerMovement(1.75, .41, .03);
+var flatSurface = new TerrainSurface(flatHeight: 0);
 var backpedal = aimMovement.Advance(0, .03, 0, 0, 0, 1, 0, -1, 0, 0, false, .04,
-    pivotSurface, pivotVolumes, false, (x, z, dx, dz) => (x + dx, z + dz), aimYaw: 0);
+    flatSurface, new TerrainVolumes(flatSurface), false, aimYaw: 0);
 Check("Close aim can backpedal without pivoting the character",
     backpedal.Z < -.01 && backpedal.Yaw == 0 && aimMovement.PivotProgress < 0);
 

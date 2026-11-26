@@ -3,6 +3,7 @@ namespace Ultima.Terrain;
 internal sealed class PlayerCamera
 {
     internal const double DefaultRadius = 7.5;
+    private double _defaultRadius = DefaultRadius;
     private double _orbit = DefaultRadius;
     private double _zoom = DefaultRadius;
 
@@ -23,9 +24,15 @@ internal sealed class PlayerCamera
         return View;
     }
 
+    internal void SetDefaultRadius(double radius)
+    {
+        _defaultRadius = radius;
+        Reset();
+    }
+
     internal void Reset(double facing = 0)
     {
-        _orbit = _zoom = DefaultRadius;
+        _orbit = _zoom = _defaultRadius;
         _closeLook = new(facing);
         ResetFollow();
     }

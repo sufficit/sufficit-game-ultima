@@ -36,12 +36,14 @@
             Number.isFinite(pose.ry) && Math.abs(pose.ry) <= 2 * Math.PI;
     }
 
-    function restorePose(environment, defaultPose) {
-        const defaultEnvironment = !qs2.get('world');
+    function restorePose(environment, defaultPose, walk) {
+        const defaultEnvironment = !qs2.get('world') && !qs2.get('id');
         poseKey = 'ultima.posicao.v1:' + (defaultEnvironment ? '' : environment + ':') + window.game.live.api();
         let saved;
         try { saved = JSON.parse(window.game.browser.read(poseKey)); } catch { /* registro inválido */ }
-        lastSavedPose = latestPose = validPose(saved) ? saved : defaultPose;
+        const inside = !walk || saved?.x > walk.minX + .25 && saved.x < walk.maxX - .25 &&
+            saved.z > walk.minZ + .25 && saved.z < walk.maxZ - .25;
+        lastSavedPose = latestPose = inside && validPose(saved) ? saved : defaultPose;
         return latestPose;
     }
 
@@ -176,7 +178,7 @@
     let mouseLook;
     const onCameraView = (view, capture) => mouseLook?.setActive(view === 2, capture);
 
-    function startMain(canvas, spawn, terrainSettings) {
+    function startMain(canvas, spawn, terrainSettings, authoredScene) {
         return loadBabylon().then(function () {
             return new Promise(function (resolve, reject) {
                 mode = 'main';
@@ -191,6 +193,8 @@
                     weather: weatherPref(),
                     spawn,
                     terrainSettings,
+                    authoredScene,
+                    baseUrl: document.baseURI,
                     global: window,
                     dom: true,
                     postEvent: postEventToDotnet,
@@ -214,7 +218,7 @@
         return { width: Math.max(1, canvas.clientWidth || 1280), height: Math.max(1, canvas.clientHeight || 720), dpr: window.devicePixelRatio || 1 };
     }
 
-    function startWorker(canvas, spawn, terrainSettings) {
+    function startWorker(canvas, spawn, terrainSettings, authoredScene) {
         const off = canvas.transferControlToOffscreen();
         // Mesma versão dos scripts da página (?v=<build>): sem isso o cache HTTP
         // (10 min) pode entregar um worker/motor antigos junto com o shell novo logo
@@ -231,7 +235,7 @@
                 reject(new Error('worker: ' + (e && e.message || 'erro')));
             };
             worker.postMessage(
-                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref(), spawn, terrainSettings },
+                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref(), spawn, terrainSettings, authoredScene, baseUrl: document.baseURI },
                 [off]);
         });
     }
@@ -632,7 +636,7 @@
     Object.assign(window.game, {
         loadBabylon,
         buildStamp,
-        async init(canvasId, dotnetRef, modelsRef, environment, terrainSettings) {
+        async init(canvasId, dotnetRef, modelsRef, environment, terrainSettings, authoredScene) {
             const canvas = document.getElementById(canvasId);
             if (!canvas) { return Promise.reject(new Error('canvas ' + canvasId + ' não encontrado')); }
             dotnet = dotnetRef;
@@ -647,10 +651,14 @@
                 return Promise.resolve(false);
             }
             const { attachMouseLook } = await import('./mouse-look.js?v=' + encodeURIComponent(buildStamp()));
-            const spawn = restorePose(environment, terrainSettings.spawn);
+            const walk = authoredScene?.walk;
+            const defaultPose = walk ? { x: walk.x, z: walk.z, ry: walk.yaw }
+                : authoredScene ? { x: authoredScene.camera.targetX, z: authoredScene.camera.targetZ, ry: 0 }
+                : terrainSettings.spawn;
+            const spawn = authoredScene && !walk ? defaultPose : restorePose(environment, defaultPose, walk);
             const canWorker = !!canvas.transferControlToOffscreen && typeof Worker !== 'undefined';
             const start = (canWorker && FORCE !== 'main')
-                ? startWorker(canvas, spawn, terrainSettings).then(function (ok) {
+                ? startWorker(canvas, spawn, terrainSettings, authoredScene).then(function (ok) {
                         // No worker o core não tem DOM: o input é capturado aqui.
                         setupInput(canvas, attachMouseLook);
                         watchSize(canvas);   // resolução de render casada com a tela (CSS × dpr)
@@ -670,7 +678,7 @@
                         }
                         throw err;
                     })
-                : startMain(canvas, spawn, terrainSettings).then(function (ok) {
+                : startMain(canvas, spawn, terrainSettings, authoredScene).then(function (ok) {
                         setupInput(canvas, attachMouseLook);
                         watchSizeMain(canvas);
                         return ok;
@@ -761,6 +769,7 @@
         coreId() { return query('coreId'); },
         renderSize() { return query('renderSize'); },
         cycleCameraView() { deliver('cycleCameraView', []); },
+        selectStation(id) { post('selectStation', [id]); },
         cameraState() { return query('cameraState'); },
         playerState() { return query('playerState'); }
     });

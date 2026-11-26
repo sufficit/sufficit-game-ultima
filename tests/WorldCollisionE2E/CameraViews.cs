@@ -45,6 +45,7 @@ internal static class CameraViews
         await Button("Escritório").ClickAsync();
         canvas = page.Locator(".environment__scene canvas");
         await VerifyAsync(office: true, view: 0);
+        Check(await page.EvaluateAsync<string>("() => game.mode") == Mode, "Expected office renderer.");
         await canvas.FocusAsync();
         await VerifyLookKeysAsync(office: true);
         await MiddleAsync(canvas);
@@ -70,18 +71,18 @@ internal static class CameraViews
         Task MiddleAsync(ILocator target) => target.ClickAsync(new() { Button = MouseButton.Middle });
         Task SetR3Async(bool pressed) => page.EvaluateAsync("pressed => testPerspectivePad.buttons[11].pressed = pressed", pressed);
 
-        async Task<LookPose> ReadLookAsync(bool office)
+        async Task<LookPose> ReadLookAsync()
         {
-            var worker = office || MainThread ? null : page.Workers[0];
+            var worker = MainThread ? null : page.Workers[0];
             return await ReadAsync<LookPose>(page, """
-                office => {
+                () => {
                     const scene = BABYLON.EngineStore.LastCreatedScene;
-                    const player = scene.getTransformNodeByName(office ? 'environment-player' : 'player');
+                    const player = scene.getTransformNodeByName('player');
                     const direction = scene.activeCamera.getForwardRay().direction;
                     return { x: player.position.x, z: player.position.z,
                         yaw: Math.atan2(direction.x, direction.z), vertical: direction.y, heading: player.rotation.y };
                 }
-                """, office, worker);
+                """, worker: worker);
         }
 
         async Task VerifyPointerLockAsync(bool office)
@@ -100,10 +101,10 @@ internal static class CameraViews
 
         async Task VerifyAimStanceAsync(bool office)
         {
-            var worker = office || MainThread ? null : page.Workers[0];
+            var worker = MainThread ? null : page.Workers[0];
             Task<Stance> ReadStanceAsync() => ReadAsync<Stance>(page, """
-                office => {
-                    const name = office ? 'environment-player' : 'player';
+                () => {
+                    const name = 'player';
                     const scene = BABYLON.EngineStore.LastCreatedScene;
                     const root = scene.getTransformNodeByName(name);
                     const lateral = side => {
@@ -115,7 +116,7 @@ internal static class CameraViews
                     };
                     return { x: root.position.x, z: root.position.z, left: lateral('left'), right: lateral('right') };
                 }
-                """, office, worker);
+                """, worker: worker);
 
             var start = await ReadStanceAsync();
             var current = start;
@@ -141,17 +142,17 @@ internal static class CameraViews
 
         async Task VerifyCloseZoomAsync(bool office)
         {
-            var worker = office || MainThread ? null : page.Workers[0];
+            var worker = MainThread ? null : page.Workers[0];
             Task<double> DistanceAsync() => ReadAsync<double>(page, """
-                office => {
+                () => {
                     const scene = BABYLON.EngineStore.LastCreatedScene;
-                    const player = scene.getTransformNodeByName(office ? 'environment-player' : 'player');
+                    const player = scene.getTransformNodeByName('player');
                     const camera = scene.activeCamera;
                     const direction = camera.getForwardRay().direction;
                     return Math.hypot(camera.position.x - player.position.x, camera.position.z - player.position.z) /
                         Math.hypot(direction.x, direction.z);
                 }
-                """, office, worker);
+                """, worker: worker);
 
             var initial = await DistanceAsync();
             Check(Math.Abs(initial - 2.15) < .02, "The close view starts at its default distance.", new { office, initial });
@@ -168,7 +169,7 @@ internal static class CameraViews
                 await page.Keyboard.DownAsync("w");
                 try
                 {
-                    await WaitAsync(async () => (await ReadLookAsync(office)).Z < 3.4,
+                    await WaitAsync(async () => (await ReadLookAsync()).Z < 3.4,
                         "The player walks away from the wall into the aisle.", 4_000, 25);
                 }
                 finally { await page.Keyboard.UpAsync("w"); }
@@ -181,7 +182,7 @@ internal static class CameraViews
 
         async Task VerifyCloseMouseLookAsync(bool office, bool captured = false)
         {
-            var before = await ReadLookAsync(office);
+            var before = await ReadLookAsync();
             var bounds = await canvas.BoundingBoxAsync() ?? throw new InvalidOperationException("Missing game surface.");
             var x = bounds.X + bounds.Width / 2;
             var y = bounds.Y + bounds.Height / 2;
@@ -204,7 +205,7 @@ internal static class CameraViews
             {
                 await WaitAsync(async () =>
                 {
-                    after = await ReadLookAsync(office);
+                    after = await ReadLookAsync();
                     return AngleDelta(after.Yaw, before.Yaw) > .1 && Math.Abs(after.Vertical - before.Vertical) > .04 &&
                         AngleDelta(after.Heading, after.Yaw) < .05 && double.Hypot(after.X - before.X, after.Z - before.Z) < .01;
                 }, "Mouse motion alone turns and tilts the close camera and aims the stationary character.", 4_000, 25);
@@ -217,55 +218,56 @@ internal static class CameraViews
             await page.Keyboard.PressAsync("Escape");
             await WaitAsync(() => page.EvaluateAsync<bool>("() => document.pointerLockElement === null"),
                 "Escape releases mouse capture.", 4_000, 25);
-            var released = await ReadLookAsync(office);
+            var released = await ReadLookAsync();
             await page.Mouse.MoveAsync(x - 90, y - 35, new() { Steps = 5 });
             await Task.Delay(200);
-            Check(AngleDelta((await ReadLookAsync(office)).Yaw, released.Yaw) < .02,
+            Check(AngleDelta((await ReadLookAsync()).Yaw, released.Yaw) < .02,
                 "Escape stops mouse look until the player resumes.");
         }
 
         async Task VerifyLookKeysAsync(bool office)
         {
-            var before = await ReadLookAsync(office);
+            var before = await ReadLookAsync();
             await page.Keyboard.DownAsync("ArrowRight");
             try
             {
-                await WaitAsync(async () => Math.Abs(Math.IEEERemainder((await ReadLookAsync(office)).Yaw - before.Yaw, Math.Tau)) > .08,
+                await WaitAsync(async () => Math.Abs(Math.IEEERemainder((await ReadLookAsync()).Yaw - before.Yaw, Math.Tau)) > .08,
                     "The right arrow turns the camera.", 4_000, 25);
             }
             finally { await page.Keyboard.UpAsync("ArrowRight"); }
 
-            var horizontal = await ReadLookAsync(office);
+            var horizontal = await ReadLookAsync();
             await page.Keyboard.DownAsync("ArrowUp");
             try
             {
-                await WaitAsync(async () => Math.Abs((await ReadLookAsync(office)).Vertical - horizontal.Vertical) > .045,
+                await WaitAsync(async () => Math.Abs((await ReadLookAsync()).Vertical - horizontal.Vertical) > .045,
                     "The up arrow tilts the camera.", 4_000, 25);
             }
             finally { await page.Keyboard.UpAsync("ArrowUp"); }
 
-            var after = await ReadLookAsync(office);
+            var after = await ReadLookAsync();
             Check(double.Hypot(after.X - before.X, after.Z - before.Z) < .01,
                 "Arrow keys do not translate the player.", new { before, after, office });
         }
 
         async Task VerifyAsync(bool office, int view)
         {
-            var scene = office ? null : MainThread ? null : page.Workers[0];
+            IWorker? scene = null;
             try
             {
                 await WaitAsync(async () =>
                 {
-                    if (!office && await page.EvaluateAsync<int>("async () => (await game.cameraState()).view") != view)
+                    if (await page.EvaluateAsync<int>("async () => (await game.cameraState())?.view ?? -1") != view)
                         return false;
+                    if (!MainThread && (scene = page.Workers.FirstOrDefault()) is null) return false;
                     return await ReadAsync<bool>(page, """
-                        ({ office, view }) => {
+                        view => {
                             const scene = globalThis.BABYLON?.EngineStore.LastCreatedScene;
                             const camera = scene?.activeCamera;
-                            if (!camera || (office && camera.metadata !== view)) return false;
-                            const player = scene.getTransformNodeByName(office ? 'environment-player' : 'player');
+                            if (!camera) return false;
+                            const player = scene.getTransformNodeByName('player');
                             if (!player) return false;
-                            const visible = office ? player.isEnabled() : player.getChildMeshes().some(
+                            const visible = player.getChildMeshes().some(
                                 mesh => Boolean(mesh.layerMask & camera.layerMask));
                             if (visible === (view === 1)) return false;
                             const dx = camera.position.x - player.position.x, dz = camera.position.z - player.position.z;
@@ -276,20 +278,20 @@ internal static class CameraViews
                                     dx * Math.sin(player.rotation.y) + dz * Math.cos(player.rotation.y) < -.1;
                             return Math.hypot(dx, dz) > .2;
                         }
-                        """, new { office, view }, scene);
+                        """, view, scene);
                 }, $"Perspective {view} displayed and correctly placed in {(office ? "office" : "garden")}.", 20_000);
             }
             catch (InvalidOperationException)
             {
                 var details = await ReadAsync<string>(page, """
-                    office => {
+                    () => {
                         const scene = BABYLON.EngineStore.LastCreatedScene;
                         const camera = scene.activeCamera;
-                        const player = scene.getTransformNodeByName(office ? 'environment-player' : 'player');
+                        const player = scene.getTransformNodeByName('player');
                         return JSON.stringify({ camera: camera.name, position: camera.position.asArray(),
                             player: player.position.asArray(), heading: player.rotation.y, mask: camera.layerMask });
                     }
-                    """, office, scene);
+                    """, worker: scene);
                 Console.Error.WriteLine(details);
                 foreach (var error in errors) Console.Error.WriteLine(error);
                 throw;

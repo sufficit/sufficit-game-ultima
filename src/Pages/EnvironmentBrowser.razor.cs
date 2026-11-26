@@ -20,8 +20,8 @@ public partial class EnvironmentBrowser : IAsyncDisposable
     [SupplyParameterFromQuery(Name = "id")] private string? EnvironmentId { get; set; }
     private EnvironmentCatalog? _catalog;
     private EnvironmentDefinition? _environment;
-    private ElementReference _canvas;
-    private IJSObjectReference? _module, _scene;
+    private DotNetObjectReference<GameInterop>? _bridge;
+    private DotNetObjectReference<Ultima.Models.ModelsInterop>? _modelsRef;
     private CancellationTokenSource? _connection;
     private bool _missionPanel;
     private void ToggleMissionPanel() => _missionPanel = !_missionPanel;
@@ -49,27 +49,29 @@ public partial class EnvironmentBrowser : IAsyncDisposable
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_disposed || _environment?.Scene is not { } definition || _sceneStarting || _module is not null || _sceneError) return;
+        if (_disposed || _environment?.Scene is not { } definition || _sceneStarting || _bridge is not null || _sceneError) return;
         _sceneStarting = true;
         try
         {
             var endpoint = await JS.InvokeAsync<string>("game.live.api");
-            if (!_disposed && endpoint.Length > 0) _endpoint = endpoint;
-            var build = await JS.InvokeAsync<string>("game.buildStamp");
-            var module = await JS.InvokeAsync<IJSObjectReference>("import", $"./js/environment-scene.js?v={Uri.EscapeDataString(build)}");
-            if (_disposed)
-            {
-                await module.DisposeAsync();
-                return;
-            }
-
-            _module = module;
-            EnvironmentExports.Configure(definition);
-            var avatar = definition.Walk is null ? null : await Models.DescribeAsync(Ultima.Models.ModelLoader.PlayerModelId);
             if (_disposed) return;
-            var scene = await module.InvokeAsync<IJSObjectReference>("create", _canvas, definition, _station, avatar);
-            if (_disposed) await DisposeSceneAsync(scene);
-            else _scene = scene;
+            if (endpoint.Length > 0) _endpoint = endpoint;
+            _bridge = DotNetObjectReference.Create(new GameInterop
+            {
+                Close = () => _ = InvokeAsync(() =>
+                {
+                    _missionPanel = false;
+                    StateHasChanged();
+                })
+            });
+            _modelsRef = DotNetObjectReference.Create(new Ultima.Models.ModelsInterop(Models));
+            _sceneError = !await JS.InvokeAsync<bool>("game.init", "game-canvas", _bridge, _modelsRef,
+                _environment.Id, _environment.Terrain, definition);
+            if (!_disposed && !_sceneError && definition.Walk is not null)
+            {
+                var avatar = await Models.DescribeAsync(Ultima.Models.ModelLoader.PlayerModelId);
+                if (!_disposed) await JS.InvokeVoidAsync("game.models.register", avatar, false);
+            }
         }
         catch (JSException) { _sceneError = true; }
         finally { _sceneStarting = false; }
@@ -97,15 +99,13 @@ public partial class EnvironmentBrowser : IAsyncDisposable
         Navigation.NavigateTo(Navigation.BaseUri + query, forceLoad: true);
     }
 
-    private async Task CycleCameraViewAsync()
-    {
-        if (_scene is not null) await _scene.InvokeVoidAsync("cycleCameraView");
-    }
+    private Task CycleCameraViewAsync() => JS.InvokeVoidAsync("game.cycleCameraView").AsTask();
 
     private async Task SelectStationAsync(string id)
     {
         _station = id;
-        if (_scene is not null) await _scene.InvokeVoidAsync("select", id);
+        if (_environment?.Scene?.Walk is null && _bridge is not null && !_sceneError)
+            await JS.InvokeVoidAsync("game.selectStation", id);
     }
 
     private async Task ConnectAsync()
@@ -219,13 +219,7 @@ public partial class EnvironmentBrowser : IAsyncDisposable
     {
         _disposed = true;
         await DisconnectAsync();
-        if (_scene is not null) await DisposeSceneAsync(_scene);
-        if (_module is not null) await _module.DisposeAsync();
-    }
-
-    private static async Task DisposeSceneAsync(IJSObjectReference scene)
-    {
-        await scene.InvokeVoidAsync("dispose");
-        await scene.DisposeAsync();
+        _bridge?.Dispose();
+        _modelsRef?.Dispose();
     }
 }
