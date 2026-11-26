@@ -18,7 +18,7 @@ public abstract class VillagerBase : ModelBase
         _shirt = shirt; _pants = pants; _skin = skin; _hair = hair;
     }
 
-    public override int Version => 3;
+    public override int Version => 4;
 
     protected override void Compose(ModelBuilder b)
     {
@@ -26,7 +26,7 @@ public abstract class VillagerBase : ModelBase
         var height = body.Height;
         var legH = body.HipHeight;
         var torsoH = height * .82 - legH;
-        var armH = height * .36;
+        var armH = height * (body.ArmLengthRatio + .01);
         var headR = height * .07;
         var legR = height * .040 * body.Build;
         var torsoR = body.TorsoRadius;
@@ -48,8 +48,22 @@ public abstract class VillagerBase : ModelBase
          .CapsuleOn("leg-l", "", 2 * legR, legH, x: -legX, subdivisions: 4)
          .CapsuleOn("leg-r", "", 2 * legR, legH, x: legX, subdivisions: 4);
 
-        b.Group("torso", "shirt")
-         .CapsuleOn("torso", "leg-l", 2 * torsoR, torsoH, subdivisions: 5);
+        b.Group("torso", "shirt");
+        if (body.WaistCircumference is not null)
+        {
+            var abdomenHeight = torsoH * .65;
+            var waistScale = 2 * body.WaistRadius / abdomenHeight;
+            b.SphereAt("abdomen", "leg-l", abdomenHeight, legH, segments: 12,
+                scaleX: waistScale, scaleZ: waistScale);
+            var chestHeight = torsoH * .68;
+            var chestScale = 2 * torsoR / chestHeight;
+            b.SphereAt("torso", "abdomen", chestHeight, height * .82 - chestHeight, segments: 12,
+                scaleX: chestScale, scaleZ: chestScale);
+        }
+        else
+        {
+            b.CapsuleOn("torso", "leg-l", 2 * torsoR, torsoH, subdivisions: 5);
+        }
         b.Group("arm-left", "shirt")
          .CapsuleOn("arm-l", "leg-l", 2 * armR, armH, x: -armX, subdivisions: 2);
         b.Group("arm-right", "shirt")
@@ -59,11 +73,11 @@ public abstract class VillagerBase : ModelBase
          .CylinderOn("neck", "torso", 0, 0.9 * headR, 0.9 * headR, 0.7 * headR, tessellation: 10);
         b.Group("head", "skin")
          .SphereAt("head", "neck", 2 * headR, height - 2 * headR, segments: 8, scaleX: faceWidth);
-        var handBase = legH + torsoH - 0.20 * height - armH / 2 - 1.3 * armR;
+        var handBase = body.WristHeight - .01 * height - 1.3 * armR;
         b.Group("hand-left", "skin")
-         .SphereAt("hand-l", "leg-l", 2.6 * armR, handBase, x: -armX, segments: 8);
+         .SphereAt("hand-l", "torso", 2.6 * armR, handBase, x: -armX, segments: 8);
         b.Group("hand-right", "skin")
-         .SphereAt("hand-r", "leg-l", 2.6 * armR, handBase, x: armX, segments: 8);
+         .SphereAt("hand-r", "torso", 2.6 * armR, handBase, x: armX, segments: 8);
 
         // Sapatos: esferas achatadas (55%) e alongadas (1,9) com a frente para +Z. A
         // escala é embutida nos vértices pelo renderizador, então a base usa o raio

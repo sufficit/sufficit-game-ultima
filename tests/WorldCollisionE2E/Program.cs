@@ -141,7 +141,7 @@ internal sealed partial class WorldCollision(IPage page)
             return world is { Map.Chunks: >= 25, Glb: not null, Models.Queue: 0 } &&
                 new[] { "flora.pine", "prop.stump", "prop.log", "rock.boulder2" }.All(prefix =>
                     world.Glb.Loaded.Any(id => id.StartsWith(prefix, StringComparison.Ordinal))) &&
-                world.Models.Loaded.Contains("character.villager v3");
+                world.Models.Loaded.Contains("character.villager v4");
         }, "mundo carregado");
         Check(await page.EvaluateAsync<string>("() => game.mode") == Mode, "modo do renderizador", Mode);
         if (!MainThread) _worker = page.Workers[0];

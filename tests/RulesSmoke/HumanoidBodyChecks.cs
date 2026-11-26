@@ -12,7 +12,8 @@ internal static class HumanoidBodyChecks
             standard.ColliderRadius == .25 && standard.Skin == new BodyColor(.90, .72, .58));
         check("Unsupported species and out-of-range features are rejected",
             Rejects(new(Species: "elf")) && Rejects(new(Height: 4)) && Rejects(new(Mass: double.NaN)) &&
-            Rejects(new(Skin: new(1.5, .1, .2))));
+            Rejects(new(Skin: new(1.5, .1, .2))) && Rejects(new(WaistCircumference: -1)) &&
+            Rejects(new(FemurRatio: double.PositiveInfinity)) && Rejects(new(UpperArmScale: 2)));
 
         foreach (var profile in new[]
         {
@@ -41,6 +42,45 @@ internal static class HumanoidBodyChecks
             check("The shared sweep applies the character's profile radius",
                 Math.Abs(wall.X + body.ColliderRadius + .001) < 1e-8);
         }
+
+        var broadWaist = Humanoid.ResolveBody(new(Height: 1.8, Mass: 90, LegRatio: .42, FemurRatio: .56,
+            WaistCircumference: 1.10, ChestScale: .94, ArmLengthRatio: .32, UpperArmRatio: .44));
+        var broadLimbs = Humanoid.ResolveBody(new(Height: 1.8, Mass: 90, LegRatio: .47, FemurRatio: .44,
+            WaistCircumference: .78, ChestScale: 1.18, ArmLengthRatio: .40, UpperArmRatio: .54,
+            UpperArmScale: 1.42, ForearmScale: 1.2, ThighScale: 1.35, CalfScale: 1.15));
+        check("Equal height and mass can yield different bone lengths and regional circumferences",
+            broadWaist.Height == broadLimbs.Height && broadWaist.Mass == broadLimbs.Mass &&
+            broadWaist.LegLength < broadLimbs.LegLength && broadWaist.FemurLength > broadLimbs.FemurLength &&
+            broadWaist.TibiaLength < broadLimbs.TibiaLength && broadWaist.WristHeight > broadLimbs.WristHeight &&
+            broadWaist.WaistRadius > broadLimbs.WaistRadius && broadWaist.TorsoRadius < broadLimbs.TorsoRadius &&
+            broadWaist.UpperArmRadius < broadLimbs.UpperArmRadius && broadWaist.ThighRadius < broadLimbs.ThighRadius);
+
+        foreach (var body in new[] { broadWaist, broadLimbs })
+        {
+            var joints = PlayerAnatomy.Create("humano", body.Height, body).ToDictionary(joint => joint.Name);
+            var descriptor = new Villager().Build(new() { Body = body });
+            var abdomen = descriptor.Groups.Single(group => group.Id == "torso").Parts.Single(part => part.Id == "abdomen");
+            check("Custom bone lengths and measured waist match the rig and model",
+                Close(joints["hip-left"].Y - joints["knee-left"].Y, body.FemurLength) &&
+                Close(joints["knee-left"].Y - joints["ankle-left"].Y, body.TibiaLength) &&
+                Close(joints["elbow-left"].Y, body.ElbowHeight) && Close(joints["wrist-left"].Y, body.WristHeight) &&
+                Close(Math.PI * abdomen.Diameter * abdomen.ScaleX, body.WaistCircumference!.Value));
+            CheckAnkleTarget(body, check);
+        }
+    }
+
+    private static bool Close(double a, double b) => Math.Abs(a - b) < 1e-8;
+
+    private static void CheckAnkleTarget(HumanoidBody body, Action<string, bool> check)
+    {
+        const double drop = .52, forward = .19, lateral = -.07, pitch = .10;
+        Span<double> angles = stackalloc double[4];
+        PlayerPose.SolveSingleLeg(angles, drop, forward, lateral, body.FemurLength, pitch, body.TibiaLength);
+        var down = body.FemurLength * Math.Cos(angles[0]) + body.TibiaLength * Math.Cos(angles[0] + angles[1]);
+        var advance = -body.FemurLength * Math.Sin(angles[0]) - body.TibiaLength * Math.Sin(angles[0] + angles[1]);
+        check("Unequal leg segments reach the planted foot in three dimensions",
+            Close(advance, forward) && Close(down * Math.Cos(angles[3]), drop) &&
+            Close(down * Math.Sin(angles[3]), lateral) && Close(angles[0] + angles[1] + angles[2], pitch));
     }
 
     private static bool Rejects(HumanoidProfile profile)

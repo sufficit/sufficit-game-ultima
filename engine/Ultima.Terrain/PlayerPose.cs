@@ -85,12 +85,14 @@ internal static class PlayerPose
         double footGap, double hipHeight, double legLength, double ankleOffset,
         double leftForward, double leftLift, double leftSupport, bool leftOnObstacle,
         double rightForward, double rightLift, double rightSupport, bool rightOnObstacle,
-        double leftPitch = 0, double rightPitch = 0, double leftLateral = 0, double rightLateral = 0)
+        double leftPitch = 0, double rightPitch = 0, double leftLateral = 0, double rightLateral = 0, double? tibiaLength = null)
     {
         var leftAnkle = leftSupport + ankleOffset + leftLift;
         var rightAnkle = rightSupport + ankleOffset + rightLift;
         var bodyY = ground + footGap;
-        var spanSquared = 4 * legLength * legLength;
+        var lowerLength = tibiaLength ?? legLength;
+        var reach = legLength + lowerLength;
+        var spanSquared = reach * reach;
         var leftReach = leftAnkle + Math.Sqrt(Math.Max(0, spanSquared - leftForward * leftForward - leftLateral * leftLateral)) - hipHeight;
         var rightReach = rightAnkle + Math.Sqrt(Math.Max(0, spanSquared - rightForward * rightForward - rightLateral * rightLateral)) - hipHeight;
         if (leftOnObstacle || rightOnObstacle)
@@ -103,8 +105,8 @@ internal static class PlayerPose
         output[0] = bodyY;
         var leftDrop = Math.Max(0.16, bodyY + hipHeight - leftAnkle);
         var rightDrop = Math.Max(0.16, bodyY + hipHeight - rightAnkle);
-        SetAngles(output[1..4], double.Hypot(leftDrop, leftLateral), leftForward, legLength, leftPitch);
-        SetAngles(output[4..7], double.Hypot(rightDrop, rightLateral), rightForward, legLength, rightPitch);
+        SetAngles(output[1..4], double.Hypot(leftDrop, leftLateral), leftForward, legLength, lowerLength, leftPitch);
+        SetAngles(output[4..7], double.Hypot(rightDrop, rightLateral), rightForward, legLength, lowerLength, rightPitch);
         if (output.Length >= 9)
         {
             output[7] = Math.Atan2(leftLateral, leftDrop);
@@ -113,19 +115,29 @@ internal static class PlayerPose
     }
 
     internal static void SolveSingleLeg(Span<double> output, double drop, double forward, double lateral,
-        double legLength, double pitch)
+        double legLength, double pitch, double? tibiaLength = null)
     {
         drop = Math.Max(0.16, drop);
-        SetAngles(output[..3], double.Hypot(drop, lateral), forward, legLength, pitch);
+        SetAngles(output[..3], double.Hypot(drop, lateral), forward, legLength, tibiaLength ?? legLength, pitch);
         output[3] = Math.Atan2(lateral, drop);
     }
 
-    private static void SetAngles(Span<double> output, double drop, double forward, double legLength, double pitch)
+    private static void SetAngles(Span<double> output, double drop, double forward, double femur, double tibia, double pitch)
     {
-        var extent = double.Hypot(drop, forward);
-        var flex = Math.Acos(Math.Min(1, extent / (2 * legLength)));
-        output[0] = -Math.Atan2(forward, drop) - flex;
-        output[1] = 2 * flex;
+        var extent = Math.Clamp(double.Hypot(drop, forward), Math.Max(1e-8, Math.Abs(femur - tibia)), femur + tibia);
+        if (femur == tibia)
+        {
+            var flex = Math.Acos(Math.Min(1, extent / (2 * femur)));
+            output[0] = -Math.Atan2(forward, drop) - flex;
+            output[1] = 2 * flex;
+            output[2] = pitch - output[0] - output[1];
+            return;
+        }
+        var squared = extent * extent;
+        var knee = Math.Acos(Math.Clamp((squared - femur * femur - tibia * tibia) / (2 * femur * tibia), -1, 1));
+        var hipOffset = Math.Atan2(tibia * Math.Sin(knee), femur + tibia * Math.Cos(knee));
+        output[0] = -Math.Atan2(forward, drop) - hipOffset;
+        output[1] = knee;
         output[2] = pitch - output[0] - output[1];
     }
 

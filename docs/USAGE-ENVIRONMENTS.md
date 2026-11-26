@@ -51,6 +51,11 @@ mass, build and skin tone.
     "height": 1.9,
     "mass": 86,
     "build": 1.08,
+    "legRatio": 0.46,
+    "femurRatio": 0.54,
+    "waistCircumference": 0.92,
+    "thighScale": 1.2,
+    "upperArmScale": 1.15,
     "skin": { "red": 0.47, "green": 0.29, "blue": 0.20 }
   }
 }
@@ -63,15 +68,26 @@ mass, build and skin tone.
 | `mass` | 35–220 kg | 70 kg |
 | `build` | 0.80–1.20 body-width multiplier | 1.00 |
 | `legRatio` | 0.40–0.48 of total height | 0.44 |
+| `femurRatio` | 0.42–0.58 of the hip-to-ankle length | 0.50 |
+| `armLengthRatio` | 0.30–0.42 of total height, shoulder to wrist | 0.35 |
+| `upperArmRatio` | 0.43–0.57 of the shoulder-to-wrist length | 0.17 / 0.35 |
+| `waistCircumference` | 0.60–1.65 m around the widest abdominal cross-section | Existing torso contour |
+| `chestScale` | 0.80–1.25 chest diameter multiplier | 1.00 |
+| `thighScale`, `calfScale`, `upperArmScale`, `forearmScale` | 0.75–1.50 regional diameter multiplier | 1.00 |
 | `faceWidth` | 0.85–1.15 head-width multiplier | 1.00 |
 | `earScale` | 0–1.40 ear-size multiplier | 0 (legacy silhouette) |
 | `skin`, `eyes`, `hair` | RGB object with `red`, `green`, `blue` channels from 0 to 1 | Current avatar palette |
 
 The catalog rejects an invalid profile. The game resolves dimensions at
-scene startup, before building the avatar. Height and build feed movement
-and collision. Mass remains available in the body profile for future
-force and inertia rules. Clothing and accessories use the existing model
-appearance. [Species and body design](../decisions/humanoid-species-and-body.md)
+scene startup. `legRatio` sets the hip height and `femurRatio` changes the
+knee position within that length. The remaining segment length belongs to
+the tibia. The arm ratios place the elbow and wrist in the same way. The
+regional multipliers apply after `build`. An explicit waist circumference
+sets the abdominal diameter in meters independently of those multipliers.
+The movement solver uses both leg lengths to keep the ankle on its target.
+Mass is stored independently of all measurements for future force and inertia
+rules. Limb sizes and chest scale describe geometry. Clothing and accessories
+use the existing model appearance. [Species and body design](../decisions/humanoid-species-and-body.md)
 
 ## Game API
 

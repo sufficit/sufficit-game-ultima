@@ -111,7 +111,8 @@
             const shoes = new BABYLON.StandardMaterial(root.name + '-leg-shoes', scene);
             shoes.diffuseColor.set(0.13, 0.10, 0.09);
             const radius = body?.legRadius ?? LEG_RADIUS;
-            const segment = body?.legSegment ?? LEG_SEGMENT;
+            const femur = body?.femurLength ?? LEG_SEGMENT;
+            const tibia = body?.tibiaLength ?? LEG_SEGMENT;
             return [-1, 1].map(side => {
                 const suffix = side < 0 ? 'left' : 'right';
                 let hip = joints?.get('hip-' + suffix);
@@ -139,12 +140,14 @@
                     hip.rotationQuaternion = BABYLON.Quaternion.Identity();
                     ankle.rotationQuaternion = BABYLON.Quaternion.Identity();
                 }
-                const options = { height: segment + 0.085, radius, subdivisions: 4 };
-                const thigh = BABYLON.MeshBuilder.CreateCapsule(root.name + '-thigh-' + suffix, options, scene);
-                const shin = BABYLON.MeshBuilder.CreateCapsule(root.name + '-shin-' + suffix, options, scene);
+                const thigh = BABYLON.MeshBuilder.CreateCapsule(root.name + '-thigh-' + suffix,
+                    { height: femur + 0.085, radius: body?.thighRadius ?? radius, subdivisions: 4 }, scene);
+                const shin = BABYLON.MeshBuilder.CreateCapsule(root.name + '-shin-' + suffix,
+                    { height: tibia + 0.085, radius: body?.calfRadius ?? radius, subdivisions: 4 }, scene);
                 thigh.parent = hip;
                 shin.parent = knee;
-                thigh.position.y = shin.position.y = -segment / 2;
+                thigh.position.y = -femur / 2;
+                shin.position.y = -tibia / 2;
                 thigh.material = shin.material = pants;
                 const shoe = BABYLON.MeshBuilder.CreateSphere(root.name + '-shoe-' + suffix,
                     { diameter: 2.5 * radius, segments: 8 }, scene);
@@ -155,7 +158,7 @@
                 for (const mesh of [thigh, shin, shoe]) {
                     mesh.isPickable = false;
                 }
-                return { side, hip, hipRoll, knee, ankle, thigh, shin, shoe, stride: new Float64Array(6) };
+                return { side, hip, hipRoll, knee, ankle, thigh, shin, shoe, femur, tibia, stride: new Float64Array(6) };
             });
         }
 
@@ -179,9 +182,9 @@
             BABYLON.Quaternion.RotationYawPitchRollToRef(0, 0, -roll, undoHipRoll);
             let undoAxes = undoHipRoll;
             if (swivel) {
-                // Equal segments put the bisector on the leg axis. Twist around it
-                // to align the knee without moving the ankle target.
-                const axisPitch = hip + knee * 0.5;
+                // Twist about the hip-to-ankle vector so the foot stays planted.
+                const axisPitch = hip + (leg.femur === leg.tibia ? knee * 0.5 :
+                    Math.atan2(leg.tibia * Math.sin(knee), leg.femur + leg.tibia * Math.cos(knee)));
                 legAxis.set(0, Math.cos(axisPitch), Math.sin(axisPitch));
                 BABYLON.Quaternion.RotationAxisToRef(legAxis, swivel, kneeTwist);
                 kneeTwist.multiplyToRef(hipPitch, leg.hip.rotationQuaternion);
@@ -250,12 +253,12 @@
                 if (rig.elbows.length && (group === 'arm-left' || group === 'arm-right')) {
                     const side = group === 'arm-left' ? 0 : 1;
                     const name = proto.name.replace('model-', 'char-') + '-' + rig.root.name;
-                    const radius = rig.body?.armRadius ?? PLAYER_HEIGHT * 0.026;
+                    const radius = PLAYER_HEIGHT * 0.026;
                     const segments = [
-                        [name, rig.shoulders[side], -rig.elbows[side].position.y],
-                        [name + '-forearm', rig.elbows[side], -rig.wrists[side].position.y]
+                        [name, rig.shoulders[side], -rig.elbows[side].position.y, rig.body?.upperArmRadius ?? radius],
+                        [name + '-forearm', rig.elbows[side], -rig.wrists[side].position.y, rig.body?.forearmRadius ?? radius]
                     ];
-                    for (const [meshName, parent, length] of segments) {
+                    for (const [meshName, parent, length, radius] of segments) {
                         const mesh = BABYLON.MeshBuilder.CreateCapsule(meshName,
                             { height: length + radius, radius, subdivisions: 2, tessellation: 8 }, scene);
                         mesh.parent = parent;

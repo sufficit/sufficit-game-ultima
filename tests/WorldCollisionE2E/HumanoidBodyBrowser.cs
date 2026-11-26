@@ -16,6 +16,9 @@ internal static class HumanoidBodyBrowser
                 {
                   "species":"homo-sapiens", "height":2.02, "mass":94, "build":1.17,
                   "legRatio":0.46, "faceWidth":1.12, "earScale":1.2,
+                  "femurRatio":0.56, "armLengthRatio":0.4, "upperArmRatio":0.53,
+                  "waistCircumference":1.38, "chestScale":1.04, "thighScale":1.4,
+                  "calfScale":0.85, "upperArmScale":1.3, "forearmScale":0.9,
                   "skin":{"red":0.34,"green":0.19,"blue":0.12},
                   "eyes":{"red":0.15,"green":0.42,"blue":0.28},
                   "hair":{"red":0.09,"green":0.05,"blue":0.035}
@@ -34,7 +37,7 @@ internal static class HumanoidBodyBrowser
         await page.GetByRole(AriaRole.Button, new() { Name = "Escritório", Exact = true }).ClickAsync();
         await VerifyProfileAsync();
 
-        var maxZ = 7.82 - .25 * (2.02 / 1.75) * 1.17;
+        var maxZ = 7.82 - await page.EvaluateAsync<double>("async () => (await game.playerBody()).colliderRadius");
         await page.Keyboard.DownAsync("s");
         try
         {
@@ -64,9 +67,21 @@ internal static class HumanoidBodyBrowser
                     const skull = scene.getMeshByName('char-character.villager-head-player');
                     const ears = scene.getMeshByName('char-character.villager-ears-player');
                     const shoulder = scene.getTransformNodeByName('player-shoulder-left');
+                    const knee = scene.getTransformNodeByName('player-knee-left');
+                    const ankle = scene.getTransformNodeByName('player-ankle-left');
+                    const elbow = scene.getTransformNodeByName('player-elbow-left');
+                    const wrist = scene.getTransformNodeByName('player-wrist-left');
+                    const thigh = scene.getMeshByName('player-thigh-left');
+                    const shin = scene.getMeshByName('player-shin-left');
+                    const torso = scene.getMeshByName('char-character.villager-torso-player');
                     return !!earMaterial() && root.metadata?.modelId === 'character.villager' &&
                         Math.abs(hip.position.x + 2.02 * .052 * 1.17) < .001 &&
-                        Math.abs(shoulder.metadata.modelOffset.y + 2.02 * .80) < .001;
+                        Math.abs(shoulder.metadata.modelOffset.y + 2.02 * .80) < .001 &&
+                        Math.abs(knee.position.y / (knee.position.y + ankle.position.y) - .56) < .001 &&
+                        Math.abs(elbow.position.y / (elbow.position.y + wrist.position.y) - .53) < .001 &&
+                        Math.abs(elbow.position.y + wrist.position.y + 2.02 * .4) < .001 &&
+                        thigh.getBoundingInfo().boundingBox.maximum.x > shin.getBoundingInfo().boundingBox.maximum.x &&
+                        Math.abs(torso.getBoundingInfo().boundingBox.maximum.x * Math.PI * 2 - 1.38) < .04;
 
                     function earMaterial() {
                         if (!ears || !skull) return false;

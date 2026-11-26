@@ -28,6 +28,9 @@ internal static class PlayerAnatomy
                 Add("eye-pivot", "head-pivot", 0, .937, 0);
                 Add("jaw", "head-pivot", 0, .9, .035, "hinge");
                 var ankle = body is null ? .039 * 1.25 * .55 - .004 / height : body.AnkleJoint / height;
+                var knee = body is null ? (hip + ankle) / 2 : body.KneeHeight / height;
+                var elbow = body is null ? .63 : body.ElbowHeight / height;
+                var wrist = body is null ? .45 : body.WristHeight / height;
                 foreach (var side in new[] { "left", "right" })
                 {
                     var sign = side == "left" ? -1 : 1;
@@ -35,19 +38,19 @@ internal static class PlayerAnatomy
                     var leg = sign * (body is null ? .052 : body.LegSpacing / height);
                     Add("clavicle-" + side, "chest", sign * .025, .80, 0);
                     Add("shoulder-" + side, "clavicle-" + side, arm, .80, 0);
-                    Add("elbow-" + side, "shoulder-" + side, arm, .63, 0, "hinge");
-                    Add("wrist-" + side, "elbow-" + side, arm, .45, 0);
+                    Add("elbow-" + side, "shoulder-" + side, arm, elbow, 0, "hinge");
+                    Add("wrist-" + side, "elbow-" + side, arm, wrist, 0);
                     Add("hip-" + side, "pelvis", leg, hip, 0);
-                    Add("knee-" + side, "hip-" + side, leg, (hip + ankle) / 2, 0, "hinge");
+                    Add("knee-" + side, "hip-" + side, leg, knee, 0, "hinge");
                     Add("ankle-" + side, "knee-" + side, leg, ankle, 0);
                     Add("ball-" + side, "ankle-" + side, leg, .009, .065, "hinge");
                     for (var digit = 1; digit <= 5; digit++)
                     {
                         var x = arm + sign * (digit - 3) * .009;
                         var finger = $"finger-{digit}-{side}";
-                        Add(finger, "wrist-" + side, x, .432, 0);
-                        Add(finger + "-middle", finger, x, .417, 0, "hinge");
-                        Add(finger + "-tip", finger + "-middle", x, .407, 0, "hinge");
+                        Add(finger, "wrist-" + side, x, wrist - .018, 0);
+                        Add(finger + "-middle", finger, x, wrist - .033, 0, "hinge");
+                        Add(finger + "-tip", finger + "-middle", x, wrist - .043, 0, "hinge");
                         var toe = $"toe-{digit}-{side}";
                         var toeX = leg + sign * (digit - 3) * .01;
                         Add(toe, "ball-" + side, toeX, .009, .082, "hinge");

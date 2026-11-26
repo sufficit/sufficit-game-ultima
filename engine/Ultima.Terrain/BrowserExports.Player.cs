@@ -20,7 +20,7 @@ internal static partial class BrowserExports
     private static readonly PlayerCamera Camera = new();
     private static readonly PlayerCameraObstacles CameraObstacles = new();
     private static readonly double[] CameraResult = new double[12];
-    private static double _kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset;
+    private static double _kneeHeight, _footGap, _hipHeight, _femurLength, _tibiaLength, _ankleOffset, _spacing, _shoeOffset;
 
     private static PlayerRemoteAvatars? _remoteAvatars;
 
@@ -35,14 +35,14 @@ internal static partial class BrowserExports
         _body = body;
         _characters = new();
         _movement = new(body.Height, body.KneeHeight, body.FloorOffset, _characters, body.ColliderRadius);
-        (_kneeHeight, _footGap, _hipHeight, _legLength, _ankleOffset, _spacing, _shoeOffset) =
-            (body.KneeHeight, body.FloorOffset, body.HipHeight, body.LegSegment, body.AnkleHeight + HumanoidBody.SoleClearance,
+        (_kneeHeight, _footGap, _hipHeight, _femurLength, _tibiaLength, _ankleOffset, _spacing, _shoeOffset) =
+            (body.KneeHeight, body.FloorOffset, body.HipHeight, body.FemurLength, body.TibiaLength, body.AnkleHeight + HumanoidBody.SoleClearance,
                 body.LegSpacing, body.ShoeOffset);
-        _remoteAvatars = new(_surface, DefaultBody.FloorOffset, DefaultBody.HipHeight, DefaultBody.LegSegment,
+        _remoteAvatars = new(_surface, DefaultBody.FloorOffset, DefaultBody.HipHeight, DefaultBody.FemurLength,
             DefaultBody.AnkleHeight + HumanoidBody.SoleClearance, DefaultBody.LegSpacing, DefaultBody.ShoeOffset, _characters);
         Camera.SetDefaultRadius(PlayerCamera.DefaultRadius);
         CameraObstacles.Set([], 0);
-        PlayerFeet = new(body.LegSegment / DefaultBody.LegSegment, body.Build * body.Height / DefaultBody.Height);
+        PlayerFeet = new(body.LegLength / DefaultBody.LegLength, body.Build * body.Height / DefaultBody.Height);
         Input.Clear();
         return JsonSerializer.Serialize(new PlayerBodyFrame(body, PlayerAnatomy.Create("humano", body.Height, body)),
             PlayerBodyJson.Default.PlayerBodyFrame);
@@ -105,7 +105,7 @@ internal static partial class BrowserExports
         double lift, double pitch)
     {
         PlayerPose.SolveSingleLeg(ShortFoot, bodyY + _hipHeight - support - _ankleOffset - lift,
-            forward, lateral, _legLength, pitch);
+            forward, lateral, _femurLength, pitch, _tibiaLength);
         return ShortFoot;
     }
 
@@ -297,14 +297,14 @@ internal static partial class BrowserExports
         if (!isPlayer)
         {
             PlayerPose.SolveLegs(result[17..24], ground, y, delta, DefaultBody.FloorOffset,
-                DefaultBody.HipHeight, DefaultBody.LegSegment, DefaultBody.AnkleHeight + HumanoidBody.SoleClearance,
+                DefaultBody.HipHeight, DefaultBody.FemurLength, DefaultBody.AnkleHeight + HumanoidBody.SoleClearance,
                 feet[0], feet[1], leftFloor, false, feet[4], feet[5], rightFloor, false, feet[8], feet[9]);
             return;
         }
         Span<double> legs = stackalloc double[9];
-        PlayerPose.SolveLegs(legs, ground, y, delta, _footGap, _hipHeight, _legLength, _ankleOffset,
+        PlayerPose.SolveLegs(legs, ground, y, delta, _footGap, _hipHeight, _femurLength, _ankleOffset,
             feet[0], feet[1], leftFloor, false, feet[4], feet[5], rightFloor, false,
-            feet[8], feet[9], contact[0], contact[1]);
+            feet[8], feet[9], contact[0], contact[1], _tibiaLength);
         legs[..7].CopyTo(result[17..24]);
         result[24] = ground;
         result[25] = leftX;
@@ -339,9 +339,9 @@ internal static partial class BrowserExports
         double rightForward, double rightLift, double rightFloor, double rightSupport, double leftPitch, double rightPitch,
         double leftLateral, double rightLateral)
     {
-        PlayerPose.SolveLegs(LegResult, ground, previousY, delta, _footGap, _hipHeight, _legLength, _ankleOffset,
+        PlayerPose.SolveLegs(LegResult, ground, previousY, delta, _footGap, _hipHeight, _femurLength, _ankleOffset,
             leftForward, leftLift, leftSupport, leftSupport > leftFloor,
-            rightForward, rightLift, rightSupport, rightSupport > rightFloor, leftPitch, rightPitch, leftLateral, rightLateral);
+            rightForward, rightLift, rightSupport, rightSupport > rightFloor, leftPitch, rightPitch, leftLateral, rightLateral, _tibiaLength);
         return LegResult;
     }
 }

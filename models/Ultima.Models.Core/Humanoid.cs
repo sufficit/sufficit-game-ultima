@@ -54,6 +54,16 @@ public sealed class HomoSapiens : Humanoid
             Read(profile.EarScale, 0, 0, 1.4, nameof(profile.EarScale)),
             ReadColor(profile.Skin, new(.90, .72, .58), nameof(profile.Skin)),
             ReadColor(profile.Eyes, new(.05, .05, .06), nameof(profile.Eyes)),
-            ReadColor(profile.Hair, new(.20, .13, .08), nameof(profile.Hair)));
+            ReadColor(profile.Hair, new(.20, .13, .08), nameof(profile.Hair)),
+            Read(profile.FemurRatio, .5, .42, .58, nameof(profile.FemurRatio)),
+            Read(profile.ArmLengthRatio, .35, .30, .42, nameof(profile.ArmLengthRatio)),
+            Read(profile.UpperArmRatio, .17 / .35, .43, .57, nameof(profile.UpperArmRatio)),
+            Read(profile.ChestScale, 1, .8, 1.25, nameof(profile.ChestScale)),
+            profile.WaistCircumference is { } waist
+                ? Read(waist, 0, .60, 1.65, nameof(profile.WaistCircumference)) : null,
+            Read(profile.ThighScale, 1, .75, 1.5, nameof(profile.ThighScale)),
+            Read(profile.CalfScale, 1, .75, 1.5, nameof(profile.CalfScale)),
+            Read(profile.UpperArmScale, 1, .75, 1.5, nameof(profile.UpperArmScale)),
+            Read(profile.ForearmScale, 1, .75, 1.5, nameof(profile.ForearmScale)));
     }
 }
