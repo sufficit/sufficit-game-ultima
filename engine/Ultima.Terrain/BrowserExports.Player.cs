@@ -239,7 +239,11 @@ internal static partial class BrowserExports
 
     [JSExport]
     internal static bool SetRemoteAvatarTarget(int id, double x, double z, double yaw)
-        => _remoteAvatars!.Target(id, x, z, yaw);
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(z) || !double.IsFinite(yaw)) return false;
+        var (sceneX, sceneZ) = _movement.ClampPosition(x, z);
+        return _remoteAvatars!.Target(id, sceneX, sceneZ, yaw);
+    }
 
     [JSExport]
     internal static double[] UpdateRemoteAvatars(double delta, double playerX, double playerZ)

@@ -94,6 +94,9 @@ try
         case "camera-views":
             await CameraViews.RunAsync(browser);
             break;
+        case "shared-environment":
+            await SharedEnvironmentPresence.RunAsync(browser);
+            break;
         case "office":
             await OfficeBrowser.RunAsync(browser);
             break;
@@ -110,7 +113,7 @@ try
             await DialogLogLive.RunAsync(browser);
             break;
         default:
-            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, camera-performance, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance, declarative-windows, hud-status, browser-services, local-preferences, mobile-layout, input-devices, dialog-log, office, camera-views, humanoid-body, character-profile, real-guardian.");
+            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, camera-performance, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance, declarative-windows, hud-status, browser-services, local-preferences, mobile-layout, input-devices, dialog-log, office, camera-views, humanoid-body, character-profile, real-guardian, shared-environment.");
     }
     return 0;
 }

@@ -21,6 +21,10 @@ Open **Missões** to see the board and filter by station. Use
 **Trocar ambiente** to return to the environment picker. The office can
 be explored without a connection to the mission API.
 
+Players using the same multiplayer invitation keep the same room when they
+change environments. The office shows each player while they are in the
+office. A friend who is still in the garden appears after opening the office.
+
 ## Author an environment
 
 The built-in [catalog](../src/wwwroot/environments.json) contains the garden and

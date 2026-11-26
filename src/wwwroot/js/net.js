@@ -1,10 +1,4 @@
-// Ultima — multiplayer P2P: WebRTC DataChannel (posições + chat) e faixa de áudio (voz),
-// com sinalização HTTP opcional. A API só apresenta os navegadores; o tráfego é direto.
-//
-// Robustez (corrige jogadores invisíveis):
-// - offer é reenviada em loop até o canal abrir (sinal pode se perder com delivered:0);
-// - avatar é criado assim que o peer entra na sala, antes mesmo do handshake;
-// - dois servidores STUN e restartIce antes de abandonar uma conexão falhada.
+// The HTTP signaling service introduces room peers. WebRTC carries poses, chat and audio.
 (function () {
     'use strict';
 
@@ -41,7 +35,7 @@
     const OFFER_RETRY_MS = 2500;
     const OFFER_RETRY_MAX = 24; // ~1 minuto tentando
 
-    let dotnet = null;
+    let dotnet = null, presence;
     let localStream = null;
     let stopped = false;
     const conns = new Map(); // pid -> conexão
@@ -83,7 +77,7 @@
                     try { c.channel.send(hi); } catch (e) { /* canal caindo */ }
                 }
             }
-            if (enabled && !stopped) { join(); }
+            if (presence && !stopped) { join(); }
         }, 600);
         return clean;
     }
@@ -118,9 +112,11 @@
     }
 
     function sendPos(x, z, ry) {
+        if (!presence || !conns.size) return;
+        const packet = presence.pose(x, z, ry);
         for (const c of conns.values()) {
             if (c.channel && c.channel.readyState === 'open') {
-                try { c.channel.send(JSON.stringify({ t: 'pos', x: x, z: z, ry: ry })); } catch (e) { /* canal caindo */ }
+                try { c.channel.send(packet); } catch (e) { /* canal caindo */ }
             }
         }
     }
@@ -145,7 +141,9 @@
             c.name = String(msg.name || 'Jogador').slice(0, 40);
             if (window.game) { game.renameRemote(pid, c.name); }
         } else if (msg.t === 'pos') {
-            if (window.game) { game.updateRemote(pid, Number(msg.x) || 0, Number(msg.z) || 0, Number(msg.ry) || 0); }
+            presence.update(pid, c.name, msg);
+        } else if (msg.t === 'bye') {
+            dropPeer(pid, false);
         } else if (msg.t === 'chat') {
             const text = String(msg.text || '').slice(0, 300);
             if (text && dotnet) { dotnet.invokeMethodAsync('OnChat', c.name || 'Jogador', text); }
@@ -201,9 +199,6 @@
             iceRestarts: 0
         };
         conns.set(pid, c);
-
-        // Avatar aparece assim que o peer consta na sala; o nome real chega no 'hi'.
-        if (window.game) { game.addRemote(pid, null); }
 
         c.pc.onnegotiationneeded = async () => {
             try {
@@ -293,7 +288,7 @@
         try { if (c.channel) { c.channel.close(); } } catch (e) { /* já fechado */ }
         try { c.pc.close(); } catch (e) { /* idem */ }
         if (notify) { sendSignal(pid, 'bye', null); }
-        if (window.game) { game.removeRemote(pid); }
+        presence.remove(pid);
         status(conns.size ? 'Sala: ' + room : 'Sala: ' + room + ' (sozinho)');
     }
 
@@ -357,18 +352,23 @@
     }
 
     window.game.net = {
-        init(dotnetRef) {
+        async init(dotnetRef, environment) {
             dotnet = dotnetRef;
             if (!enabled) {
                 status('P2P desligado (?rede=0)');
                 return;
             }
+            const { createRoomPresence } = await import('./room-presence.mjs?v=' + encodeURIComponent(game.buildStamp()));
+            presence = createRoomPresence(environment, game);
             status('Conectando à sala ' + room + '…');
             join();
             pollLoop();
             setInterval(() => { if (!stopped) { join(); } }, 8000); // batimento/presença
             window.addEventListener('pagehide', () => {
                 stopped = true;
+                for (const { channel } of conns.values()) {
+                    try { if (channel?.readyState === 'open') channel.send('{"t":"bye"}'); } catch { /* Channel already closed. */ }
+                }
                 api('/v1/net/' + room + '/leave', { peer: myId }, 3000).catch(() => { /* saída silenciosa */ });
             });
         },

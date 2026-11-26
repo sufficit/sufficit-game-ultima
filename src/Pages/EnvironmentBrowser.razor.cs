@@ -73,8 +73,13 @@ public partial class EnvironmentBrowser : IAsyncDisposable
                 _environment.Id, _environment.Terrain, definition, profile);
             if (!_disposed && !_sceneError && definition.Walk is not null)
             {
-                var avatar = await Models.DescribeAsync(Ultima.Models.ModelLoader.PlayerModelId);
-                if (!_disposed) await JS.InvokeVoidAsync("game.models.register", avatar, false);
+                foreach (var modelId in new[] { Ultima.Models.ModelLoader.PlayerModelId, "character.wanderer" })
+                {
+                    var avatar = await Models.DescribeAsync(modelId);
+                    if (_disposed) return;
+                    await JS.InvokeVoidAsync("game.models.register", avatar, false);
+                }
+                await JS.InvokeVoidAsync("game.net.init", _bridge, _environment.Id);
             }
         }
         catch (JSException) { _sceneError = true; }

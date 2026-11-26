@@ -2751,9 +2751,8 @@
     function updateRemote(id, x, z, ry) {
         const p = remotes.get(id);
         if (!p || !Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(ry)) { return; }
-        x = clampWorld(x);
-        z = clampWorld(z);
-        terrain.SetRemoteAvatarTarget(p.serial, x, z, ry);
+        // Authored rooms use the scene bounds configured in WASM.
+        terrain.SetRemoteAvatarTarget(p.serial, authored ? x : clampWorld(x), authored ? z : clampWorld(z), ry);
     }
 
     let actorHitboxes = new Float64Array(512);
@@ -2886,7 +2885,7 @@
             }
         }
         function addIfNear(id, root) {
-            if ((root.position.x - p.x) ** 2 + (root.position.z - p.z) ** 2 <= 16) add(id, root);
+            if (root && (root.position.x - p.x) ** 2 + (root.position.z - p.z) ** 2 <= 16) add(id, root);
         }
         function gather() {
             count = 0;
@@ -2931,8 +2930,8 @@
     }
 
     function updateOtherCharacters(delta) {
-        updateCharacterPose(wandererRoot, delta, 0, dialoguePartner !== wandererRoot);
-        updateCharacterPose(guardianRoot, delta, 0);
+        if (wandererRoot) updateCharacterPose(wandererRoot, delta, 0, dialoguePartner !== wandererRoot);
+        if (guardianRoot) updateCharacterPose(guardianRoot, delta, 0);
         if (!remoteSlots.size) { return; }
 
         const frame = terrain.UpdateRemoteAvatars(delta, player.position.x, player.position.z);
@@ -3164,14 +3163,13 @@
                 }
                 if (cameraView !== 2) advanceCamera(delta, inputFrame);
                 const p = player.position;
-                if (authored) {
-                    terrain.SetPlayerPosition(p.x, p.y, p.z);
-                } else {
-                    updateOtherCharacters(delta);
+                updateOtherCharacters(delta);
+                if (authored) terrain.SetPlayerPosition(p.x, p.y, p.z);
+                else {
                     const g = guardianRoot.position, w = wandererRoot.position;
                     terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
-                    syncCharacterHitboxes();
                 }
+                syncCharacterHitboxes();
                 applyCameraView(p);
                 if (!authored) {
                     checkNear();

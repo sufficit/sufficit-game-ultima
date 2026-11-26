@@ -832,10 +832,11 @@
             : GameUpdates.Build[..Math.Min(10, GameUpdates.Build.Length)];
         _ = GameUpdates.WatchAsync(ShowUpdate, _browserLifetime.Token);
         _modelsRef = DotNetObjectReference.Create(new Ultima.Models.ModelsInterop(Models));
-        var motorOk = false;
+        var (motorOk, sceneId) = (false, "");
         try
         {
             var (environment, profile) = await LoadTerrainAsync();
+            sceneId = environment.Id;
             Models.ConfigurePlayerBody(profile);
             motorOk = await JS.InvokeAsync<bool>("game.init", "game-canvas", _bridge, _modelsRef, environment.Id, environment.Terrain, null, profile);
         }
@@ -851,7 +852,7 @@
         await JS.InvokeVoidAsync("game.backpack.init", _bridge);
         await BackpackState.SynchronizeAsync();
         _ = Models.LoadAllAsync();   // modelos 3D (DLLs C#) chegam em paralelo e entram na cena
-        await JS.InvokeVoidAsync("game.net.init", _bridge);
+        await JS.InvokeVoidAsync("game.net.init", _bridge, sceneId);
         await JS.InvokeVoidAsync("game.live.init", _bridge);
         _ = Live.RunAsync(_browserLifetime.Token);
         _ = WorldTime.RunAsync(_browserLifetime.Token);
