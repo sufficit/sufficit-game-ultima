@@ -18,29 +18,32 @@ internal static class DeclarativeWindows
             page.Console += (_, message) => Console.WriteLine($"{message.Type} {message.Text[..Math.Min(900, message.Text.Length)]}");
         await page.AddInitScriptAsync("""
             document.addEventListener('DOMContentLoaded', () => {
-                const init = game.aiCpu.init;
-                game.aiCpu.init = bridge => {
-                    const status = game.aiCpu.status;
-                    let ready = false;
-                    game.aiCpu.load = () => { ready = true; };
-                    game.aiCpu.status = () => ready
-                        ? { state: 'ready', progress: 1, detail: 'Modelo de teste pronto' }
-                        : status();
-                    game.live.token = () => null;
-                    game.aiCpu.garden = (_, text, tokens, history) => {
+                // Simulated local AI. It is installed at page load, before any C# call: Blazor caches
+                // the handler it resolves for an identifier at the first call, so a stub installed
+                // later (e.g. inside aiCpu.init, which runs at the end of the boot chain) stays
+                // invisible to C# once the page has already read the state.
+                const init = game.aiCpu.init, cpuStatus = game.aiCpu.status;
+                let ready = false;
+                game.aiCpu.load = () => { ready = true; };
+                game.aiCpu.status = () => ready
+                    ? { state: 'ready', progress: 1, detail: 'Modelo de teste pronto' }
+                    : cpuStatus();
+                game.live.token = () => null;
+                game.aiCpu.garden = (_, text, tokens, history) => {
+                    window.guardianProbe = { text, tokens, history };
+                    return 'Olá, caminhante.';
+                };
+                if (sessionStorage.getItem('guardian-test-engine') === 'gpu') {
+                    game.ai.init = () => {};
+                    game.ai.status = () => ({ state: 'ready', progress: 1, detail: 'GPU de teste pronta' });
+                    game.ai.garden = (_, text, tokens, history) => {
                         window.guardianProbe = { text, tokens, history };
-                        return 'Olá, caminhante.';
+                        return 'Você pediu novas árvores.';
                     };
-                    if (sessionStorage.getItem('guardian-test-engine') === 'gpu') {
-                        game.ai.init = () => {};
-                        game.ai.status = () => ({ state: 'ready', progress: 1, detail: 'GPU de teste pronta' });
-                        game.ai.garden = (_, text, tokens, history) => {
-                            window.guardianProbe = { text, tokens, history };
-                            return 'Você pediu novas árvores.';
-                        };
-                    }
+                }
+                game.voice.speak = text => { window.guardianSpoken = text; };
+                game.aiCpu.init = bridge => {
                     game.voice.startDictation = () => bridge.invokeMethodAsync('OnSpeechTranscript', 'Texto ditado');
-                    game.voice.speak = text => { window.guardianSpoken = text; };
                     return init(bridge);
                 };
             }, { once: true });
@@ -57,6 +60,13 @@ internal static class DeclarativeWindows
         }
         await OpenJournalAsync();
         await journal.GetByText("Suas conversas com personagens aparecem aqui.").WaitForAsync();
+        // Screen stack: the open window is modal — the focus enters it, what stays behind is inert and
+        // Tab does not reach the game controls; on close, the focus returns to the canvas.
+        Check(await journal.GetAttributeAsync("aria-modal") == "true", "o Diário é uma janela modal");
+        Check(await FocusInsideAsync(page, ".ultima-dialog"), "o foco entra no Diário ao abrir", await ActiveAsync(page));
+        Check(await page.EvaluateAsync<bool>("() => document.querySelector('.ultima-menu').inert"), "atrás do Diário: menu e painel inertes");
+        var leaked = await TabLeakAsync(page, 8);
+        Check(leaked is null, "Tab não escapa do Diário", leaked);
         var card = journal.Locator(".ultima-card--glass");
         Task<string> BackgroundAsync() => card.EvaluateAsync<string>("node => getComputedStyle(node).backgroundColor");
         var glass = await BackgroundAsync();
@@ -64,6 +74,9 @@ internal static class DeclarativeWindows
         await WaitAsync(async () => await BackgroundAsync() != glass, "contraste altera o fundo do Diário");
         await Button(journal, "Tema padrão").WaitForAsync();
         await CloseAsync(journal);
+        await WaitAsync(() => page.EvaluateAsync<bool>("() => document.activeElement?.id === 'game-canvas'"),
+            "ao fechar o Diário o foco volta ao canvas");
+        Check(!await page.EvaluateAsync<bool>("() => document.querySelector('.ultima-menu').inert"), "ao fechar o Diário o jogo volta a receber entrada");
 
         await WaitAsync(async () => await page.EvaluateAsync<string?>("() => window.game?.mode ?? null") == Mode,
             "modo do renderizador");
@@ -74,6 +87,12 @@ internal static class DeclarativeWindows
 
         var conversation = page.GetByRole(AriaRole.Dialog, new() { Name = "Conversa com a Guardiã", Exact = true });
         await conversation.WaitForAsync(new() { Timeout = 10_000 });
+        Check(await conversation.GetAttributeAsync("aria-modal") == "true", "a conversa é uma janela modal");
+        Check(await FocusInsideAsync(page, ".ultima-dialog"), "o foco entra na conversa ao abrir (tecla E)", await ActiveAsync(page));
+        Check(await page.EvaluateAsync<bool>("() => document.querySelector('.ultima-menu').inert"), "atrás da conversa: menu e painel inertes");
+        Check(await page.Locator("#game-canvas").EvaluateAsync<bool>("el => el.tabIndex === -1"), "a conversa aberta: o canvas sai da ordem de Tab");
+        var chatLeak = await TabLeakAsync(page, 10);
+        Check(chatLeak is null, "Tab não escapa da conversa", chatLeak);
         Check((await conversation.GetAttributeAsync("class"))?.Contains("ultima-window--contrast", StringComparison.Ordinal) == true,
             "a conversa usa o contraste escolhido");
         var draft = conversation.GetByRole(AriaRole.Textbox, new() { Name = "Escreva para a Guardiã" });
@@ -95,9 +114,9 @@ internal static class DeclarativeWindows
         await page.Keyboard.PressAsync("e");
         await conversation.WaitForAsync();
         await Button(conversation, "Ativar IA na CPU").ClickAsync();
-        await conversation.GetByText("IA local pronta na CPU.").WaitForAsync();
+        await AiTextAsync(conversation, "IA local pronta na CPU.");
         await testAi.ClickAsync();
-        await conversation.GetByText("A IA local respondeu ao teste.").WaitForAsync();
+        await AiTextAsync(conversation, "A IA local respondeu ao teste.");
         Check(await page.EvaluateAsync<bool>("() => guardianProbe.text === 'Olá!' && guardianProbe.tokens === 32"),
             "teste usa a inferência curta");
         await Button(conversation, "Sugerir trilha").ClickAsync();
@@ -136,6 +155,9 @@ internal static class DeclarativeWindows
             report.RootElement.GetProperty("description").GetString() == "GPU indisponível" &&
             !reported!.Contains("Quero novas árvores", StringComparison.Ordinal), "diagnóstico envia estados sem conversa");
         await CloseAsync(conversation);
+        await WaitAsync(() => page.EvaluateAsync<bool>("() => document.activeElement?.id === 'game-canvas'"),
+            "ao fechar a conversa o foco volta ao canvas");
+        Check(await page.Locator("#game-canvas").EvaluateAsync<bool>("el => el.tabIndex === 0"), "conversa fechada: o canvas volta à ordem de Tab");
         await OpenJournalAsync();
         await journal.GetByText(reply).WaitForAsync();
         Check(!await page.EvaluateAsync<bool>("() => (localStorage.getItem('ultima-dialog-queue') || '').includes('Quero novas árvores')"),
@@ -150,7 +172,7 @@ internal static class DeclarativeWindows
         await page.Keyboard.PressAsync("e");
         await conversation.WaitForAsync();
         await history.GetByText("Quero novas árvores", new() { Exact = true }).WaitForAsync();
-        await conversation.GetByText("IA local pronta na GPU.").WaitForAsync();
+        await AiTextAsync(conversation, "IA local pronta na GPU.");
         await draft.FillAsync("Qual foi meu pedido anterior?");
         await Button(conversation, "Enviar para a Guardiã").ClickAsync();
         await conversation.GetByText("✦ origem da resposta: Genius local · GPU").WaitForAsync();
@@ -158,6 +180,47 @@ internal static class DeclarativeWindows
             "o segundo turno recebe o histórico do Genius depois de recarregar");
         Check(errors.IsEmpty, "erros no navegador", errors);
         Log(new { build, mode = Mode, journal = true, dialogue = true, contrast = true, reply });
+    }
+
+    // Waits for a text of the local AI in the window. If it does not show up, prints what the two
+    // local AI modules report next to what the window shows, so the log tells a module that never
+    // reached the state apart from a window that stopped redrawing.
+    private static async Task AiTextAsync(ILocator scope, string text)
+    {
+        try { await scope.GetByText(text).WaitForAsync(); }
+        catch (TimeoutException)
+        {
+            Console.WriteLine("AI_DIAG " + await scope.Page.EvaluateAsync<string>("""
+                () => JSON.stringify({
+                    cpuState: game.aiCpu.status().state, gpuState: game.ai.status().state,
+                    window: (document.querySelector('.ultima-dialog')?.innerText ?? '').slice(0, 400),
+                    dialogs: document.querySelectorAll('.ultima-dialog').length,
+                    draft: document.querySelector('#dialog-input')?.value ?? null
+                })
+                """));
+            throw;
+        }
+    }
+
+    // Describes the focused element: "#id", the tag with its first class, or "body".
+    private static Task<string> ActiveAsync(IPage page) => page.EvaluateAsync<string>(
+        "() => { const el = document.activeElement; if (!el) return 'none'; return el.id ? '#' + el.id : el.tagName.toLowerCase() + (typeof el.className === 'string' && el.className ? '.' + el.className.split(' ')[0] : ''); }");
+
+    private static Task<bool> FocusInsideAsync(IPage page, string selector) => page.EvaluateAsync<bool>(
+        "selector => !!document.activeElement && !!document.querySelector(selector)?.contains(document.activeElement)", selector);
+
+    // Tab circula pelos controles da janela; devolve o primeiro controle de fora que receber o foco.
+    // Tab cycles through the window controls; returns the first outside control that receives the
+    // focus. The document body is the natural stop between the last and the first control.
+    private static async Task<string?> TabLeakAsync(IPage page, int times)
+    {
+        for (var i = 0; i < times; i++)
+        {
+            await page.Keyboard.PressAsync("Tab");
+            var active = await ActiveAsync(page);
+            if (active != "body" && !await FocusInsideAsync(page, ".ultima-dialog")) return active;
+        }
+        return null;
     }
 
     private static async Task CloseAsync(ILocator dialog)

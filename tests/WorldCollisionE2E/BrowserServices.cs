@@ -46,6 +46,25 @@ internal static class BrowserServices
         await UntilAsync(async () => await QueuedAsync(page) == 1, "fila anterior restaurada");
         var notice = page.GetByRole(AriaRole.Alert).GetByText("Nova versão disponível (fixture).");
         await notice.WaitForAsync();
+        // Screen stack: with a window open, the notice stays behind it like the rest of the game
+        // (out of the focus order and of the accessibility tree) and comes back when it closes.
+        var update = page.Locator(".ultima-update");
+        var openPanel = Button(page, "Abrir painel do jogo");
+        var panelWasOpen = !await openPanel.IsVisibleAsync();
+        if (!panelWasOpen) await openPanel.ClickAsync();
+        await Button(page, "Diário").ClickAsync();
+        var journal = page.GetByRole(AriaRole.Dialog, new() { Name = "Diário", Exact = true });
+        await WaitAsync(async () => await update.EvaluateAsync<bool>("el => el.inert"),
+            "atrás do Diário: o aviso de nova versão fica inerte", 10_000);
+        Check(await update.EvaluateAsync<int>("el => Number(getComputedStyle(el).zIndex)") <
+              await journal.EvaluateAsync<int>("el => Number(getComputedStyle(el).zIndex)"),
+            "atrás do Diário: o aviso de nova versão fica abaixo da janela");
+        await journal.GetByRole(AriaRole.Button, new() { Name = "Fechar · Esc", Exact = true }).ClickAsync();
+        await journal.WaitForAsync(new() { State = WaitForSelectorState.Hidden });
+        Check(!await update.EvaluateAsync<bool>("el => el.inert"),
+            "ao fechar o Diário o aviso de nova versão volta a receber entrada");
+        // Opening the journal closes the panel, so the panel is closed by now: reopen it if it was open.
+        if (panelWasOpen) await openPanel.ClickAsync();
         await Button(page, "Depois").ClickAsync();
         await notice.WaitForAsync(new() { State = WaitForSelectorState.Hidden });
         await page.EvaluateAsync("""

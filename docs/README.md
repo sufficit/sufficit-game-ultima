@@ -45,6 +45,7 @@ as medições de cada entrega.
 - [Independent humanoid proportions](activities/202611261105-humanoid-proportions.md)
 - [Humanoid body profiles](activities/202611261057-humanoid-body-profiles.md)
 - [Humanoid customization research](activities/202611261015-humanoid-parameter-research.md)
+- [Modal windows keep the focus and isolate the game behind them](activities/202611260927-modal-window-focus-and-safe-area.md)
 - [One engine for the garden and office](activities/202611260005-one-engine-environments.md)
 - [Foot support during aimed locomotion](activities/202611252331-player-support-balance.md)
 - [Expanded camera zoom and group framing](activities/202611252319-camera-zoom-and-group-framing.md)

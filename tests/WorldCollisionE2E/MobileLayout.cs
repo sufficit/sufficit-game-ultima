@@ -12,7 +12,7 @@ using static BrowserTest;
 /// (render=main), como o legado: no headless com SwiftShader o quadro chega a 1–2 por
 /// segundo, e todas as esperas são por sondagem, nunca por quadro de animação.
 /// </summary>
-internal static class MobileLayout
+internal static partial class MobileLayout
 {
     private const string IsolatedApi = "http://127.0.0.1:19999";
     private static readonly Regex SourcePosition = new(@":\d+:\d+$", RegexOptions.CultureInvariant);
@@ -201,10 +201,10 @@ internal static class MobileLayout
             shut = await UntilAsync(() => GoneAsync(page, ".game-shell.ultima-menu-open"), 15_000, 500);
         }
         Check(shut, "menu: fecha por toque e volta à tela limpa");
+        await JournalFromMenuAsync(page);   // journal opened from the sheet: MobileLayout.Journal.cs
         var verdict = await conflicts.ClassifyAsync(errors);
         Check(verdict.Failures.Length == 0, "retrato: console sem erros", verdict);
     }
-
     // ---------- desktop: sem controles de toque, WASD, mouse, E/Esc e painel ----------
 
     private static async Task DesktopAsync(IPage page, Layout layout, CommandConflicts conflicts, ConcurrentQueue<string> errors)

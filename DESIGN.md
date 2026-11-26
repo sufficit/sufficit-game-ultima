@@ -42,6 +42,7 @@ da interface. A tipografia segue os papéis padrão da biblioteca.
 | Painel e Oficina recolhíveis | A exploração preserva a área de visão. Em telas baixas, o conteúdo rola dentro do painel. | [Validação dos menus](docs/activities/202611230037-menus-sufficit-blazor-ui.md) |
 | Dica de interação acompanha o dispositivo ativo | O jogador vê a ação para teclado, controle ou toque. O foco deve permanecer visível ao navegar pelos menus. | [Decisão de entrada](decisions/input-v4-round.md) |
 | Terreno e objetos mantêm silhuetas legíveis sob luz variável | Grama e terra pedem transições orgânicas. Luz, vento e chuva devem preservar a leitura de alvos de coleta e caminhos. | [Pesquisa visual do mundo](decisions/visual-v3-research.md) |
+| A janela aberta isola o jogo | Ao abrir a conversa ou o Diário, o foco entra na janela e tudo que fica atrás fica inerte; ao fechar, o foco volta ao canvas. No celular, a folha do menu fecha quando o Diário abre. | [Foco e pilha de telas](decisions/window-focus-and-screen-stack.md) |
 
 ## Evolução da Sufficit.Blazor.UI
 

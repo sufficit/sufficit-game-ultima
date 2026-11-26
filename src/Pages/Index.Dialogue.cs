@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Ultima.Browser;
 using Ultima.Npc;
@@ -41,6 +42,7 @@ public partial class Index
                     _ = ResolveAnimationMarkAsync(mark);
                     break;
                 case OpenDialog:
+                    _menuOpen = false;   // the phone menu sheet must not cover the conversation
                     _conversationState.ArchivedTurns = Dialogs.HistoryFor(decision.View!.Speaker);
                     _ = SetFrozen(true);
                     break;
@@ -113,6 +115,18 @@ public partial class Index
     private bool _windowContrast;
     private readonly WindowState _conversationState = new();
     private readonly WindowState _journalState = new();
+
+    private ElementReference _canvas;
+    private bool _windowWasOpen;
+    // Window on top of the screen stack: a conversation with a character, or the journal.
+    private bool WindowOpen => _view is not null || _journalOpen;
+
+    // On close, the focused element left the DOM: the focus returns to the canvas (keyboard and gamepad stay in the game).
+    private async Task FocusCanvasAsync()
+    {
+        try { await JS.InvokeVoidAsync("game.browser.focus", _canvas); }
+        catch (JSException) { /* page reloading or being disposed */ }
+    }
 
     private bool _testingGuardianAi;
     private string _guardianAiTest = "";
@@ -210,6 +224,7 @@ public partial class Index
     private void OpenJournal()
     {
         _panelOpen = false;
+        _menuOpen = false;   // phone: the menu sheet goes away and the journal stays alone (modal window)
         _journalOpen = true;
         var entries = Dialogs.RecentEntries();
         _journalState.Lists["entries"] = entries;

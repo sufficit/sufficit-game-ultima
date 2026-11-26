@@ -21,13 +21,15 @@
    Painéis flutuam sobre o canvas 3D; nada de barras fixas de texto.
    Os elementos com id (game-canvas, sticks, botões A/B) são lidos pelo JS
    do jogo e nunca podem ser renderizados condicionalmente. *@
-<div class="game-shell ultima-theme@((_menuOpen ? " ultima-menu-open" : "") + (_view is not null ? " ultima-dialog-open" : ""))">
+<div class="game-shell ultima-theme@((_menuOpen ? " ultima-menu-open" : "") + (_view is not null ? " ultima-dialog-open" : "") + (WindowOpen ? " ultima-window-open" : ""))">
     <main class="viewport">
-        <canvas id="game-canvas" tabindex="0" aria-label="Mundo 3D. WASD anda, setas controlam a câmera, Shift corre, E conversa. O joystick também move."></canvas>
+        <canvas @ref="_canvas" id="game-canvas" tabindex="@(WindowOpen ? -1 : 0)" aria-label="Mundo 3D. WASD anda, setas controlam a câmera, Shift corre, E conversa. O joystick também move."></canvas>
 
         @if (_newBuild is not null)
         {
-            <aside class="ultima-toast ultima-update" role="alert">
+            @* Behind an open window it leaves the focus order and the accessibility tree, like the rest
+                of the game: its buttons sit on the top layer and would otherwise take the focus. *@
+            <aside class="ultima-toast ultima-update" role="alert" inert="@WindowOpen">
                 <SUICard Elevation="3" Class="ultima-card--glass">
                     <SUICardContent>
                         <SUIText>Nova versão disponível (@_newBuild).</SUIText>
@@ -59,7 +61,7 @@
 
         @if (_chat.Count > 0)
         {
-            <section class="ultima-chat-log" aria-label="Mensagens dos jogadores" aria-live="polite">
+            <section class="ultima-chat-log" aria-label="Mensagens dos jogadores" aria-live="polite" inert="@WindowOpen">
                 @foreach (var message in _chat.TakeLast(4))
                 {
                     <p><strong>@message.From:</strong> @message.Text</p>
@@ -67,7 +69,7 @@
             </section>
         }
 
-        <form class="ultima-chat-compose" @onsubmit="SendChatAsync" @onsubmit:preventDefault="true">
+        <form class="ultima-chat-compose" @onsubmit="SendChatAsync" @onsubmit:preventDefault="true" inert="@WindowOpen">
             <label class="sr-only" for="network-chat-input">Mensagem para outros jogadores</label>
             <SUITextField TValue="string" Id="network-chat-input" Placeholder="Mensagem para outros jogadores…"
                           MaxLength="300" Immediate="true" @bind-Value="_chatDraft" />
@@ -75,15 +77,19 @@
                        aria-label="Enviar mensagem">Enviar</SUIButton>
         </form>
 
+        @* The menu button and the backdrop also stay behind the window: with the conversation or the
+        journal open, the window is the only way out (the menu does not open over it). *@
         @if (_menuOpen)
         {
-            <button type="button" id="ultima-menu-backdrop" class="ultima-menu-backdrop" aria-label="Fechar menu"
+            <button type="button" id="ultima-menu-backdrop" class="ultima-menu-backdrop" aria-label="Fechar menu" inert="@WindowOpen"
                     @onclick="ToggleMenu"></button>
         }
         <button type="button" id="ultima-menu-fab" class="ultima-menu-fab" aria-label="@(_menuOpen ? "Fechar menu" : "Abrir menu")"
-                aria-expanded="@_menuOpen.ToString().ToLower()" @onclick="ToggleMenu">☰</button>
+                aria-expanded="@_menuOpen.ToString().ToLower()" inert="@WindowOpen" @onclick="ToggleMenu">☰</button>
 
-        <div class="ultima-menu">
+        @* Screen stack: with a window open (conversation or journal), everything behind it is inert —
+        no touch, click or focus. On desktop this container holds the status card, the toggle and the panel. *@
+        <div class="ultima-menu" inert="@WindowOpen">
             <div class="ultima-menu__head">
                 <strong>Menu</strong>
                 <button type="button" class="ultima-menu__close" aria-label="Fechar menu" @onclick="ToggleMenu">✕</button>
@@ -725,28 +731,6 @@
         return label.Length > 30 ? label[..30] + "…" : label;
     }
 
-    // --- O que a IA está fazendo agora, resumido para o cartão de status (mesmo recolhido) ---
-    // Só aparece quando algo acontece ou dá errado; "off", "checking", "unsupported" e "ready"
-    // ficam só no painel de IA. Os detalhes e o "Tentar de novo" continuam no painel.
-    private sealed record AiActivity(string Label, double Progress, bool ShowProgress, Sufficit.Blazor.UI.Components.SUITone Tone);
-
-    private AiActivity? CurrentAiActivity()
-        => AiActivityOf(_aiState, _aiProgress, "GPU") ?? AiActivityOf(_aiCpuState, _aiCpuProgress, "CPU");
-
-    private static AiActivity? AiActivityOf(string state, double progress, string engine)
-    {
-        var pct = (int)Math.Round(progress * 100);
-        return state switch
-        {
-            "model" or "downloading" => new AiActivity($"Baixando IA ({engine}) · {pct}%", progress, true, SUITone.Info),
-            "loading" or "compiling" => new AiActivity($"Preparando IA ({engine})…", progress, true, SUITone.Info),
-            "thinking" => new AiActivity($"Guardiã pensando ({engine})…", progress, false, SUITone.Info),
-            "stalled" => new AiActivity($"IA travada em {pct}% ({engine})", progress, true, SUITone.Warning),
-            "error" => new AiActivity($"Erro na IA ({engine})", progress, false, SUITone.Danger),
-            _ => null,
-        };
-    }
-
     // --- Avisos vindos do servidor são transitórios: somem sozinhos depois do tempo de leitura ---
     // (6 s + 12 caracteres por segundo, entre 8 e 25 s)
     private static TimeSpan AnnouncementTime(string text) => TimeSpan.FromSeconds(Math.Clamp(6 + text.Length / 12, 8, 25));
@@ -801,12 +785,24 @@
             AnimationMarker = (name, payload, target) => _ = InvokeAsync(() => Dispatch(new AnimationMarked(NowMs(), name, payload, target))),
             Interact = () => _ = InvokeAsync(OnInteractAsync),
             Close = () => _ = InvokeAsync(() => DispatchWindowActionAsync("close")),
-            MoveTick = (x, y, z, fps) => _ = InvokeAsync(() => { _posX = x; _posY = y; _posZ = z; _fps = fps; RunNpcTick(); StateHasChanged(); }),
+            // Event-driven HUD: position and FPS only show with the status expanded; collapsed,
+            // the 5 Hz tick still updates the state (NPC snapshot) without re-rendering the whole page.
+            MoveTick = (x, y, z, fps) => _ = InvokeAsync(() =>
+            {
+                _posX = x; _posY = y; _posZ = z; _fps = fps;
+                RunNpcTick();
+                if (_statusExpanded) StateHasChanged();
+            }),
             NetStatus = (state, peers) => _ = InvokeAsync(() => { _netStatus = state; StateHasChanged(); }),
             Chat = (from, text) => _ = InvokeAsync(() => { AddChat(from, text); StateHasChanged(); }),
             RemoteCount = count => _ = InvokeAsync(() => { _remoteCount = count; StateHasChanged(); }),
             MicState = state => _ = InvokeAsync(() => { _micEnabled = state == "ligada"; _micStatus = state; StateHasChanged(); }),
-            MicLevel = level => _ = InvokeAsync(() => { _micLevel = Math.Clamp(level, 0, 1); StateHasChanged(); }),
+            // The microphone level arrives on every analysis frame; only the panel bar displays it.
+            MicLevel = level => _ = InvokeAsync(() =>
+            {
+                _micLevel = Math.Clamp(level, 0, 1);
+                if (_panelOpen || _menuOpen) StateHasChanged();
+            }),
             SpeechTranscript = text => _ = InvokeAsync(() => { _dialogDraft = text; StateHasChanged(); }),
             SpeechError = message => _ = InvokeAsync(() => { _speechError = message; StateHasChanged(); }),
             Dictation = listening => _ = InvokeAsync(() => { _dictating = listening; StateHasChanged(); }),
@@ -826,6 +822,8 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_windowWasOpen && !WindowOpen) { await FocusCanvasAsync(); }
+        _windowWasOpen = WindowOpen;
         if (!firstRender || _bridge is null) return;
 
         await LoadLocalPreferencesAsync();

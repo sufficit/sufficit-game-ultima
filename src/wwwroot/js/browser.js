@@ -6,6 +6,9 @@ window.game.browser = {
     build() { return document.querySelector('meta[name="ultima-build"]')?.content || 'dev'; },
     copy(text) { return navigator.clipboard.writeText(text); },
     pickFile(id) { document.getElementById(id)?.click(); },
+    // Focus requested by Blazor: the window on open, the canvas on close. Without scrolling —
+    // on screens with a virtual keyboard the default focus shifts the whole document.
+    focus(element) { try { element.focus({ preventScroll: true }); } catch { /* focus is optional */ } },
     read(key) { try { return localStorage.getItem(key); } catch { return null; } },
     write(key, value) { try { localStorage.setItem(key, value); } catch { /* armazenamento opcional */ } },
     timeZones(saved) {

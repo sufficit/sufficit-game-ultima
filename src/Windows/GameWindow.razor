@@ -1,6 +1,10 @@
 @using Sufficit.Blazor.UI.Components
+@inject IJSRuntime JS
 
-<section class="ultima-dialog ultima-window @(Contrast ? "ultima-window--contrast" : "")" role="dialog" aria-modal="false"
+@* Modal window of the screen stack: while it is open, the page marks what stays behind as
+inert (Index.razor). On open, the focus enters the container: screen readers announce the
+window and Tab/Shift+Tab cycle through its controls only; on close, the focus returns to the canvas. *@
+<section @ref="_window" class="ultima-dialog ultima-window @(Contrast ? "ultima-window--contrast" : "")" role="dialog" aria-modal="true" tabindex="-1"
          aria-label="@(Label ?? Layout.Title)">
     <SUICard Elevation="3" Class="ultima-card--glass">
         <SUICardContent>
@@ -22,4 +26,17 @@
     [Parameter] public EventCallback<string> OnAction { get; set; }
     [Parameter] public EventCallback<(string Key, string Value)> OnEdit { get; set; }
 
+    private ElementReference _window;
+
+    // The focus enters once, when the window opens (content updates do not steal it from whoever is typing).
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) { _ = FocusOnOpenAsync(); }
+    }
+
+    private async Task FocusOnOpenAsync()
+    {
+        try { await JS.InvokeVoidAsync("game.browser.focus", _window); }
+        catch (JSException) { /* without focus the window stays usable by mouse, touch and gamepad */ }
+    }
 }

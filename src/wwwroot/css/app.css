@@ -76,6 +76,9 @@ kbd {
 .ultima-announce { top: .7rem; color: var(--ultima-gold, #d9c37a); }
 .ultima-hint { top: .7rem; color: var(--ultima-gold, #d9c37a); }
 .ultima-announce + .ultima-hint { top: 3.2rem; }
+/* Screen stack: with a window open, the new-build notice stays in the game layer, under the
+   window (z-index 6), so it never covers the window's controls. */
+.game-shell.ultima-window-open .ultima-update { z-index: 5; }
 
 /* Dica de controles conforme o último dispositivo usado */
 .hint-pad, .hint-touch { display: none; }
@@ -151,6 +154,18 @@ form.ultima-dialog__compose {
 }
 form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
 
+/* Visible focus: the game's own controls use the SUI ring (distinct from hover). The window
+   receives the focus on open; the ring only shows when the focus came from the keyboard or gamepad. */
+.ultima-menu-fab:focus-visible, .ultima-menu__close:focus-visible,
+#touch-action:focus-visible, #touch-cancel:focus-visible {
+    outline: var(--sui-focus-ring); outline-offset: var(--sui-focus-offset);
+}
+.ultima-window:focus { outline: none; }
+.ultima-window:focus-visible {
+    outline: 2px solid var(--ultima-gold, #d9c37a); outline-offset: 4px;
+    border-radius: var(--sui-radius, 12px);
+}
+
 .ultima-window--contrast {
     --ultima-glass: var(--sui-surface, #111a14);
     --ultima-glass-border: var(--sui-text-primary, #e9f1e7);
@@ -222,6 +237,10 @@ form.ultima-dialog__compose > :first-child { flex: 1 1 200px; min-width: 0; }
         color: var(--ultima-leaf, #8fd19c); font-size: 1.25rem; line-height: 1; cursor: pointer;
         z-index: 8; touch-action: manipulation; -webkit-user-select: none; user-select: none;
     }
+    /* Transient notices (announcement, proximity hint, new build) stay below the notch:
+       the top safe area joins the offset, like the menu button. */
+    .ultima-update, .ultima-announce, .ultima-hint { top: calc(env(safe-area-inset-top, 0px) + .7rem); }
+    .ultima-announce + .ultima-hint { top: calc(env(safe-area-inset-top, 0px) + 3.2rem); }
     /* Tela limpa por padrão no celular: status, oficina, painel e chat ficam atrás do menu */
     .ultima-status, .ultima-panel, .ultima-panel-toggle,
     .ultima-chat-log, form.ultima-chat-compose { display: none; }
