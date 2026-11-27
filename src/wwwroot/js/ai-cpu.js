@@ -9,11 +9,15 @@
     const PREF = 'ultima-ia-cpu';
     const STALL_MS = 90000;     // sem progresso por 90 s => "parado em X%"
     const THINK_MS = 120000;    // geração sem fim => volta a "ready" e o servidor responde
-    // Proven native tool-call pair. Legacy model preferences resolve to this entry.
+    // Both models return native tool calls with this runtime. Legacy preferences resolve to Qwen.
     const MODELS = Object.freeze({
         qwen05tools: {
             url: 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf',
             label: 'Qwen2.5 0.5B · ferramentas', why: 'chamadas estruturadas de ferramentas', mb: 491400032 / 1048576
+        },
+        lfm350: {
+            url: 'https://huggingface.co/LiquidAI/LFM2.5-350M-GGUF/resolve/657e078c94084481950a2d555a941481f715536b/LFM2.5-350M-Q4_K_M.gguf',
+            label: 'LFM2.5-350M', why: 'modelo mais leve, experimental', mb: 229312224 / 1048576
         }
     });
     const PERSONA = 'Você é a Guardiã do Jardim do jogo Ultima: serena, acolhedora, sábia. Responda em português do Brasil, em primeira pessoa, com 2 a 4 frases curtas. Nunca saia do personagem.';
@@ -196,13 +200,13 @@
 
     // Troca de modelo pelo painel: grava a escolha e descarrega o modelo anterior.
     async function setModel(key) {
-        if (!Object.hasOwn(MODELS, key) || loading) return false;
+        if (!Object.hasOwn(MODELS, key) || loading || state === "thinking") return false;
         localStorage.setItem(PREF + '-modelo', key);
         modelKey = key;
         if (inst) { try { await inst.exit(); } catch { } inst = null; }
         const m = MODELS[key];
         modelLabel = m.label; modelWhy = m.why;
-        emit('model', 0, 'Modelo escolhido: ' + m.label + ' — ' + m.why + '.');
+        emit('off', 0, 'Modelo escolhido: ' + m.label + ' — ' + m.why + '.');
         return true;
     }
     async function init(dotnetRef) {

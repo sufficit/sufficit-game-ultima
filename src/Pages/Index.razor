@@ -389,7 +389,7 @@
                             <SUIExpansionPanel Title="IA na CPU (sem placa de vídeo)">
                                 <SUIStack Spacing="2">
                                     <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">Motor ativo: @ActiveEngine()</SUIText>
-                                    @if (_aiCpuState != "ready")
+                                    @if (!AiLoading(_aiCpuState) && _aiCpuState != "ready")
                                     {
                                         <div class="ultima-models" role="group" aria-label="Escolher modelo da IA na CPU">
                                             @foreach (var kv in AiCpuModels)
@@ -672,6 +672,7 @@
     private static readonly Dictionary<string, (string Label, string Why)> AiCpuModels = new()
     {
         ["qwen05tools"] = ("Qwen2.5 0.5B", "ferramentas, ~469 MB"),
+        ["lfm350"] = ("LFM2.5-350M", "experimental, ~219 MiB"),
     };
     private async Task SelectAiCpuModelAsync(string key)
     {

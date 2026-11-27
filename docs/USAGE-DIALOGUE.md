@@ -12,6 +12,13 @@ lighting displays instructions. Use **Iluminar o jardim** to request a world
 edit. Authored topic turns stay in the open transcript. The Journal retains
 free-text replies through the existing history pipeline.
 
+## Select a local CPU model
+
+Open **Painel**, expand **IA na CPU (sem placa de vídeo)** and choose a
+model before pressing **Ativar IA na minha CPU**. The selection is saved
+in the browser. Qwen is the default. **LFM2.5-350M** is an experimental
+option with a 219 MiB download and support for native tool calls.
+
 ## Background Guardian replies
 
 Close the conversation while the Guardian is thinking to return to the

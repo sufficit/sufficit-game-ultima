@@ -6,12 +6,15 @@ internal static class GuardianCpuTools
 {
     internal static async Task RunAsync(IBrowser browser)
     {
-        // A candidate is loaded only in the isolated browser fixture, via the real game adapter.
+        // Published LFM weights are selected through the game menu. Research candidates
+        // continue to replace the default GGUF inside the isolated test fixture.
+        const string LfmUrl = "https://huggingface.co/LiquidAI/LFM2.5-350M-GGUF/resolve/657e078c94084481950a2d555a941481f715536b/LFM2.5-350M-Q4_K_M.gguf";
         var trial = Environment.GetEnvironmentVariable("ULTIMA_CPU_TOOL_TRIAL");
         Check(trial is null || System.Text.RegularExpressions.Regex.IsMatch(trial, @"\A[a-z0-9][a-z0-9-]{0,63}\z"),
             "A CPU tool trial must be a lowercase model ID.");
         var cache = Environment.GetEnvironmentVariable("ULTIMA_TOOL_CACHE");
         Check(trial is null || !string.IsNullOrEmpty(cache), "CPU tool trials need a loopback model cache.");
+        var selectLfm = trial == "lfm350";
         var api = Environment.GetEnvironmentVariable("ULTIMA_GARDEN_API");
         Check(Uri.TryCreate(api, UriKind.Absolute, out var endpoint) && endpoint.IsLoopback,
             "Tool writes require a disposable loopback garden.");
@@ -36,7 +39,7 @@ internal static class GuardianCpuTools
                 [
                     ("https://cdn.jsdelivr.net/npm/@wllama/wllama@3.13.0/esm/index.min.js", "wllama.mjs"),
                     ("https://cdn.jsdelivr.net/npm/@wllama/wllama@3.13.0/esm/wasm/wllama.wasm", "wllama.wasm"),
-                    ("https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+                    (selectLfm ? LfmUrl : "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
                         (trial ?? "qwen") + ".gguf")
                 ];
                 foreach (var (url, file) in assets)
@@ -69,6 +72,19 @@ internal static class GuardianCpuTools
         Check(missingAsset is null, "Update the fixture URLs to match the current CPU adapter.", missingAsset);
         var build = await CheckBuildAsync(page);
         var dialog = page.GetByRole(AriaRole.Dialog, new() { Name = "Conversa com a Guardiã" });
+        if (selectLfm)
+        {
+            await page.GetByRole(AriaRole.Button, new() { Name = "Abrir painel do jogo", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Button, new() { Name = "Controles e ajuda", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Button, new() { Name = "IA na CPU (sem placa de vídeo)", Exact = true }).ClickAsync();
+            var lfm = page.GetByRole(AriaRole.Button, new() { Name = "LFM2.5-350M", Exact = false });
+            await lfm.ClickAsync();
+            Check(await lfm.GetAttributeAsync("aria-pressed") == "true", "LFM was selected in the CPU menu.");
+            Check(await page.EvaluateAsync<string>("() => localStorage.getItem('ultima-ia-cpu-modelo')") == "lfm350",
+                "The selected CPU model was persisted.");
+            await page.GetByRole(AriaRole.Button, new() { Name = "Ativar IA na minha CPU", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Button, new() { Name = "Fechar painel do jogo", Exact = true }).ClickAsync();
+        }
         await OpenGuardianAsync();
         var loading = System.Diagnostics.Stopwatch.StartNew();
         var ready = await page.EvaluateAsync<bool>("() => game.aiCpu.load()");
@@ -76,6 +92,13 @@ internal static class GuardianCpuTools
         if (trial is not null) Log(new { trial, mode = Mode, loadMs, ready });
         Check(ready, "The CPU model could not load.",
             ready ? null : await page.EvaluateAsync<JsonElement>("() => game.aiCpu.debug().lastError"));
+        if (selectLfm)
+            Check(await page.EvaluateAsync<string>("() => game.aiCpu.status().modelKey") == "lfm350",
+                "The game loaded the selected LFM model.");
+        await WaitAsync(() => page.EvaluateAsync<bool>("""
+            async () => (await fetch(game.live.api() + '/v1/game/garden/tools',
+                { headers: {'X-Game-Token':game.live.token()}, cache:'no-store' })).ok
+            """), "The server recognizes the avatar is in reach of the Guardian.");
         await Button("Iluminar o jardim").ClickAsync();
         await dialog.GetByText("As duas luminárias estão na entrada do jardim.", new() { Exact = false }).WaitForAsync();
         await page.EvaluateAsync("""
@@ -84,7 +107,8 @@ internal static class GuardianCpuTools
                     method: 'POST', headers: {'Content-Type':'application/json','X-Game-Token':game.live.token()},
                     body: JSON.stringify({actions:[
                         {action:'place',asset:'flora.pine',x:3,z:-9},
-                        {action:'place',asset:'flora.flowers',x:5,z:-9}
+                        {action:'place',asset:'flora.flowers',x:5,z:-9},
+                        {action:'place',asset:'flora.flowers',x:6,z:-9}
                     ]})
                 });
                 if (!response.ok) throw Error('Could not place alternate model types.');

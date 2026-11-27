@@ -43,6 +43,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [LFM2.5 CPU option](activities/202611271530-lfm-cpu-option.md).
+
 - [Background Guardian turns](activities/202611271520-guardian-background.md).
 
 - [Guardian CPU model matrix](activities/202611271424-guardian-cpu-model-matrix.md).

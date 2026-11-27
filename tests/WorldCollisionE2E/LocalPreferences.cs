@@ -28,7 +28,7 @@ internal static class LocalPreferences
         await radius.FillAsync("7");
         await radius.PressAsync("Tab");
         await Button(page, "IA na CPU (sem placa de vídeo)").ClickAsync();
-        var cpu = page.GetByRole(AriaRole.Button, new() { Name = "Qwen2.5 0.5B", Exact = false });
+        var cpu = page.GetByRole(AriaRole.Button, new() { Name = "LFM2.5-350M", Exact = false });
         await cpu.ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Diário", Exact = true }).ClickAsync();
         var journal = page.GetByRole(AriaRole.Dialog, new() { Name = "Diário", Exact = true });
@@ -53,7 +53,7 @@ internal static class LocalPreferences
         Check(await page.Locator("#build-radius").InputValueAsync() == "7", "Oficina aberta e raio restaurado");
         Check(await page.EvaluateAsync<double>("async () => (await game.build.state()).r") == 7, "motor recebeu o raio salvo");
         await Button(page, "IA na CPU (sem placa de vídeo)").ClickAsync();
-        cpu = page.GetByRole(AriaRole.Button, new() { Name = "Qwen2.5 0.5B", Exact = false });
+        cpu = page.GetByRole(AriaRole.Button, new() { Name = "LFM2.5-350M", Exact = false });
         Check(await cpu.GetAttributeAsync("aria-pressed") == "true", "seleção do modelo de CPU restaurada");
         await page.GetByRole(AriaRole.Button, new() { Name = "Diário", Exact = true }).ClickAsync();
         journal = page.GetByRole(AriaRole.Dialog, new() { Name = "Diário", Exact = true });
