@@ -50,3 +50,7 @@ The first API family and the real-inference validation are recorded in the
 [delivery activity](activities/202611261650-characters-api-and-genius-inference.md). Character edits go through the
 API and appear when the scene reloads. Callable NPC tools remain in checkpoint
 5. The standalone backend is live on [Sufficit Run](activities/202611262336-characters-api-sufficit-run.md).
+
+The [CPU tool pilot](activities/202611270028-guardian-cpu-tools.md) validates one garden tool with a real local
+model and player confirmation. Expansion to other tool families remains in
+checkpoint 5.
