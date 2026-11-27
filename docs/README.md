@@ -42,6 +42,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Characters API on Sufficit Run](activities/202611262336-characters-api-sufficit-run.md)
+
 - [Shared room presence across environments](activities/202611261701-shared-environment-presence.md)
 - [Characters API and real Genius inference](activities/202611261650-characters-api-and-genius-inference.md)
 - [Ultima test suite repair](activities/202611261519-test-suite-repair.md)

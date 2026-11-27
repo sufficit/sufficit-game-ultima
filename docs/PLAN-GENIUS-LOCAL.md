@@ -49,4 +49,4 @@ A entrega do [plugin de memória do navegador](activities/202611251430-plugin-me
 The first API family and the real-inference validation are recorded in the
 [delivery activity](activities/202611261650-characters-api-and-genius-inference.md). Character edits go through the
 API and appear when the scene reloads. Callable NPC tools remain in checkpoint
-5. The hosted API needs the updated standalone backend.
+5. The standalone backend is live on [Sufficit Run](activities/202611262336-characters-api-sufficit-run.md).
