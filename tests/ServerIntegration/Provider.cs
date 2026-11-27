@@ -73,6 +73,11 @@ sealed class Provider : IDisposable
                 Require(messages.Any(message => Str(message?["content"]) == "Luminária, flores e trilha"), "histórico sem o pedido anterior");
                 actions = [];
             }
+            if (said == "histórico gerenciado pelo Genius")
+            {
+                Require(messages.Count == 2, "A Genius-owned conversation must omit the legacy hosted transcript.");
+                actions = [];
+            }
             var content = said == "resposta ruim"
                 ? "JSON truncado"
                 : new JsonObject { ["reply"] = "Trilha, luz e flores.", ["actions"] = actions }.ToJsonString();

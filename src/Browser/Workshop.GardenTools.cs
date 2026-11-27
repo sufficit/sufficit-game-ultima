@@ -83,7 +83,7 @@ public sealed partial class Workshop
                 failure = "generation_failed";
                 var answer = await GenerateLocalAsync(prompt, text, engine, token);
                 return new(answer ?? "Não encontrei uma propriedade compatível por aqui.", source,
-                    QualityOutcome: answer is null ? failure : null);
+                    QualityOutcome: answer is null ? failure : null, HistorySaved: answer is not null);
             }
             var instructions = ToolInstructions;
             if (allowPlan)
@@ -122,7 +122,7 @@ public sealed partial class Workshop
                 failure = "turn_failed";
                 return response;
             }, tools, inspect ? ObserveAsync : null);
-            return new(reply, source, KeepDraft: proposal is not null, Proposal: proposal);
+            return new(reply, source, KeepDraft: proposal is not null, Proposal: proposal, HistorySaved: true);
         }
         catch (Exception ex) when (!token.IsCancellationRequested &&
             ex is JSException or OperationCanceledException or HttpRequestException or JsonException or InvalidOperationException or KeyNotFoundException)
@@ -130,9 +130,7 @@ public sealed partial class Workshop
             var result = GuardianTurnResult.Retry(
                 "A IA local não conseguiu propor uma edição válida. Nenhuma alteração foi aplicada.", source)
                 with { QualityOutcome = failure };
-            if (ex is not ConversationChangedException)
-                await _genius.RememberTurnAsync(text, result.Reply, token);
-            return result;
+            return ex is ConversationChangedException ? result with { HistorySaved = true } : result;
         }
 
         async Task<(InferenceRequest Request, string Tools)?> ObserveAsync(InferenceRequest request, string output, CancellationToken ct)
@@ -265,15 +263,11 @@ public sealed partial class Workshop
         throw new JsonException("Invalid parameter value.");
     }
 
-    internal async Task<GuardianTurnResult> ApplyGardenToolAsync(GardenModelProposal proposal, string confirmation,
-        string engine, CancellationToken token)
+    internal async Task<GuardianTurnResult> ApplyGardenToolAsync(GardenModelProposal proposal, string engine, CancellationToken token)
     {
         var local = engine is "cpu" or "gpu";
         var source = local ? GeniusSource(engine) + " · Oficina do jardim" : "Oficina do jardim";
-        var result = await SendGardenProposalAsync(proposal, source, token);
-        if (local && !token.IsCancellationRequested)
-            await _genius.RememberTurnAsync(confirmation, $"Proposta confirmada pelo jogador: {proposal.Preview}\n{result.Reply}", token);
-        return result;
+        return await SendGardenProposalAsync(proposal, source, token);
     }
 
     private async Task<GuardianTurnResult> SendGardenProposalAsync(GardenModelProposal proposal, string source,

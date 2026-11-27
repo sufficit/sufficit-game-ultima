@@ -32,7 +32,8 @@ public sealed partial class Workshop
                 !protocol.TryGetProperty("toolProposalsSupported", out var required) || required.ValueKind != JsonValueKind.True)
                 return GuardianTurnResult.Retry("A IA do servidor ainda não oferece prévias de edição. Use a IA na CPU.");
 
-            using var message = JsonContent.Create(new { message = text, preview = true });
+            // Previously local turns stay in the browser even when a hosted provider answers.
+            using var message = JsonContent.Create(new { message = text, preview = true, externalHistory = true });
             var turn = await SendAsync<JsonElement>(endpoint, HttpMethod.Post, GardenRoute + "/dialog", message, null, token);
             if (turn.ValueKind != JsonValueKind.Object)
                 return GuardianTurnResult.Retry("O jardim retornou uma resposta inválida. Confira o cenário antes de tentar novamente.");
@@ -72,19 +73,20 @@ public sealed partial class Workshop
     private async Task<GuardianTurnResult> TalkOfflineAsync(
         string text, bool gpu, bool cpu, CancellationToken token)
     {
-        var reply = gpu ? await GenerateLocalAsync(OfflinePrompt, text, "gpu", token) : null;
+        var reply = gpu ? await GenerateLocalAsync(OfflinePrompt, text, "gpu", token, OfflineReply) : null;
         if (reply is not null)
-            return new($"{reply} {OfflineGarden}", GeniusSource("gpu"));
-        reply = cpu ? await GenerateLocalAsync(OfflinePrompt, text, "cpu", token) : null;
+            return new(reply, GeniusSource("gpu"), HistorySaved: true);
+        reply = cpu ? await GenerateLocalAsync(OfflinePrompt, text, "cpu", token, OfflineReply) : null;
         if (reply is not null)
-            return new($"{reply} {OfflineGarden}", GeniusSource("cpu"));
+            return new(reply, GeniusSource("cpu"), HistorySaved: true);
         if (!gpu && !cpu)
             return GuardianTurnResult.Retry("Ative a IA local ou conecte-se ao servidor do jogo para conversar comigo.");
         var failure = GuardianTurnResult.Retry($"A IA local não conseguiu responder. {OfflineGarden}", GuardianGenius.SourcePrefix)
             with { QualityOutcome = "generation_failed" };
-        await _genius.RememberTurnAsync(text, failure.Reply, token);
         return failure;
     }
+
+    private static string OfflineReply(string reply) => $"{Limit(reply, 300)} {OfflineGarden}";
 
     private static string GeniusSource(string engine) => $"{GuardianGenius.SourcePrefix} · {engine.ToUpperInvariant()}";
 
@@ -128,7 +130,7 @@ public sealed partial class Workshop
 
 /// <summary>The visible reply and whether the submitted text should stay available to retry.</summary>
 internal sealed record GuardianTurnResult(string Reply, string Source, bool KeepDraft = false, GardenModelProposal? Proposal = null,
-    string? QualityOutcome = null)
+    string? QualityOutcome = null, bool HistorySaved = false)
 {
     public static GuardianTurnResult Retry(string reply, string source = "") => new(reply, source, KeepDraft: true);
 }

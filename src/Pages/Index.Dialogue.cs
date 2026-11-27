@@ -43,7 +43,8 @@ public partial class Index
                     break;
                 case OpenDialog:
                     _menuOpen = false;   // the phone menu sheet must not cover the conversation
-                    _conversationState.ArchivedTurns = Dialogs.HistoryFor(decision.View!.Speaker);
+                    _conversationState.ArchivedTurns = [];
+                    _ = LoadConversationHistoryAsync(decision.View!.NpcId, ++_conversationOpening);
                     _ = SetFrozen(true);
                     if (GuardianOpen && _guardianTurnText is { } pending)
                         _npc.Submit(new PlayerSpoke(NowMs(), pending));
@@ -58,17 +59,6 @@ public partial class Index
                     break;
                 case SetReply(int index, var text, _):
                     _ = SpeakLineAsync(new DialogLine(decision.View!.Lines[index].Speaker, text));
-                    // Free-text replies use the existing dialogue history and analytics pipeline.
-                    try
-                    {
-                        var dlg = decision.View;
-                        var playerLine = index > 0 && dlg.Lines[index - 1].Speaker == "Você"
-                            ? dlg.Lines[index - 1].Text : string.Empty;
-                        var ms = _turnStartedMs > 0 ? (long)(NowMs() - _turnStartedMs) : 0;
-                        _ = Dialogs.RecordAsync(dlg.Speaker, playerLine, text, dlg.ReplySource, ms,
-                            localOnly: dlg.ReplySource.StartsWith(GuardianGenius.SourcePrefix, StringComparison.Ordinal));
-                    }
-                    catch (JSException) { /* History is optional and must not interrupt the conversation. */ }
                     break;
             }
         }
@@ -133,7 +123,7 @@ public partial class Index
 
     private bool _testingGuardianAi;
     private string _guardianAiTest = "";
-    private bool GuardianOpen => _view is { Speaker: not "Andarilho" };
+    private bool GuardianOpen => _view?.NpcId == NpcScheduler.GuardianId;
     private bool GuardianBusy => _view?.Thinking == true || (GuardianOpen && (_testingGuardianAi || _guardianTurnText is not null));
     private static bool AiLoading(string state) => state is "checking" or "downloading" or "compiling" or "loading" or "thinking";
     private sealed record LocalAiStatus(string State, double Progress, string Detail, string? Model, double? LastReplyMs, string? ModelKey);
@@ -228,31 +218,38 @@ public partial class Index
         else if (edit.Key == "reportDraft") _reportDraft = edit.Value;
     }
 
-    private void OpenJournal()
+    private async Task OpenJournal()
     {
         _panelOpen = false;
         _menuOpen = false;   // phone: the menu sheet goes away and the journal stays alone (modal window)
         _journalOpen = true;
-        var entries = Dialogs.RecentEntries();
+        var histories = await Task.WhenAll(_npc.Npcs.Select(async id =>
+            (Name: _npc.SpeakerFor(id), Turns: await GeniusConversations.HistoryAsync(id, _browserLifetime.Token))));
+        var entries = histories.SelectMany(item => item.Turns.Reverse().Take(6).Select(turn => $"{item.Name}: {turn.Assistant}"))
+            .ToArray();
         _journalState.Lists["entries"] = entries;
-        _journalState.Text["empty"] = entries.Count == 0 ? "Suas conversas com personagens aparecem aqui." : "";
-        _journalState.Text["hasEntries"] = entries.Count == 0 ? "" : "true";
+        _journalState.Text["empty"] = entries.Length == 0 ? "Suas conversas com personagens aparecem aqui." : "";
+        _journalState.Text["hasEntries"] = entries.Length == 0 ? "" : "true";
         UpdateWindowThemeLabel();
     }
 
     private void UpdateWindowThemeLabel() =>
         _journalState.Text["theme"] = _windowContrast ? "Tema padrão" : "Mais contraste";
 
-    private Task DispatchWindowActionAsync(string action)
+    private async Task DispatchWindowActionAsync(string action)
     {
         const string topicPrefix = "topic:";
         if (action.StartsWith(topicPrefix, StringComparison.Ordinal))
         {
-            if (_view is not null && !GuardianBusy)
+            if (_view is { } before && !GuardianBusy)
             {
                 Dispatch(new DialogTopicSelected(NowMs(), action[topicPrefix.Length..]));
+                if (_view is { } after && !ReferenceEquals(before, after) &&
+                    after.Lines.ElementAtOrDefault(after.CurrentLine - 1) is { Speaker: "Você" } question)
+                    await GeniusConversations.RememberTurnAsync(after.NpcId, question.Text, after.Lines[after.CurrentLine].Text,
+                        _browserLifetime.Token);
             }
-            return Task.CompletedTask;
+            return;
         }
 
         switch (action)
@@ -261,22 +258,22 @@ public partial class Index
                 _reportOpen = !_reportOpen;
                 _reportStatus = "";
                 break;
-            case "report-send": return SendDiagnosticReportAsync();
-            case "advance": return AdvanceAsync();
-            case "speak": return SubmitDialogAsync();
-            case "dictate" when !GuardianBusy: return ToggleDictationAsync();
+            case "report-send": await SendDiagnosticReportAsync(); return;
+            case "advance": await AdvanceAsync(); return;
+            case "speak": await SubmitDialogAsync(); return;
+            case "dictate" when !GuardianBusy: await ToggleDictationAsync(); return;
             case "listen" when _view is { Thinking: false } dialog:
                 var line = dialog.Lines[dialog.CurrentLine];
-                return JS.InvokeVoidAsync("game.voice.speak", line.Text, line.Speaker).AsTask();
+                await JS.InvokeVoidAsync("game.voice.speak", line.Text, line.Speaker).AsTask(); return;
             case "guardian-gpu" when GuardianOpen && !GuardianBusy:
                 _guardianAiTest = "";
-                return _aiState is "error" or "stalled" ? RetryAiAsync() : EnableAiAsync();
+                await (_aiState is "error" or "stalled" ? RetryAiAsync() : EnableAiAsync()); return;
             case "guardian-cpu" when GuardianOpen && !GuardianBusy:
                 _guardianAiTest = "";
-                return _aiCpuState is "error" or "stalled" ? RetryAiCpuAsync() : EnableAiCpuAsync();
-            case "guardian-test": return TestGuardianAiAsync();
+                await (_aiCpuState is "error" or "stalled" ? RetryAiCpuAsync() : EnableAiCpuAsync()); return;
+            case "guardian-test": await TestGuardianAiAsync(); return;
             case "garden-tool-apply" when _guardianProposal is { } proposal && GuardianOpen && !GuardianBusy:
-                return SubmitDialogAsync(confirmedProposal: proposal);
+                await SubmitDialogAsync(confirmedProposal: proposal); return;
             case "garden-tool-cancel" when !GuardianBusy:
                 DiscardGuardianProposal();
                 break;
@@ -287,9 +284,8 @@ public partial class Index
             case "theme":
                 _windowContrast = !_windowContrast;
                 UpdateWindowThemeLabel();
-                return SaveLocalPreferencesAsync();
+                await SaveLocalPreferencesAsync(); return;
         }
-        return Task.CompletedTask;
     }
 
     private Task AdvanceAsync() { Dispatch(new PlayerInteracted(NowMs())); return Task.CompletedTask; }

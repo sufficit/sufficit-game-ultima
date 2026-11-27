@@ -290,6 +290,9 @@ async Task Garden(Harness h, string root)
             "observador recebeu a edição", events["events"]);
         Check(Num((await h.Json(url, garden + "/dialog", new JsonObject { ["message"] = "e o que eu pedi?" }, token))["applied"]) == 0,
             "histórico mantém o pedido anterior");
+        var external = new JsonObject { ["message"] = "histórico gerenciado pelo Genius", ["externalHistory"] = true, ["preview"] = true };
+        Check(Num((await h.Json(url, garden + "/dialog", external, token))["applied"]) == 0,
+            "A Genius-owned turn bypasses the legacy hosted transcript.");
 
         var flower = Arr(edited["operations"]).Select(Obj).First(op => Str(op["asset"]) == "flora.flowers");
         var replaced = await h.Json(url, garden + "/plants", new JsonObject

@@ -10,7 +10,8 @@ public sealed record DialogView(
     int CurrentLine,
     bool Thinking,
     string ReplySource,
-    IReadOnlyList<DialogChoice> Choices);
+    IReadOnlyList<DialogChoice> Choices,
+    string NpcId = "");
 
 /// <summary>An effect that the game applies after an NPC decision.</summary>
 public abstract record NpcCommand;

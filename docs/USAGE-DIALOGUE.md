@@ -5,8 +5,19 @@ Approach the Garden Guardian or the Wanderer and open the conversation with
 your own request to the Guardian. An available model can answer, inspect
 nearby placed objects, or propose changes. The pending preview comes from the
 model's tool call and requires your confirmation before editing the world.
-The Wanderer still offers authored directions. The Journal retains
-free-text replies through the existing history pipeline.
+The Wanderer still offers authored directions.
+
+## Conversation identity and storage
+
+The embedded Genius runtime owns one conversation per browser player and
+registered NPC ID. Reopening the window, reloading the game, or switching
+rooms or local models all reuse that conversation. The conversation panel and
+Journal read the same Genius transcript from IndexedDB. Different browser
+profiles have independent local storage. No account synchronization is used.
+
+When a server-side model answers, the browser sends the current request and
+stores the result through Genius. The hosted API skips its legacy transcript
+for those requests. Local conversation history stays in the browser.
 
 ## Select a local CPU model
 

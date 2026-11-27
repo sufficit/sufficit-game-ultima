@@ -16,7 +16,7 @@ public sealed class GuardianGenius(IJSRuntime js) : IAsyncDisposable
         Func<InferenceRequest, string, CancellationToken, Task<(InferenceRequest Request, string Tools)?>>? observe = null)
     {
         var module = await ModuleAsync();
-        var id = await module.InvokeAsync<string>("guardianConversationId", token);
+        var id = await module.InvokeAsync<string>("npcConversationId", token, Ultima.Npc.NpcScheduler.GuardianId);
         var runtime = new ConversationRuntime(new IndexedConversationStorage(module));
         var requestId = Guid.NewGuid().ToString("N");
         try
@@ -40,24 +40,37 @@ public sealed class GuardianGenius(IJSRuntime js) : IAsyncDisposable
         }
         ValueTask<string?> GenerateAsync(InferenceRequest request, string? tools, CancellationToken ct) =>
             module.InvokeAsync<string?>("generate", ct, requestId, engine,
-                JsonSerializer.Serialize(request, GuardianGeniusJson.Default.InferenceRequest), UnlimitedPrediction, id, tools);
+                JsonSerializer.Serialize(request, GuardianGeniusJson.Default.InferenceRequest), UnlimitedPrediction, tools);
     }
 
-    internal async Task RememberTurnAsync(string text, string reply, CancellationToken token)
+    internal async Task<string> CompleteTurnAsync(string npc, string text,
+        Func<InferenceRequest, CancellationToken, ValueTask<string?>> reply, CancellationToken token)
+    {
+        var module = await ModuleAsync();
+        var id = await module.InvokeAsync<string>("npcConversationId", token, npc);
+        return await new ConversationRuntime(new IndexedConversationStorage(module))
+            .SubmitAsync(id, "", text, reply, cancellationToken: token);
+    }
+
+    internal async Task RememberTurnAsync(string npc, string text, string reply, CancellationToken token)
+    {
+        try { await CompleteTurnAsync(npc, text, (_, _) => ValueTask.FromResult<string?>(reply), token); }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException or JsonException or OperationCanceledException)
+        {
+            // The visible game reply remains available when browser storage cannot be written.
+        }
+    }
+
+    internal async Task<ConversationTurn[]> HistoryAsync(string npc, CancellationToken token)
     {
         try
         {
             var module = await ModuleAsync();
-            var id = await module.InvokeAsync<string>("guardianConversationId", token);
-            var runtime = new ConversationRuntime(new IndexedConversationStorage(module));
-            // Preserve a visible game result in the same history as inferred responses.
-            await runtime.SubmitAsync(id, "", text, (_, _) => ValueTask.FromResult<string?>(reply),
-                cancellationToken: token);
+            var id = await module.InvokeAsync<string>("npcConversationId", token, npc);
+            var snapshot = await new IndexedConversationStorage(module).LoadAsync(id, token);
+            return snapshot?.Turns ?? [];
         }
-        catch (Exception ex) when (ex is JSException or InvalidOperationException or JsonException or OperationCanceledException)
-        {
-            // The visible game reply remains available when browser history cannot be written.
-        }
+        catch (Exception ex) when (ex is JSException or JsonException or OperationCanceledException) { return []; }
     }
 
     public async Task<string?> MemoryCommandAsync(string text, CancellationToken token)

@@ -5,18 +5,15 @@ using Microsoft.JSInterop;
 namespace Ultima.Browser;
 
 public sealed record DialogTurn(string Id, long T, string Npc, string Player, string Reply, string Source, string Model, int Ms);
-public sealed record DialogHistory(long T, string Player, string Reply, string Source);
 public sealed record DialogLogState(bool Enabled, string Api, int Queued, bool Sending, int IntervalMs, long RetryInMs,
     int SentTotal, long LastSentAt, string LastError);
 
 public sealed class DialogLog(IJSRuntime js)
 {
     private const string QueueKey = "ultima-dialog-queue";
-    private const string HistoryKey = "ultima-dialog-history";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim _store = new(1);
     private List<DialogTurn> _queue = [];
-    private Dictionary<string, List<DialogHistory>> _history = new(StringComparer.Ordinal);
     private string _url = "";
     private string _build = "dev";
     private bool _enabled;
@@ -42,7 +39,6 @@ public sealed class DialogLog(IJSRuntime js)
         _batchSize = Math.Clamp(context.BatchSize ?? _batchSize, 1, 200);
         _maxQueue = Math.Clamp(context.MaxQueue ?? _maxQueue, 10, 2000);
         _queue = await LoadAsync<List<DialogTurn>>(QueueKey) ?? [];
-        _history = await LoadAsync<Dictionary<string, List<DialogHistory>>>(HistoryKey) ?? [];
         Changed?.Invoke(_queue.Count);
     }
 
@@ -57,10 +53,7 @@ public sealed class DialogLog(IJSRuntime js)
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
     }
 
-    public Task RecordAsync(string npc, string player, string reply, string source, long ms) =>
-        RecordAsync(npc, player, reply, source, ms, localOnly: false);
-
-    public async Task RecordAsync(string npc, string player, string reply, string source, long ms, bool localOnly)
+    public async Task RecordAsync(string npc, string player, string reply, string source, long ms)
     {
         npc = Clean(npc, 40);
         player = Clean(player, 500);
@@ -75,22 +68,14 @@ public sealed class DialogLog(IJSRuntime js)
         try
         {
             var now = Now();
-            if (!localOnly)
-            {
-                if (_queue.LastOrDefault() is { } last && now - last.T < 2000
-                    && last.Npc == npc && last.Player == player && last.Reply == reply) return;
+            if (_queue.LastOrDefault() is { } last && now - last.T < 2000
+                && last.Npc == npc && last.Player == player && last.Reply == reply) return;
 
-                var turn = new DialogTurn($"d{Guid.NewGuid():N}", now, npc, player, reply, source,
-                    model, (int)Math.Clamp(ms, 0, 600000));
-                _queue.Add(turn);
-                Trim(_queue, _maxQueue);
-                await SaveQueueAsync();
-            }
-            if (!_history.TryGetValue(npc, out var list)) _history[npc] = list = [];
-            list.Add(new DialogHistory(now, player, reply, source));
-            Trim(list, 50);
-            if (_history.Count > 24) _history.Remove(_history.Keys.First());
-            await SaveAsync(HistoryKey, _history);
+            var turn = new DialogTurn($"d{Guid.NewGuid():N}", now, npc, player, reply, source,
+                model, (int)Math.Clamp(ms, 0, 600000));
+            _queue.Add(turn);
+            Trim(_queue, _maxQueue);
+            await SaveQueueAsync();
         }
         finally { _store.Release(); }
     }
@@ -134,16 +119,6 @@ public sealed class DialogLog(IJSRuntime js)
         }
         finally { _sending = false; }
     }
-
-    public DialogHistory[] HistoryFor(string npc) =>
-        _history.TryGetValue(npc, out var turns) ? turns.ToArray() : [];
-
-    public IReadOnlyList<string> RecentEntries() => _history
-        .SelectMany(entry => entry.Value.Select(turn => (Npc: entry.Key, Turn: turn)))
-        .OrderByDescending(entry => entry.Turn.T)
-        .Take(12)
-        .Select(entry => $"{entry.Npc}: {entry.Turn.Reply}")
-        .ToArray();
 
     public DialogLogState Debug() => new(_enabled, _url, _queue.Count, _sending, _interval,
         Math.Max(0, _retryAt - Now()), _sentTotal, _lastSentAt, _lastError);

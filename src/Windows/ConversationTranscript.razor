@@ -1,13 +1,13 @@
 @using Sufficit.Blazor.UI.Components
-@using Ultima.Browser
+@using Sufficit.AI.Genius.Embedded
 @using Ultima.Npc
 
 <div class="ultima-conversation" tabindex="0" role="region" aria-label="Histórico da conversa">
     <ol class="ultima-conversation__messages">
         @foreach (var turn in Archived)
         {
-            @Message("Você", turn.Player)
-            @Message(View.Speaker, turn.Reply, turn.Source)
+            @Message("Você", turn.User)
+            @Message(View.Speaker, turn.Assistant)
         }
         @foreach (var line in View.Lines.Take(View.CurrentLine))
         {
@@ -26,10 +26,10 @@
 
 @code {
     [Parameter, EditorRequired] public DialogView View { get; set; } = default!;
-    [Parameter, EditorRequired] public IReadOnlyList<DialogHistory> Archived { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<ConversationTurn> Archived { get; set; } = [];
     private DialogLine Current => View.Lines[View.CurrentLine];
     private DialogView? _renderedView;
-    private IReadOnlyList<DialogHistory>? _renderedArchive;
+    private IReadOnlyList<ConversationTurn>? _renderedArchive;
 
     protected override bool ShouldRender() =>
         !ReferenceEquals(_renderedView, View) || !ReferenceEquals(_renderedArchive, Archived);

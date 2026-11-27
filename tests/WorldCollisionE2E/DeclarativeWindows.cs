@@ -102,6 +102,15 @@ internal static partial class DeclarativeWindows
 
         await WaitAsync(async () => await page.EvaluateAsync<string?>("() => window.game?.mode ?? null") == Mode,
             "modo do renderizador");
+        Check(await page.EvaluateAsync<bool>("""
+            async () => {
+                const genius = await import('./js/guardian-genius.mjs');
+                const { api, id } = game.net.info();
+                const legacy = JSON.stringify([api, 'old-room', id, 'guardia']);
+                const snapshot = { revision: 1, turns: [{user:'Antes da atualização', assistant:'Histórico do Genius preservado.'}] };
+                return await genius.save(legacy, 1, JSON.stringify(snapshot));
+            }
+            """), "A previous Genius session exists in the old key format.");
         await WaitAsync(() => page.EvaluateAsync<bool>("() => game.teleportToGuardian()"), "chega à Guardiã");
         await page.Locator("#game-canvas").FocusAsync();
         await page.Locator(".ultima-hint").GetByText("para conversar").WaitForAsync();
@@ -109,6 +118,8 @@ internal static partial class DeclarativeWindows
 
         var conversation = page.GetByRole(AriaRole.Dialog, new() { Name = "Conversa com a Guardiã", Exact = true });
         await conversation.WaitForAsync(new() { Timeout = 10_000 });
+        await conversation.GetByRole(AriaRole.Region, new() { Name = "Histórico da conversa" })
+            .GetByText("Histórico do Genius preservado.", new() { Exact = true }).WaitForAsync();
         Check(await conversation.GetAttributeAsync("aria-modal") == "true", "a conversa é uma janela modal");
         Check(await FocusInsideAsync(page, ".ultima-dialog"), "o foco entra na conversa ao abrir (tecla E)", await ActiveAsync(page));
         Check(await page.EvaluateAsync<bool>("() => document.querySelector('.ultima-menu').inert"), "atrás da conversa: menu e painel inertes");
@@ -168,11 +179,28 @@ internal static partial class DeclarativeWindows
         Check(await page.Locator("#game-canvas").EvaluateAsync<bool>("el => el.tabIndex === 0"), "conversa fechada: o canvas volta à ordem de Tab");
         await OpenJournalAsync();
         await journal.GetByText(reply).WaitForAsync();
+        Check(await page.EvaluateAsync<bool>("""
+            async () => {
+                const genius = await import('./js/guardian-genius.mjs');
+                const wanderer = genius.npcConversationId('andarilho');
+                return wanderer !== genius.guardianConversationId() &&
+                    await genius.load(wanderer) === null && localStorage.getItem('ultima-dialog-history') === null;
+            }
+            """), "The journal reads the one Genius conversation for each NPC.");
+
         Check(!await page.EvaluateAsync<bool>("() => (localStorage.getItem('ultima-dialog-queue') || '').includes('Quero novas árvores')"),
             "a conversa do Genius fica fora da fila de telemetria");
 
         await CloseAsync(journal);
-        await page.EvaluateAsync("() => sessionStorage.setItem('guardian-test-engine', 'gpu')");
+        await page.EvaluateAsync("""
+            () => {
+                sessionStorage.setItem('guardian-test-engine', 'gpu');
+                sessionStorage.setItem('ultima-id-aba', 'aaaaaaaa');
+                const url = new URL(location.href);
+                url.searchParams.set('sala', 'another-room');
+                history.replaceState(null, '', url);
+            }
+            """);
         await page.ReloadAsync(new() { WaitUntil = WaitUntilState.DOMContentLoaded });
         await WaitAsync(() => Task.FromResult(failedTelemetry), "The queued events survive a collector outage.");
         acceptTelemetry = true;
@@ -189,7 +217,7 @@ internal static partial class DeclarativeWindows
         await draft.FillAsync("Qual foi meu pedido anterior?");
         await Button(conversation, "Enviar para a Guardiã").ClickAsync();
         await conversation.GetByText("✦ origem da resposta: Genius local · GPU").WaitForAsync();
-        Check(await page.EvaluateAsync<bool>("() => guardianProbe.history.some(turn => turn.user === 'Quero novas árvores' && turn.assistant === 'Olá, caminhante.')"),
+        Check(await page.EvaluateAsync<bool>("() => guardianProbe.history.some(turn => turn.user === 'Quero novas árvores' && turn.assistant.startsWith('Olá, caminhante.'))"),
             "o segundo turno recebe o histórico do Genius depois de recarregar");
         Check(errors.IsEmpty, "erros no navegador", errors);
         Log(new { build, mode = Mode, journal = true, dialogue = true, contrast = true, reply });

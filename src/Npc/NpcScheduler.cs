@@ -36,6 +36,7 @@ public sealed class NpcScheduler
     private string? _active;
 
     public IReadOnlyCollection<string> Npcs => _brains.Keys;
+    public string SpeakerFor(string id) => _brains[id].Speaker;
 
     public int PendingEvents => _events.Count;
     public long DroppedEvents { get; private set; }
@@ -111,6 +112,7 @@ public sealed class NpcScheduler
         var decision = _brains[id].Decide(snapshot, e);
         if (decision.Commands.Any(c => c is OpenDialog)) { _active = id; }
         else if (decision.Commands.Any(c => c is CloseDialog)) { _active = null; }
+        if (decision.View is { } view) decision = decision with { View = view with { NpcId = id } };
         return decision.Commands.Count == 0 && decision.View is null ? [] : [decision];
     }
 }

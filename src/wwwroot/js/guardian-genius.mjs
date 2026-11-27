@@ -18,17 +18,49 @@ function open() {
     }).catch(error => { database = null; throw error; });
 }
 
-export function guardianConversationId() {
-    const { api, room, id } = game.net.info();
-    return JSON.stringify([api, room, id, 'guardia']);
+export function npcConversationId(npc) {
+    const peer = game.net.info().id;
+    let player = peer;
+    try {
+        const saved = localStorage.getItem('ultima-id');
+        if (/^[0-9a-f]{8}$/.test(saved ?? '')) player = saved;
+    } catch { /* Browser storage may be restricted. */ }
+    return JSON.stringify(['player', player, npc]);
 }
+
+export function guardianConversationId() { return npcConversationId('guardia'); }
 
 export async function load(id) {
     const db = await open();
     return new Promise((resolve, reject) => {
-        const request = db.transaction(sessions).objectStore(sessions).get(id);
-        request.onsuccess = () => resolve(request.result?.json ?? null);
-        request.onerror = () => reject(request.error);
+        const transaction = db.transaction(sessions, 'readwrite');
+        const store = transaction.objectStore(sessions);
+        const request = store.get(id);
+        let snapshot = null;
+        transaction.oncomplete = () => resolve(snapshot?.json ?? null);
+        transaction.onabort = () => reject(transaction.error);
+        request.onsuccess = () => {
+            snapshot = request.result ?? null;
+            if (snapshot || typeof id !== 'string') return;
+            const [version, player, npc] = JSON.parse(id);
+            if (version !== 'player') return;
+            const peers = new Set([player, game.net.info().id]);
+            const scan = store.openCursor();
+            scan.onsuccess = () => {
+                const cursor = scan.result;
+                if (!cursor) {
+                    if (snapshot) store.put(snapshot, id);
+                    return;
+                }
+                // Adopt the most developed matching legacy Genius conversation without rewriting other records.
+                let key;
+                try { key = JSON.parse(cursor.key); } catch { key = null; }
+                if (Array.isArray(key) && key.length === 4 && peers.has(key[2]) && key[3] === npc &&
+                    cursor.value.revision > (snapshot?.revision ?? 0))
+                    snapshot = cursor.value;
+                cursor.continue();
+            };
+        };
     });
 }
 
@@ -49,17 +81,23 @@ export async function save(id, revision, json) {
     });
 }
 
-export function handleMemoryCommand(command, text) {
-    return memoryCommand(guardianConversationId(), command, text);
+// Optional notes use the existing plugin scope and are independent of conversation turns.
+function guardianMemoryScope() {
+    const { api, room, id } = game.net.info();
+    return JSON.stringify([api, room, id, 'guardia']);
 }
 
-export async function generate(id, engine, json, maxTokens, scope = guardianConversationId(), toolsJson = null) {
+export function handleMemoryCommand(command, text) {
+    return memoryCommand(guardianMemoryScope(), command, text);
+}
+
+export async function generate(id, engine, json, maxTokens, toolsJson = null) {
     const { instructions, history, user } = JSON.parse(json);
     const model = engine === 'gpu' ? game.ai : game.aiCpu;
     const controller = new AbortController();
     attempts.set(id, controller);
     try {
-        const message = await contextualize(scope, user);
+        const message = await contextualize(guardianMemoryScope(), user);
         controller.signal.throwIfAborted();
         return await model.garden(instructions, message, maxTokens, history, controller.signal,
             toolsJson === null ? undefined : JSON.parse(toolsJson));

@@ -78,26 +78,27 @@ sealed partial class GameWorld
             prompt = GardenPrompt(ch);
             id = ch.Id;
         }
-        var (status, plan) = await _chat.GardenReplyAsync(id, ip, prompt, text, cancellation);
+        var externalHistory = data["externalHistory"] is JsonValue owner && owner.TryGetValue<bool>(out var external) && external;
+        var (status, plan) = await _chat.GardenReplyAsync(id, ip, prompt, text, cancellation, externalHistory);
         if (status != 200 || plan is null) return (status, plan ?? J.Err("ai_unavailable"));
         cancellation.ThrowIfCancellationRequested();
         var reply = J.Clean(plan["reply"], 340);
         if (plan["actions"] is not JsonArray actions || reply.Length == 0) return (422, J.Err("invalid_ai_response"));
         if (actions.Count == 0)
         {
-            _chat.RememberGardenReply(id, text, reply);
+            if (!externalHistory) _chat.RememberGardenReply(id, text, reply);
             return (200, new JsonObject { ["reply"] = reply, ["source"] = "llm", ["applied"] = 0 });
         }
         if (data["preview"] is JsonValue preview && preview.TryGetValue<bool>(out var requested) && requested)
         {
-            _chat.RememberGardenReply(id, text, "Proposta aguardando confirmação: " + reply);
+            if (!externalHistory) _chat.RememberGardenReply(id, text, "Proposta aguardando confirmação: " + reply);
             return (200, new JsonObject { ["reply"] = reply, ["source"] = "llm", ["actions"] = actions.DeepClone() });
         }
 
         var (appliedStatus, result) = GardenEdit(token, actions, requireGuardian: true);
         if (appliedStatus == 200)
         {
-            _chat.RememberGardenReply(id, text, "Aplicado: " + reply);
+            if (!externalHistory) _chat.RememberGardenReply(id, text, "Aplicado: " + reply);
             result["reply"] = reply;
             result["source"] = "llm";
         }

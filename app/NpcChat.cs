@@ -68,7 +68,7 @@ sealed class NpcChat(ILogger log)
         catch (System.Text.Json.JsonException) { return null; }
     }
 
-    public async Task<(int, JsonObject?)> GardenReplyAsync(string id, string ip, string prompt, string text, CancellationToken cancellation)
+    public async Task<(int, JsonObject?)> GardenReplyAsync(string id, string ip, string prompt, string text, CancellationToken cancellation, bool externalHistory = false)
     {
         if (!ServerAiEnabled()) return (503, null);
         List<(char Who, string Line)> history;
@@ -76,7 +76,7 @@ sealed class NpcChat(ILogger log)
         {
             if (!RateOk("garden:" + id, J.Now) || !RateOk("ip:" + ip, J.Now) || !BudgetOk(J.Now))
                 return (429, J.Err("rate_limited"));
-            history = _sessions.TryGetValue("garden:" + id, out var entry) && J.Now - entry.T <= 1800 ? [.. entry.History] : [];
+            history = !externalHistory && _sessions.TryGetValue("garden:" + id, out var entry) && J.Now - entry.T <= 1800 ? [.. entry.History] : [];
         }
         var messages = new JsonArray { new JsonObject { ["role"] = "system", ["content"] = prompt } };
         foreach (var (who, line) in history)

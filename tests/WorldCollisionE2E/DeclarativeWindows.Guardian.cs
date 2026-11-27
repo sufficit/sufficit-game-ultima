@@ -50,8 +50,11 @@ internal static partial class DeclarativeWindows
             }
             """);
         await WaitAsync(() => page.EvaluateAsync<bool>("""
-            request => Object.values(JSON.parse(localStorage.getItem('ultima-dialog-history') || '{}'))
-                .some(turns => turns.some(turn => turn.player === request && turn.reply.includes('Quer aplicar?')))
+            async request => {
+                const genius = await import('./js/guardian-genius.mjs');
+                const history = JSON.parse(await genius.load(genius.guardianConversationId()) || '{}');
+                return history.turns?.some(turn => turn.user === request && turn.assistant.includes('Quer aplicar?')) ?? false;
+            }
             """, request), "The completed background turn is saved before reopening the dialogue.");
         Check(writes == 0, "A background proposal must wait for confirmation.");
         await page.Locator("#game-canvas").FocusAsync();
