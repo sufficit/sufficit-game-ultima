@@ -18,7 +18,7 @@
       { "type": "button", "text": "Sugerir flores", "style": "outline", "action": "suggest-flowers", "disabledWhen": "busy" }
     ] },
     { "type": "form", "action": "speak", "children": [
-      { "type": "input", "id": "dialog-input", "bind": "draft", "text": "Escreva algo para a Guardiã…", "label": "Escreva para a Guardiã", "maxLength": 300 },
+      { "type": "input", "id": "dialog-input", "bind": "draft", "text": "Escreva algo para a Guardiã…", "label": "Escreva para a Guardiã", "maxLength": 300, "disabledWhen": "thinking" },
       { "type": "submit", "text": "Enviar", "icon": "send", "label": "Enviar para a Guardiã", "disabledWhen": "busy" },
       { "type": "button", "bind": "dictation", "icon": "audio", "style": "outline", "action": "dictate", "disabledWhen": "busy" },
       { "type": "button", "text": "Ouvir fala", "style": "outline", "action": "listen", "disabledWhen": "thinking" }

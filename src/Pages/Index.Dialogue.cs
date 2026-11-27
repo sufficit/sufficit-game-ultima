@@ -217,7 +217,7 @@ public partial class Index
 
     private void EditWindow((string Key, string Value) edit)
     {
-        if (edit.Key == "draft") _dialogDraft = edit.Value;
+        if (edit.Key == "draft" && _view?.Thinking != true) _dialogDraft = edit.Value;
         else if (edit.Key == "reportDraft") _reportDraft = edit.Value;
     }
 
@@ -293,13 +293,13 @@ public partial class Index
         var text = lightGarden ? "Ilumine a entrada do jardim." : _dialogDraft.Trim();
         if (_view is null || GuardianBusy || text.Length == 0) return;
         if (text.Length > 300) text = text[..300];
-        if (!lightGarden) _dialogDraft = string.Empty;
         _speechError = string.Empty;
         _turnStartedMs = NowMs();
         _ = JS.InvokeVoidAsync("game.characterDialogueLine", "Você", text.Length);
         Dispatch(new PlayerSpoke(NowMs(), text));
         if (_view?.Speaker == "Andarilho")
         {
+            _dialogDraft = string.Empty;
             Dispatch(new ReplyArrived(NowMs(), "Sobre o jardim, fale com a Guardiã.", "falas locais do andarilho"));
             return;
         }
@@ -308,17 +308,28 @@ public partial class Index
         try
         {
             if (!lightGarden) await RefreshLocalAiAsync(turn.Token);
-            var (reply, source) = lightGarden
+            var result = lightGarden
                 ? await WorkshopService.LightGardenAsync(turn.Token)
                 : await WorkshopService.TalkToGuardianAsync(text, _aiState == "ready", _aiCpuState == "ready", turn.Token);
-            if (!turn.IsCancellationRequested && _view?.Thinking == true)
-                Dispatch(new ReplyArrived(NowMs(), reply, source));
+            FinishGuardianTurn(turn, result, lightGarden);
+        }
+        catch (Exception ex) when (!turn.IsCancellationRequested && ex is JSException or OperationCanceledException)
+        {
+            FinishGuardianTurn(turn, GuardianTurnResult.Retry("Não consegui concluir o pedido. Tente novamente."), lightGarden);
         }
         catch (OperationCanceledException) when (turn.IsCancellationRequested) { }
         finally
         {
             if (ReferenceEquals(_guardianTurn, turn)) _guardianTurn = null;
         }
+    }
+
+    private void FinishGuardianTurn(CancellationTokenSource turn, GuardianTurnResult result, bool lightGarden)
+    {
+        // Only the active turn can update the transcript or clear its draft.
+        if (turn.IsCancellationRequested || !ReferenceEquals(_guardianTurn, turn) || _view?.Thinking != true) return;
+        if (!lightGarden && !result.KeepDraft) _dialogDraft = string.Empty;
+        Dispatch(new ReplyArrived(NowMs(), result.Reply, result.Source));
     }
 
     private void CloseDialog()

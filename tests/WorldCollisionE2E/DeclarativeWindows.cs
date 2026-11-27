@@ -28,10 +28,19 @@ internal static class DeclarativeWindows
                 game.aiCpu.status = () => ready
                     ? { state: 'ready', progress: 1, detail: 'Modelo de teste pronto' }
                     : cpuStatus();
-                game.live.token = () => null;
+                const reportCpuStatus = game.aiCpu.status;
+                game.aiCpu.status = () => {
+                    if (window.failGuardianStatus) throw new Error('CPU status unavailable');
+                    return reportCpuStatus();
+                };
+                const api = game.live.api;
+                game.live.api = () => window.testGardenEdits ? location.origin : api();
+                game.live.token = () => window.testGardenEdits ? 'browser-test-token' : null;
                 game.aiCpu.garden = (_, text, tokens, history) => {
                     window.guardianProbe = { text, tokens, history };
-                    return 'Olá, caminhante.';
+                    if (window.holdGuardianReply)
+                        return new Promise(resolve => { window.finishGuardianReply = resolve; });
+                    return window.guardianReplyOverride ?? 'Olá, caminhante.';
                 };
                 if (sessionStorage.getItem('guardian-test-engine') === 'gpu') {
                     game.ai.init = () => {};
@@ -137,10 +146,13 @@ internal static class DeclarativeWindows
         await WaitAsync(async () => await line.InnerTextAsync() != first, "avança para a fala seguinte");
         await Button(conversation, "Iluminar o jardim").ClickAsync();
         await conversation.GetByText("Conecte-se ao servidor do jogo para aplicar alterações no jardim.", new() { Exact = true }).WaitForAsync();
-        await conversation.GetByRole(AriaRole.Textbox, new() { Name = "Escreva para a Guardiã" }).FillAsync("Quero novas árvores");
+        await VerifyGuardianRetryAsync(page, conversation, draft);
+        await VerifyGardenReceiptAsync(page, conversation, draft);
+        await draft.FillAsync("Quero novas árvores");
         await Button(conversation, "Enviar para a Guardiã").ClickAsync();
         await conversation.GetByText("Olá, caminhante. Conecte-se ao servidor do jogo para aplicar alterações no jardim.").WaitForAsync();
         await conversation.GetByText("✦ origem da resposta: Genius local · CPU").WaitForAsync();
+        Check(await draft.InputValueAsync() == "", "A completed reply clears the submitted draft.");
         Check(await page.EvaluateAsync<bool>("() => guardianProbe.text === 'Quero novas árvores' && guardianProbe.tokens === 120"),
             "conversa sem sessão usa a IA local com contexto curto");
         var reply = await line.InnerTextAsync();
@@ -180,6 +192,70 @@ internal static class DeclarativeWindows
             "o segundo turno recebe o histórico do Genius depois de recarregar");
         Check(errors.IsEmpty, "erros no navegador", errors);
         Log(new { build, mode = Mode, journal = true, dialogue = true, contrast = true, reply });
+    }
+
+    private static async Task VerifyGuardianRetryAsync(IPage page, ILocator conversation, ILocator draft)
+    {
+        const string request = "Plante flores no caminho";
+        var send = Button(conversation, "Enviar para a Guardiã");
+        await page.EvaluateAsync("() => { window.holdGuardianReply = true; }");
+        await draft.FillAsync(request);
+        await send.ClickAsync();
+        await WaitAsync(() => page.EvaluateAsync<bool>("() => typeof window.finishGuardianReply === 'function'"),
+            "The local CPU turn started.");
+        Check(await draft.InputValueAsync() == request, "A pending CPU turn keeps its submitted draft visible.");
+        Check(!await send.IsEnabledAsync(), "A pending CPU turn blocks duplicate submissions.");
+        await page.EvaluateAsync("() => { window.holdGuardianReply = false; window.finishGuardianReply(''); }");
+        await conversation.GetByText("A IA local não conseguiu responder.", new() { Exact = false }).WaitForAsync();
+        Check(await draft.InputValueAsync() == request && await send.IsEnabledAsync(),
+            "A failed CPU turn leaves the original request ready to retry.");
+
+        await page.EvaluateAsync("() => { window.failGuardianStatus = true; }");
+        await send.ClickAsync();
+        await conversation.GetByText("Não consegui concluir o pedido. Tente novamente.", new() { Exact = true }).WaitForAsync();
+        Check(await draft.InputValueAsync() == request && await send.IsEnabledAsync(),
+            "A status error resolves the turn without discarding the request.");
+
+        await page.EvaluateAsync("""
+            () => {
+                window.failGuardianStatus = false;
+                window.guardianReplyOverride = 'Entendi onde você quer as flores.';
+            }
+            """);
+        await send.ClickAsync();
+        await conversation.GetByText("Entendi onde você quer as flores.", new() { Exact = false }).WaitForAsync();
+        Check(await draft.InputValueAsync() == "", "A successful retry clears the draft.");
+        Check(await page.EvaluateAsync<bool>("request => guardianProbe.text === request", request),
+            "The retry sends the original text without retyping.");
+        await page.EvaluateAsync("() => { delete window.guardianReplyOverride; }");
+    }
+
+    private static async Task VerifyGardenReceiptAsync(IPage page, ILocator conversation, ILocator draft)
+    {
+        var writes = 0;
+        await page.RouteAsync("**/v1/game/garden/context", route =>
+            route.FulfillAsync(new() { Json = new { prompt = "Propose a garden edit." } }));
+        await page.RouteAsync("**/v1/game/garden/edits", route =>
+            route.FulfillAsync(new() { Json = new { applied = writes++ } }));
+        await page.EvaluateAsync("""
+            () => {
+                window.testGardenEdits = true;
+                window.guardianReplyOverride = JSON.stringify({
+                    reply: 'Plantei uma flor.',
+                    actions: [{ action: 'place', asset: 'plant.flower', x: 2, z: 3 }]
+                });
+            }
+            """);
+        const string request = "Plante uma flor perto do banco";
+        var send = Button(conversation, "Enviar para a Guardiã");
+        await draft.FillAsync(request);
+        await send.ClickAsync();
+        await conversation.GetByText("O jardim não confirmou nenhuma alteração.", new() { Exact = false }).WaitForAsync();
+        Check(await draft.InputValueAsync() == request, "An unconfirmed change preserves the request.");
+        await send.ClickAsync();
+        await conversation.GetByText("Apliquei as mudanças no jardim. Plantei uma flor.").WaitForAsync();
+        Check(writes == 2 && await draft.InputValueAsync() == "", "The confirmed retry completes the request.");
+        await page.EvaluateAsync("() => { window.testGardenEdits = false; delete window.guardianReplyOverride; }");
     }
 
     // Waits for a text of the local AI in the window. If it does not show up, prints what the two

@@ -35,7 +35,7 @@
         case "input":
             <label class="sr-only" for="@Control.Id">@Control.Label</label>
             <SUITextField TValue="string" Id="@Control.Id" Placeholder="@Control.Text" MaxLength="@(Control.MaxLength ?? 300)"
-                          Immediate="true" Value="@State.Content(Control)" ValueChanged="Edit" />
+                          Immediate="true" Disabled="@Disabled" Value="@State.Content(Control)" ValueChanged="Edit" />
             break;
         case "submit":
             <SUIButton ButtonTypeValue="SUIButtonType.Submit" SizeValue="SUISize.Small" StartIcon="@Control.Icon"
