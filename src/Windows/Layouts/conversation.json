@@ -17,6 +17,10 @@
       { "type": "button", "text": "Sugerir trilha", "style": "outline", "action": "suggest-path", "disabledWhen": "busy" },
       { "type": "button", "text": "Sugerir flores", "style": "outline", "action": "suggest-flowers", "disabledWhen": "busy" }
     ] },
+    { "type": "row", "when": "gardenProposal", "children": [
+      { "type": "button", "text": "Aplicar alteração", "action": "garden-tool-apply", "disabledWhen": "busy" },
+      { "type": "button", "text": "Descartar proposta", "action": "garden-tool-cancel", "style": "outline" }
+    ] },
     { "type": "form", "action": "speak", "children": [
       { "type": "input", "id": "dialog-input", "bind": "draft", "text": "Escreva algo para a Guardiã…", "label": "Escreva para a Guardiã", "maxLength": 300, "disabledWhen": "thinking" },
       { "type": "submit", "text": "Enviar", "icon": "send", "label": "Enviar para a Guardiã", "disabledWhen": "busy" },

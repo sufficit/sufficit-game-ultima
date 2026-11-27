@@ -22,6 +22,8 @@
             label: 'Qwen2.5 0.5B', why: 'melhor qualidade de conversa em português', mb: 491400032 / 1048576
         }
     };
+    MODELS.qwen05tools = { ...MODELS.qwen05b, label: 'Qwen2.5 0.5B · ferramentas',
+        why: 'modo experimental para propor ações no jardim' };
     const PERSONA = 'Você é a Guardiã do Jardim do jogo Ultima: serena, acolhedora, sábia. Responda em português do Brasil, em primeira pessoa, com 2 a 4 frases curtas. Nunca saia do personagem.';
 
     let dotnet = null, inst = null, loading = null, source = '';
@@ -172,7 +174,7 @@
             if (inst && state === 'thinking') emit('ready', 1, modelLabel + ' pronta na sua CPU' + (tokensPerSec ? ' · ' + tokensPerSec + ' tok/s' : ''));
         }
     }
-    async function garden(prompt, text, maxTokens = 1200, history = [], signal) {
+    async function garden(prompt, text, maxTokens = 1200, history = [], signal, tools) {
         const model = inst;
         if (!model || state !== 'ready') return null;
         signal?.throwIfAborted();
@@ -184,10 +186,13 @@
             }
             messages.push({ role: 'user', content: text });
             const output = await model.createChatCompletion({
-                abortSignal: signal, messages, max_tokens: maxTokens, temperature: 0.2
+                abortSignal: signal, messages, max_tokens: maxTokens, temperature: tools ? 0 : 0.2,
+                ...(tools ? { tools, tool_choice: 'auto', seed: 42 } : {})
             });
             signal?.throwIfAborted();
-            return output?.choices?.[0]?.message?.content || null;
+            const message = output?.choices?.[0]?.message;
+            if (tools && message) return JSON.stringify({ calls: message.tool_calls ?? [] });
+            return message?.content || null;
         } catch {
             return null;
         } finally {

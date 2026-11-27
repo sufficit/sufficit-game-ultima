@@ -28,5 +28,27 @@ internal static class LanternHeightIntegration
             expected["lightIntensity"] = Math.Round(Num(expected["lightIntensity"]) * 1.25, 2);
             Check(Same(bright["parameters"], expected), "Intensity increases without changing height.", bright);
         }
+
+        const string tools = "/v1/game/garden/tools";
+        var tool = new JsonObject { ["name"] = "adjust_lantern_height", ["arguments"] = new JsonObject { ["delta_m"] = 1 } };
+        await harness.Json(url, tools, tool, expect: 401);
+        var applied = await harness.Json(url, tools, tool, token);
+        Check(Num(applied["applied"]) == 2, "Tool call applies to two nearby fixtures.", applied);
+        var adjusted = Arr(Obj(applied["map"])["placements"]).Select(Obj);
+        foreach (var lamp in brighterPlacements.Where(candidate => lamps.Any(lamp => Same(lamp["uid"], candidate["uid"]))))
+        {
+            var expected = (JsonObject)lamp["parameters"]!.DeepClone();
+            expected["poleHeight"] = Math.Round(Num(expected["poleHeight"]) + 1, 2);
+            Check(Same(adjusted.Single(candidate => Same(candidate["uid"], lamp["uid"]))["parameters"], expected),
+                "The tool changes height by exactly one metre.", applied);
+        }
+
+        tool["arguments"]!["delta_m"] = 30;
+        await harness.Json(url, tools, tool, token, 400);
+        tool["arguments"]!["delta_m"] = 1;
+        await harness.Json(url, tools, tool, token, 409);
+        var afterRejected = await harness.Json(url, "/v1/game/map");
+        Check(Same(afterRejected["placements"], Obj(applied["map"])["placements"]),
+            "Invalid or out-of-range edits leave all fixtures unchanged.");
     }
 }

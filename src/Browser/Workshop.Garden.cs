@@ -199,7 +199,7 @@ public sealed partial class Workshop
 }
 
 /// <summary>The visible reply and whether the submitted text should stay available to retry.</summary>
-internal sealed record GuardianTurnResult(string Reply, string Source, bool KeepDraft = false)
+internal sealed record GuardianTurnResult(string Reply, string Source, bool KeepDraft = false, LanternHeightProposal? Proposal = null)
 {
     public static GuardianTurnResult Retry(string reply, string source = "") => new(reply, source, KeepDraft: true);
 }

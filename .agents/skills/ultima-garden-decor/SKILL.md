@@ -15,5 +15,10 @@ mundo em `GET /v1/assets`. Envie `{"actions":[…]}` a
 - Para remover um elemento, descubra o `uid` em `GET /v1/game/map` e
   envie `{"action":"remove","uid":"…"}`.
 
+For a confirmed relative adjustment to nearby lanterns, call
+`POST /v1/game/garden/tools` with the player token, tool name
+`adjust_lantern_height`, and `arguments.delta_m` (signed metres).
+A successful receipt reports `applied` and the resulting map.
+
 Veja o [contrato do jardim](../../../docs/USAGE-API-JARDIM.md) para
 composições que usam outras famílias ou modelos publicados no catálogo.

@@ -11,7 +11,7 @@ public sealed class GuardianGenius(IJSRuntime js) : IAsyncDisposable
     private Task<IJSObjectReference>? _module;
 
     public async Task<string> ReplyAsync(string prompt, string text, string engine, int seconds,
-        int maxTokens, CancellationToken token, Func<string, string>? interpret = null)
+        int maxTokens, CancellationToken token, Func<string, string>? interpret = null, string? toolsJson = null)
     {
         var module = await ModuleAsync();
         var id = await module.InvokeAsync<string>("guardianConversationId", token);
@@ -23,7 +23,7 @@ public sealed class GuardianGenius(IJSRuntime js) : IAsyncDisposable
         {
             return await runtime.SubmitAsync(id, prompt, text, (request, ct) =>
                 module.InvokeAsync<string?>("generate", ct, requestId, engine,
-                    JsonSerializer.Serialize(request, GuardianGeniusJson.Default.InferenceRequest), maxTokens, id),
+                    JsonSerializer.Serialize(request, GuardianGeniusJson.Default.InferenceRequest), maxTokens, id, toolsJson),
                 interpret is null ? null : (answer, _) => ValueTask.FromResult(interpret(answer)), timeout.Token);
         }
         finally

@@ -53,7 +53,7 @@ export function handleMemoryCommand(command, text) {
     return memoryCommand(guardianConversationId(), command, text);
 }
 
-export async function generate(id, engine, json, maxTokens, scope = guardianConversationId()) {
+export async function generate(id, engine, json, maxTokens, scope = guardianConversationId(), toolsJson = null) {
     const { instructions, history, user } = JSON.parse(json);
     const model = engine === 'gpu' ? game.ai : game.aiCpu;
     const controller = new AbortController();
@@ -61,7 +61,8 @@ export async function generate(id, engine, json, maxTokens, scope = guardianConv
     try {
         const message = await contextualize(scope, user);
         controller.signal.throwIfAborted();
-        return await model.garden(instructions, message, maxTokens, history, controller.signal);
+        return await model.garden(instructions, message, maxTokens, history, controller.signal,
+            toolsJson === null ? undefined : JSON.parse(toolsJson));
     } finally {
         attempts.delete(id);
     }

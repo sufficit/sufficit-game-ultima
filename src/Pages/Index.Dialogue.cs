@@ -47,6 +47,7 @@ public partial class Index
                     _ = SetFrozen(true);
                     break;
                 case Ultima.Npc.CloseDialog:
+                    _guardianProposal = null;
                     _view = null;
                     _ = JS.InvokeVoidAsync("game.voice.stopDictation");
                     _ = SetFrozen(false);
@@ -111,6 +112,8 @@ public partial class Index
     }
 
     private CancellationTokenSource? _guardianTurn;
+    private LanternHeightProposal? _guardianProposal;
+    private string? _activeCpuModel;
     private bool _journalOpen;
     private bool _windowContrast;
     private readonly WindowState _conversationState = new();
@@ -133,7 +136,7 @@ public partial class Index
     private bool GuardianOpen => _view is { Speaker: not "Andarilho" };
     private bool GuardianBusy => _view?.Thinking == true || (GuardianOpen && _testingGuardianAi);
     private static bool AiLoading(string state) => state is "checking" or "downloading" or "compiling" or "loading" or "thinking";
-    private sealed record LocalAiStatus(string State, double Progress, string Detail, string? Model, double? LastReplyMs);
+    private sealed record LocalAiStatus(string State, double Progress, string Detail, string? Model, double? LastReplyMs, string? ModelKey);
 
     private async Task LoadLocalAiAsync(string engine, string action)
     {
@@ -148,6 +151,7 @@ public partial class Index
         await Task.WhenAll(gpu, cpu);
         var gpuStatus = await gpu;
         var cpuStatus = await cpu;
+        _activeCpuModel = cpuStatus.ModelKey;
         (_aiState, _aiProgress, _aiDetail) = (gpuStatus.State, gpuStatus.Progress, gpuStatus.Detail);
         (_aiCpuState, _aiCpuProgress, _aiCpuDetail) = (cpuStatus.State, cpuStatus.Progress, cpuStatus.Detail);
     }
@@ -208,6 +212,7 @@ public partial class Index
         values["testDisabled"] = GuardianBusy || (_aiState != "ready" && _aiCpuState != "ready") ? "1" : "";
         values["aiTest"] = GuardianOpen ? _guardianAiTest : "";
         values["draft"] = _dialogDraft;
+        values["gardenProposal"] = _guardianProposal is null ? "" : "1";
         BindDiagnosticReport(values);
         values["dictation"] = _dictating ? "Parar ditado" : "Ditar";
         values["speechError"] = _speechError;
@@ -217,7 +222,7 @@ public partial class Index
 
     private void EditWindow((string Key, string Value) edit)
     {
-        if (edit.Key == "draft" && _view?.Thinking != true) _dialogDraft = edit.Value;
+        if (edit.Key == "draft") UpdateDialogueDraft(edit.Value);
         else if (edit.Key == "reportDraft") _reportDraft = edit.Value;
     }
 
@@ -242,7 +247,10 @@ public partial class Index
         if (action.StartsWith(topicPrefix, StringComparison.Ordinal))
         {
             if (_view is not null && !GuardianBusy)
+            {
+                _guardianProposal = null;
                 Dispatch(new DialogTopicSelected(NowMs(), action[topicPrefix.Length..]));
+            }
             return Task.CompletedTask;
         }
 
@@ -266,13 +274,18 @@ public partial class Index
                 _guardianAiTest = "";
                 return _aiCpuState is "error" or "stalled" ? RetryAiCpuAsync() : EnableAiCpuAsync();
             case "guardian-test": return TestGuardianAiAsync();
+            case "garden-tool-apply" when _guardianProposal is { } proposal && GuardianOpen && !GuardianBusy:
+                return SubmitDialogAsync(confirmedProposal: proposal);
+            case "garden-tool-cancel":
+                _guardianProposal = null;
+                break;
             case "light-garden" when GuardianOpen && !GuardianBusy:
                 return SubmitDialogAsync(lightGarden: true);
             case "suggest-path" when GuardianOpen && !GuardianBusy:
-                _dialogDraft = "Crie uma trilha de pedra ligando a entrada do jardim à clareira.";
+                UpdateDialogueDraft("Crie uma trilha de pedra ligando a entrada do jardim à clareira.");
                 break;
             case "suggest-flowers" when GuardianOpen && !GuardianBusy:
-                _dialogDraft = "Plante flores nas bordas do caminho do jardim.";
+                UpdateDialogueDraft("Plante flores nas bordas do caminho do jardim.");
                 break;
             case "close":
                 if (_view is not null) CloseDialog();
@@ -288,10 +301,12 @@ public partial class Index
 
     private Task AdvanceAsync() { Dispatch(new PlayerInteracted(NowMs())); return Task.CompletedTask; }
 
-    private async Task SubmitDialogAsync(bool lightGarden = false)
+    private async Task SubmitDialogAsync(bool lightGarden = false, LanternHeightProposal? confirmedProposal = null)
     {
-        var text = lightGarden ? "Ilumine a entrada do jardim." : _dialogDraft.Trim();
+        var text = confirmedProposal is not null ? "Confirmo a alteração." :
+            lightGarden ? "Ilumine a entrada do jardim." : _dialogDraft.Trim();
         if (_view is null || GuardianBusy || text.Length == 0) return;
+        _guardianProposal = null;
         if (text.Length > 300) text = text[..300];
         _speechError = string.Empty;
         _turnStartedMs = NowMs();
@@ -307,10 +322,7 @@ public partial class Index
         _guardianTurn = turn;
         try
         {
-            if (!lightGarden) await RefreshLocalAiAsync(turn.Token);
-            var result = lightGarden
-                ? await WorkshopService.LightGardenAsync(turn.Token)
-                : await WorkshopService.TalkToGuardianAsync(text, _aiState == "ready", _aiCpuState == "ready", turn.Token);
+            var result = await RunGuardianTurnAsync(text, lightGarden, confirmedProposal, turn.Token);
             FinishGuardianTurn(turn, result, lightGarden);
         }
         catch (Exception ex) when (!turn.IsCancellationRequested && ex is JSException or OperationCanceledException)
@@ -329,12 +341,14 @@ public partial class Index
         // Only the active turn can update the transcript or clear its draft.
         if (turn.IsCancellationRequested || !ReferenceEquals(_guardianTurn, turn) || _view?.Thinking != true) return;
         if (!lightGarden && !result.KeepDraft) _dialogDraft = string.Empty;
+        _guardianProposal = result.Proposal;
         Dispatch(new ReplyArrived(NowMs(), result.Reply, result.Source));
     }
 
     private void CloseDialog()
     {
         if (_view is null) return;
+        _guardianProposal = null;
         _npc.Submit(new DialogClosedByPlayer(NowMs()));
         _view = null;
         _guardianTurn?.Cancel();

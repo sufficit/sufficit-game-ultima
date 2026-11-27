@@ -80,6 +80,25 @@ Each command preserves the placement and any parameter it does not target.
 The server enforces the model limits. Free-form requests use the same editing
 contract through the garden planner.
 
+### Local CPU tool pilot
+
+Select **Qwen2.5 0.5B · ferramentas** in the game panel to try native tool calls.
+The Guardian shows the proposed change in metres. **Aplicar alteração** sends it
+to the game API. Dismissing the proposal leaves the map unchanged. This pilot
+exposes one garden tool. The server validates the session, proximity to the
+Guardian, and the placement limits before applying the full edit batch.
+
+`POST /v1/game/garden/tools` takes the player's `X-Game-Token` and this body:
+
+```json
+{"name":"adjust_lantern_height","arguments":{"delta_m":1}}
+```
+
+Use a signed metre displacement with centimetre precision. An out-of-range
+target rejects the batch with `lantern_height_out_of_range`. Use the returned
+`applied` count and `map` to update the scene. This is a relative mutation, so
+read the map before resubmitting if the result was lost.
+
 A família de jogo continua em `/v1/game/command` para movimento, interação,
 construção e escavação avançada, e a família de modelos em `/v1/assets`.
 A Guardiã usa as ações registradas no catálogo do jardim. A remoção

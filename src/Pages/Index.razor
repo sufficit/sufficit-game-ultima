@@ -684,11 +684,12 @@
     private Task DisableAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.disable").AsTask();
     private Task RetryAiCpuAsync() => LoadLocalAiAsync("aiCpu", "retry");
     private string _aiCpuModel = "gemma270";
-    // Dois modelos, propostas diferentes (t48): leveza máxima vs. melhor conversa em português.
+    // The experimental tool mode reuses the conversational Qwen download.
     private static readonly Dictionary<string, (string Label, string Why)> AiCpuModels = new()
     {
         ["gemma270"] = ("Gemma 3 270M", "leve, ~241 MB, rápido"),
         ["qwen05b"] = ("Qwen2.5 0.5B", "melhor português, ~469 MB"),
+        ["qwen05tools"] = ("Qwen2.5 0.5B · ferramentas", "experimental, ~469 MB"),
     };
     private async Task SelectAiCpuModelAsync(string key)
     {
@@ -803,7 +804,7 @@
                 _micLevel = Math.Clamp(level, 0, 1);
                 if (_panelOpen || _menuOpen) StateHasChanged();
             }),
-            SpeechTranscript = text => _ = InvokeAsync(() => { _dialogDraft = text; StateHasChanged(); }),
+            SpeechTranscript = text => _ = InvokeAsync(() => { UpdateDialogueDraft(text); StateHasChanged(); }),
             SpeechError = message => _ = InvokeAsync(() => { _speechError = message; StateHasChanged(); }),
             Dictation = listening => _ = InvokeAsync(() => { _dictating = listening; StateHasChanged(); }),
             AiState = (state, progress, detail) => _ = InvokeAsync(() => { _aiState = state; _aiProgress = progress; _aiDetail = detail; StateHasChanged(); }),

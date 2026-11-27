@@ -248,13 +248,15 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
         if (path.StartsWith(GameWorld.GardenRoute + "/", StringComparison.Ordinal))
         {
             var family = path[(GameWorld.GardenRoute.Length + 1)..];
-            if (family is not ("dialog" or "edits" or "terrain" or "plants" or "decor"))
+            if (family is not ("dialog" or "edits" or "terrain" or "plants" or "decor" or "tools"))
             { await Json(ctx, J.Err("not_found"), 404, NoStore); return; }
             var data = await Body(ctx);
             if (data is null) { await Json(ctx, J.Err("bad_request"), 400, NoStore); return; }
             var token = Token(ctx, data);
             if (family == "dialog")
                 await Json(ctx, await game.GardenDialogAsync(token, data, Ip(ctx), ctx.RequestAborted));
+            else if (family == "tools")
+                await Json(ctx, game.GardenTool(token, data));
             else
                 await Json(ctx, game.GardenEdit(token, data["actions"], family: family == "edits" ? null : family));
             return;

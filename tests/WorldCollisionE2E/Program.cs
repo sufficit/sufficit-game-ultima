@@ -106,6 +106,9 @@ try
         case "mobile-layout":
             await MobileLayout.RunAsync(browser);
             break;
+        case "guardian-cpu-tools":
+            await GuardianCpuTools.RunAsync(browser);
+            break;
         case "real-guardian":
             await RealGuardian.RunAsync(browser);
             break;
@@ -113,7 +116,7 @@ try
             await DialogLogLive.RunAsync(browser);
             break;
         default:
-            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, camera-performance, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance, declarative-windows, hud-status, browser-services, local-preferences, mobile-layout, input-devices, dialog-log, office, camera-views, humanoid-body, character-profile, real-guardian, shared-environment.");
+            throw new ArgumentException("Cenários disponíveis: collision, step, clock, backpack, camera-streaming, camera-performance, terrain-cache, terrain-seams, garden, tunnel, world-undo, graphics, crowd, remote-performance, declarative-windows, hud-status, browser-services, local-preferences, mobile-layout, input-devices, dialog-log, office, camera-views, humanoid-body, character-profile, real-guardian, guardian-cpu-tools, shared-environment.");
     }
     return 0;
 }

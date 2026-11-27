@@ -57,7 +57,7 @@ sealed partial class GameWorld
     }
 
     // The dialogue lock keeps selection, current values and writes on the same world revision.
-    (int, JsonObject) AdjustNearbyLanterns(string? token, double x, double z, LanternAdjustment adjustment)
+    (int, JsonObject) AdjustNearbyLanterns(string? token, double x, double z, LanternAdjustment adjustment, double? heightDelta = null)
     {
         var nearby = _placements.Where(p => p.AssetId == LanternPlacementModel.AssetId && InGarden(p.X, p.Z))
             .OrderBy(p => double.Hypot(p.X - x, p.Z - z)).Take(2).ToArray();
@@ -70,7 +70,14 @@ sealed partial class GameWorld
             var light = LanternPlacementModel.LightIntensity;
             var height = pole.Read(current);
             var intensity = light.Read(current);
-            if (adjustment.HasFlag(LanternAdjustment.Height) && height < pole.Max) parameters["poleHeight"] = Math.Min(pole.Max, height + 0.6);
+            if (heightDelta is { } delta)
+            {
+                var nextHeight = Math.Round(height + delta, 2);
+                if (nextHeight < pole.Min || nextHeight > pole.Max) return (409, J.Err("lantern_height_out_of_range"));
+                parameters["poleHeight"] = nextHeight;
+            }
+            else if (adjustment.HasFlag(LanternAdjustment.Height) && height < pole.Max)
+                parameters["poleHeight"] = Math.Min(pole.Max, height + 0.6);
             if (adjustment.HasFlag(LanternAdjustment.Intensity) && intensity < light.Max)
                 parameters["lightIntensity"] = Math.Min(light.Max, Math.Max(0.25, intensity * 1.25));
             if (parameters.Count > 0)
@@ -88,6 +95,7 @@ sealed partial class GameWorld
             result["source"] = "garden";
             result["reply"] = adjustment switch
             {
+                LanternAdjustment.Height when heightDelta < 0 => "Diminuí a altura das hastes das luminárias próximas.",
                 LanternAdjustment.Height => "Aumentei a altura das hastes das luminárias próximas.",
                 LanternAdjustment.Intensity => "Aumentei a intensidade da luz das luminárias próximas.",
                 _ => "Ajustei a altura das hastes e a intensidade da luz das luminárias próximas."
