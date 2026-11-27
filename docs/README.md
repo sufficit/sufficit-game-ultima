@@ -23,7 +23,6 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
 - [Humanoid rig and skinned reference model](PLAN-HUMANOID-SKINNED-RIG.md).
 - [LLM tool qualification](PLAN-LLM-TOOL-QUALIFICATION.md).
-- [One Genius conversation per player and NPC](PLAN-NPC-GENIUS-CONVERSATIONS.md).
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
 
@@ -43,6 +42,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [One Genius conversation per player and NPC](activities/202611271822-npc-genius-conversations.md).
 
 - [Guardian continuity with embedded Genius](activities/202611271756-guardian-continuity.md).
 
