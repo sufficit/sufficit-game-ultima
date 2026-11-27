@@ -28,6 +28,9 @@ pivots. RulesSmoke verifies the contract and custom proportions. The JavaScript
 suite, WASM build and Blazor Release publish passed. The local Chromium test
 verified a custom profile and the imported metadata in the Garden and Office
 with both renderer modes.
+The same Chromium scenario passed on the public Pages build
+`a68bcad84ca6d5bbce3524529f4064d9f047de5c` in both renderer modes.
+[Pages workflow](https://github.com/sufficit/sufficit-game-ultima/actions/runs/45995042423)
 
 Next action. Build the Blender reference armature and weighted mesh from the
 [joint map](figures/humanoid-rig.svg) and
