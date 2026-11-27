@@ -119,6 +119,10 @@ The local repeat of the route showed about 2 cm of head-height excursion.
 On the level subsegment, `skin-feet` showed 0.4–0.5 cm for the default body
 and 1.6–1.8 cm for the custom body in the two Chromium renderer modes. All
 four runs retained ankle alignment, leg length and arm swing.
+The published build `6c47cc641a9c303bc94a9d351d9d2bf5842b3523` also passed
+all four runs. Head height varied by at most 3.2 mm for the default body and
+16 mm for the custom body in the sampled level subsegment.
+[Pages workflow](https://github.com/sufficit/sufficit-game-ultima/actions/runs/46083190557)
 
 The installed [unity-animation](https://github.com/gamedev-skills/awesome-gamedev-agent-skills/tree/c6ca6c41c839b68319ffc08430b99ab768debc32/skills/unity/unity-animation)
 and [physics-tuning](https://github.com/gamedev-skills/awesome-gamedev-agent-skills/tree/c6ca6c41c839b68319ffc08430b99ab768debc32/skills/disciplines/physics-tuning)
