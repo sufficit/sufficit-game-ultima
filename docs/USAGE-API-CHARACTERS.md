@@ -30,3 +30,17 @@ profile before booting the renderer. Reload the scene to apply an API change.
 The catalog profile is the fallback when the saved profile is unavailable.
 
 NPC tools can use the same operation with the owning player's session.
+
+## Player identity
+
+`POST /v1/game/sessions` accepts an optional `playerUuid` in UUID version 4
+format and returns it to the caller. The browser generates one UUID per
+browser profile and reuses it across rooms and connections. API clients that
+supply a UUID resend it when creating another session. Legacy API clients
+that omit it receive a stable identifier derived from their profile key.
+The caller's authenticated `GET /v1/game/state` also returns it.
+
+The UUID identifies a player for conversation storage and telemetry. Character
+IDs still route poses to active avatars. Session tokens and profile keys still
+protect game operations. Public presence and aggregate analytics do not expose
+individual player UUIDs.

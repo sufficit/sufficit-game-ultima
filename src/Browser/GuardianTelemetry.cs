@@ -15,6 +15,7 @@ internal sealed class GuardianTelemetry(HttpClient http, IJSRuntime js, Navigati
     private readonly List<GuardianEvent> _queue = [];
     private string _storageKey = "";
     private string _build = "dev";
+    private string? _playerUuid;
     private Uri? _endpoint;
 
     public async Task WatchAsync(string build, CancellationToken token)
@@ -26,6 +27,7 @@ internal sealed class GuardianTelemetry(HttpClient http, IJSRuntime js, Navigati
             if (!Uri.TryCreate(api.TrimEnd('/') + GuardianQuality.Route, UriKind.Absolute, out var endpoint) ||
                 endpoint.Scheme is not ("http" or "https")) return;
             _build = GuardianQuality.BuildValid(build) ? build : "dev";
+            _playerUuid = await js.InvokeAsync<string>("game.player.uuid", token);
             // A queue from one server must never be submitted to a different server.
             var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(endpoint.AbsoluteUri)))[..16];
             _storageKey = $"ultima-guardian-quality-v1-{key}";
@@ -51,7 +53,7 @@ internal sealed class GuardianTelemetry(HttpClient http, IJSRuntime js, Navigati
         try
         {
             if (_endpoint is null) return;
-            var entry = new GuardianEvent(Guid.NewGuid().ToString("N"), _build, engine, model, outcome, Math.Max(0, elapsedMs));
+            var entry = new GuardianEvent(Guid.NewGuid().ToString("N"), _build, engine, model, outcome, Math.Max(0, elapsedMs), _playerUuid);
             if (!GuardianQuality.Valid(entry)) return;
             _queue.Add(entry);
             if (_queue.Count > QueueLimit) _queue.RemoveAt(0);

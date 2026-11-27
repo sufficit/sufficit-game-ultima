@@ -22,7 +22,7 @@ sealed class Job
 sealed class Character
 {
     public string Id = "", Name = "", Token = "";
-    public string ProfileKey = "";
+    public string ProfileKey = "", PlayerUuid = "";
     public readonly string EditOwner = J.Hex(16);
     public double X, Z = 8, Yaw, Last, Since;
     public double? LastPose;
@@ -228,9 +228,11 @@ sealed partial class GameWorld
     };
 
     // ---------- sessões e leitura ----------
-    public (int, JsonObject) NewSession(string rawName, string? profileKey = null)
+    public (int, JsonObject) NewSession(string rawName, string? profileKey = null, string? playerUuid = null)
     {
         if (profileKey is not null && !CharacterProfiles.IsKey(profileKey)) return (400, J.Err("invalid_profile_key"));
+        if (playerUuid is not null && !PlayerIdentity.IsValid(playerUuid)) return (400, J.Err("invalid_player_uuid"));
+        profileKey ??= J.Hex(32);
         var now = J.Now;
         var name = J.Clean(rawName, 40);
         if (name.Length == 0) name = "Viajante";
@@ -243,14 +245,14 @@ sealed partial class GameWorld
             var ch = new Character
             {
                 Id = "c" + J.Hex(4), Name = name, Token = J.Hex(16), X = 0, Z = 8, Last = now, Since = now,
-                ProfileKey = profileKey ?? J.Hex(32),
+                ProfileKey = profileKey, PlayerUuid = playerUuid?.ToLowerInvariant() ?? PlayerIdentity.FromProfileKey(profileKey),
             };
             _chars[ch.Id] = ch;
             _events[ch.Token] = [];
             Emit(new JsonObject { ["type"] = "join", ["character"] = CharPublic(ch) });
             return (200, new JsonObject
             {
-                ["token"] = ch.Token, ["profileKey"] = ch.ProfileKey, ["character"] = CharPublic(ch), ["world"] = WorldInfo(), ["eventsFrom"] = _seq,
+                ["token"] = ch.Token, ["profileKey"] = ch.ProfileKey, ["playerUuid"] = ch.PlayerUuid, ["character"] = CharPublic(ch), ["world"] = WorldInfo(), ["eventsFrom"] = _seq,
             });
         }
     }
@@ -275,7 +277,7 @@ sealed partial class GameWorld
             {
                 ["now"] = J.R(J.Now, 3),
                 ["world"] = WorldInfo(),
-                ["me"] = CharPublic(ch),
+                ["me"] = CharPublic(ch), ["playerUuid"] = ch.PlayerUuid,
                 ["characters"] = J.Arr(_chars.Values.Select(c => (JsonNode?)CharPublic(c))),
                 ["npc"] = NpcInfo(),
                 ["map"] = MapPublic(),

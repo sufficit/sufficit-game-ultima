@@ -72,13 +72,16 @@ sealed class GuardianAnalytics(string dataDir, ILogger log)
             log.LogWarning("Guardian telemetry storage unavailable: {Type}", ex.GetType().Name);
             return (503, J.Err("guardian_telemetry_unavailable"));
         }
-        var groups = snapshot.Where(entry => build.Length == 0 || string.Equals(entry.Build, build, StringComparison.OrdinalIgnoreCase))
-            .GroupBy(entry => (entry.Build, entry.Engine, entry.Model, entry.Outcome))
+        var selected = snapshot.Where(entry => build.Length == 0 ||
+            string.Equals(entry.Build, build, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var groups = selected.GroupBy(entry => (entry.Build, entry.Engine, entry.Model, entry.Outcome))
             .OrderByDescending(group => group.Count());
         return (200, new JsonObject
         {
             ["schema"] = 1,
             ["retained"] = snapshot.Length,
+            ["players"] = CountPlayers(selected),
+            ["attributedEvents"] = selected.Count(entry => entry.PlayerUuid is not null),
             ["groups"] = new JsonArray(groups.Select(group => (JsonNode?)new JsonObject
             {
                 ["build"] = group.Key.Build,
@@ -86,11 +89,15 @@ sealed class GuardianAnalytics(string dataDir, ILogger log)
                 ["model"] = group.Key.Model,
                 ["outcome"] = group.Key.Outcome,
                 ["count"] = group.Count(),
+                ["players"] = CountPlayers(group),
                 ["meanMs"] = group.Key.Outcome == "dismissed" ? null : JsonValue.Create(
                     Math.Round(group.Average(entry => (double)entry.ElapsedMs))),
             }).ToArray()),
         });
     }
+
+    static int CountPlayers(IEnumerable<GuardianEvent> entries) => entries.Select(entry => entry.PlayerUuid)
+        .Where(uuid => uuid is not null).Distinct(StringComparer.OrdinalIgnoreCase).Count();
 
     GuardianEvent[] ReadEvents()
     {

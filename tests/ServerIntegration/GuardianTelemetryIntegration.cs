@@ -16,13 +16,21 @@ internal static class GuardianTelemetryIntegration
     internal static async Task RunAsync(Harness harness)
     {
         var data = harness.TempDir();
-        var events = Batch(Entry("proposal", 100), Entry("proposal", 300), Entry("applied", 40));
+        var playerUuid = Guid.NewGuid().ToString("D");
+        var a = Entry("proposal", 100);
+        var b = Entry("proposal", 300);
+        a["playerUuid"] = playerUuid;
+        b["playerUuid"] = playerUuid.ToUpperInvariant();
+        var events = Batch(a, b, Entry("applied", 40));
         using (var server = await harness.Boot(data))
         {
             var bad = Entry("reply", 900);
             bad["message"] = "Unexpected fields are rejected";
             await harness.Json(server.Url, Route, Batch(bad), expect: 400);
             bad.Remove("message");
+            bad["playerUuid"] = "invalid_uuid";
+            await harness.Json(server.Url, Route, Batch(bad), expect: 400);
+            bad.Remove("playerUuid");
             bad["model"] = "arbitrary-label";
             await harness.Json(server.Url, Route, Batch(bad), expect: 400);
             await harness.Json(server.Url, Route, Batch(Enumerable.Range(0, 33).Select(_ => Entry("reply", 0)).ToArray()),
@@ -48,8 +56,11 @@ internal static class GuardianTelemetryIntegration
             Check(Num(summary["retained"]) == 3 && groups.Count == 2 && Num(proposals["count"]) == 2 &&
                 Num(proposals["meanMs"]) == 200 && Str(proposals["model"]) == "lfm350",
                 "The summary aggregates by model and deduplicates retried batches", summary);
-            Check(!summary.ToJsonString().Contains(Str(((JsonArray)events["events"]!)[0]!["id"]), StringComparison.Ordinal),
-                "Event identifiers are private to the collector", summary);
+            Check(Num(summary["players"]) == 1 && Num(summary["attributedEvents"]) == 2 &&
+                Num(proposals["players"]) == 1 &&
+                !summary.ToJsonString().Contains(playerUuid, StringComparison.OrdinalIgnoreCase) &&
+                !summary.ToJsonString().Contains(Str(a["id"]), StringComparison.Ordinal),
+                "Legacy events stay unattributed and player and event UUIDs remain private to the collector.", summary);
         }
     }
 }

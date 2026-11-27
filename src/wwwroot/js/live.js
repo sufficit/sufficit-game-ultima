@@ -26,7 +26,7 @@
             try { stored = sessionStorage.getItem('ultima-live-token'); } catch { /* opcional */ }
             let profileKey = null;
             try { profileKey = localStorage.getItem(profileStorageKey); } catch { /* Storage can be disabled. */ }
-            return { api, enabled, token: stored, profileKey };
+            return { api, enabled, token: stored, profileKey, playerUuid: game.player.uuid() };
         },
         setProfileKey(value) {
             try { localStorage.setItem(profileStorageKey, value); } catch { /* Storage can be disabled. */ }

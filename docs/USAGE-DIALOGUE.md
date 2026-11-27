@@ -9,7 +9,7 @@ The Wanderer still offers authored directions.
 
 ## Conversation identity and storage
 
-The embedded Genius runtime owns one conversation per browser player and
+The embedded Genius runtime owns one conversation per browser player's UUID and
 registered NPC ID. Reopening the window, reloading the game, or switching
 rooms or local models all reuse that conversation. The conversation panel and
 Journal read the same Genius transcript from IndexedDB. Different browser

@@ -405,7 +405,7 @@ async Task Diagnostics(Harness h, string root)
     const string route = "/v1/diagnostics/reports";
     var report = new JsonObject
     {
-        ["build"] = "aabbccdd", ["description"] = "GPU indisponível", ["renderer"] = "WebGL2",
+        ["build"] = "aabbccdd", ["playerUuid"] = Guid.NewGuid().ToString("D"), ["description"] = "GPU indisponível", ["renderer"] = "WebGL2",
         ["gpu"] = new JsonObject { ["state"] = "unsupported", ["progress"] = 0 },
         ["cpu"] = new JsonObject { ["state"] = "ready", ["model"] = "Gemma 3 270M", ["progress"] = 1 },
         ["token"] = "segredo-fictício",
@@ -413,11 +413,13 @@ async Task Diagnostics(Harness h, string root)
     };
     await h.Json(url, route, new JsonObject { ["build"] = "invalid" }, expect: 400);
     await h.Json(url, route, new JsonObject { ["build"] = "dev", ["description"] = new string('x', 5000) }, expect: 413);
+    await h.Json(url, route, new JsonObject { ["build"] = "dev", ["playerUuid"] = "invalid" }, expect: 400);
     var receipt = await h.Json(url, route, report, expect: 201);
     var log = Path.Combine(dir, "diagnostic-reports.jsonl");
     var saved = Obj(JsonNode.Parse(File.ReadAllText(log)));
     Check(Str(saved["id"]) == Str(receipt["id"]) && Str(saved["id"]).Length == 32, "relato persistido com o id do recibo", saved);
     Check(Str(saved["description"]) == Str(report["description"]) && Str(Obj(saved["cpu"])["state"]) == "ready", "descrição e estado da IA salvos", saved);
+    Check(Same(saved["playerUuid"], report["playerUuid"]), "The diagnostic retains the player UUID.");
     Check(!saved.ContainsKey("token") && !saved.ContainsKey("messages"), "token e mensagens ficam fora do relato", saved);
     await h.Json(url, route, expect: 404);   // GET: só existe o POST
     for (var i = 0; i < 7; i++) await h.Json(url, route, report, expect: 201);

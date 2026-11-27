@@ -10,11 +10,26 @@ internal static class CharacterProfileIntegration
     {
         var data = harness.TempDir();
         string key;
+        string legacyUuid;
+        var browserUuid = Guid.NewGuid().ToString("D");
         using (var server = await harness.Boot(data))
         {
             var player = await JoinAsync(server, "Alex");
             var other = await JoinAsync(server, "Alex");
             key = Str(player["profileKey"]);
+            legacyUuid = Str(player["playerUuid"]);
+            Check(Guid.TryParseExact(legacyUuid, "D", out var legacyId) && legacyId.Version == 4 &&
+                legacyUuid != Str(other["playerUuid"]), "Independent profiles have distinct UUIDs.");
+            var browser = await JoinAsync(server, "Alex", playerUuid: browserUuid);
+            var resumedBrowser = await JoinAsync(server, "Alex", Str(browser["profileKey"]), browserUuid);
+            Check(Str(browser["playerUuid"]) == browserUuid && Same(browser["playerUuid"], resumedBrowser["playerUuid"]) &&
+                !Same(browser["token"], resumedBrowser["token"]) &&
+                !Same(browser["character"]?["id"], resumedBrowser["character"]?["id"]),
+                "The player UUID survives a fresh session with its own token and transport ID.");
+            var state = await harness.Json(server.Url, "/v1/game/state", token: Str(browser["token"]));
+            Check(Str(state["playerUuid"]) == browserUuid && state["me"]?["playerUuid"] is null,
+                "The UUID is returned only in the caller's session state.");
+            await harness.Json(server.Url, Sessions, new JsonObject { ["name"] = "Alex", ["playerUuid"] = "bad" }, expect: 400);
             var token = Str(player["token"]);
             var otherToken = Str(other["token"]);
             Check(key.Length == 64 && key != Str(other["profileKey"]), "Session names do not share character credentials");
@@ -46,6 +61,7 @@ internal static class CharacterProfileIntegration
         {
             var resumed = await JoinAsync(server, "Alex", key);
             var token = Str(resumed["token"]);
+            Check(Str(resumed["playerUuid"]) == legacyUuid, "Legacy profile UUID survives a process restart.");
             var profile = Obj((await harness.Json(server.Url, Body, token: token))["profile"]);
             Check(Str(resumed["profileKey"]) == key && Num(profile["waistCircumference"]) == 1.1 &&
                 Num(profile["shoulderHeightRatio"]) == .83,
@@ -55,7 +71,8 @@ internal static class CharacterProfileIntegration
             Check(profile["waistCircumference"] is null && Num(profile["thighScale"]) == 1.3, "Null resets only one override");
         }
 
-        Task<JsonObject> JoinAsync(Server server, string name, string? profileKey = null) =>
-            harness.Json(server.Url, Sessions, new JsonObject { ["name"] = name, ["profileKey"] = profileKey });
+        Task<JsonObject> JoinAsync(Server server, string name, string? profileKey = null, string? playerUuid = null) =>
+            harness.Json(server.Url, Sessions, new JsonObject
+            { ["name"] = name, ["profileKey"] = profileKey, ["playerUuid"] = playerUuid });
     }
 }

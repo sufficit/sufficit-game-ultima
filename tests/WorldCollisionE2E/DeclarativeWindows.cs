@@ -69,6 +69,10 @@ internal static partial class DeclarativeWindows
             """);
         await page.GotoAsync(GameUrl(), new() { WaitUntil = WaitUntilState.DOMContentLoaded });
         var build = await CheckBuildAsync(page);
+        var playerUuid = await page.EvaluateAsync<string>("() => game.player.uuid()");
+        Check(Guid.TryParseExact(playerUuid, "D", out var playerId) && playerId.Version == 4 &&
+            await page.EvaluateAsync<bool>("() => game.net.info().playerUuid === game.live.context().playerUuid"),
+            "The browser exposes one UUID for multiplayer and game sessions.");
         var controlsHint = page.GetByText("WASD anda · Setas ou mouse olham", new() { Exact = false });
         await controlsHint.WaitForAsync();
         await controlsHint.WaitForAsync(new() { State = WaitForSelectorState.Hidden });
@@ -105,8 +109,8 @@ internal static partial class DeclarativeWindows
         Check(await page.EvaluateAsync<bool>("""
             async () => {
                 const genius = await import('./js/guardian-genius.mjs');
-                const { api, id } = game.net.info();
-                const legacy = JSON.stringify([api, 'old-room', id, 'guardia']);
+                const player = localStorage.getItem('ultima-id');
+                const legacy = JSON.stringify(['player', player, 'guardia']);
                 const snapshot = { revision: 1, turns: [{user:'Antes da atualização', assistant:'Histórico do Genius preservado.'}] };
                 return await genius.save(legacy, 1, JSON.stringify(snapshot));
             }
@@ -172,6 +176,7 @@ internal static partial class DeclarativeWindows
         using var report = System.Text.Json.JsonDocument.Parse(reported ?? "{}");
         Check(report.RootElement.GetProperty("cpu").GetProperty("state").GetString() == "ready" &&
             report.RootElement.GetProperty("description").GetString() == "GPU indisponível" &&
+            report.RootElement.GetProperty("playerUuid").GetString() == playerUuid &&
             !reported!.Contains("Quero novas árvores", StringComparison.Ordinal), "diagnóstico envia estados sem conversa");
         await CloseAsync(conversation);
         await WaitAsync(() => page.EvaluateAsync<bool>("() => document.activeElement?.id === 'game-canvas'"),
@@ -206,7 +211,9 @@ internal static partial class DeclarativeWindows
         acceptTelemetry = true;
         await page.ReloadAsync(new() { WaitUntil = WaitUntilState.DOMContentLoaded });
         await WaitAsync(() => Task.FromResult(qualityBatch is not null), "The persisted queue retries after reload.");
-        VerifyQualityBatch(qualityBatch!);
+        VerifyQualityBatch(qualityBatch!, playerUuid);
+        Check(await page.EvaluateAsync<string>("() => game.player.uuid()") == playerUuid,
+            "The player UUID survives a peer and room change.");
         await WaitAsync(() => page.EvaluateAsync<bool>("() => game.teleportToGuardian()"), "reencontra a Guardiã após recarregar");
         await page.Locator("#game-canvas").FocusAsync();
         await page.Locator(".ultima-hint").GetByText("para conversar").WaitForAsync();
@@ -223,7 +230,7 @@ internal static partial class DeclarativeWindows
         Log(new { build, mode = Mode, journal = true, dialogue = true, contrast = true, reply });
     }
 
-    private static void VerifyQualityBatch(string batch)
+    private static void VerifyQualityBatch(string batch, string playerUuid)
     {
         using var json = System.Text.Json.JsonDocument.Parse(batch);
         var events = json.RootElement.GetProperty("events").EnumerateArray();
@@ -231,8 +238,8 @@ internal static partial class DeclarativeWindows
         foreach (var entry in events)
         {
             Check(entry.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal)
-                .SetEquals(["id", "build", "engine", "model", "outcome", "elapsedMs"]),
-                "Only structured telemetry fields are sent.", entry);
+                .SetEquals(["id", "build", "engine", "model", "outcome", "elapsedMs", "playerUuid"]) &&
+                entry.GetProperty("playerUuid").GetString() == playerUuid, "Only structured telemetry and the same player UUID are sent.", entry);
             if (entry.GetProperty("model").GetString() == "lfm350")
                 outcomes.Add(entry.GetProperty("outcome").GetString()!);
         }

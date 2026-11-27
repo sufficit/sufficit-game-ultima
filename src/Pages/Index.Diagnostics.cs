@@ -37,9 +37,10 @@ public partial class Index
             var gpu = JS.InvokeAsync<LocalAiStatus>("game.ai.status", token).AsTask();
             var cpu = JS.InvokeAsync<LocalAiStatus>("game.aiCpu.status", token).AsTask();
             await Task.WhenAll(gpu, cpu);
+            var playerUuid = await JS.InvokeAsync<string>("game.player.uuid", token);
             var description = _reportDraft.Trim();
             var payload = new GameDiagnosticReport(BuildId, _renderer, description[..Math.Min(400, description.Length)],
-                DiagnosticEngine(await gpu), DiagnosticEngine(await cpu));
+                DiagnosticEngine(await gpu), DiagnosticEngine(await cpu), playerUuid);
             using var request = new HttpRequestMessage(HttpMethod.Post, api.TrimEnd('/') + "/v1/diagnostics/reports")
             {
                 Content = JsonContent.Create(payload, DiagnosticJson.Default.GameDiagnosticReport),
@@ -73,7 +74,7 @@ public partial class Index
 
 internal sealed record EngineDiagnostic(string State, string? Model, double Progress, double? LastReplyMs);
 internal sealed record GameDiagnosticReport(string Build, string Renderer, string Description,
-    EngineDiagnostic Gpu, EngineDiagnostic Cpu);
+    EngineDiagnostic Gpu, EngineDiagnostic Cpu, string PlayerUuid);
 internal sealed record DiagnosticReceipt(string Id);
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]

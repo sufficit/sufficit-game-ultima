@@ -27,6 +27,7 @@ sealed class DialogAnalytics(ILogger log)
         public string Reply = "";
         public string Source = "";
         public string Model = "";
+        public string? PlayerUuid;
         public double Ms;
     }
 
@@ -62,6 +63,8 @@ sealed class DialogAnalytics(ILogger log)
         if (!double.IsFinite(t) || t is <= 0 or > 4102444800000) t = now;   // ~ano 2100
         J.TryFloat(o["ms"], out var ms);
         if (!double.IsFinite(ms) || ms < 0) ms = 0;
+        var playerUuid = o["playerUuid"] is null ? null : J.Str(o["playerUuid"]);
+        if (playerUuid is not null && !PlayerIdentity.IsValid(playerUuid)) return null;
         return new Turn
         {
             Id = id,
@@ -71,6 +74,7 @@ sealed class DialogAnalytics(ILogger log)
             Reply = reply,
             Source = Sanitize(J.Str(o["source"]), 60),
             Model = Sanitize(J.Str(o["model"]), 60),
+            PlayerUuid = playerUuid?.ToLowerInvariant(),
             Ms = Math.Min(ms, 600_000),
         };
     }
@@ -87,8 +91,6 @@ sealed class DialogAnalytics(ILogger log)
             return (400, new JsonObject { ["error"] = "turns_required" });
         if (turns.Count is < 1 or > MaxTurnsPerBatch)
             return (400, new JsonObject { ["error"] = "turns_limit_200" });
-        var player = Sanitize(J.Str(data["player"]), 40);
-        var build = Sanitize(J.Str(data["build"]), 20);
 
         var accepted = new List<string>();
         lock (_lock)

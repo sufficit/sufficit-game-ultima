@@ -378,7 +378,7 @@
         sendPos,
         attachStream,
         detachStream,
-        info() { return { id: myId, room: room, api: API, peers: Array.from(conns.keys()) }; },
+        info() { return { id: myId, playerUuid: game.player.uuid(), room: room, api: API, peers: Array.from(conns.keys()) }; },
         debug() {
             return {
                 id: myId, room: room, api: API, stopped: stopped,

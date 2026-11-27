@@ -4,7 +4,7 @@ using Microsoft.JSInterop;
 
 namespace Ultima.Browser;
 
-public sealed record DialogTurn(string Id, long T, string Npc, string Player, string Reply, string Source, string Model, int Ms);
+public sealed record DialogTurn(string Id, long T, string Npc, string Player, string Reply, string Source, string Model, int Ms, string? PlayerUuid = null);
 public sealed record DialogLogState(bool Enabled, string Api, int Queued, bool Sending, int IntervalMs, long RetryInMs,
     int SentTotal, long LastSentAt, string LastError);
 
@@ -64,6 +64,7 @@ public sealed class DialogLog(IJSRuntime js)
             : source.StartsWith("CPU do jogador", StringComparison.Ordinal) ? "game.aiCpu.status" : null;
         var model = engine is null ? "" : Clean((await js.InvokeAsync<ModelInfo?>(engine))?.Model, 60);
 
+        var playerUuid = await js.InvokeAsync<string>("game.player.uuid");
         await _store.WaitAsync();
         try
         {
@@ -72,7 +73,7 @@ public sealed class DialogLog(IJSRuntime js)
                 && last.Npc == npc && last.Player == player && last.Reply == reply) return;
 
             var turn = new DialogTurn($"d{Guid.NewGuid():N}", now, npc, player, reply, source,
-                model, (int)Math.Clamp(ms, 0, 600000));
+                model, (int)Math.Clamp(ms, 0, 600000), playerUuid);
             _queue.Add(turn);
             Trim(_queue, _maxQueue);
             await SaveQueueAsync();
@@ -87,8 +88,7 @@ public sealed class DialogLog(IJSRuntime js)
         DialogBatch? batch = null;
         try
         {
-            var name = await js.InvokeAsync<string?>("game.browser.read", "ultima-nome");
-            batch = new DialogBatch(_build, Clean(name ?? "Jogador", 40), _queue.Take(_batchSize).ToArray());
+            batch = new DialogBatch(_build, _queue.Take(_batchSize).ToArray());
             var ack = await js.InvokeAsync<Receipt>("game.dialogLog.send", _url, batch, keepalive);
             if (!ack.Ok || ack.Ids is null) throw new InvalidDataException("bad_payload");
 
@@ -149,7 +149,7 @@ public sealed class DialogLog(IJSRuntime js)
     private static long Now() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
     private sealed record Context(string Api, string? Endpoint, bool Enabled, int? IntervalMs, int? BatchSize, int? MaxQueue);
-    private sealed record DialogBatch(string Build, string Player, DialogTurn[] Turns);
+    private sealed record DialogBatch(string Build, DialogTurn[] Turns);
     private sealed record Receipt(bool Ok, string[]? Ids);
     private sealed record ModelInfo(string? Model);
 }

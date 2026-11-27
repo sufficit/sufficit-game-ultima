@@ -19,13 +19,7 @@ function open() {
 }
 
 export function npcConversationId(npc) {
-    const peer = game.net.info().id;
-    let player = peer;
-    try {
-        const saved = localStorage.getItem('ultima-id');
-        if (/^[0-9a-f]{8}$/.test(saved ?? '')) player = saved;
-    } catch { /* Browser storage may be restricted. */ }
-    return JSON.stringify(['player', player, npc]);
+    return JSON.stringify(['player', game.player.uuid(), npc]);
 }
 
 export function guardianConversationId() { return npcConversationId('guardia'); }
@@ -45,6 +39,10 @@ export async function load(id) {
             const [version, player, npc] = JSON.parse(id);
             if (version !== 'player') return;
             const peers = new Set([player, game.net.info().id]);
+            try {
+                const legacyPlayer = localStorage.getItem('ultima-id');
+                if (/^[0-9a-f]{8}$/.test(legacyPlayer ?? '')) peers.add(legacyPlayer);
+            } catch { /* The current peer remains available. */ }
             const scan = store.openCursor();
             scan.onsuccess = () => {
                 const cursor = scan.result;
@@ -55,8 +53,9 @@ export async function load(id) {
                 // Adopt the most developed matching legacy Genius conversation without rewriting other records.
                 let key;
                 try { key = JSON.parse(cursor.key); } catch { key = null; }
-                if (Array.isArray(key) && key.length === 4 && peers.has(key[2]) && key[3] === npc &&
-                    cursor.value.revision > (snapshot?.revision ?? 0))
+                const matches = Array.isArray(key) && (key.length === 4 && peers.has(key[2]) && key[3] === npc ||
+                    key.length === 3 && key[0] === 'player' && peers.has(key[1]) && key[2] === npc);
+                if (matches && cursor.value.revision > (snapshot?.revision ?? 0))
                     snapshot = cursor.value;
                 cursor.continue();
             };

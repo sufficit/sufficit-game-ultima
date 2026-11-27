@@ -18,12 +18,12 @@ internal static class GuardianQuality
             or ("gpu", "unknown") or ("server", "unknown") or ("shortcut", "none") or ("local", "none")) &&
         entry.Outcome is ("reply" or "proposal" or "generation_failed" or "tool_rejected" or
             "context_failed" or "turn_failed" or "applied" or "no_change" or "apply_failed" or "dismissed") &&
-        entry.ElapsedMs >= 0;
+        entry.ElapsedMs >= 0 && (entry.PlayerUuid is null || PlayerIdentity.IsValid(entry.PlayerUuid));
 }
 
 /// <summary>Elapsed milliseconds measure the turn or apply operation independently.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-internal sealed record GuardianEvent(string Id, string Build, string Engine, string Model, string Outcome, long ElapsedMs);
+internal sealed record GuardianEvent(string Id, string Build, string Engine, string Model, string Outcome, long ElapsedMs, string? PlayerUuid = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed record GuardianBatch(GuardianEvent[] Events);
 internal sealed record GuardianReceipt(bool Ok);

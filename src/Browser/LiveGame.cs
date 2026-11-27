@@ -38,7 +38,7 @@ public sealed partial class LiveGame(HttpClient http, IJSRuntime js)
                 try
                 {
                     var state = await SendAsync<Session>("GET", "/v1/game/state", null, 8);
-                    if (state?.Me?.Id is { } id)
+                    if (state?.Me?.Id is { } id && (state.PlayerUuid is null || state.PlayerUuid == context.PlayerUuid))
                     {
                         _id = id;
                         _since = state.EventsFrom;
@@ -82,7 +82,7 @@ public sealed partial class LiveGame(HttpClient http, IJSRuntime js)
             {
                 var context = await js.InvokeAsync<Context>("game.live.context", _lifetime);
                 var session = await SendAsync<Session>("POST", "/v1/game/sessions",
-                    new { Name = name ?? "Jogador", context.ProfileKey }, 10);
+                    new { Name = name ?? "Jogador", context.ProfileKey, context.PlayerUuid }, 10);
                 if (string.IsNullOrEmpty(session?.Token)) throw new InvalidDataException("Sessão sem token.");
                 _id = session.Character?.Id;
                 _since = session.EventsFrom;
@@ -220,8 +220,8 @@ public sealed partial class LiveGame(HttpClient http, IJSRuntime js)
     }
 
     private static long Now() => Environment.TickCount64;
-    private sealed record Context(string Api, bool Enabled, string? Token, string? ProfileKey);
-    private sealed record Session(string? Token, string? ProfileKey, Character? Me, Character? Character, long EventsFrom, Character[]? Characters, WorldMap? Map);
+    private sealed record Context(string Api, bool Enabled, string? Token, string? ProfileKey, string? PlayerUuid);
+    private sealed record Session(string? Token, string? ProfileKey, string? PlayerUuid, Character? Me, Character? Character, long EventsFrom, Character[]? Characters, WorldMap? Map);
     private sealed record Character(string? Id, string? Name, double X, double Z, double Yaw);
     private sealed record WorldMap(JsonElement? Tiles, JsonElement[]? Jobs, JsonElement[]? Edits, long? Revision, JsonElement[]? Placements, bool VolumeTunnels);
     private sealed record EventBatch(WorldEvent[]? Events);

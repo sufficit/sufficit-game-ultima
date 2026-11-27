@@ -329,7 +329,8 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
             switch (path)
             {
                 case "/v1/game/map/edits": await Json(ctx, game.MapEdit(Token(ctx, data), data)); return;
-                case "/v1/game/sessions": await Json(ctx, game.NewSession(J.Str(data["name"]), data["profileKey"] is null ? null : J.Str(data["profileKey"]))); return;
+                case "/v1/game/sessions": await Json(ctx, game.NewSession(J.Str(data["name"]), data["profileKey"] is null ? null : J.Str(data["profileKey"]),
+                    data["playerUuid"] is null ? null : J.Str(data["playerUuid"]))); return;
                 case "/v1/game/command": await Json(ctx, await game.CommandAsync(Token(ctx, data), data, Ip(ctx))); return;
                 case "/v1/game/leave": await Json(ctx, game.Leave(Token(ctx, data))); return;
             }

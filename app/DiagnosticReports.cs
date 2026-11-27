@@ -17,6 +17,8 @@ sealed class DiagnosticReports(string dataDir, ILogger log)
         if (build != "dev" && (build.Length is < 7 or > 64 || !build.All(char.IsAsciiHexDigit)))
             return (400, J.Err("invalid_build"));
 
+        var playerUuid = data["playerUuid"] is null ? null : J.Str(data["playerUuid"]);
+        if (playerUuid is not null && !PlayerIdentity.IsValid(playerUuid)) return (400, J.Err("invalid_player_uuid"));
         var description = Clean(J.Str(data["description"]), 400);
         var renderer = Clean(J.Str(data["renderer"]), 40);
         var id = Guid.NewGuid().ToString("N");
@@ -24,7 +26,7 @@ sealed class DiagnosticReports(string dataDir, ILogger log)
         var entry = new JsonObject
         {
             ["id"] = id, ["at"] = now.ToString("O"), ["build"] = build,
-            ["description"] = description, ["renderer"] = renderer,
+            ["description"] = description, ["renderer"] = renderer, ["playerUuid"] = playerUuid?.ToLowerInvariant(),
             ["gpu"] = Engine(data["gpu"]), ["cpu"] = Engine(data["cpu"]),
         };
 

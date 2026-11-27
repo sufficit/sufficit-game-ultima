@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Windows/Layouts/*.json" />
+    <Compile Include="../app/PlayerIdentity.cs" Link="Browser/PlayerIdentity.cs" />
     <Compile Include="../app/GuardianQuality.cs" Link="Telemetry/GuardianQuality.cs" />
     <Compile Include="../app/Missions.cs" Link="Environments/Missions.cs" />
     <Compile Include="../engine/Ultima.Terrain/AnimationTimeline.cs" Link="Terrain/AnimationTimeline.cs" />
