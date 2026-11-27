@@ -45,6 +45,10 @@
     const SCENERY_ALT = { 'tree.pine': 'flora.pine', 'rock.boulder': 'rock.boulder2', 'scenery.grass': 'scenery.grass2' };
 
     let engine = null;
+    let pageVisible = host.pageVisible !== false;
+    let softwareRenderer = false, lastDrawAt = -Infinity, lastFrameAt = null;
+    let activeDrawUntil = 0, drawnFps = 0, drawDeltaMs = 0;
+    const SOFTWARE_IDLE_DRAW_MS = 125, SOFTWARE_ACTIVE_DRAW_MS = 1000 / 24;
     let scene = null;
     let sceneShadows = null;
     let authoredGeometry = null;
@@ -2112,7 +2116,7 @@
             }
             const [cloudTarget, rainTarget, fogTarget, windTarget] = weatherTarget;
             if (clouds !== cloudTarget || rainLevel !== rainTarget || fog !== fogTarget || windLevel !== windTarget) {
-                const blend = Math.min(1, engine.getDeltaTime() / 650);
+                const blend = Math.min(1, drawDeltaMs / 650);
                 clouds = approach(clouds, cloudTarget, blend);
                 rainLevel = approach(rainLevel, rainTarget, blend);
                 fog = approach(fog, fogTarget, blend);
@@ -2194,12 +2198,12 @@
         // Qualidade adaptativa (F7e): renderizador de software (SwiftShader/llvmpipe,
         // típico de GPU bloqueada) não aguenta MSAA 4x + bloom + sharpen + sombras 2048
         // — sem isso, 2-7 fps. Detecta e degrada com dignidade.
-        let softwareRenderer = false;
         try {
             const glInfo = engine.getGlInfo && engine.getGlInfo();
             const r = (glInfo && (glInfo.renderer || glInfo.vendor)) || '';
-            softwareRenderer = /swiftshader|llvmpipe|softpipe|software/i.test(r);
+            softwareRenderer = /swiftshader|llvmpipe|softpipe|software|lavapipe/i.test(r);
         } catch (e) { /* info indisponível */ }
+        if (softwareRenderer) scene.shadowsEnabled = false;
         if (authored) {
             hemi.intensity = .72;
             hemi.diffuse.set(1, 1, 1);
@@ -2232,12 +2236,14 @@
                 graphicsEffects.csm = true;
             } catch (error) { console.warn('[gráficos] CSM indisponível', error); }
         }
-        shadows ??= new BABYLON.ShadowGenerator(softwareRenderer ? 1024 : 2048, sun);
-        shadows.usePercentageCloserFiltering = true;       // sombra de bordas suaves (WebGL2)
-        shadows.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM;
-        shadows.bias = 0.0006;
-        shadows.normalBias = 0.02;
-        shadows.darkness = 0.5;
+        if (!softwareRenderer) {
+            shadows ??= new BABYLON.ShadowGenerator(2048, sun);
+            shadows.usePercentageCloserFiltering = true;
+            shadows.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM;
+            shadows.bias = 0.0006;
+            shadows.normalBias = 0.02;
+            shadows.darkness = 0.5;
+        }
 
         const spawn = host.spawn ?? defaultSpawn;
         if (authored) {
@@ -2259,7 +2265,7 @@
             void loadGroundMaterials();
             const updateWeather = weatherUpdate(sun, hemi, sky, horizon, softwareRenderer ? 240 : 520);
             scene.registerBeforeRender(function () {
-                if (waterTex) { waterTex.uOffset += engine.getDeltaTime() * 0.00003; }
+                if (waterTex) { waterTex.uOffset += drawDeltaMs * 0.00003; }
                 updateWeather();
                 windTick();
             });
@@ -2863,15 +2869,14 @@
         const seen = new Set();
         for (const key of Object.keys(tiles || {})) {
             const t = tiles[key] || {};
+            const type = Object.hasOwn(MAP_TILE_STYLES, t.type) ? t.type : null;
+            const [cx, cz] = key.split(',').map(Number);
+            if (!type || !Number.isFinite(cx) || !Number.isFinite(cz)) continue;
             seen.add(key);
-            const type = MAP_TILE_STYLES[t.type] ? t.type : null;
-            if (!type) { continue; }
             const existing = mapTileMeshes.get(key);
-            if (existing && existing.metadata && existing.metadata.type === type) { continue; }
-            if (existing) { existing.dispose(); mapTileMeshes.delete(key); }
-            const parts = String(key).split(',');
-            const cx = Number(parts[0]), cz = Number(parts[1]);
-            if (!Number.isFinite(cx) || !Number.isFinite(cz)) { continue; }
+            if (existing?.metadata.type === type) continue;
+            // Each tile owns its material, including when its type changes.
+            existing?.dispose(false, true);
             const w = cellWorld(cx, cz);
             const style = MAP_TILE_STYLES[type];
             const disc = BABYLON.MeshBuilder.CreateDisc('tile-' + type + '-' + key, { radius: 1.9, tessellation: 24 }, scene);
@@ -2887,7 +2892,7 @@
         }
         for (const key of Array.from(mapTileMeshes.keys())) {
             if (!seen.has(key)) {
-                mapTileMeshes.get(key).dispose();
+                mapTileMeshes.get(key).dispose(false, true);
                 mapTileMeshes.delete(key);
             }
         }
@@ -2941,7 +2946,7 @@
         lastTick = nowMs;
         if (dotnet && player) {
             const fin = (v) => (Number.isFinite(v) ? v : 0);
-            dotnet.invokeMethodAsync('OnMoveTick', fin(player.position.x), fin(player.position.y), fin(player.position.z), fin(engine.getFps()));
+            dotnet.invokeMethodAsync('OnMoveTick', fin(player.position.x), fin(player.position.y), fin(player.position.z), fin(softwareRenderer ? drawnFps : engine.getFps()));
         }
         if (player) {
             if (!authored) updateGardenLights();
@@ -2993,48 +2998,14 @@
             } else {
                 engine = new BABYLON.Engine(host.canvas, true, { adaptToDeviceRatio: dom, stencil: false });
             }
-            if (!dom && host.size) { applySize(host.size.width, host.size.height, host.size.dpr); }
             buildScene(host.canvas);
+            if (!dom && host.size) { applySize(host.size.width, host.size.height, host.size.dpr); }
+            else if (softwareRenderer) applySize(host.canvas.clientWidth, host.canvas.clientHeight, 1);
             // Cena pronta: o shell só resolve o game.init DAQUI para frente — o C# passa
             // a registrar modelos com a cena garantida (antes: "cena ainda não criada").
             if (host.onCoreReady) { host.onCoreReady(); }
             if (!authored) void glbLoadAll();   // assets GLB CC0 do catálogo assinado (fire-and-forget)
-            engine.runRenderLoop(() => {
-                const frameStart = performance.now();
-                drainModelQueue(frameStart);
-                const delta = Math.min(0.05, engine.getDeltaTime() / 1000);
-                if (inputDirty) {
-                    inputFrame = terrain.ReadPlayerInput();
-                    inputDirty = false;
-                }
-                syncColliders();
-                if (cameraView === 2) advanceCamera(delta, inputFrame);
-                const travelled = movePlayer(delta, inputFrame);
-                if (player) {
-                    const { x, z } = player.position;
-                    updateCharacterPose(player, delta, travelled);
-                    if (!authored) ensureChunksAround(x, z);
-                }
-                if (cameraView !== 2) advanceCamera(delta, inputFrame);
-                const p = player.position;
-                updateOtherCharacters(delta);
-                if (authored) terrain.SetPlayerPosition(p.x, p.y, p.z);
-                else {
-                    const g = guardianRoot.position, w = wandererRoot.position;
-                    terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
-                }
-                syncCharacterHitboxes();
-                applyCameraView(p);
-                if (!authored) {
-                    checkNear();
-                    updateNearbyObject();
-                }
-                if (crowdCount) { updateCrowd(delta); }
-                updateCollectionPreview(frameStart);
-                scene.render();
-                framePerf(performance.now() - frameStart);
-                tick(performance.now());
-            });
+            if (pageVisible) engine.runRenderLoop(renderFrame);
 
             scene.executeWhenReady(() => {
                 let rendererName = 'WebGL';
@@ -3050,6 +3021,56 @@
             console.error('[motor] falha no boot:', e);
             if (host.onCoreError) { host.onCoreError(String(e && e.message || e)); }
         }
+    }
+
+    function renderFrame() {
+        const frameStart = performance.now();
+        drainModelQueue(frameStart);
+        const delta = lastFrameAt === null ? 0 : Math.min(.05, (frameStart - lastFrameAt) / 1000);
+        lastFrameAt = frameStart;
+        if (inputDirty) {
+            inputFrame = terrain.ReadPlayerInput();
+            inputDirty = false;
+        }
+        if (softwareRenderer) {
+            const [x, z, moveX, moveZ, lookX, lookY] = inputFrame;
+            if ((!frozen && (x || z || moveX || moveZ || lookX || lookY)) ||
+                camPending.dx || camPending.dy || camPending.wheel) activeDrawUntil = frameStart + 180;
+        }
+        syncColliders();
+        if (cameraView === 2) advanceCamera(delta, inputFrame);
+        const travelled = movePlayer(delta, inputFrame);
+        if (player) {
+            const { x, z } = player.position;
+            updateCharacterPose(player, delta, travelled);
+            if (!authored) ensureChunksAround(x, z);
+        }
+        if (cameraView !== 2) advanceCamera(delta, inputFrame);
+        const p = player.position;
+        updateOtherCharacters(delta);
+        if (authored) terrain.SetPlayerPosition(p.x, p.y, p.z);
+        else {
+            const g = guardianRoot.position, w = wandererRoot.position;
+            terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
+        }
+        syncCharacterHitboxes();
+        applyCameraView(p);
+        if (!authored) {
+            checkNear();
+            updateNearbyObject();
+        }
+        if (crowdCount) { updateCrowd(delta); }
+        updateCollectionPreview(frameStart);
+        // Pace GPU submissions without throttling the C# simulation or input sampling.
+        const drawInterval = frameStart < activeDrawUntil ? SOFTWARE_ACTIVE_DRAW_MS : SOFTWARE_IDLE_DRAW_MS;
+        if (!softwareRenderer || frameStart - lastDrawAt >= drawInterval - 1) {
+            drawDeltaMs = Number.isFinite(lastDrawAt) ? frameStart - lastDrawAt : 0;
+            if (drawDeltaMs > 0) drawnFps = 1000 / drawDeltaMs;
+            lastDrawAt = frameStart;
+            scene.render();
+        }
+        framePerf(performance.now() - frameStart);
+        tick(performance.now());
     }
 
     // A ponte do navegador entrega a mesma entrada ao motor nos dois modos.
@@ -3087,7 +3108,8 @@
         },
         resize(w, h, dpr) {
             if (!engine) { return; }
-            if (dom) { engine.resize(); } else { applySize(w, h, dpr || (host.size && host.size.dpr) || 1); }
+            if (dom && !softwareRenderer) engine.resize();
+            else applySize(w, h, dpr || host.size?.dpr || 1);
         },
         inputMode(kind) { setActiveInput(kind); }
     };
@@ -3098,7 +3120,8 @@
     // como no adaptToDeviceRatio da main thread.
     function applySize(width, height, dpr) {
         if (!engine) { return; }
-        const ratio = Math.max(0.25, dpr || 1);
+        const ratio = softwareRenderer ? Math.min(1, dpr || 1, 1280 / width, 720 / height)
+            : Math.max(.25, dpr || 1);
         engine.setHardwareScalingLevel(1 / ratio);
         engine.setSize(Math.max(1, Math.floor((width || 1280) * ratio)), Math.max(1, Math.floor((height || 720) * ratio)));
     }
@@ -3123,6 +3146,16 @@
     }
 
     const api = {
+        setPageVisible(visible) {
+            if (pageVisible === visible) return;
+            pageVisible = visible;
+            if (!scene) return;
+            lastDrawAt = -Infinity;
+            lastFrameAt = null;
+            activeDrawUntil = 0;
+            if (visible) engine.runRenderLoop(renderFrame);
+            else { input.clear(); engine.stopRenderLoop(renderFrame); }
+        },
         setFrozen(value, speaker) {
             frozen = !!value;
             dialoguePartner = !frozen ? null : speaker === 'Andarilho' ? wandererRoot : guardianRoot;
@@ -3316,7 +3349,7 @@
             scatter(id, opts) { return scatterSeeded(id, opts); }
         },
         crowdStatus() { return crowd?.status() || { requested: crowdCount, error: crowdError }; },
-        graphicsStatus() { return { style: graphicsStyle, env: envOk, ...graphicsEffects }; },
+        graphicsStatus() { return { style: graphicsStyle, env: envOk, pageVisible, softwareRenderer, ...graphicsEffects }; },
         perf: {
             // Custo de CPU do loop de render (sem incluir a espera de GPU): amostras dos
             // últimos 600 frames, medianas e máximos para validar o orçamento dos modelos.

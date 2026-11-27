@@ -27,7 +27,6 @@
     const calls = new Map();    // request id -> resolve (diagnósticos no modo worker)
     let callSeq = 0;
 
-    // Usa a batida de pose existente. A chave separa os mapas servidos por APIs distintas.
     let poseKey, lastSavedPose, latestPose, nextPoseWrite = 0;
 
     function validPose(pose) {
@@ -56,7 +55,8 @@
 
     window.addEventListener('pagehide', savePose);
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') savePose();
+        if (document.hidden) savePose();
+        post('setPageVisible', [!document.hidden]);
     });
 
     const SCENERY_PREF_KEY = 'ultima.cenario';
@@ -184,7 +184,7 @@
                 mode = 'main';
                 core = window.UltimaCore.create({
                     canvas: canvas,
-                    mode: 'main',
+                    mode: 'main', pageVisible: !document.hidden,
                     build: buildStamp(),
                     pageBase: location.href,
                     scenery: sceneryPref(),
@@ -236,7 +236,7 @@
                 reject(new Error('worker: ' + (e && e.message || 'erro')));
             };
             worker.postMessage(
-                { type: 'init', canvas: off, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref(), spawn, terrainSettings, authoredScene, bodyProfile, baseUrl: document.baseURI },
+                { type: 'init', canvas: off, pageVisible: !document.hidden, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref(), spawn, terrainSettings, authoredScene, bodyProfile, baseUrl: document.baseURI },
                 [off]);
         });
     }

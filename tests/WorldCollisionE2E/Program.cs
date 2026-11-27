@@ -14,7 +14,7 @@ try
         .Split(' ', StringSplitOptions.RemoveEmptyEntries);
     browserArgs = scenario switch
     {
-        "remote-performance" or "camera-performance" when RemotePerformance.UsesSwiftShader => RemotePerformance.SwiftShaderArgs,
+        "remote-performance" or "camera-performance" or "browser-resources" when RemotePerformance.UsesSwiftShader => RemotePerformance.SwiftShaderArgs,
         "hud-status" when browserArgs.Length == 0 => HudStatus.DefaultBrowserArgs,
         _ => browserArgs
     };
@@ -81,6 +81,9 @@ try
             break;
         case "local-preferences":
             await LocalPreferences.RunAsync(browser);
+            break;
+        case "browser-resources":
+            await BrowserResources.RunAsync(browser);
             break;
         case "browser-services":
             await BrowserServices.RunAsync(browser);

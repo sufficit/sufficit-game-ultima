@@ -1,3 +1,4 @@
+using Microsoft.JSInterop;
 using Ultima.Browser;
 
 namespace Ultima.Pages;
@@ -20,11 +21,25 @@ public partial class Index
         await RefreshLocalAiAsync(token);
         if (_activeCpuModel == "qwen05tools")
         {
+            if (_aiCpuState == "off")
+                await ResumeLocalAiAsync("aiCpu", token);
             if (_aiCpuState != "ready")
-                return GuardianTurnResult.Retry("Aguarde a IA de ferramentas ficar pronta na CPU.", GuardianGenius.SourcePrefix);
+                return GuardianTurnResult.Retry("Ative a IA de ferramentas na CPU ou aguarde o modelo ficar pronto.", GuardianGenius.SourcePrefix);
             return await WorkshopService.ProposeGardenToolAsync(text, token);
         }
 
+        if (_aiState != "ready" && _aiCpuState != "ready")
+        {
+            if (_aiState == "off") await ResumeLocalAiAsync("ai", token);
+            if (_aiState != "ready" && _aiCpuState == "off") await ResumeLocalAiAsync("aiCpu", token);
+        }
+
         return await WorkshopService.TalkToGuardianAsync(text, _aiState == "ready", _aiCpuState == "ready", token);
+    }
+
+    private async Task ResumeLocalAiAsync(string engine, CancellationToken token)
+    {
+        await JS.InvokeVoidAsync($"game.{engine}.resume", token);
+        await RefreshLocalAiAsync(token);
     }
 }

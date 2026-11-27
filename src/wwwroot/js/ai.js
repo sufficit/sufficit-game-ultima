@@ -237,12 +237,14 @@
         dotnet = dotnetRef;
         const ok = await probe(); // probe já emite 'unsupported' com o motivo quando falha
         if (!ok) return;
-        if (localStorage.getItem(PREF) === '1') { load(); } // já ativou antes: modelo vem do cache
-        else {
-            const m = MODELS[sizeKey()];
-            emit('off', 0, 'Modelo sugerido: ' + m.label + ' (~' + humanMB(m.mb) + ', baixado uma única vez).');
-        }
+        const m = MODELS[sizeKey()];
+        emit('off', 0, 'Modelo sugerido: ' + m.label + ' (~' + humanMB(m.mb) + ', baixado uma única vez).');
     }
+    // Restore an enabled preference only when the player requests a dialogue turn.
+    function resume() {
+        return state === 'off' && localStorage.getItem(PREF) === '1' ? load() : false;
+    }
+
     function disable() {
         stopWatchdog();
         localStorage.removeItem(PREF);
@@ -253,7 +255,7 @@
 
     window.game = window.game || {};
     window.game.ai = {
-        init: init, load: load, ask: ask, garden, retry: retry, disable: disable,
+        init: init, load: load, resume, ask: ask, garden, retry: retry, disable: disable,
         debug: function () { return JSON.parse(JSON.stringify(debug)); },
         status: function () {
             return {

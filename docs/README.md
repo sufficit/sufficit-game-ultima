@@ -23,6 +23,7 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
 - [Humanoid rig and skinned reference model](PLAN-HUMANOID-SKINNED-RIG.md).
+- [Browser resource budget](PLAN-BROWSER-RESOURCE-BUDGET.md).
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
 

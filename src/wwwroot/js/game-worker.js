@@ -45,6 +45,7 @@ self.addEventListener('message', function (e) {
             core = self.UltimaCore.create({
                 canvas: msg.canvas,
                 mode: 'worker',
+                pageVisible: msg.pageVisible,
                 build: msg.build,
                 pageBase: msg.pageBase,
                 scenery: msg.scenery,

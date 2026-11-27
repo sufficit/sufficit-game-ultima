@@ -215,9 +215,13 @@
         dotnet = dotnetRef;
         modelKey = modelKeyDefault();
         const m = MODELS[modelKey];
-        if (localStorage.getItem(PREF) === '1') { load(); }  // já usou antes: cache do navegador
-        else emit('off', 0, 'Modelo sugerido: ' + m.label + ' (~' + humanMB(m.mb) + ' — ' + m.why + ').');
+        emit('off', 0, 'Modelo sugerido: ' + m.label + ' (~' + humanMB(m.mb) + ' — ' + m.why + ').');
     }
+    // Restore an enabled preference only when the player requests a dialogue turn.
+    function resume() {
+        return state === 'off' && localStorage.getItem(PREF) === '1' ? load() : false;
+    }
+
     function disable() {
         stopWatchdog();
         localStorage.removeItem(PREF);
@@ -228,7 +232,7 @@
 
     window.game = window.game || {};
     window.game.aiCpu = {
-        init: init, load: load, ask: ask, garden, retry: retry, disable: disable, setModel: setModel,
+        init: init, load: load, resume, ask: ask, garden, retry: retry, disable: disable, setModel: setModel,
         debug: function () { return JSON.parse(JSON.stringify(debug)); },
         status: function () {
             return {
