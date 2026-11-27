@@ -3,10 +3,11 @@
 
     function drivers(rig) {
         return [
-            ['spine_01', rig.upper], ['head', rig.head],
+            ['pelvis', rig.root], ['spine_01', rig.upper], ['spine_03', rig.chest], ['head', rig.head],
             ...rig.legs.flatMap((leg, index) => {
                 const side = index === 0 ? 'l' : 'r';
                 return [
+                    ['clavicle_' + side, rig.clavicles[index]],
                     ['upperarm_' + side, rig.shoulders[index], index === 0 ? 0.5 : -0.5],
                     ['lowerarm_' + side, rig.elbows[index], index === 0 ? 0.5 : -0.5],
                     ['hand_' + side, rig.wrists[index], index === 0 ? 0.5 : -0.5],
@@ -125,11 +126,17 @@
             }
             return function update() {
                 visual.position.y = -rig.body.floorOffset;
+                visual.position.x = rig.skinMotion.sway;
                 const actorWorld = rig.root.computeWorldMatrix(true);
                 actorWorld.invertToRef(actorInverse);
-                for (const { node, target, inverseRest, rest } of targets) {
+                for (const { name, node, target, inverseRest, rest } of targets) {
                     // Work in actor space to carry source bind orientations, including the glTF handedness conversion.
-                    node.computeWorldMatrix(true).multiplyToRef(actorInverse, actorLocal);
+                    if (name === 'pelvis') {
+                        // Apply the visual pelvis before the leg solve. The gameplay rig's foot targets stay in place.
+                        BABYLON.Matrix.RotationYawPitchRollToRef(rig.skinMotion.yaw, 0, rig.skinMotion.roll, actorLocal);
+                    } else {
+                        node.computeWorldMatrix(true).multiplyToRef(actorInverse, actorLocal);
+                    }
                     inverseRest.multiplyToRef(actorLocal, transform);
                     rest.multiplyToRef(transform, desired);
                     target.parent.computeWorldMatrix(true).invertToRef(parentInverse);

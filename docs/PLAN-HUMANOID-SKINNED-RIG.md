@@ -20,6 +20,9 @@ and contact solving in C#, and validate the result on the existing game paths.
    the game before considering it for the default avatar.
    Fit its legs to the final procedural ankle targets with a two-bone solve
    that preserves segment lengths, knee bend direction, and sole rotation.
+   Add a coordinated pelvis, chest and arm gait sampled from the existing
+   stride phase. Verify whole-body motion and retain the ankle alignment
+   checks before publishing the preview.
 4. [pending] Validate walking, stopping, a 180° turn, stepping over a low log,
    and walking on a slope with two different body profiles. Measure planted
    foot drift and frame cost against the current rig under the same conditions.
@@ -77,6 +80,21 @@ checked walking, stopping, a 180-degree reversal and preservation of both
 segment lengths. Horizontal error stayed under 1 mm in the sampled frames.
 The same scenario passed on Pages build `653ab919cae19390ffaca1c07d079024eb2c8584`
 in both modes. [Pages workflow](https://github.com/sufficit/sufficit-game-ultima/actions/runs/46076513787)
+
+The whole-body preview adds coordinated hip and thorax rotations, lateral
+weight transfer, clavicle movement and phased elbow and wrist motion. The
+C# curves use the existing foot-cycle phase, scale with gait weight and
+allow more elbow flexion as pace increases. These animation amplitudes are
+artistic tuning values. The biomechanics references describe coordination
+and timing across walking speeds.
+[Collins, Adamczyk and Kuo](https://pmc.ncbi.nlm.nih.gov/articles/PMC2817299/)
+and [Bruijn et al.](https://pubmed.ncbi.nlm.nih.gov/17669652/)
+
+RulesSmoke verified phase relationships and fade to rest. Chromium sampled
+both hands alternating fore and aft in actor space, with 36–40 cm of travel
+per hand during walking. The same test verified rotation in the pelvis,
+thorax, both clavicles and both elbows and retained sub-millimetre ankle
+alignment across both profiles and renderers.
 
 Next action. Exercise the same retargeting on a controlled slope and low
 obstacle. Measure stance drift against the world and frame cost in both

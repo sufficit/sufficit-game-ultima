@@ -1838,7 +1838,11 @@
         modelStatus.skinPreview = 'loading';
         Promise.all([ensureGlbLoaders(), fetchVerifiedGlb(entry)])
             .then(([, bytes]) => skin.load(BABYLON, scene, bytes, container => bind(container, sceneShadows, PLAYER_LAYER)))
-            .then(update => { rig.skinPreview = update; modelStatus.skinPreview = 'ready'; })
+            .then(update => {
+                rig.skinMotion = { yaw: 0, roll: 0, sway: 0 };
+                rig.skinPreview = update;
+                modelStatus.skinPreview = 'ready';
+            })
             .catch(error => { modelStatus.skinPreview = 'error'; modelStatus.errors.push(entry.id + ': ' + error.message); });
     }
 

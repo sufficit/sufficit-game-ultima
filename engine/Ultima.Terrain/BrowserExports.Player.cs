@@ -191,7 +191,8 @@ internal static partial class BrowserExports
     internal static bool CanStepOn(double minY, double maxY, double ground) => _movement.CanStep(minY, maxY, ground);
 
     // 12 pose channels, 5 timeline channels, 7 leg channels and 13 support-probe channels, 2 hip rolls, 2 foot yaws, 2 lateral offsets, 2 knee swivels and 1 torso yaw.
-    private static readonly double[] CharacterFrame = new double[46];
+    private const int GaitChannelsStart = 46;
+    private static readonly double[] CharacterFrame = new double[GaitChannelsStart + PlayerGaitPose.ChannelCount];
     // 24 pose e pernas, seguidas de X, Z, orientação, fase da patrulha e distância.
     private static readonly double[] CompanionFrame = new double[29];
     private static readonly double[] LegResult = new double[9];
@@ -333,6 +334,9 @@ internal static partial class BrowserExports
         result[43] = PlayerPose.KneeSwivel(contact[2]);
         result[44] = PlayerPose.KneeSwivel(contact[3]);
         result[45] = pivot is > 0 and < 1 ? -Math.Sign(_movement.PivotTurn) * 0.23 * Math.Sin(Math.PI * pivot) : 0;
+        var gaitWeight = result[1] * (1 - Math.Sin(Math.PI * Math.Clamp(progress, 0, 1)));
+        PlayerGaitPose.Write(result[GaitChannelsStart..], result[0], gaitWeight,
+            delta > 0 ? distance / delta : 0, _body.Height);
     }
 
     private static double Floor(double x, double z, double y, bool useVolume)

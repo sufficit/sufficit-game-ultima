@@ -40,6 +40,8 @@
             const headRadius = guardian ? 1.7 * 0.075 : (body?.height ?? PLAYER_HEIGHT) * 0.07;
             const headBase = guardian ? 1.7 * 0.82 : (body?.height ?? PLAYER_HEIGHT) - 2 * headRadius;
             const upper = joints?.get('upper-body') ?? createCharacterJoint(root, 'upper-body', root, 0, guardian ? 1.7 * 0.52 : HIP_HEIGHT);
+            const chest = joints?.get('chest');
+            const clavicles = [joints?.get('clavicle-left'), joints?.get('clavicle-right')];
             const head = joints?.get('head-pivot') ?? createCharacterJoint(root, 'head-pivot', upper, 0, headBase);
             const eyes = joints?.get('eye-pivot') ?? createCharacterJoint(root, 'eye-pivot', head, 0, headBase + 1.1 * headRadius);
             eyes.setEnabled(false);
@@ -93,7 +95,7 @@
             };
             const legs = guardian ? [] : buildCharacterLegs(root, joints, body);
             const rig = {
-                root, upper, head, eyes, shoulders, elbows, wrists, face, brows, mouth, attachments, castsShadow, shadowMeshes: [],
+                root, upper, chest, clavicles, head, eyes, shoulders, elbows, wrists, face, brows, mouth, attachments, castsShadow, shadowMeshes: [],
                 limbMeshes: [[], [], [], [], []],
                 body, legs, fallbackLegMaterials: legs.length ? [legs[0].thigh.material, legs[0].shoe.material] : [],
                 clock: 0, gaitPhase: 0, gaitWeight: 0, speaking: 0, action: null
@@ -240,6 +242,24 @@
                 rig.elbows[0].rotation.x = rig.elbows[1].rotation.x = 0;
                 rig.shoulders[0].rotation.x = leftArm;
                 rig.shoulders[1].rotation.x = rightArm;
+            }
+            if (rig.skinMotion) applySkinGait(rig, frame, offset + 46);
+        }
+
+        function applySkinGait(rig, frame, index) {
+            rig.skinMotion.yaw = frame[index];
+            rig.skinMotion.roll = frame[index + 1];
+            rig.skinMotion.sway = frame[index + 2];
+            // Distribute the twist along the spine before applying head counterrotation.
+            rig.upper.rotation.y += frame[index] * .30;
+            rig.chest.rotation.y = frame[index + 3] - frame[index] * .30;
+            rig.chest.rotation.z = frame[index + 4];
+            rig.head.rotation.y = frame[index + 5];
+            for (let side = 0; side < 2; side++) {
+                rig.clavicles[side].rotation.y = frame[index + 6];
+                rig.clavicles[side].rotation.z = frame[index + 7];
+                rig.elbows[side].rotation.x = frame[index + 8 + side];
+                rig.wrists[side].rotation.x = frame[index + 10 + side];
             }
         }
 

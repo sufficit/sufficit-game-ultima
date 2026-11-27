@@ -58,6 +58,23 @@ internal static class PlayerSupportChecks
         }
         check("Aimed turning in place keeps a compact stance and a grounded foot", turnSupport);
         CheckSkinRetargeting(check);
+        CheckGaitPose(check);
+    }
+
+    private static void CheckGaitPose(Action<string, bool> check)
+    {
+        Span<double> rightLeads = stackalloc double[PlayerGaitPose.ChannelCount];
+        Span<double> leftLeads = stackalloc double[PlayerGaitPose.ChannelCount];
+        PlayerGaitPose.Write(rightLeads, Math.PI / 2, 1, PlayerMovement.WalkSpeed, 1.75);
+        PlayerGaitPose.Write(leftLeads, 3 * Math.PI / 2, 1, PlayerMovement.WalkSpeed, 1.75);
+        check("The hips and chest counterrotate and the arms alternate their flexion",
+            rightLeads[0] < 0 && rightLeads[3] > 0 && rightLeads[8] < rightLeads[9] &&
+            leftLeads[0] > 0 && leftLeads[3] < 0 && leftLeads[8] > leftLeads[9]);
+        PlayerGaitPose.Write(leftLeads, 0, 1, PlayerMovement.RunSpeed, 1.75);
+        check("The pelvis moves toward the support side and the running elbows bend further",
+            leftLeads[2] < 0 && leftLeads[8] < rightLeads[8]);
+        PlayerGaitPose.Write(leftLeads, Math.PI / 2, 0, PlayerMovement.RunSpeed, 1.75);
+        check("The gait blends back into the relaxed body pose", leftLeads.IndexOfAnyExcept(0d) < 0);
     }
 
     private static void CheckSkinRetargeting(Action<string, bool> check)

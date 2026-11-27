@@ -25,7 +25,12 @@ internal static class SkinFootAlignment
                 };
             });
             const scale = scene.getTransformNodeByName('innerscene-player-preview').scaling.y;
-            return { x: player.position.x, z: player.position.z, yaw: player.rotation.y, feet, scale };
+            const inverse = player.computeWorldMatrix(true).clone().invert();
+            const hands = ['hand_l', 'hand_r'].map(name =>
+                BABYLON.Vector3.TransformCoordinates(position(joint(name)), inverse).z);
+            const joints = ['pelvis', 'spine_03', 'clavicle_l', 'clavicle_r', 'lowerarm_l', 'lowerarm_r']
+                .map(name => joint(name).rotationQuaternion.asArray());
+            return { x: player.position.x, z: player.position.z, yaw: player.rotation.y, feet, scale, hands, joints };
         }
         """;
 
@@ -81,7 +86,13 @@ internal static class SkinFootAlignment
         var heightError = poses.Max(pose => pose.Feet.Select((foot, i) => Math.Abs(foot.HeightDelta - rest.Feet[i].HeightDelta)).Max());
         var lengthError = poses.Max(pose => pose.Feet.Select((foot, i) =>
             Math.Max(Math.Abs(foot.Femur - rest.Feet[i].Femur), Math.Abs(foot.Tibia - rest.Feet[i].Tibia))).Max());
-        var evidence = new { build, mode = Mode, custom, rest.Scale, peak, heightError, lengthError };
+        var handTravel = Enumerable.Range(0, 2).Select(i => walk.Max(p => p.Hands[i]) - walk.Min(p => p.Hands[i])).ToArray();
+        var jointMotion = rest.Joints.Select((joint, i) => walk.Max(pose => AngleBetween(joint, pose.Joints[i]))).ToArray();
+        var handSeparation = walk.Select(pose => pose.Hands[0] - pose.Hands[1]).ToArray();
+        var evidence = new { build, mode = Mode, custom, rest.Scale, peak, heightError, lengthError, handTravel, jointMotion };
+        Check(handTravel.All(distance => distance > .10) && handSeparation.Min() < -.06 && handSeparation.Max() > .06,
+            "Both hands swing in opposite phases of the stride.", evidence);
+        Check(jointMotion.All(angle => angle > .025), "Pelvis, thorax, clavicles and elbows participate in the gait.", evidence);
         Check(!custom || Math.Abs(rest.Scale * 1.6803 - 1.9) < .001, "The custom profile scaled the skin.", evidence);
         Check(peak < .005 && heightError < .005 && lengthError < .001,
             "The skin tracks both ankle targets and preserves leg lengths.", evidence);
@@ -110,6 +121,9 @@ internal static class SkinFootAlignment
 
     private static double Distance(Pose a, Pose b) => double.Hypot(a.X - b.X, a.Z - b.Z);
 
-    private sealed record Pose(double X, double Z, double Yaw, Foot[] Feet, double Scale);
+    private static double AngleBetween(double[] a, double[] b)
+        => 2 * Math.Acos(Math.Clamp(Math.Abs(a.Zip(b, (x, y) => x * y).Sum()), 0, 1));
+
+    private sealed record Pose(double X, double Z, double Yaw, Foot[] Feet, double Scale, double[] Hands, double[][] Joints);
     private sealed record Foot(double Error, double HeightDelta, double Femur, double Tibia);
 }
