@@ -42,6 +42,7 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Preserve Guardian requests through failed turns](activities/202611262354-guardian-reported-turns.md)
 - [Characters API on Sufficit Run](activities/202611262336-characters-api-sufficit-run.md)
 
 - [Shared room presence across environments](activities/202611261701-shared-environment-presence.md)
