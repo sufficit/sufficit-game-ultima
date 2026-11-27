@@ -30,7 +30,8 @@ internal static class SkinFootAlignment
                 BABYLON.Vector3.TransformCoordinates(position(joint(name)), inverse).z);
             const joints = ['pelvis', 'spine_03', 'clavicle_l', 'clavicle_r', 'lowerarm_l', 'lowerarm_r']
                 .map(name => joint(name).rotationQuaternion.asArray());
-            return { x: player.position.x, z: player.position.z, yaw: player.rotation.y, feet, scale, hands, joints };
+            const headY = position(joint('head')).y;
+            return { x: player.position.x, z: player.position.z, yaw: player.rotation.y, feet, scale, hands, joints, headY };
         }
         """;
 
@@ -89,7 +90,10 @@ internal static class SkinFootAlignment
         var handTravel = Enumerable.Range(0, 2).Select(i => walk.Max(p => p.Hands[i]) - walk.Min(p => p.Hands[i])).ToArray();
         var jointMotion = rest.Joints.Select((joint, i) => walk.Max(pose => AngleBetween(joint, pose.Joints[i]))).ToArray();
         var handSeparation = walk.Select(pose => pose.Hands[0] - pose.Hands[1]).ToArray();
-        var evidence = new { build, mode = Mode, custom, rest.Scale, peak, heightError, lengthError, handTravel, jointMotion };
+        var levelTrail = walk.Where(pose => pose.Z is > .55 and < 1.80).ToArray();
+        var headRange = levelTrail.Length > 0 ? levelTrail.Max(pose => pose.HeadY) - levelTrail.Min(pose => pose.HeadY) : 0;
+        var evidence = new { build, mode = Mode, custom, rest.Scale, peak, heightError, lengthError, handTravel, jointMotion, headRange };
+        Check(levelTrail.Length >= 3 && headRange < .025, "The head stays steady across the level trail.", evidence);
         Check(handTravel.All(distance => distance > .10) && handSeparation.Min() < -.06 && handSeparation.Max() > .06,
             "Both hands swing in opposite phases of the stride.", evidence);
         Check(jointMotion.All(angle => angle > .025), "Pelvis, thorax, clavicles and elbows participate in the gait.", evidence);
@@ -124,6 +128,6 @@ internal static class SkinFootAlignment
     private static double AngleBetween(double[] a, double[] b)
         => 2 * Math.Acos(Math.Clamp(Math.Abs(a.Zip(b, (x, y) => x * y).Sum()), 0, 1));
 
-    private sealed record Pose(double X, double Z, double Yaw, Foot[] Feet, double Scale, double[] Hands, double[][] Joints);
+    private sealed record Pose(double X, double Z, double Yaw, Foot[] Feet, double Scale, double[] Hands, double[][] Joints, double HeadY);
     private sealed record Foot(double Error, double HeightDelta, double Femur, double Tibia);
 }

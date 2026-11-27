@@ -50,7 +50,7 @@
             orient(node, desired);
         }
 
-        return function alignFeet() {
+        return function alignFeet(support, delta) {
             const yaw = rig.root.rotation.y;
             for (let index = 0; index < legs.length; index++) {
                 const { hip, knee, ankle, driver, rise, sole } = legs[index];
@@ -63,7 +63,7 @@
                 point.toArray(input, offset + 9);
                 point.set(Math.sin(yaw), 0, Math.cos(yaw)).toArray(input, offset + 12);
             }
-            const output = solve(input);
+            const output = solve(input, rig.root.position.y, support, rig.gaitWeight, delta);
             visual.position.y += output[12];
             for (let index = 0; index < legs.length; index++) {
                 const { hip, knee, ankle, sole } = legs[index];
@@ -124,7 +124,7 @@
                 mesh.visibility = 0;
                 shadows?.removeShadowCaster(mesh);
             }
-            return function update() {
+            return function update(support, delta) {
                 visual.position.y = -rig.body.floorOffset;
                 visual.position.x = rig.skinMotion.sway;
                 const actorWorld = rig.root.computeWorldMatrix(true);
@@ -145,7 +145,7 @@
                     // Preserve bind translations and scale. C# drives the rotation of each mapped joint.
                     desired.decompose(undefined, target.rotationQuaternion, undefined);
                 }
-                alignFeet();
+                alignFeet(support, delta);
             };
         };
     }

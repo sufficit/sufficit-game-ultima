@@ -83,11 +83,16 @@ The render bridge carries the C# pose through the existing Babylon transform
 nodes to 18 mapped joints using actor-space rotation deltas. It lowers the
 arms from the imported A-pose. After the gameplay contact pass, C# solves
 both leg chains against the procedural ankle positions with a rest-height
-offset for the imported soles. It preserves both bone lengths and can lower
-the visual pelvis by up to 0.15 m to reach the targets. The renderer keeps
+offset for the imported soles. C# damps the visual pelvis relative to the
+support surface and limits its height to the available leg reach. The renderer keeps
 the posed foot orientation when applying the solve. Targets outside the
 available reach are clamped.
 
 The stride phase also drives visual pelvic rotation and lateral transfer,
 thoracic counterrotation, clavicle motion, elbow flexion and wrist follow-through.
 These curves are tuned for the preview and fade with the gait weight.
+
+The preview uses 1.65 m/s walking and 4.15 m/s sprinting limits. The walking
+stride is slightly shorter and grows smoothly with speed. The swing foot
+uses a shallower arc with a soft takeoff and landing. The two-bone solve
+preserves the foot targets as the visual body settles.

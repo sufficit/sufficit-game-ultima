@@ -5,13 +5,17 @@ namespace Ultima.Terrain;
 internal static partial class BrowserExports
 {
     private static readonly double[] SkinLegResults = new double[2 * PlayerSkinLegs.LegOutputSize + 1];
+    private static readonly PlayerSkinHeight SkinHeight = new();
 
     [JSExport]
-    internal static double[] SolvePlayerSkinLegs(double[] legs)
+    internal static void UseNaturalGait() => _movement.NaturalGait = true;
+
+    [JSExport]
+    internal static double[] SolvePlayerSkinLegs(double[] legs, double root, double support, double weight, double delta)
     {
         var right = legs.AsSpan(PlayerSkinLegs.LegInputSize);
-        // Both legs share one visual pelvis. Avoid lowering it for extreme or invalid targets.
-        var shift = Math.Max(-0.15f, Math.Min(PlayerSkinLegs.LowestReachableHipShift(legs), PlayerSkinLegs.LowestReachableHipShift(right)));
+        var maximumShift = Math.Min(PlayerSkinLegs.HighestReachableHipShift(legs), PlayerSkinLegs.HighestReachableHipShift(right));
+        var shift = (float)SkinHeight.Advance(root, support, weight, maximumShift, delta);
         PlayerSkinLegs.Solve(legs, SkinLegResults, shift);
         PlayerSkinLegs.Solve(right, SkinLegResults.AsSpan(PlayerSkinLegs.LegOutputSize), shift);
         SkinLegResults[^1] = shift;

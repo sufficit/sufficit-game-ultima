@@ -4,6 +4,9 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
 {
     internal const double WalkSpeed = 3.5;
     internal const double RunSpeed = 6.5;
+    internal bool NaturalGait { get; set; }
+    internal double WalkingSpeed => NaturalGait ? 1.65 : WalkSpeed;
+    internal double RunningSpeed => NaturalGait ? 4.15 : RunSpeed;
     private readonly double _radius = radius;
     private const double Deadzone = 0.18;
     internal const int ColliderStride = 6;
@@ -88,7 +91,7 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
         }
 
         var running = sprint || double.Hypot(analogX, analogZ) > 0.92;
-        var targetSpeed = (running ? RunSpeed : WalkSpeed) * magnitude;
+        var targetSpeed = (running ? RunningSpeed : WalkingSpeed) * magnitude;
         var pivoting = PivotProgress >= 0;
         var yaw = aimYaw;
         if (pivoting)
@@ -100,7 +103,9 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
             var intention = Math.Max(0, Math.Cos(desired - (PivotStart + PivotTurn)));
             targetSpeed *= TurnTravelScale(desired - yaw) * intention;
         }
-        _speed += Math.Clamp(targetSpeed - _speed, -26 * delta, 22 * delta);
+        var braking = NaturalGait ? 13 : 26;
+        var accelerating = NaturalGait ? 10 : 22;
+        _speed += Math.Clamp(targetSpeed - _speed, -braking * delta, accelerating * delta);
         var speed = pivoting ? Math.Min(_speed, targetSpeed) : _speed;
         if (speed <= 0) return (x, z, yaw, 0);
 

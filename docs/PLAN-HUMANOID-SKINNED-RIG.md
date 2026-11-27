@@ -23,6 +23,9 @@ and contact solving in C#, and validate the result on the existing game paths.
    Add a coordinated pelvis, chest and arm gait sampled from the existing
    stride phase. Verify whole-body motion and retain the ankle alignment
    checks before publishing the preview.
+   Measure vertical bounce on a repeatable route. Tune travel pace and damp
+   presentation height against real support while keeping both ankle targets.
+   Repeat the measurements and verify the published preview.
 4. [pending] Validate walking, stopping, a 180° turn, stepping over a low log,
    and walking on a slope with two different body profiles. Measure planted
    foot drift and frame cost against the current rig under the same conditions.
@@ -101,6 +104,26 @@ build already moved the hands through about 27 cm in the default profile,
 but published joint samples showed effectively constant rotations at the
 pelvis, thorax, clavicles and elbows.
 [Pages workflow](https://github.com/sufficit/sufficit-game-ultima/actions/runs/46081474377)
+
+## Vertical stability and pace
+
+The previous preview inherited the cyclic height of the gameplay leg solve.
+It showed 5.7 cm of head-height excursion in a sampled Garden route. The
+preview now filters its body height against the support surface, leaves leg
+reach in reserve through the stride, and limits the final height to the two
+ankle targets. Walking is capped at 1.65 m/s, with a pace-dependent stride,
+gentler acceleration and braking, and a shallower swing arc whose vertical
+velocity starts and ends at zero.
+
+The local repeat of the route showed about 2 cm of head-height excursion.
+On the level subsegment, `skin-feet` showed 0.4–0.5 cm for the default body
+and 1.6–1.8 cm for the custom body in the two Chromium renderer modes. All
+four runs retained ankle alignment, leg length and arm swing.
+
+The installed [unity-animation](https://github.com/gamedev-skills/awesome-gamedev-agent-skills/tree/c6ca6c41c839b68319ffc08430b99ab768debc32/skills/unity/unity-animation)
+and [physics-tuning](https://github.com/gamedev-skills/awesome-gamedev-agent-skills/tree/c6ca6c41c839b68319ffc08430b99ab768debc32/skills/disciplines/physics-tuning)
+skills informed speed-driven blending, damping and the choice of one owner
+for the final visual height.
 
 Next action. Exercise the same retargeting on a controlled slope and low
 obstacle. Measure stance drift against the world and frame cost in both

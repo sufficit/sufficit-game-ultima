@@ -59,6 +59,28 @@ internal static class PlayerSupportChecks
         check("Aimed turning in place keeps a compact stance and a grounded foot", turnSupport);
         CheckSkinRetargeting(check);
         CheckGaitPose(check);
+        CheckSkinHeight(check);
+    }
+
+    private static void CheckSkinHeight(Action<string, bool> check)
+    {
+        var height = new PlayerSkinHeight();
+        double lowest = double.PositiveInfinity, highest = double.NegativeInfinity;
+        for (var frame = 0; frame < 60; frame++)
+        {
+            var root = .03 + .03 * Math.Cos(frame * .43);
+            var body = root + height.Advance(root, .03, 1, .12, 1d / 60);
+            lowest = Math.Min(lowest, body);
+            highest = Math.Max(highest, body);
+        }
+        check("The visual hips reject cyclic ankle-solver root height", highest - lowest < .001);
+        check("A low ankle target constrains the smoothed hip height", height.Advance(.1, .1, 0, -.12, .016) <= -.12);
+        height.Reset();
+        check("The visual height snaps to a new support after teleport", Math.Abs(height.Advance(5, 5, 0, .12, .016)) < .001);
+
+        Span<double> feet = stackalloc double[10];
+        PlayerPose.FootTargets(feet, 0, .5 * Math.PI + .01, 1, 1.75, .09, .05, softSwing: true);
+        check("The foot leaves the ground with a soft vertical onset", feet[1] is > 0 and < .00001);
     }
 
     private static void CheckGaitPose(Action<string, bool> check)
@@ -96,7 +118,7 @@ internal static class PlayerSupportChecks
             Math.Abs(Distance(result, result[3..]) - Distance(leg.AsSpan(3), leg.AsSpan(6))) < 1e-5);
 
         leg[10] = .085;
-        var hipShift = PlayerSkinLegs.LowestReachableHipShift(leg);
+        var hipShift = PlayerSkinLegs.HighestReachableHipShift(leg);
         PlayerSkinLegs.Solve(leg, result, hipShift);
         check("Lowering the visual hips allows the projected step to reach its support",
             hipShift is < 0 and > -.15f && Distance(leg.AsSpan(9), result[3..]) < 1e-5);

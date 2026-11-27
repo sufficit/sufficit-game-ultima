@@ -5,8 +5,9 @@ internal sealed partial class PlayerFootContacts(double strideScale = 1, double 
 {
     internal const double StrideLength = 1.16;
     private const double ResumeDuration = 0.18;
-    internal double Stride => StrideLength * strideScale;
-    internal double AimedStride => (StrideLength - .54 * Math.Abs(_travelLateral) + .26 * Math.Min(0, _travelForward)) * strideScale;
+    internal double Stride => StrideLength * strideScale * StrideMultiplier;
+    internal double AimedStride => (StrideLength - .54 * Math.Abs(_travelLateral) + .26 * Math.Min(0, _travelForward)) * strideScale * StrideMultiplier;
+    internal double StrideMultiplier { get; set; } = 1;
 
     private readonly Contact[] _feet = new Contact[2];
     private bool _ready, _moving, _aimed;
@@ -40,7 +41,8 @@ internal sealed partial class PlayerFootContacts(double strideScale = 1, double 
     }
 
     // feet mantém os canais da marcha. extra contém deslocamento lateral e giro de cada sola.
-    internal bool Apply(Span<double> feet, Span<double> extra, double phase, double spacing, double shoeOffset, double delta = 0)
+    internal bool Apply(Span<double> feet, Span<double> extra, double phase, double spacing, double shoeOffset,
+        double delta = 0, bool softSwing = false)
     {
         var (sin, cos) = Math.SinCos(_yaw);
         var resuming = _resting || _pivoting;
@@ -82,7 +84,7 @@ internal sealed partial class PlayerFootContacts(double strideScale = 1, double 
                 if (!_ready || resuming) contact.SwingStart = swingPhase;
                 else if (!contact.Swing) contact.SwingStart = 0;
                 var progress = (swingPhase - contact.SwingStart) / (1 - contact.SwingStart);
-                var blend = SwingBlend(progress);
+                var blend = SwingBlend(progress, softSwing);
                 // Aterrissagem na ponta do próximo apoio, adiantada pela distância que ainda falta.
                 var lead = (_aimed ? AimedStride : Stride) * (0.25 + 0.5 * (1 - swingPhase));
                 var (landingX, landingZ) = _aimed ? AimStep(side, shoeOffset, lead, sin, cos)
@@ -186,10 +188,11 @@ internal sealed partial class PlayerFootContacts(double strideScale = 1, double 
         return double.Hypot(0.086 * cos, 0.163 * sin);
     }
 
-    private static double SwingBlend(double progress)
+    private static double SwingBlend(double progress, bool softSwing)
     {
-        const double takeoff = 0.05, touchdown = 0.15;
-        const double area = 1 - (takeoff + touchdown) / 2;
+        var takeoff = softSwing ? .12 : .05;
+        var touchdown = softSwing ? .22 : .15;
+        var area = 1 - (takeoff + touchdown) / 2;
         if (progress < takeoff) return progress * progress / (2 * takeoff * area);
         if (progress <= 1 - touchdown) return (progress - takeoff / 2) / area;
         var remaining = 1 - progress;

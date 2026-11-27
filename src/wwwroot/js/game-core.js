@@ -1830,7 +1830,7 @@
 
     function loadPlayerSkinPreview(rig) {
         const skin = G.UltimaCharacterSkinPreview;
-        const bind = skin.prepare(BABYLON, rig, legs => terrain.SolvePlayerSkinLegs(legs));
+        const bind = skin.prepare(BABYLON, rig, (...args) => terrain.SolvePlayerSkinLegs(...args));
         const entry = {
             id: 'character.innerscene-preview', file: 'assets/characters/innerscene-preview.glb',
             sha256: '6cb7ec1b9d31cc7cbc31964188b25b441ce15b2f5d48d8395a264584863c197b'
@@ -1839,6 +1839,7 @@
         Promise.all([ensureGlbLoaders(), fetchVerifiedGlb(entry)])
             .then(([, bytes]) => skin.load(BABYLON, scene, bytes, container => bind(container, sceneShadows, PLAYER_LAYER)))
             .then(update => {
+                terrain.UseNaturalGait();
                 rig.skinMotion = { yaw: 0, roll: 0, sway: 0 };
                 rig.skinPreview = update;
                 modelStatus.skinPreview = 'ready';
@@ -3081,7 +3082,7 @@
             terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
         }
         syncCharacterHitboxes();
-        characterRigs.get(player)?.skinPreview?.();
+        characterRigs.get(player)?.skinPreview?.(cameraFloor, delta);
         applyCameraView(p);
         if (!authored) {
             checkNear();

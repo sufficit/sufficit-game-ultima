@@ -44,6 +44,7 @@ internal static partial class BrowserExports
         Camera.SetDefaultRadius(PlayerCamera.DefaultRadius);
         CameraObstacles.Set([], 0);
         PlayerFeet = new(body.LegLength / DefaultBody.LegLength, body.Build * body.Height / DefaultBody.Height);
+        SkinHeight.Reset();
         Input.Clear();
         return JsonSerializer.Serialize(new PlayerBodyFrame(body, PlayerAnatomy.Create("humano", body.Height, body)),
             PlayerBodyJson.Default.PlayerBodyFrame);
@@ -53,6 +54,7 @@ internal static partial class BrowserExports
     internal static void ResetFootContacts()
     {
         PlayerFeet.Reset();
+        SkinHeight.Reset();
         _movement.ResetRecovery();
     }
 
@@ -258,16 +260,25 @@ internal static partial class BrowserExports
         clock += delta;
         speech = Math.Max(0, speech - delta);
         var (next, previous, progress) = PlayerPose.AdvanceAction(elapsed, duration, delta, frozen);
-        var strideLength = isPlayer ? PlayerFeet.Stride : PlayerPose.StrideLength;
+        var naturalGait = isPlayer && _movement.NaturalGait;
+        var walkSpeed = isPlayer ? _movement.WalkingSpeed : PlayerMovement.WalkSpeed;
+        var runSpeed = isPlayer ? _movement.RunningSpeed : PlayerMovement.RunSpeed;
+        var strideLength = PlayerPose.StrideLength;
         var pivot = isPlayer ? _movement.PivotProgress : -1;
         if (isPlayer)
         {
             var strideDistance = PlayerFeet.Begin(x, z, yaw, distance, aimed);
             if (pivot < 0) distance = strideDistance;
-            if (aimed) strideLength = PlayerFeet.AimedStride;
+            if (naturalGait)
+            {
+                var pace = delta > 0 ? distance / delta : 0;
+                var strideMultiplier = .94 + .51 * PlayerPose.SmoothStep(walkSpeed, runSpeed, pace);
+                PlayerFeet.StrideMultiplier += (strideMultiplier - PlayerFeet.StrideMultiplier) * (1 - Math.Exp(-12 * delta));
+            }
+            strideLength = aimed ? PlayerFeet.AimedStride : PlayerFeet.Stride;
         }
         PlayerPose.Animate(result, phase, weight, clock, distance, delta, nameLength, listening,
-            speech > 0 && listening, progress, bend, reach, strideLength, playerGait: isPlayer);
+            speech > 0 && listening, progress, bend, reach, strideLength, isPlayer, walkSpeed, runSpeed);
         result[12] = clock;
         result[13] = speech;
         result[14] = next;
@@ -278,7 +289,9 @@ internal static partial class BrowserExports
         Span<double> feet = stackalloc double[10];
         var spacing = isPlayer ? _spacing : DefaultBody.LegSpacing;
         var shoeOffset = isPlayer ? _shoeOffset : DefaultBody.ShoeOffset;
-        PlayerPose.FootTargets(feet, yaw, result[0], result[1], delta > 0 ? distance / delta : 0, spacing, shoeOffset, strideLength);
+        var speed = delta > 0 ? distance / delta : 0;
+        PlayerPose.FootTargets(feet, yaw, result[0], result[1], speed, spacing, shoeOffset, strideLength,
+            walkSpeed, runSpeed, softSwing: naturalGait);
         Span<double> contact = stackalloc double[4];
         if (isPlayer)
         {
@@ -288,7 +301,7 @@ internal static partial class BrowserExports
                     delta > 0 ? distance / delta : 0);
                 if (pivot >= 1) result[0] = PlayerFeet.PivotExitPhase;
             }
-            else if (PlayerFeet.Apply(feet, contact, result[0], _spacing, _shoeOffset, delta))
+            else if (PlayerFeet.Apply(feet, contact, result[0], _spacing, _shoeOffset, delta, softSwing: naturalGait))
                 _movement.Trip(0.7);
             PlayerPose.Brace(result, _movement.Recover(delta));
         }
@@ -335,8 +348,7 @@ internal static partial class BrowserExports
         result[44] = PlayerPose.KneeSwivel(contact[3]);
         result[45] = pivot is > 0 and < 1 ? -Math.Sign(_movement.PivotTurn) * 0.23 * Math.Sin(Math.PI * pivot) : 0;
         var gaitWeight = result[1] * (1 - Math.Sin(Math.PI * Math.Clamp(progress, 0, 1)));
-        PlayerGaitPose.Write(result[GaitChannelsStart..], result[0], gaitWeight,
-            delta > 0 ? distance / delta : 0, _body.Height);
+        PlayerGaitPose.Write(result[GaitChannelsStart..], result[0], gaitWeight, speed, _body.Height, walkSpeed, runSpeed);
     }
 
     private static double Floor(double x, double z, double y, bool useVolume)

@@ -17,10 +17,11 @@ internal static class PlayerPose
 
     internal static void Animate(Span<double> output, double phase, double weight, double clock,
         double distance, double delta, int nameLength, bool listening, bool speaking,
-        double progress, double bend, double reach, double strideLength = StrideLength, bool playerGait = false)
+        double progress, double bend, double reach, double strideLength = StrideLength, bool playerGait = false,
+        double walkSpeed = PlayerMovement.WalkSpeed, double runSpeed = PlayerMovement.RunSpeed)
     {
         var speed = delta > 0 ? distance / delta : 0;
-        var run = SmoothStep(PlayerMovement.WalkSpeed, PlayerMovement.RunSpeed, speed);
+        var run = SmoothStep(walkSpeed, runSpeed, speed);
         weight = Lerp(weight, Math.Min(1, speed / 1.1), 1 - Math.Exp(-13 * delta));
         if (playerGait && distance == 0 && weight < 0.0001) weight = 0;
         phase = (phase + distance * Math.Tau / strideLength) % Math.Tau;
@@ -54,9 +55,10 @@ internal static class PlayerPose
     }
 
     internal static void FootTargets(Span<double> output, double yaw, double phase, double weight,
-        double speed, double spacing, double shoeOffset, double strideLength = StrideLength)
+        double speed, double spacing, double shoeOffset, double strideLength = StrideLength,
+        double walkSpeed = PlayerMovement.WalkSpeed, double runSpeed = PlayerMovement.RunSpeed, bool softSwing = false)
     {
-        var run = SmoothStep(PlayerMovement.WalkSpeed, PlayerMovement.RunSpeed, speed);
+        var run = SmoothStep(walkSpeed, runSpeed, speed);
         var (sine, cosine) = Math.SinCos(yaw);
         for (var i = 0; i < 2; i++)
         {
@@ -65,7 +67,9 @@ internal static class PlayerPose
             var t = cycle - (swing ? 1 : 0);
             // During stance, the foot moves back by the distance the body advances.
             var forward = strideLength / 4 * (swing ? -1 - 2 * t + t * t * (12 - 8 * t) : 1 - 2 * t);
-            var lift = swing ? Math.Sin(Math.PI * t) * Lerp(0.11, 0.17, run) * weight : 0;
+            var arc = Math.Sin(Math.PI * t);
+            var lift = !swing ? 0 : softSwing ? arc * arc * Lerp(.065, .135, run) * weight
+                : arc * Lerp(.11, .17, run) * weight;
             // The sole rolls toward the toe at lift-off and toward the heel at landing.
             output[8 + i] = swing ? Math.Sin(Math.Tau * t) * Math.Min(0.38, lift * 3) : 0;
             var localX = i == 0 ? -spacing : spacing;
@@ -148,7 +152,7 @@ internal static class PlayerPose
 
     private static double Lerp(double from, double to, double weight) => from + (to - from) * weight;
 
-    private static double SmoothStep(double from, double to, double value)
+    internal static double SmoothStep(double from, double to, double value)
     {
         var t = Math.Clamp((value - from) / (to - from), 0, 1);
         return t * t * (3 - 2 * t);

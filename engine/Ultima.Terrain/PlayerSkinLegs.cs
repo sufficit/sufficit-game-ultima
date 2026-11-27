@@ -9,7 +9,7 @@ internal static class PlayerSkinLegs
     internal const int LegInputSize = 15;
     internal const int LegOutputSize = 6;
 
-    internal static float LowestReachableHipShift(ReadOnlySpan<double> input)
+    internal static float HighestReachableHipShift(ReadOnlySpan<double> input)
     {
         var hip = Read(input);
         var knee = Read(input[3..]);
@@ -17,7 +17,7 @@ internal static class PlayerSkinLegs
         var reach = Read(input[9..]) - hip;
         var limit = Vector3.Distance(hip, knee) + Vector3.Distance(knee, ankle) - 1e-4f;
         var verticalReach = MathF.Sqrt(Math.Max(0, limit * limit - reach.X * reach.X - reach.Z * reach.Z));
-        return Math.Min(0, reach.Y + verticalReach);
+        return reach.Y + verticalReach;
     }
 
     internal static void Solve(ReadOnlySpan<double> input, Span<double> output, float hipShift = 0)
