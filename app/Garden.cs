@@ -79,8 +79,9 @@ sealed partial class GameWorld
             if (ch is null) return (401, J.Err("invalid_token"));
             if (Dist(ch, NpcX, NpcZ) > TalkRadius) return (409, J.Err("guardian_out_of_reach"));
             ch.Last = J.Now;
-            if (GardenLanternIntent.Matches(text))
-                return AdjustNearbyLanterns(token, ch.X, ch.Z);
+            var adjustment = GardenLanternIntent.Parse(text);
+            if (adjustment != LanternAdjustment.None)
+                return AdjustNearbyLanterns(token, ch.X, ch.Z, adjustment);
             prompt = GardenPrompt();
             id = ch.Id;
         }

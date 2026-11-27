@@ -60,7 +60,7 @@ public sealed partial class Workshop
     {
         if (await _genius.MemoryCommandAsync(text, token) is { } reply)
             return new(reply, GuardianGenius.SourcePrefix);
-        var local = (gpu || cpu) && !GardenLanternIntent.Matches(text);
+        var local = (gpu || cpu) && GardenLanternIntent.Parse(text) == LanternAdjustment.None;
         try
         {
             var endpoint = await EndpointAsync(token);

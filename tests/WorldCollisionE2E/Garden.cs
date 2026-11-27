@@ -113,6 +113,25 @@ internal static class Garden
             }
             """, lampIds), "hastes mais altas e intensidade aplicada na cena");
 
+        await AskAsync("aumente a altura dessas luminarias");
+        await page.GetByText("Aumentei a altura das hastes das luminárias próximas.", new() { Exact = false }).WaitForAsync();
+        Check(!await page.EvaluateAsync<bool>("() => !!window.lastGardenCpuPrompt"), "The height-only request skips inference.");
+        var taller = await MapAsync(page);
+        Check(taller.Placements.Count(p => lampIds.Contains(p.Uid) &&
+            p.Parameters is { PoleHeight: 2.6, LightIntensity: 1.31 }) == 2, "The same lamps are taller at their previous intensity.");
+        await WaitAsync(() => RenderAsync<bool>(page, """
+            ids => {
+                const scene = BABYLON.EngineStore.LastCreatedScene;
+                return ids.every(id => {
+                    const mesh = scene.getMeshByName('place-' + id);
+                    return mesh?.isVisible && scene.lights.some(light =>
+                        light.name.startsWith('garden-light-') && light.isEnabled() &&
+                        light.position.x === mesh.position.x && light.position.z === mesh.position.z &&
+                        Math.abs(light.position.y - mesh.position.y - 2.77) < 0.001 && light.intensity === 1.31);
+                });
+            }
+            """, lampIds), "The renderer updates the lamp height and preserves its intensity.");
+
         await page.EvaluateAsync("() => { window.gardenCpuReady = false; }");
         var response = page.WaitForResponseAsync(r => r.Url.EndsWith("/v1/game/garden/dialog") && r.Request.Method == "POST");
         await AskAsync("Luminária, flores e trilha");

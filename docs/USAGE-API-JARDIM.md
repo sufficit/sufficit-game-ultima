@@ -72,10 +72,13 @@ seu valor. O UID e a posição são preservados.
 {"actions":[{"action":"customize","uid":"uid-da-samambaia","parameters":{"scaleY":2,"rotationY":1.2}}]}
 ```
 
-A frase “quero luminárias mais altas e um pouco mais fortes” ajusta até duas
-luminárias próximas. O pedido acrescenta 0,6 m ao parâmetro da haste e cerca
-de 25% à intensidade, respeitando os limites. A IA usa o mesmo contrato
-para pedidos livres sobre qualquer modelo colocável.
+The Guardiã adjusts up to two nearby placed lanterns in response to supported
+relative commands. “Aumente a altura dessas luminárias” adds 0.6 m to the pole.
+“Aumente a intensidade da luz dessas luminárias” increases intensity by about
+25%. “Quero luminárias mais altas e um pouco mais fortes” adjusts both.
+Each command preserves the placement and any parameter it does not target.
+The server enforces the model limits. Free-form requests use the same editing
+contract through the garden planner.
 
 A família de jogo continua em `/v1/game/command` para movimento, interação,
 construção e escavação avançada, e a família de modelos em `/v1/assets`.

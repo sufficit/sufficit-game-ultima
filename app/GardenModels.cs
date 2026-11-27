@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Ultima.Garden;
 using Ultima.Models.Core;
 
 namespace Ultima.Server;
@@ -55,12 +56,11 @@ sealed partial class GameWorld
         return result;
     }
 
-    // Chamado sob o mesmo lock do diálogo. Seleção, leitura de parâmetros e gravação
-    // usam a mesma revisão, inclusive quando dois jogadores fazem o pedido juntos.
-    (int, JsonObject) AdjustNearbyLanterns(string? token, double x, double z)
+    // The dialogue lock keeps selection, current values and writes on the same world revision.
+    (int, JsonObject) AdjustNearbyLanterns(string? token, double x, double z, LanternAdjustment adjustment)
     {
         var nearby = _placements.Where(p => p.AssetId == LanternPlacementModel.AssetId && InGarden(p.X, p.Z))
-            .OrderBy(p => double.Hypot(p.X - x, p.Z - z)).Take(2);
+            .OrderBy(p => double.Hypot(p.X - x, p.Z - z)).Take(2).ToArray();
         var actions = new JsonArray();
         foreach (var lamp in nearby)
         {
@@ -70,8 +70,8 @@ sealed partial class GameWorld
             var light = LanternPlacementModel.LightIntensity;
             var height = pole.Read(current);
             var intensity = light.Read(current);
-            if (height < pole.Max) parameters["poleHeight"] = Math.Min(pole.Max, height + 0.6);
-            if (intensity < light.Max)
+            if (adjustment.HasFlag(LanternAdjustment.Height) && height < pole.Max) parameters["poleHeight"] = Math.Min(pole.Max, height + 0.6);
+            if (adjustment.HasFlag(LanternAdjustment.Intensity) && intensity < light.Max)
                 parameters["lightIntensity"] = Math.Min(light.Max, Math.Max(0.25, intensity * 1.25));
             if (parameters.Count > 0)
                 actions.Add(new JsonObject { ["action"] = "customize", ["uid"] = lamp.Uid, ["parameters"] = parameters });
@@ -79,14 +79,19 @@ sealed partial class GameWorld
 
         if (actions.Count == 0)
             return (200, new JsonObject { ["applied"] = 0, ["source"] = "garden",
-                ["reply"] = nearby.Any() ? "As luminárias próximas já estão no limite de altura e intensidade."
-                    : "Ainda não há luminárias instaladas no jardim." });
+                ["reply"] = nearby.Length == 0 ? "Ainda não há luminárias instaladas no jardim."
+                    : "As luminárias próximas já estão no limite dos parâmetros solicitados." });
 
         var (status, result) = GardenEdit(token, actions, requireGuardian: true);
         if (status == 200)
         {
             result["source"] = "garden";
-            result["reply"] = "Ajustei a altura das hastes e a intensidade da luz das luminárias próximas.";
+            result["reply"] = adjustment switch
+            {
+                LanternAdjustment.Height => "Aumentei a altura das hastes das luminárias próximas.",
+                LanternAdjustment.Intensity => "Aumentei a intensidade da luz das luminárias próximas.",
+                _ => "Ajustei a altura das hastes e a intensidade da luz das luminárias próximas."
+            };
         }
         return (status, result);
     }

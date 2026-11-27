@@ -328,7 +328,7 @@ async Task Garden(Harness h, string root)
         events = await h.Json(url, $"/v1/game/events?since={(long)Num(observer["eventsFrom"])}&wait=0", token: Str(observer["token"]));
         Check(Arr(events["events"]).Select(Obj).Any(e => Str(e["type"]) == "world_edited" && Num(e["revision"]) == Num(final["revision"])),
             "observador recebeu o ajuste", events["events"]);
-
+        await LanternHeightIntegration.VerifyAsync(h, url, token, lamps);
         var fern = Arr(Owned(final)["placements"]).Select(Obj).First(p => Str(p["asset"]) == "flora.fern");
         await h.Json(url, garden + "/plants", new JsonObject
         {
