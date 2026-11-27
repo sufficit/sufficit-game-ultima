@@ -42,6 +42,7 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+n- [Lightweight CPU model qualification](activities/202611271400-lightweight-cpu-model.md).
 
 - [Economy graphics for integrated GPUs](activities/202611271043-economy-graphics.md).
 
