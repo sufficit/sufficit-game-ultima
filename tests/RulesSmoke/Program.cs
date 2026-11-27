@@ -146,16 +146,11 @@ var npc = new NpcScheduler();
 npc.Submit(new PlayerInteracted(1000));
 var open = npc.Tick(Snap()).Single();
 Check("interação perto abre diálogo na linha 0", open.Commands.Any(c => c is OpenDialog) && open.View is { CurrentLine: 0, Thinking: false });
-Check("falas de abertura padrão têm 5 linhas", open.View!.Lines.Count == 5);
+Check("The Guardian opens with a single greeting", open.View!.Lines.Count == 1);
 
 npc.Submit(new PlayerInteracted(1100));
-var adv = npc.Tick(Snap(open: true)).Single();
-Check("avanço vai para a linha 1", adv.Commands.Any(c => c is ShowLine { LineIndex: 1 }) && adv.View is { CurrentLine: 1 });
-
-for (var i = 0; i < 3; i++) { npc.Submit(new PlayerInteracted(1200 + i)); npc.Tick(Snap(open: true)); }
-npc.Submit(new PlayerInteracted(1300));
 var close = npc.Tick(Snap(open: true)).Single();
-Check("avanço na última linha encerra o diálogo", close.Commands.Any(c => c is CloseDialog) && close.View is { CurrentLine: -1 });
+Check("The action button closes the Guardian greeting", close.Commands.Any(c => c is CloseDialog) && close.View is { CurrentLine: -1 });
 
 npc.Submit(new PlayerInteracted(1400));
 npc.Tick(Snap(open: false, near: false));

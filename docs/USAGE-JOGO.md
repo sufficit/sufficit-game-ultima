@@ -55,21 +55,18 @@ do jogo. [Edições do mundo](USAGE-MUNDO.md)
 
 ## Conversar com a Guardiã
 
-Aproxime-se da Guardiã e use a ação de conversar. A janela mostra a conversa e
-oferece caixa de texto, ditado e leitura em voz alta, conforme o suporte do
-navegador. O **Diário** reúne as respostas anteriores.
+Approach the Guardian and use the conversation action. Enter what you want
+to discuss or change. The window supports typing, dictation, and read-aloud
+where the browser supports them. The Journal keeps earlier replies.
 
-- Para conversar com um modelo no próprio navegador, ative a IA na CPU ou
-  na GPU e use **Testar IA** quando o modelo estiver pronto. Se WebGPU estiver
-  indisponível, use a CPU. Os pesos do modelo podem precisar ser baixados.
-- Use **Iluminar o jardim** na conversa para pedir luminárias na entrada.
-  Outras ações da Guardiã, como plantar e ajustar objetos, dependem do
-  provedor de IA e da sessão no mundo compartilhado.
-- Para guardar uma nota para consultas futuras, envie
-  `/lembrar minha flor favorita é a orquídea`. Envie `/memórias flor`
-  para recuperar notas relacionadas. [Memória da Guardiã](USAGE-API-JARDIM.md#memória-da-guardiã-no-navegador)
-- Se algo falhar, use **Reportar erro**. O jogo mostra um protocolo após
-  confirmar o recebimento do diagnóstico. [Dados do diagnóstico](USAGE-JANELAS.md#relato-de-erro)
+- Enable a supported AI model to converse in your browser. The first use may
+  download model weights.
+- The Guardian can inspect placed objects and propose changes when connected
+  to the shared world. Review the proposal before confirming the edit.
+- The `/lembrar` and `/memórias` commands manage local notes.
+  [Guardian memory](USAGE-API-JARDIM.md#memória-da-guardiã-no-navegador)
+- Use **Reportar erro** to send a diagnostic. The game displays a report ID
+  when the server accepts it. [Diagnostic data](USAGE-JANELAS.md#relato-de-erro)
 
 ## Jogar junto ou explorar sozinho
 

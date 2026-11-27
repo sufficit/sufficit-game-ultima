@@ -1,15 +1,11 @@
 # NPC dialogue
 
 Approach the Garden Guardian or the Wanderer and open the conversation with
-**E**, the controller's action button, or the on-screen **A** button. Select
-an available topic to see the question and the character's response in the
-transcript. You can then choose another topic or close the window.
-
-The Guardian explains what to do in the garden, how to collect materials,
-and how to light the entrance. The Wanderer offers directions. These topics
-work without an AI model or a game API connection. Selecting a topic about
-lighting displays instructions. Use **Iluminar o jardim** to request a world
-edit. Authored topic turns stay in the open transcript. The Journal retains
+**E**, the controller's action button, or the on-screen **A** button. Describe
+your own request to the Guardian. An available model can answer, inspect
+nearby placed objects, or propose changes. The pending preview comes from the
+model's tool call and requires your confirmation before editing the world.
+The Wanderer still offers authored directions. The Journal retains
 free-text replies through the existing history pipeline.
 
 ## Select a local CPU model

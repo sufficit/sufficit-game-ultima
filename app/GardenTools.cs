@@ -21,7 +21,7 @@ sealed partial class GameWorld
                 .Select(p => p.AssetId).Distinct().Take(12);
             foreach (var asset in assets)
                 models[asset] = DescribeModel(PlacementContract(asset));
-            return (200, new JsonObject { ["models"] = models });
+            return (200, new JsonObject { ["models"] = models, ["sceneInspectionSupported"] = true });
         }
     }
 
@@ -33,9 +33,11 @@ sealed partial class GameWorld
             var error = GardenToolAccess(token);
             if (error is { } denied) return denied;
             var character = Session(token)!;
-            if (J.Str(data["name"]) != CustomizeModelTool) return (400, J.Err("unknown_garden_tool"));
-            if (data["arguments"] is not JsonObject arguments ||
-                arguments.Any(entry => entry.Key is not ("asset" or "parameter" or "operation" or "value" or "count")))
+            if (data["arguments"] is not JsonObject arguments) return (400, J.Err("invalid_tool_arguments"));
+            var name = J.Str(data["name"]);
+            if (name == InspectGardenSceneTool) return InspectGardenScene(character, arguments);
+            if (name != CustomizeModelTool) return (400, J.Err("unknown_garden_tool"));
+            if (arguments.Any(entry => entry.Key is not ("asset" or "parameter" or "operation" or "value" or "count" or "uid")))
                 return (400, J.Err("invalid_tool_arguments"));
 
             var asset = J.Str(arguments["asset"]);
@@ -53,8 +55,11 @@ sealed partial class GameWorld
                 (arguments["count"] is not JsonValue number || !number.TryGetValue<int>(out count) || count is < 1 or > GardenActions))
                 return (400, J.Err("invalid_tool_arguments"));
 
+            var uid = J.Str(arguments["uid"]);
+            if (arguments.ContainsKey("uid") && (uid.Length == 0 || arguments.ContainsKey("count")))
+                return (400, J.Err("invalid_tool_arguments"));
             var actions = new JsonArray();
-            var targets = _placements.Where(p => p.AssetId == asset && InGarden(p.X, p.Z))
+            var targets = _placements.Where(p => p.AssetId == asset && InGarden(p.X, p.Z) && (uid.Length == 0 || p.Uid == uid))
                 .OrderBy(p => double.Hypot(p.X - character.X, p.Z - character.Z))
                 .ThenBy(p => p.Uid, StringComparer.Ordinal).Take(count);
             foreach (var placement in targets)
@@ -70,6 +75,7 @@ sealed partial class GameWorld
                     ["parameters"] = new JsonObject { [key] = applied[key] } });
             }
 
+            if (uid.Length > 0 && !targets.Any()) return (404, J.Err("invalid_placement"));
             if (actions.Count == 0)
                 return (200, new JsonObject { ["applied"] = 0, ["reply"] = "Nenhuma instância próxima precisou ser alterada." });
             var (status, result) = GardenEdit(token, actions, requireGuardian: true);

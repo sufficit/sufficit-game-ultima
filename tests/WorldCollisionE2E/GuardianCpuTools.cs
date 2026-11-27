@@ -99,13 +99,13 @@ internal static class GuardianCpuTools
             async () => (await fetch(game.live.api() + '/v1/game/garden/tools',
                 { headers: {'X-Game-Token':game.live.token()}, cache:'no-store' })).ok
             """), "The server recognizes the avatar is in reach of the Guardian.");
-        await Button("Iluminar o jardim").ClickAsync();
-        await dialog.GetByText("As duas luminárias estão na entrada do jardim.", new() { Exact = false }).WaitForAsync();
         await page.EvaluateAsync("""
             async () => {
-                const response = await fetch(game.live.api() + '/v1/game/garden/plants', {
+                const response = await fetch(game.live.api() + '/v1/game/garden/edits', {
                     method: 'POST', headers: {'Content-Type':'application/json','X-Game-Token':game.live.token()},
                     body: JSON.stringify({actions:[
+                        {action:'place',asset:'prop.lantern',x:-1.8,z:-11},
+                        {action:'place',asset:'prop.lantern',x:1.8,z:-11},
                         {action:'place',asset:'flora.pine',x:3,z:-9},
                         {action:'place',asset:'flora.flowers',x:5,z:-9},
                         {action:'place',asset:'flora.flowers',x:6,z:-9}

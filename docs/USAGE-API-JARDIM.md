@@ -81,7 +81,25 @@ inherit the common transform. `GET /v1/game/garden/tools` supplies the catalog o
 up to 12 model types currently placed nearest to the player. This route and the
 tool execution require the player's session and proximity to the Guardian.
 
-`POST /v1/game/garden/tools` uses the player's `X-Game-Token`:
+The discovery response advertises `sceneInspectionSupported`.
+Both tools use `POST /v1/game/garden/tools` with the player's `X-Game-Token`
+and an object containing `name` and `arguments`.
+
+- `inspect_scene` reads up to eight matching placed instances without
+  changing the world. `x` and `z` optionally set the search center together
+  in world metres. The player position is the default. `radius` defaults
+  to 18 m and may be greater than zero through 40 m. `asset` filters by
+  exact model ID. The response includes player pose (yaw in radians), search
+  center, garden bounds, map revision, instance UIDs, distances, effective
+  model parameters, model contracts, and a truncation flag.
+- `customize_model` accepts an optional `uid` to edit one specific placement.
+  The UID must belong to the given `asset` in the garden. Supply `count` only
+  for nearest-instance selection. The player's local AI can inspect the scene
+  and then propose an edit, which the game submits only after confirmation.
+  Hosted garden planning receives a server-selected scene snapshot and
+  proposes edits through the existing plan tool.
+
+The model-parameter tool payload is:
 
 ```json
 {"name":"customize_model","arguments":{"asset":"prop.lantern","parameter":"poleHeight","operation":"add","value":1}}

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.Playwright;
 using static BrowserTest;
 
@@ -23,15 +22,20 @@ internal static class Garden
                 const status = game.aiCpu.status;
                 game.aiCpu.status = () => window.gardenCpuReady
                     ? { state: 'ready', progress: 1, detail: 'Motor de teste' } : status();
-                game.aiCpu.garden = (prompt, text) => {
+                game.aiCpu.garden = (prompt, text, tokens, history, signal, tools) => {
                     window.lastGardenCpuPrompt = text;
                     const plan = (reply, actions) => JSON.stringify({calls:[{type:'function',function:{
                         name:'submit_garden_plan', arguments:JSON.stringify({reply,actions})
                     }}]});
                     if (text === 'Deixe a samambaia duas vezes mais alta e gire um pouco') {
-                        const prefix = 'Objetos colocados no jardim: ';
+                        const tool = (name, arguments_) => JSON.stringify({calls:[{type:'function',function:{
+                            name, arguments:JSON.stringify(arguments_)
+                        }}]});
+                        if (tools.some(entry => entry.function.name === 'inspect_scene'))
+                            return tool('inspect_scene', {asset:'flora.fern',x:3,z:-12,radius:1});
+                        const prefix = 'Scene observation (read-only): ';
                         const line = prompt.split('\n').find(item => item.startsWith(prefix));
-                        const fern = JSON.parse(line.slice(prefix.length)).find(p => p.asset === 'flora.fern' && p.x === 3);
+                        const fern = JSON.parse(line.slice(prefix.length)).instances.find(p => p.asset === 'flora.fern' && p.x === 3);
                         return plan('Ajustei a samambaia.',
                             [{action: 'customize', uid: fern.uid, parameters: {scaleY: 2, rotationY: 1.2}}]);
                     }
@@ -67,17 +71,22 @@ internal static class Garden
         await page.GetByText("Minha IA está indisponível.", new() { Exact = false }).WaitForAsync();
         Check(!(await MapAsync(page)).Placements.Any(p => p.Asset == "prop.lantern" &&
             initial.Placements.All(old => old.Uid != p.Uid)), "IA indisponível não cria luminárias");
-        var illuminate = page.GetByRole(AriaRole.Button, new() { Name = "Iluminar o jardim", Exact = true });
-        var draft = page.Locator("#dialog-input");
-        await draft.FillAsync("Rascunho de outro pedido");
-        var lightsResponse = page.WaitForResponseAsync(r => r.Url.EndsWith("/v1/game/garden/decor") && r.Status == 200);
-        await illuminate.ClickAsync();
-        await page.GetByText("As duas luminárias estão na entrada do jardim.", new() { Exact = false }).WaitForAsync();
-        await lightsResponse;
-        Check(await draft.InputValueAsync() == "Rascunho de outro pedido", "a ação preserva o rascunho");
+        await page.EvaluateAsync("""
+            async () => {
+                const result = await fetch(game.live.api() + '/v1/game/garden/edits', {
+                    method:'POST', headers:{'Content-Type':'application/json','X-Game-Token':game.live.token()},
+                    body:JSON.stringify({actions:[
+                        {action:'place',asset:'prop.lantern',x:-1.8,z:-11},
+                        {action:'place',asset:'prop.lantern',x:1.8,z:-11}
+                    ]})
+                });
+                if (!result.ok) throw Error('Could not seed the garden.');
+                game.live.paintMap((await result.json()).map);
+            }
+            """);
         var lit = await MapAsync(page);
         var lampIds = lit.Placements.Where(p => p.Asset == "prop.lantern").Select(p => p.Uid).ToArray();
-        Check(lampIds.Length == 2, "um clique grava duas luminárias no mapa");
+        Check(lampIds.Length == 2, "The fixture placed two lanterns in the map.");
         await WaitAsync(() => RenderAsync<bool>(page, """
             ids => {
                 const scene = BABYLON.EngineStore.LastCreatedScene;
@@ -89,10 +98,6 @@ internal static class Garden
                 });
             }
             """, lampIds), "as duas luminárias visíveis e acesas");
-        await illuminate.ClickAsync();
-        await page.GetByText("A entrada do jardim já está iluminada.", new() { Exact = true }).WaitForAsync();
-        Check((await MapAsync(page)).Revision == lit.Revision, "repetir a ação não duplica luminárias");
-
         await ApplyModelToolAsync("prop.lantern", "poleHeight", "add", 1);
         await ApplyModelToolAsync("prop.lantern", "lightLumens", "set", 280);
         await ApplyModelToolAsync("prop.lantern", "lightRgb", "set", "#2355FF");
@@ -122,16 +127,14 @@ internal static class Garden
         }
 
         await page.EvaluateAsync("() => { window.gardenCpuReady = false; }");
-        var response = page.WaitForResponseAsync(r => r.Url.EndsWith("/v1/game/garden/dialog") && r.Request.Method == "POST");
+        var beforePlan = await MapAsync(page);
         await AskAsync("Luminária, flores e trilha");
-        var result = await response;
-        var body = await result.TextAsync();
-        Check(result.Ok, "The local test backend must use a provider fixture for the garden plan", new { result.Status, body });
-        using var reply = JsonDocument.Parse(body);
-        Check(reply.RootElement.GetProperty("applied").GetInt32() == 7, "diálogo gravou cinco pincéis e dois objetos");
-        var answer = reply.RootElement.GetProperty("reply").GetString();
-        await page.GetByText($"Apliquei as mudanças no jardim. {answer}", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("Proponho 3 alterações no jardim. Quer aplicar?", new() { Exact = true }).WaitForAsync();
+        Check((await MapAsync(page)).Revision == beforePlan.Revision, "The hosted preview does not edit the map.");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Aplicar alteração", Exact = true }).ClickAsync();
+        await page.GetByText("Apliquei as mudanças no jardim. Trilha, luz e flores.", new() { Exact = true }).WaitForAsync();
         var edited = await MapAsync(page);
+        Check(edited.Revision == beforePlan.Revision + 7, "The confirmation applies five brushes and two objects.");
         var previous = lit.Placements.Select(p => p.Uid).ToHashSet(StringComparer.Ordinal);
         var lantern = edited.Placements.Single(p => p.Asset == "prop.lantern" && !previous.Contains(p.Uid));
         var flowers = edited.Placements.Single(p => p.Asset == "flora.flowers" && !previous.Contains(p.Uid));
@@ -188,8 +191,12 @@ internal static class Garden
         await page.GetByRole(AriaRole.Button, new() { Name = "Aplicar alteração", Exact = true }).ClickAsync();
         await page.GetByText("Plantei a outra samambaia.", new() { Exact = false }).WaitForAsync();
         var original = (await MapAsync(page)).Placements.Single(p => p.Asset == "flora.fern" && p.Uid != fern.Uid);
+        var beforeInspection = await MapAsync(page);
         await AskAsync("Deixe a samambaia duas vezes mais alta e gire um pouco");
-        await page.GetByRole(AriaRole.Button, new() { Name = "Aplicar alteração", Exact = true }).ClickAsync();
+        var applyInspected = page.GetByRole(AriaRole.Button, new() { Name = "Aplicar alteração", Exact = true });
+        await applyInspected.WaitForAsync();
+        Check((await MapAsync(page)).Revision == beforeInspection.Revision, "Inspection and proposal leave the world unchanged.");
+        await applyInspected.ClickAsync();
         await page.GetByText("Ajustei a samambaia.", new() { Exact = false }).WaitForAsync();
         var changed = (await MapAsync(page)).Placements.Single(p => p.Uid == fern.Uid);
         Check(changed.Parameters is { ScaleY: 2, RotationY: 1.2 }, "o plano alterou os parâmetros da mesma samambaia");

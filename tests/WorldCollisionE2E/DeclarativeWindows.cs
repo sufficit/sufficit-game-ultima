@@ -120,29 +120,17 @@ internal static partial class DeclarativeWindows
         var draft = conversation.GetByRole(AriaRole.Textbox, new() { Name = "Escreva para a Guardiã" });
         var testAi = Button(conversation, "Testar IA");
         Check(!await testAi.IsEnabledAsync(), "teste indisponível antes de ativar um modelo");
-        var topics = conversation.GetByRole(AriaRole.Group, new() { Name = "Assuntos da conversa" });
-        var collect = Button(topics, "Como recolho materiais?");
-        await collect.FocusAsync();
-        await page.Keyboard.PressAsync("Enter");
-        await conversation.Locator(".ultima-dialog__line").GetByText("Abra a Mochila", new() { Exact = false }).WaitForAsync();
-        await Button(topics, "Como ilumino a entrada?").ClickAsync();
-        await conversation.Locator(".ultima-dialog__line").GetByText("Use Iluminar o jardim", new() { Exact = false }).WaitForAsync();
-        await conversation.GetByRole(AriaRole.Region, new() { Name = "Histórico da conversa" })
-            .GetByText("Como recolho materiais?", new() { Exact = true }).WaitForAsync();
-        Check(await page.EvaluateAsync<bool>("() => typeof window.guardianProbe === 'undefined'"),
-            "Authored choices work before enabling a model.");
-        await CloseAsync(conversation);
-        await page.Locator("#game-canvas").FocusAsync();
-        await page.Keyboard.PressAsync("e");
-        await conversation.WaitForAsync();
+        Check(await conversation.GetByRole(AriaRole.Group, new() { Name = "Assuntos da conversa" }).CountAsync() == 0 &&
+            await Button(conversation, "Iluminar o jardim").CountAsync() == 0 &&
+            await Button(conversation, "Sugerir trilha").CountAsync() == 0 &&
+            await Button(conversation, "Sugerir flores").CountAsync() == 0,
+            "The Guardian conversation offers free text without scripted topics or actions.");
         await Button(conversation, "Ativar IA na CPU").ClickAsync();
         await AiTextAsync(conversation, "IA local pronta na CPU.");
         await testAi.ClickAsync();
         await AiTextAsync(conversation, "A IA local respondeu ao teste.");
         Check(await page.EvaluateAsync<bool>("() => guardianProbe.text === 'Olá!' && guardianProbe.tokens === 32"),
-            "teste usa a inferência curta");
-        await Button(conversation, "Sugerir trilha").ClickAsync();
-        Check((await draft.InputValueAsync()).StartsWith("Crie uma trilha de pedra", StringComparison.Ordinal), "sugestão preenche a caixa de texto");
+            "The diagnostic uses a short inference.");
         await Button(conversation, "Ditar").ClickAsync();
         await WaitAsync(async () => await draft.InputValueAsync() == "Texto ditado", "ditado alimenta a caixa de texto");
         await Button(conversation, "Ouvir fala").ClickAsync();
@@ -154,11 +142,6 @@ internal static partial class DeclarativeWindows
             await page.SetViewportSizeAsync(1200, 720);
         }
         var line = conversation.Locator(".ultima-dialog__line");
-        var first = await line.InnerTextAsync();
-        await Button(conversation, "Continuar · E/A").ClickAsync();
-        await WaitAsync(async () => await line.InnerTextAsync() != first, "avança para a fala seguinte");
-        await Button(conversation, "Iluminar o jardim").ClickAsync();
-        await conversation.GetByText("Conecte-se ao servidor do jogo para aplicar alterações no jardim.", new() { Exact = true }).WaitForAsync();
         await VerifyGuardianRetryAsync(page, conversation, draft);
         await VerifyGardenReceiptAsync(page, conversation, draft);
         await draft.FillAsync("Quero novas árvores");

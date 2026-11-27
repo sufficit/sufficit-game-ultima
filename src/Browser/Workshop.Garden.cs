@@ -13,47 +13,6 @@ public sealed partial class Workshop
         "Você é a Guardiã do Jardim de Ultima. Responda em português do Brasil com até duas frases curtas. " +
         "Converse e sugira ideias. Você está sem conexão com o jardim e não pode fazer alterações.";
 
-    private sealed record GardenPlacement(string Asset, double X, double Z);
-    private sealed record GardenMap(GardenPlacement[] Placements);
-    private sealed record PlaceLantern(double X, double Z)
-    {
-        public string Action => "place";
-        public string Asset => "prop.lantern";
-    }
-    private sealed record LanternBatch(PlaceLantern[] Actions);
-
-    internal async Task<GuardianTurnResult> LightGardenAsync(CancellationToken token)
-    {
-        try
-        {
-            var endpoint = await EndpointAsync(token);
-            if (string.IsNullOrEmpty(endpoint.Token))
-                return GuardianTurnResult.Retry(OfflineGarden);
-
-            var map = await GetAsync<GardenMap>(endpoint, "/v1/game/map", 8, token);
-            if (map?.Placements is null)
-                return GuardianTurnResult.Retry("Não consegui consultar as luminárias do jardim. Tente novamente.");
-
-            PlaceLantern[] entrance = [new(-1.8, -11), new(1.8, -11)];
-            var missing = entrance.Where(lantern => !map.Placements.Any(placed =>
-                placed.Asset == lantern.Asset && double.Hypot(placed.X - lantern.X, placed.Z - lantern.Z) < 0.25)).ToArray();
-            if (missing.Length == 0)
-                return new("A entrada do jardim já está iluminada.", "Oficina do jardim", QualityOutcome: "no_change");
-
-            using var request = JsonContent.Create(new LanternBatch(missing));
-            var result = await SendAsync<JsonElement>(endpoint, HttpMethod.Post, GardenRoute + "/decor", request, 12, token);
-            return await GardenReplyAsync(result, "As duas luminárias estão na entrada do jardim.", "Oficina do jardim", token, requiresChanges: true);
-        }
-        catch (WorkshopException ex) when (!token.IsCancellationRequested && ex.StatusCode == HttpStatusCode.Unauthorized)
-        {
-            return GuardianTurnResult.Retry(OfflineGarden);
-        }
-        catch (Exception ex) when (!token.IsCancellationRequested && ex is HttpRequestException or JSException or JsonException or OperationCanceledException)
-        {
-            return GuardianTurnResult.Retry("Não consegui confirmar a iluminação do jardim. Tente novamente.");
-        }
-    }
-
     internal async Task<GuardianTurnResult> TalkToGuardianAsync(
         string text, bool gpu, bool cpu, GardenModelProposal? pending, CancellationToken token)
     {

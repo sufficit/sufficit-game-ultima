@@ -30,41 +30,37 @@ sealed partial class GameWorld
         ["tools"] = GardenRoute + "/tools",
     };
 
-    string GardenPrompt()
+    string GardenInstructions() => """
+        Converse em português como a Guardiã. Planeje apenas mudanças pedidas pelo jogador.
+        Coordenadas absolutas em metros; a Guardiã está em (0,-14), com z positivo rumo à clareira.
+        Use o catálogo e as observações do cenário. Para posição incerta, pergunte ao jogador.
+        Use ações do catálogo, sem código, URLs ou comandos externos. O jogo confirma a aplicação.
+        Formatos de ações e campos:
+        - place: asset, x, z; opcionais scale, rot, parameters.
+        - customize: uid, parameters. Omitir preserva as outras propriedades.
+        - remove: uid do objeto colocado. Plantas nativas não têm uid.
+        - paint: mat, x, z, r. sculpt: x, z, r, dh. path: mat, r, points (pares x,z).
+        Use os parâmetros declarados pelo modelo e respeite suas unidades e limites.
+        Catálogo:
+        """ + "\n" + GardenCatalog().ToJsonString(J.Opts)
+        + "\nModelos recentes da Oficina: " + J.StrArr(ImportedAssetIds?.Invoke().TakeLast(16) ?? []).ToJsonString(J.Opts);
+
+    string GardenPrompt(Character player)
     {
-        var placed = _placements.Where(p => InGarden(p.X, p.Z)).TakeLast(36)
-            .Select(p => new JsonObject { ["uid"] = p.Uid, ["asset"] = p.AssetId, ["x"] = p.X, ["z"] = p.Z,
-                ["scale"] = p.Scale, ["rot"] = p.Rot, ["parameters"] = p.Parameters?.DeepClone() });
-        return """
-            Você é a Guardiã do Jardim de Ultima. Converse em português e, quando o jogador pedir mudanças, planeje e execute com o catálogo abaixo.
-            Preencha os argumentos da ferramenta submit_garden_plan com reply e actions. Para conversa ou pedido sem informação suficiente, use actions vazio.
-            Use coordenadas absolutas em metros. A Guardiã está em (0,-14), o eixo z positivo aponta para a clareira (0,0).
-            Use o jardim com criatividade e composição. Se a posição não foi especificada, escolha um lugar coerente no jardim.
-            Use ações do catálogo, sem código, URLs ou comandos externos. Não afirme que executou: o jogo confirma depois de gravar.
-            Exemplos de ações:
-            {"action":"place","asset":"prop.lantern","x":2,"z":-11,"parameters":{"poleHeight":2,"lightIntensity":1.3}}
-            {"action":"customize","uid":"uid real da luminária","parameters":{"poleHeight":2.2,"lightIntensity":1.4}}
-            {"action":"paint","mat":"dirt","x":0,"z":-9,"r":2}
-            {"action":"sculpt","x":-4,"z":-10,"r":2,"dh":0.5}
-            {"action":"path","mat":"rock","r":1.2,"points":[{"x":0,"z":-13},{"x":1,"z":-8},{"x":0,"z":-2}]}
-            {"action":"remove","uid":"id existente"}
-            {"action":"customize","uid":"uid real da planta","parameters":{"scaleY":1.5}}
-            Use customize para modificar qualquer objeto colocado pelo UID. models["*"] vale para todos, inclusive importados.
-            scaleX/Y/Z substituem scale no eixo indicado; rotationY substitui rot. Preserve os demais campos omitindo-os.
-            Para criar uma variante de objeto existente, use place com o mesmo asset e os parâmetros desejados.
-            Para pedidos relativos, preserve a medida pedida, converta para a unidade do parâmetro e respeite os limites.
-            Para substituir uma planta colocada, remova pelo uid e coloque outra na mesma posição. Plantas nativas não têm uid.
-            Catálogo:
-            """ + "\n" + GardenCatalog().ToJsonString(J.Opts) + "\nObjetos colocados no jardim: " + J.Arr(placed).ToJsonString(J.Opts)
-            + "\nModelos recentes da Oficina: " + J.StrArr(ImportedAssetIds?.Invoke().TakeLast(16) ?? []).ToJsonString(J.Opts);
+        var scene = InspectGardenScene(player, new JsonObject { ["radius"] = GardenRadius }).Item2;
+        scene.Remove("models");
+        return GardenInstructions() +
+            "\nNo submit_garden_plan, inclua reply e actions. Para conversa, deixe actions vazio." +
+            "\nObservação do cenário: " + scene.ToJsonString(J.Opts);
     }
 
     public (int, JsonObject) GardenContext(string? token)
     {
         lock (_lock)
         {
-            if (Session(token) is null) return (401, J.Err("invalid_token"));
-            return (200, new JsonObject { ["prompt"] = GardenPrompt(), ["toolCallsRequired"] = true, ["toolProposalsSupported"] = true });
+            if (Session(token) is not { } player) return (401, J.Err("invalid_token"));
+            return (200, new JsonObject { ["prompt"] = GardenPrompt(player), ["toolInstructions"] = GardenInstructions(),
+                ["toolCallsRequired"] = true, ["toolProposalsSupported"] = true });
         }
     }
 
@@ -79,7 +75,7 @@ sealed partial class GameWorld
             if (ch is null) return (401, J.Err("invalid_token"));
             if (Dist(ch, NpcX, NpcZ) > TalkRadius) return (409, J.Err("guardian_out_of_reach"));
             ch.Last = J.Now;
-            prompt = GardenPrompt();
+            prompt = GardenPrompt(ch);
             id = ch.Id;
         }
         var (status, plan) = await _chat.GardenReplyAsync(id, ip, prompt, text, cancellation);

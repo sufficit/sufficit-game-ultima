@@ -12,7 +12,8 @@ public sealed class GuardianGenius(IJSRuntime js) : IAsyncDisposable
     private const int UnlimitedPrediction = -1;
     private Task<IJSObjectReference>? _module;
 
-    public async Task<string> ReplyAsync(string prompt, string text, string engine, CancellationToken token, Func<string, string>? interpret = null, string? toolsJson = null)
+    public async Task<string> ReplyAsync(string prompt, string text, string engine, CancellationToken token, Func<string, string>? interpret = null, string? toolsJson = null,
+        Func<InferenceRequest, string, CancellationToken, Task<(InferenceRequest Request, string Tools)?>>? observe = null)
     {
         var module = await ModuleAsync();
         var id = await module.InvokeAsync<string>("guardianConversationId", token);
@@ -20,9 +21,13 @@ public sealed class GuardianGenius(IJSRuntime js) : IAsyncDisposable
         var requestId = Guid.NewGuid().ToString("N");
         try
         {
-            return await runtime.SubmitAsync(id, prompt, text, (request, ct) =>
-                module.InvokeAsync<string?>("generate", ct, requestId, engine,
-                    JsonSerializer.Serialize(request, GuardianGeniusJson.Default.InferenceRequest), UnlimitedPrediction, id, toolsJson),
+            return await runtime.SubmitAsync(id, prompt, text, async (request, ct) =>
+            {
+                var output = await GenerateAsync(request, toolsJson, ct);
+                if (observe is not null && output is not null && await observe(request, output, ct) is { } followUp)
+                    return await GenerateAsync(followUp.Request, followUp.Tools, ct);
+                return output;
+            },
                 interpret is null ? null : (answer, _) => ValueTask.FromResult(interpret(answer)), token);
         }
         finally
@@ -33,6 +38,9 @@ public sealed class GuardianGenius(IJSRuntime js) : IAsyncDisposable
                 catch (Exception ex) when (ex is JSException or ObjectDisposedException) { /* Browser teardown. */ }
             }
         }
+        ValueTask<string?> GenerateAsync(InferenceRequest request, string? tools, CancellationToken ct) =>
+            module.InvokeAsync<string?>("generate", ct, requestId, engine,
+                JsonSerializer.Serialize(request, GuardianGeniusJson.Default.InferenceRequest), UnlimitedPrediction, id, tools);
     }
 
     internal async Task RememberReceiptAsync(string confirmation, string receipt, CancellationToken token)

@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.JSInterop;
+using Sufficit.AI.Genius.Embedded;
 
 namespace Ultima.Browser;
 
@@ -21,13 +22,21 @@ public sealed partial class Workshop
     private const string ToolInstructions = """
         You are the Garden Guardian. Only change the garden for an explicit request.
         Choose the exact property ID from the list. Use add for a difference, set for
-        an absolute value or color. Convert to the unit shown. Use "#RRGGBB" for color.
-        For "+1 m" use add and value 1. For "-30 cm" use add and value -0.3.
-        Questions, negations or unsupported requests make no tool call.
+        an absolute value or color. Convert to the unit shown. Divide centimetres by
+        one hundred when the property unit is metres.
+        Use inspect_scene to locate existing objects and resolve spatial references.
+        Use the observed uid when updating one specific object. Never invent a uid.
+        Negations and unsupported requests must not propose edits.
+        Answer in Portuguese. A read-only scene inspection may precede an answer or a proposal.
         """;
 
-    private static string ModelTools(IEnumerable<string> properties) =>
-        JsonSerializer.Serialize(new[]
+    private static string ModelTools(Dictionary<string, GardenProperty> properties)
+    {
+        var valueSchema = properties.Values.All(property => property.Unit != "sRGB24")
+            ? (object)new { type = "number", description = "Numeric amount in the property's unit" }
+            : new { description = "Numeric amount or a six-digit hexadecimal sRGB color prefixed with #",
+                anyOf = new[] { new { type = "number" }, new { type = "string" } } };
+        return JsonSerializer.Serialize(new[]
         {
             new
             {
@@ -41,10 +50,10 @@ public sealed partial class Workshop
                         type = "object",
                         properties = new
                         {
-                            property = new { type = "string", @enum = properties },
+                            property = new { type = "string", @enum = properties.Keys },
                             operation = new { type = "string", @enum = new[] { "add", "set" } },
-                            value = new { description = "Number in the listed unit, or #RRGGBB for color",
-                                anyOf = new[] { new { type = "number" }, new { type = "string" } } }
+                            uid = new { type = "string", description = "Observed instance UID, if the edit targets one specific object" },
+                            value = valueSchema
                         },
                         required = new[] { "property", "operation", "value" },
                         additionalProperties = false
@@ -52,28 +61,23 @@ public sealed partial class Workshop
                 }
             }
         });
+    }
 
     private async Task<GuardianTurnResult> ProposeGardenToolAsync(Endpoint endpoint, string text, string engine, GardenModelProposal? pending, CancellationToken token)
     {
         var source = GeniusSource(engine);
         var failure = "context_failed";
+        var units = RequestedUnits(text);
+        var properties = new Dictionary<string, GardenProperty>(StringComparer.Ordinal);
+        var allowPlan = units.Count == 0;
         try
         {
             var result = await GetAsync<JsonElement>(endpoint, GardenRoute + "/tools", 8, token);
             var catalog = result.GetProperty("models");
 
-            var units = RequestedUnits(text);
-            var properties = catalog.EnumerateObject().SelectMany(asset =>
-                asset.Value.GetProperty("parameters").EnumerateObject().Select(parameter =>
-                {
-                    var model = asset.Value.GetProperty("label").GetString() ?? asset.Name;
-                    var label = parameter.Value.GetProperty("label").GetString();
-                    var unit = parameter.Value.GetProperty("unit").GetString();
-                    return new GardenProperty(asset.Name, parameter.Name, model, label, unit);
-                })).Where(p => units.Count == 0 || (p.Unit is { } unit && units.Contains(unit)))
-                .ToDictionary(p => p.Id, StringComparer.Ordinal);
-            var allowPlan = units.Count == 0;
-            if (properties.Count == 0 && !allowPlan)
+            AddProperties(catalog, units, properties);
+            var inspect = result.TryGetProperty("sceneInspectionSupported", out var capability) && capability.ValueKind == JsonValueKind.True;
+            if (properties.Count == 0 && !allowPlan && !inspect)
             {
                 const string prompt = "Responda como a Guardiã em português. Nenhuma propriedade compatível está disponível para editar.";
                 failure = "generation_failed";
@@ -81,25 +85,21 @@ public sealed partial class Workshop
                 return new(answer ?? "Não encontrei uma propriedade compatível por aqui.", source,
                     QualityOutcome: answer is null ? failure : null);
             }
-            var definitions = string.Join('\n', properties.Values.Select(p => $"{p.Id}: {p.Model}, {p.Label} ({p.Unit})"));
-            var instructions = ToolInstructions + "\nCatalog:\n" + definitions;
+            var instructions = ToolInstructions;
             if (pending is not null)
             {
                 instructions += "\nA proposed edit is awaiting the player's approval. It has not been applied. " +
                     "Use the proposal to interpret references and answer questions. Propose a replacement only " +
                     "if the player explicitly asks to change the edit. Pending proposal: " + pending.Preview;
             }
-            var tools = ModelTools(properties.Keys);
             if (allowPlan)
             {
                 var context = await GetAsync<JsonElement>(endpoint, GardenRoute + "/context", 8, token);
-                if (context.TryGetProperty("prompt", out var prompt))
+                if (context.TryGetProperty("toolInstructions", out var prompt) || context.TryGetProperty("prompt", out prompt))
                     instructions += "\n" + prompt.GetString();
-                var calls = JsonNode.Parse(tools)!.AsArray();
-                if (properties.Count == 0) calls.Clear();
-                calls.Add(JsonNode.Parse(GardenPlanTool));
-                tools = calls.ToJsonString();
             }
+            var tools = BuildGardenTools(properties, allowPlan, inspect);
+            instructions += PropertyInstructions(properties.Values);
             failure = "generation_failed";
             GardenModelProposal? proposal = null;
             var reply = await _genius.ReplyAsync(instructions, text, engine, token, output =>
@@ -110,7 +110,7 @@ public sealed partial class Workshop
                 var response = proposal?.Preview ?? ReadToolReply(output);
                 failure = "turn_failed";
                 return response;
-            }, tools);
+            }, tools, inspect ? ObserveAsync : null);
             return new(reply, source, KeepDraft: proposal is not null, Proposal: proposal);
         }
         catch (Exception ex) when (!token.IsCancellationRequested &&
@@ -118,6 +118,27 @@ public sealed partial class Workshop
         {
             return GuardianTurnResult.Retry("A IA local não conseguiu propor uma edição válida. Nenhuma alteração foi aplicada.", source)
                 with { QualityOutcome = failure };
+        }
+
+        async Task<(InferenceRequest Request, string Tools)?> ObserveAsync(InferenceRequest request, string output, CancellationToken ct)
+        {
+            failure = "tool_rejected";
+            if (!TryReadSceneRequest(output, out var arguments))
+            {
+                failure = "generation_failed";
+                return null;
+            }
+            failure = "context_failed";
+            using var query = JsonContent.Create(new { name = InspectSceneTool, arguments });
+            var scene = await SendAsync<JsonObject>(endpoint, HttpMethod.Post, GardenRoute + "/tools", query, 8, ct)
+                ?? throw new JsonException("Missing scene observation.");
+            if (scene.Remove("models", out var descriptions) && descriptions is JsonObject)
+                AddProperties(JsonSerializer.SerializeToElement(descriptions), units, properties);
+            failure = "generation_failed";
+            var next = request with { Instructions = request.Instructions +
+                "\nScene observation (read-only): " + scene.ToJsonString() + PropertyInstructions(properties.Values) +
+                "\nAnswer the original request using this observation. Call an edit tool only to propose a requested change." };
+            return (next, BuildGardenTools(properties, allowPlan, inspect: false));
         }
     }
 
@@ -170,7 +191,7 @@ public sealed partial class Workshop
                 $"Proponho {actions.GetArrayLength()} alterações no jardim. Quer aplicar?", IsPlan: true);
         }
         if (name != CustomizeModelTool) throw new JsonException("The requested garden tool is unavailable.");
-        if (args.EnumerateObject().Any(p => p.Name is not ("property" or "operation" or "value")))
+        if (args.EnumerateObject().Any(p => p.Name is not ("property" or "operation" or "value" or "uid")))
             throw new JsonException("Unknown garden tool argument.");
         var id = args.GetProperty("property").GetString() ?? "";
         var operation = args.GetProperty("operation").GetString();
@@ -179,11 +200,17 @@ public sealed partial class Workshop
         var value = args.GetProperty("value");
         var display = DisplayValue(value, property.Unit, operation);
         var verb = operation == "set" ? "Definir" : "Somar";
-        var arguments = JsonSerializer.SerializeToElement(new
+        var uid = args.TryGetProperty("uid", out var target) ? target.GetString() : null;
+        if (args.TryGetProperty("uid", out _) && string.IsNullOrWhiteSpace(uid))
+            throw new JsonException("An instance UID must not be empty.");
+        var arguments = new JsonObject
         {
-            asset = property.Asset, parameter = property.Key, operation, value
-        });
-        return new(arguments, $"{verb} {display} em {property.Label} de até duas instâncias de {property.Model}. Quer aplicar?");
+            ["asset"] = property.Asset, ["parameter"] = property.Key, ["operation"] = operation,
+            ["value"] = JsonNode.Parse(value.GetRawText()),
+        };
+        if (uid is not null) arguments["uid"] = uid;
+        var scope = uid is null ? $"até duas instâncias de {property.Model}" : $"{property.Model} ({uid})";
+        return new(JsonSerializer.SerializeToElement(arguments), $"{verb} {display} em {property.Label} de {scope}. Quer aplicar?");
     }
 
     private sealed record GardenProperty(string Asset, string Key, string Model, string? Label, string? Unit)

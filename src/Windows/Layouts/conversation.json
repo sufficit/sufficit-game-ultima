@@ -11,12 +11,6 @@
       { "type": "button", "text": "Testar IA", "style": "outline", "action": "guardian-test", "disabledWhen": "testDisabled" }
     ] },
     { "type": "note", "bind": "aiTest", "when": "aiTest" },
-    { "type": "note", "text": "Ações do jardim", "when": "guardianAi" },
-    { "type": "row", "when": "guardianAi", "children": [
-      { "type": "button", "text": "Iluminar o jardim", "style": "outline", "action": "light-garden", "disabledWhen": "busy" },
-      { "type": "button", "text": "Sugerir trilha", "style": "outline", "action": "suggest-path", "disabledWhen": "busy" },
-      { "type": "button", "text": "Sugerir flores", "style": "outline", "action": "suggest-flowers", "disabledWhen": "busy" }
-    ] },
     { "type": "note", "bind": "pendingPreview", "when": "pendingPreview" },
     { "type": "row", "when": "gardenProposal", "children": [
       { "type": "button", "text": "Aplicar alteração", "action": "garden-tool-apply", "disabledWhen": "busy" },

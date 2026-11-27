@@ -8,7 +8,11 @@ internal static class DialogueTopicsSmoke
         var garden = new WorldSnapshot(0, 0, true, false, false, false, 1000);
         var trail = new WorldSnapshot(5, 0, false, true, false, false, 1000);
         var displayed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var (snapshot, prefix, total) in new[] { (garden, "guardian.", 3), (trail, "wanderer.", 2) })
+        scheduler.Submit(new PlayerInteracted(990));
+        check("The Guardian opens with no preset topics", scheduler.Tick(garden).Single().View!.Choices.Count == 0);
+        scheduler.Submit(new DialogClosedByPlayer(995));
+        scheduler.Tick(garden);
+        foreach (var (snapshot, prefix, total) in new[] { (trail, "wanderer.", 2) })
         {
             scheduler.Submit(new PlayerInteracted(1000));
             var opening = scheduler.Tick(snapshot).Single().View!;

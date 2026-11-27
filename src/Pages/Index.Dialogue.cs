@@ -280,14 +280,6 @@ public partial class Index
             case "garden-tool-cancel" when !GuardianBusy:
                 DiscardGuardianProposal();
                 break;
-            case "light-garden" when GuardianOpen && !GuardianBusy:
-                return SubmitDialogAsync(lightGarden: true);
-            case "suggest-path" when GuardianOpen && !GuardianBusy:
-                UpdateDialogueDraft("Crie uma trilha de pedra ligando a entrada do jardim à clareira.");
-                break;
-            case "suggest-flowers" when GuardianOpen && !GuardianBusy:
-                UpdateDialogueDraft("Plante flores nas bordas do caminho do jardim.");
-                break;
             case "close":
                 if (_view is not null) CloseDialog();
                 else _journalOpen = false;
