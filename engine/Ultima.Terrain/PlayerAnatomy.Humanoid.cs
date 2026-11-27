@@ -48,6 +48,8 @@ internal static partial class PlayerAnatomy
             var sign = side == "left" ? -1 : 1;
             var arm = sign * armBody.ArmOffset / armBody.Height;
             var leg = sign * (body is null ? .052 : body.LegSpacing / height);
+            // Use the inner clavicle and upper-arm pivot guides from MPFB2.
+            // The neutral rig uses their X and Y proportions with zero depth offset.
             Add("clavicle-" + side, "chest", sign * HumanoidBody.ClavicleOffsetRatio, HumanoidBody.ClavicleHeightRatio, 0);
             Add("shoulder-" + side, "clavicle-" + side, arm, shoulder, 0, flexion: ShoulderPitch);
             Add("elbow-" + side, "shoulder-" + side, arm, elbow, 0, "hinge", flexion: ElbowFlexion);

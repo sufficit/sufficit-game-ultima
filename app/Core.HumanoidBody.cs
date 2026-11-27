@@ -89,17 +89,28 @@ public sealed record HumanoidBody(
     public double ArmRadius => Height * .026 * Build;
     public double UpperArmRadius => ArmRadius * UpperArmScale;
     public double ForearmRadius => ArmRadius * ForearmScale;
-    // Normalized joint helpers from the CC0 MPFB2 base mesh.
+    // MPFB2 CC0 base mesh joint helpers at d9648f3257a0b9712281d466245f30d656250154.
+    // Use each helper's vertex centroid, the body-only Y bounds and the sole-to-crown span.
+    // Y ratios are heights above the soles. X ratios are absolute offsets from the centerline.
+    // These coefficients describe one model and pose. Anny's bundled mesh has the same helpers.
+    // Source and comparison method are recorded in docs/activities/202611270952-humanoid-shoulder-references.md.
     public const double DefaultShoulderHeightRatio = .80518;
     public const double ClavicleHeightRatio = .80191;
     public const double ClavicleOffsetRatio = .01594;
     public const double ShoulderOffsetRatio = .10067;
+    // Scale the reference pivot's lateral placement with stature, build and chest breadth.
     public double ArmOffset => Height * ShoulderOffsetRatio * Build * ChestScale;
 
-    // Source landmarks belong to one 1.75 m ANSUR II participant near the sample medians.
-    // These describe the exterior in the neutral pose. Sleeve width also accommodates thicker arms.
+    // ANSUR II external landmarks from one row near the sample medians at 1.75 m of stature.
+    // Acromion 1.435 m above the soles, axilla 1.324 m, bideltoid breadth 0.492 m.
+    // In the 1.74–1.76 m military cohort, acromion P5–P95 is 1.409–1.463 m for men
+    // (n=485) and 1.419–1.467 m for women (n=56). These are sample bands for the surface.
+    // The sleeve heights preserve the measured exterior offsets from the reference pivot,
+    // scaled by stature. The width can expand to enclose a thicker upper arm.
+    // https://www.openlab.psu.edu/ansur2/
     public double ShoulderSurfaceHeight => ShoulderHeight + Height * (1.435 / 1.75 - DefaultShoulderHeightRatio);
     public double AxillaHeight => ShoulderHeight + Height * (1.324 / 1.75 - DefaultShoulderHeightRatio);
+    /// <summary>Distance in meters from the centerline to the outside edge of one sleeve.</summary>
     public double ShoulderOuterEdge => Math.Max(Height * (.246 / 1.75) * Build * ChestScale, ArmOffset + UpperArmRadius);
     /// <summary>Height of the shoulder pivot above the sole in meters.</summary>
     public double ShoulderHeight => Height * ShoulderHeightRatio;

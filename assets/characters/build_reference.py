@@ -138,7 +138,10 @@ def torso_and_legs(shell, joints):
     pelvis = shell.ring(0, hip_y - .025, 0, .164, .101, angles, {"pelvis": 1})
     last = pelvis
     shoulders = {}
-    # The exterior targets come from the same 1.75 m ANSUR II record as the playable model.
+    # Neutral sleeve-opening heights in meters above the soles. Match the acromion and axilla
+    # from the 1.75 m ANSUR II row documented in HumanoidBody.cs. The imported skeleton uses
+    # separate joint-helper coordinates from the MPFB2 base mesh.
+    # See docs/activities/202611270952-humanoid-shoulder-references.md.
     sleeve_top = 1.435
     axilla_y = 1.324
     for y, rx, rz, front, material, weights in [

@@ -20,8 +20,9 @@ public abstract class VillagerBase : ModelBase
 
     private static void AddShoulderCaps(ModelBuilder b, HumanoidBody body)
     {
-        // The two deltoid volumes share one render group and follow the chest.
-        // The caps extend medially to the body centerline so the shirt has a continuous upper silhouette.
+        // Fit the neutral sleeve bounds to the external acromion, axilla and bideltoid targets
+        // in HumanoidBody. These ellipsoids share the chest transform. The articulated upper arm
+        // rotates about its own internal pivot. The caps extend medially into the torso.
         var span = body.ShoulderSurfaceHeight - body.AxillaHeight;
         var x = body.ShoulderOuterEdge / 2;
         var scaleX = body.ShoulderOuterEdge / span;

@@ -2,6 +2,8 @@
     'use strict';
     // Legacy dimensions are used by the renderer when a body packet is unavailable.
     const PLAYER_HEIGHT = 1.75;
+    // MPFB2 fallback for avatars without the C# anatomy packet.
+    // Matches HumanoidBody.DefaultShoulderHeightRatio. The lateral value below matches ShoulderOffsetRatio.
     const SHOULDER_RATIO = 0.80518;
     const HIP_HEIGHT = PLAYER_HEIGHT * .44;
     const LEG_RADIUS = PLAYER_HEIGHT * .039;
