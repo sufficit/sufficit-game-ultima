@@ -72,32 +72,39 @@ seu valor. O UID e a posição são preservados.
 {"actions":[{"action":"customize","uid":"uid-da-samambaia","parameters":{"scaleY":2,"rotationY":1.2}}]}
 ```
 
-The Guardiã adjusts up to two nearby placed lanterns in response to supported
-relative commands. “Aumente a altura dessas luminárias” adds 0.6 m to the pole.
-“Aumente a intensidade da luz dessas luminárias” increases intensity by about
-25%. “Quero luminárias mais altas e um pouco mais fortes” adjusts both.
-Each command preserves the placement and any parameter it does not target.
-The server enforces the model limits. Free-form requests use the same editing
-contract through the garden planner.
+### Model discovery and native tool calls
 
-### Local CPU tool pilot
+`GET /v1/game/garden` describes the default model contract and custom model
+properties. Each model declares its fields, units, defaults, limits, and
+inheritance through `IEditablePlacementModel`. Unregistered and imported models
+inherit the common transform. `GET /v1/game/garden/tools` supplies the catalog of
+up to 12 model types currently placed nearest to the player. This route and the
+tool execution require the player's session and proximity to the Guardian.
 
-Select **Qwen2.5 0.5B · ferramentas** in the game panel to try native tool calls.
-The Guardian shows the proposed change in metres. **Aplicar alteração** sends it
-to the game API. Dismissing the proposal leaves the map unchanged. This pilot
-exposes one garden tool. The server validates the session, proximity to the
-Guardian, and the placement limits before applying the full edit batch.
-
-`POST /v1/game/garden/tools` takes the player's `X-Game-Token` and this body:
+`POST /v1/game/garden/tools` uses the player's `X-Game-Token`:
 
 ```json
-{"name":"adjust_lantern_height","arguments":{"delta_m":1}}
+{"name":"customize_model","arguments":{"asset":"prop.lantern","parameter":"poleHeight","operation":"add","value":1}}
 ```
 
-Use a signed metre displacement with centimetre precision. An out-of-range
-target rejects the batch with `lantern_height_out_of_range`. Use the returned
-`applied` count and `map` to update the scene. This is a relative mutation, so
-read the map before resubmitting if the result was lost.
+Use `set` for absolute values, `add` for numeric differences, or use the existing
+`customize` action on `/edits` with a UID to patch several parameters or models
+in one atomic batch. The tool defaults to the two nearest instances of the asset
+and accepts `count` from 1 to 24. An invalid target value rejects the entire
+edit. Read the returned `applied`, `revision`, and `map` after mutation. Read the
+current map before resubmitting a relative edit if the receipt was lost.
+
+| Model | Properties beyond the common transform |
+| --- | --- |
+| Lantern | `poleHeight` in metres before placement scaling, `lightLumens` in lm, and `lightRgb` for the emitted light and glass tint. Legacy `lightIntensity` remains readable and writable. |
+| Pine | `heightM` in metres and `tintRgb` for the placed model. Setting `heightM` overrides vertical scale, while setting `scaleY` restores multiplier-based sizing. |
+| Flower model | `tintRgb` tints the placed textured model. |
+
+Use `#RRGGBB` or a packed sRGB integer for colors. Babylon point lights use
+luminous-power mode for explicit lumen values. Natural procedural vegetation
+currently has no editable placement UID. The CPU pilot uses **Qwen2.5 0.5B ·
+ferramentas**, shows one proposed change per turn and submits it after
+**Aplicar alteração**. Free-form planners also receive the model catalog.
 
 A família de jogo continua em `/v1/game/command` para movimento, interação,
 construção e escavação avançada, e a família de modelos em `/v1/assets`.

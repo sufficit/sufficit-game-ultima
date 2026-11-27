@@ -112,7 +112,7 @@ public partial class Index
     }
 
     private CancellationTokenSource? _guardianTurn;
-    private LanternHeightProposal? _guardianProposal;
+    private GardenModelProposal? _guardianProposal;
     private string? _activeCpuModel;
     private bool _journalOpen;
     private bool _windowContrast;
@@ -301,7 +301,7 @@ public partial class Index
 
     private Task AdvanceAsync() { Dispatch(new PlayerInteracted(NowMs())); return Task.CompletedTask; }
 
-    private async Task SubmitDialogAsync(bool lightGarden = false, LanternHeightProposal? confirmedProposal = null)
+    private async Task SubmitDialogAsync(bool lightGarden = false, GardenModelProposal? confirmedProposal = null)
     {
         var text = confirmedProposal is not null ? "Confirmo a alteração." :
             lightGarden ? "Ilumine a entrada do jardim." : _dialogDraft.Trim();

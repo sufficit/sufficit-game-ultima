@@ -12,7 +12,7 @@ public partial class Index
     }
 
     private async Task<GuardianTurnResult> RunGuardianTurnAsync(string text, bool lightGarden,
-        LanternHeightProposal? confirmedProposal, CancellationToken token)
+        GardenModelProposal? confirmedProposal, CancellationToken token)
     {
         if (confirmedProposal is not null) return await WorkshopService.ApplyGardenToolAsync(confirmedProposal, token);
         if (lightGarden) return await WorkshopService.LightGardenAsync(token);

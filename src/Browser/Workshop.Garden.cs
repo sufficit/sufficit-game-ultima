@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.JSInterop;
-using Ultima.Garden;
 
 namespace Ultima.Browser;
 
@@ -60,7 +59,7 @@ public sealed partial class Workshop
     {
         if (await _genius.MemoryCommandAsync(text, token) is { } reply)
             return new(reply, GuardianGenius.SourcePrefix);
-        var local = (gpu || cpu) && GardenLanternIntent.Parse(text) == LanternAdjustment.None;
+        var local = gpu || cpu;
         try
         {
             var endpoint = await EndpointAsync(token);
@@ -199,7 +198,7 @@ public sealed partial class Workshop
 }
 
 /// <summary>The visible reply and whether the submitted text should stay available to retry.</summary>
-internal sealed record GuardianTurnResult(string Reply, string Source, bool KeepDraft = false, LanternHeightProposal? Proposal = null)
+internal sealed record GuardianTurnResult(string Reply, string Source, bool KeepDraft = false, GardenModelProposal? Proposal = null)
 {
     public static GuardianTurnResult Retry(string reply, string source = "") => new(reply, source, KeepDraft: true);
 }

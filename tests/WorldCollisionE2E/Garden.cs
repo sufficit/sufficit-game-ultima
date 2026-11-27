@@ -92,45 +92,33 @@ internal static class Garden
         await page.GetByText("A entrada do jardim já está iluminada.", new() { Exact = true }).WaitForAsync();
         Check((await MapAsync(page)).Revision == lit.Revision, "repetir a ação não duplica luminárias");
 
-        await page.EvaluateAsync("() => { window.gardenCpuReady = true; }");
-        await AskAsync("essas luminarias possuem o meu tamanho, quero luminarias mais altas e um pouco mais fortes");
-        await page.GetByText("Ajustei a altura das hastes e a intensidade da luz", new() { Exact = false }).WaitForAsync();
-        Check(!await page.EvaluateAsync<bool>("() => !!window.lastGardenCpuPrompt"),
-            "ajuste relativo funciona mesmo com um modelo local ruim selecionado");
-        var customized = await MapAsync(page);
-        Check(customized.Placements.Where(p => lampIds.Contains(p.Uid)).Count(p =>
-            p.Parameters is { PoleHeight: 2, LightIntensity: 1.31 }) == 2, "mesmos UIDs com parâmetros personalizados");
+        await ApplyModelToolAsync("prop.lantern", "poleHeight", "add", 1);
+        await ApplyModelToolAsync("prop.lantern", "lightLumens", "set", 280);
+        await ApplyModelToolAsync("prop.lantern", "lightRgb", "set", "#2355FF");
         await WaitAsync(() => RenderAsync<bool>(page, """
             ids => {
                 const scene = BABYLON.EngineStore.LastCreatedScene;
                 const lights = scene.lights.filter(light => light.name.startsWith('garden-light-') && light.isEnabled());
                 return ids.every(id => {
                     const mesh = scene.getMeshByName('place-' + id);
-                    return mesh?.isVisible && mesh.getBoundingInfo().boundingBox.extendSize.y > 1.2 &&
-                        lights.some(light => light.position.x === mesh.position.x && light.position.z === mesh.position.z &&
-                            Math.abs(light.position.y - mesh.position.y - 2.17) < 0.001 && light.intensity === 1.31);
+                    return mesh?.isVisible && lights.some(light => light.position.x === mesh.position.x &&
+                        light.position.z === mesh.position.z && Math.abs(light.position.y - mesh.position.y - 2.57) < 0.001 &&
+                        light.intensity === 280 && light.intensityMode === BABYLON.Light.INTENSITYMODE_LUMINOUSPOWER &&
+                        Math.abs(light.diffuse.r - 35/255) < 0.001 && light.diffuse.b === 1);
                 });
             }
-            """, lampIds), "hastes mais altas e intensidade aplicada na cena");
+            """, lampIds), "Lantern height, luminous power and color reach the scene.");
 
-        await AskAsync("aumente a altura dessas luminarias");
-        await page.GetByText("Aumentei a altura das hastes das luminárias próximas.", new() { Exact = false }).WaitForAsync();
-        Check(!await page.EvaluateAsync<bool>("() => !!window.lastGardenCpuPrompt"), "The height-only request skips inference.");
-        var taller = await MapAsync(page);
-        Check(taller.Placements.Count(p => lampIds.Contains(p.Uid) &&
-            p.Parameters is { PoleHeight: 2.6, LightIntensity: 1.31 }) == 2, "The same lamps are taller at their previous intensity.");
-        await WaitAsync(() => RenderAsync<bool>(page, """
-            ids => {
-                const scene = BABYLON.EngineStore.LastCreatedScene;
-                return ids.every(id => {
-                    const mesh = scene.getMeshByName('place-' + id);
-                    return mesh?.isVisible && scene.lights.some(light =>
-                        light.name.startsWith('garden-light-') && light.isEnabled() &&
-                        light.position.x === mesh.position.x && light.position.z === mesh.position.z &&
-                        Math.abs(light.position.y - mesh.position.y - 2.77) < 0.001 && light.intensity === 1.31);
-                });
-            }
-            """, lampIds), "The renderer updates the lamp height and preserves its intensity.");
+        async Task ApplyModelToolAsync(string asset, string parameter, string operation, object value)
+        {
+            var response = await ReadAsync<int>(page, """
+                async args => (await fetch(game.live.api() + '/v1/game/garden/tools', {
+                    method: 'POST', headers: {'Content-Type':'application/json','X-Game-Token':game.live.token()},
+                    body: JSON.stringify({name:'customize_model',arguments:args})
+                })).status
+                """, new { asset, parameter, operation, value });
+            Check(response == 200, "The generic model tool succeeds.", new { asset, parameter, response });
+        }
 
         await page.EvaluateAsync("() => { window.gardenCpuReady = false; }");
         var response = page.WaitForResponseAsync(r => r.Url.EndsWith("/v1/game/garden/dialog") && r.Request.Method == "POST");
@@ -154,6 +142,33 @@ internal static class Garden
                     scene.lights.some(light => light.name.startsWith('garden-light-') && light.isEnabled());
             }
             """, new[] { lantern.Uid, flowers.Uid }), "luminária ligada e flores aplicadas à cena");
+        await ApplyModelToolAsync("flora.flowers", "tintRgb", "set", "#AA00FF");
+        var treeId = await ReadAsync<string>(page, """
+            async () => {
+                const response = await fetch(game.live.api() + '/v1/game/garden/plants', {
+                    method:'POST', headers:{'Content-Type':'application/json','X-Game-Token':game.live.token()},
+                    body:JSON.stringify({actions:[{action:'place',asset:'flora.pine',x:3,z:-9}]})
+                });
+                return (await response.json()).operations[0].uid;
+            }
+            """);
+        await ApplyModelToolAsync("flora.pine", "heightM", "set", 9);
+        await WaitAsync(() => RenderAsync<bool>(page, """
+            ([tree,flowers]) => {
+                const scene = BABYLON.EngineStore.LastCreatedScene;
+                const pine = scene.getMeshByName('place-' + tree);
+                const flower = scene.getMeshByName('place-' + flowers);
+                if (!pine || !flower) return false;
+                const bounds = pine.getBoundingInfo().boundingBox;
+                const materials = flower.material.subMaterials ?? [flower.material];
+                return Math.abs((bounds.maximum.y - bounds.minimum.y) * pine.scaling.y - 9) < 0.01 &&
+                    materials.length > 0 && materials.every(material => {
+                        const color = material?.albedoColor ?? material?.diffuseColor;
+                        return color && Math.abs(color.r - 170/255) < 0.001 && color.g === 0 && color.b === 1;
+                    });
+            }
+            """, new[] { treeId, flowers.Uid }), "Tree geometry and flower material use the API properties.");
+        edited = await MapAsync(page);
         await page.EvaluateAsync("() => { window.gardenCpuReady = true; }");
         var serverCalls = 0;
         page.Request += (_, req) =>

@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using Ultima.Garden;
 
 namespace Ultima.Server;
 
@@ -28,6 +27,7 @@ sealed partial class GameWorld
         ["assetCatalog"] = "/v1/assets",
         ["edits"] = GardenRoute + "/edits",
         ["dialog"] = GardenRoute + "/dialog",
+        ["tools"] = GardenRoute + "/tools",
     };
 
     string GardenPrompt()
@@ -52,7 +52,7 @@ sealed partial class GameWorld
             Use customize para modificar qualquer objeto colocado pelo UID. models["*"] vale para todos, inclusive importados.
             scaleX/Y/Z substituem scale no eixo indicado; rotationY substitui rot. Preserve os demais campos omitindo-os.
             Para criar uma variante de objeto existente, use place com o mesmo asset e os parâmetros desejados.
-            Em pedidos relativos, use os valores atuais ou os defaults do catálogo e faça um ajuste moderado.
+            Para pedidos relativos, preserve a medida pedida, converta para a unidade do parâmetro e respeite os limites.
             Para substituir uma planta colocada, remova pelo uid e coloque outra na mesma posição. Plantas nativas não têm uid.
             Catálogo:
             """ + "\n" + GardenCatalog().ToJsonString(J.Opts) + "\nObjetos colocados no jardim: " + J.Arr(placed).ToJsonString(J.Opts)
@@ -79,9 +79,6 @@ sealed partial class GameWorld
             if (ch is null) return (401, J.Err("invalid_token"));
             if (Dist(ch, NpcX, NpcZ) > TalkRadius) return (409, J.Err("guardian_out_of_reach"));
             ch.Last = J.Now;
-            var adjustment = GardenLanternIntent.Parse(text);
-            if (adjustment != LanternAdjustment.None)
-                return AdjustNearbyLanterns(token, ch.X, ch.Z, adjustment);
             prompt = GardenPrompt();
             id = ch.Id;
         }

@@ -15,5 +15,10 @@ Consulte `families.plants.assets` em `GET /v1/game/garden`. Envie
   Os objetos que surgem com o mapa não têm `uid` de colocação e ficam
   fora desta operação.
 
+Read the model contract before changing a plant. The placed pine exposes
+`heightM`, and the placed flower model exposes `tintRgb`. Use a hex color such
+as `#AA00FF` or its packed sRGB integer. The same generic tool handles plants
+and decorations.
+
 Use o [contrato do jardim](../../../docs/USAGE-API-JARDIM.md) para limites,
 respostas e operações combinadas.

@@ -10,6 +10,7 @@ importScripts('assets.js' + V);
 importScripts('game-crowd.js' + V);
 importScripts('character-rig.js' + V);
 importScripts('environment-geometry.js' + V);
+importScripts('game-placements.js' + V);
 importScripts('game-core.js' + V);
 const terrainRuntime = import('../terrain-wasm/host.js' + V).then(module => module.ready);
 terrainRuntime.catch(() => {}); // A inicialização do core encaminha a falha ao shell.

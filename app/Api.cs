@@ -29,7 +29,7 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
         "POST /v1/game/environments/{environment}/missions/{id}/events",
         "/v1/assets", "/v1/assets/jobs/{id}", "/v1/assets/file/{name}",
         "POST /v1/assets/generate", "POST /v1/assets/upload",
-        "POST " + GameWorld.GardenRoute + "/tools",
+        "GET " + GameWorld.GardenRoute + "/tools", "POST " + GameWorld.GardenRoute + "/tools",
         "/v1/analytics/dialogs", "POST /v1/analytics/dialogs", "POST /v1/diagnostics/reports",
     ];
 
@@ -174,6 +174,7 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
                 return;
             case "/v1/game/state": await Json(ctx, game.State(Token(ctx))); return;
             case GameWorld.GardenRoute: await Json(ctx, game.GardenCatalog()); return;
+            case GameWorld.GardenRoute + "/tools": await Json(ctx, game.GardenToolContext(Token(ctx))); return;
             case GameWorld.GardenRoute + "/context": await Json(ctx, game.GardenContext(Token(ctx))); return;
             case "/v1/game/map": await Json(ctx, game.Map(), 200, NoStore); return;
             case "/v1/game/events":

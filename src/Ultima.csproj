@@ -19,7 +19,6 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Windows/Layouts/*.json" />
-    <Compile Include="../app/GardenLanternIntent.cs" Link="Browser/GardenLanternIntent.cs" />
     <Compile Include="../app/Missions.cs" Link="Environments/Missions.cs" />
     <Compile Include="../engine/Ultima.Terrain/AnimationTimeline.cs" Link="Terrain/AnimationTimeline.cs" />
     <Compile Include="../engine/Ultima.Terrain/Terrain*.cs" Link="Terrain/%(Filename)%(Extension)" />

@@ -315,20 +315,17 @@ async Task Garden(Harness h, string root)
                 ["action"] = "customize", ["uid"] = newLamp["uid"]!.DeepClone(), ["parameters"] = new JsonObject { ["lightIntensity"] = 1.2 },
             }),
         }, token);
-        var adjusted = await h.Json(url, garden + "/dialog", new JsonObject
-        {
-            ["message"] = "essas luminarias possuem o meu tamanho, quero luminarias mais altas e um pouco mais fortes",
-        }, token);
-        Check(Str(adjusted["source"]) == "garden" && Num(adjusted["applied"]) == 2, "Guardiã ajusta as luminárias", adjusted);
+        var adjusted = await GardenModelIntegration.UpdateAsync(h, url, token, "prop.lantern", "poleHeight", "add", 0.6);
+        Check(Num(adjusted["applied"]) == 2, "The generic tool adjusts both lanterns.", adjusted);
         final = await h.Json(url, "/v1/game/map");
         var lamps = new[] { lamp["uid"], newLamp["uid"] }.Select(uid => Arr(Owned(final)["placements"]).Select(Obj).First(p => Same(p["uid"], uid))).ToArray();
         Check(Same(lamps[0]["x"], lamp["x"]) && Same(lamps[0]["z"], lamp["z"]), "posição da luminária preservada", lamps[0]);
-        Check(Same(lamps[0]["parameters"], new JsonObject { ["poleHeight"] = 2, ["lightIntensity"] = 1.31 }) &&
-              Same(lamps[1]["parameters"], new JsonObject { ["poleHeight"] = 3, ["lightIntensity"] = 1.5 }), "parâmetros ajustados", lamps);
+        Check(Same(lamps[0]["parameters"], new JsonObject { ["poleHeight"] = 2 }) &&
+              Same(lamps[1]["parameters"], new JsonObject { ["poleHeight"] = 3, ["lightIntensity"] = 1.2 }), "parâmetros ajustados", lamps);
         events = await h.Json(url, $"/v1/game/events?since={(long)Num(observer["eventsFrom"])}&wait=0", token: Str(observer["token"]));
         Check(Arr(events["events"]).Select(Obj).Any(e => Str(e["type"]) == "world_edited" && Num(e["revision"]) == Num(final["revision"])),
             "observador recebeu o ajuste", events["events"]);
-        await LanternHeightIntegration.VerifyAsync(h, url, token, lamps);
+        await GardenModelIntegration.VerifyAsync(h, url, token, lamps);
         var fern = Arr(Owned(final)["placements"]).Select(Obj).First(p => Str(p["asset"]) == "flora.fern");
         await h.Json(url, garden + "/plants", new JsonObject
         {

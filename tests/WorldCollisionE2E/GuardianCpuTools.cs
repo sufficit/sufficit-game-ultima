@@ -29,6 +29,16 @@ internal static class GuardianCpuTools
                 await route.FulfillAsync(new() { Status = 200, ContentType = "text/javascript", Body = script });
             });
         }
+        await page.AddInitScriptAsync("""
+            document.addEventListener('DOMContentLoaded', () => {
+                const garden = game.aiCpu.garden;
+                game.aiCpu.garden = async (...args) => {
+                    const output = await garden(...args);
+                    if (args[5]) window.lastGardenToolOutput = output;
+                    return output;
+                };
+            }, { once: true });
+            """);
         await page.GotoAsync(url.Uri.AbsoluteUri, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
         var build = await CheckBuildAsync(page);
         await WaitAsync(() => page.EvaluateAsync<bool>("() => !!window.game?.live?.token()"), "Garden session started.");
@@ -47,11 +57,20 @@ internal static class GuardianCpuTools
         const string request = "aumente a altura dessas luminarias 1m cada";
         var clock = System.Diagnostics.Stopwatch.StartNew();
         await SubmitAsync(request);
-        await dialog.GetByText("Posso aumentar em 1 m", new() { Exact = false }).WaitForAsync(new() { Timeout = 125_000 });
+        await WaitAsync(async () =>
+        {
+            var reply = await dialog.Locator(".ultima-dialog__line").InnerTextAsync();
+            return reply.EndsWith("Quer aplicar?", StringComparison.Ordinal) ||
+                reply.Contains("Nenhuma alteração foi aplicada", StringComparison.Ordinal);
+        }, "The real tool turn finished.", 125_000);
+        var proposal = await dialog.Locator(".ultima-dialog__line").InnerTextAsync();
+        Check(proposal.Contains("Somar 1 m em Altura da haste", StringComparison.Ordinal),
+            "The model picks the catalogued lamp height and adds one metre.",
+            new { proposal, output = await page.EvaluateAsync<string?>("() => window.lastGardenToolOutput ?? null") });
         var latency = clock.ElapsedMilliseconds;
         Check((await ReadMapAsync()).Revision == baseline.Revision, "A tool proposal leaves the world unchanged.");
         await Button("Aplicar alteração").ClickAsync();
-        await dialog.GetByText("Apliquei as mudanças no jardim. Aumentei a altura", new() { Exact = false }).WaitForAsync();
+        await dialog.GetByText("Apliquei as mudanças no jardim. Atualizei a propriedade: altura da haste", new() { Exact = false }).WaitForAsync();
         var applied = await ReadMapAsync();
         Check(applied.Placements.Count(p => p.Asset == "prop.lantern" && p.Parameters?.PoleHeight == 2.4 &&
             p.Parameters.LightIntensity is null) == 2 && applied.Revision == baseline.Revision + 2,
@@ -61,7 +80,7 @@ internal static class GuardianCpuTools
         await WaitAsync(async () =>
         {
             var reply = await dialog.Locator(".ultima-dialog__line").InnerTextAsync();
-            return reply.StartsWith("Posso ", StringComparison.Ordinal) ||
+            return reply.EndsWith("Quer aplicar?", StringComparison.Ordinal) ||
                 reply.Contains("Nenhuma alteração foi aplicada", StringComparison.Ordinal);
         }, "The negated turn finished.", 125_000);
         if (await Button("Descartar proposta").IsVisibleAsync())

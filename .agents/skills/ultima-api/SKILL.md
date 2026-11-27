@@ -19,5 +19,8 @@ com `{"name":"Viajante"}` e envie seu token em `X-Game-Token`.
   única chamada `POST /v1/game/garden/edits`. Use as skills das famílias
   para montar cada ação.
 - Use the [Characters skill](../ultima-characters/SKILL.md) for body-profile reads and updates.
+- Discover the properties of placed models with authenticated
+  `GET /v1/game/garden/tools`. Submit a confirmed `customize_model` call to the
+  same route with `POST`. Use `/edits` to patch known UIDs atomically.
 - Leia [contratos e exemplos](../../../docs/USAGE-API-JARDIM.md) para
   erros, limites, replay, sessões e as outras famílias da API.

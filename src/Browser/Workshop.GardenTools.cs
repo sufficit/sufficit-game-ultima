@@ -7,25 +7,41 @@ namespace Ultima.Browser;
 
 public sealed partial class Workshop
 {
-    private const string HeightTool = "adjust_lantern_height";
-    private const string ToolInstructions =
-        "You are a model that can do function calling with the following functions. " +
-        "Call a function only for explicit requests to change the garden. Never call it for a question, negation or unclear request.";
-    private const string HeightTools = """
-        [{
-          "type": "function",
-          "function": {
-            "name": "adjust_lantern_height",
-            "description": "Change the pole height of the nearby garden lanterns by a relative number of metres. Only call when the user requests a height change. Negative lowers. Em português: aumentar ou diminuir a altura das luminárias existentes em metros.",
-            "parameters": {
-              "type": "object",
-              "properties": { "delta_m": { "type": "number", "description": "Signed height change per lantern in meters" } },
-              "required": ["delta_m"],
-              "additionalProperties": false
-            }
-          }
-        }]
+    private const string CustomizeModelTool = "customize_model";
+    private const string ToolInstructions = """
+        You are the Garden Guardian. Only change the garden for an explicit request.
+        Choose the exact property ID from the list. Use add for a difference, set for
+        an absolute value or color. Convert to the unit shown. Use "#RRGGBB" for color.
+        For "+1 m" use add and value 1. For "-30 cm" use add and value -0.3.
+        Questions, negations or unsupported requests make no tool call.
         """;
+
+    private static string ModelTools(IEnumerable<string> properties) =>
+        JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                type = "function",
+                function = new
+                {
+                    name = CustomizeModelTool,
+                    description = "Edit one existing model property listed in the catalog.",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            property = new { type = "string", @enum = properties },
+                            operation = new { type = "string", @enum = new[] { "add", "set" } },
+                            value = new { description = "Number in the listed unit, or #RRGGBB for color",
+                                anyOf = new[] { new { type = "number" }, new { type = "string" } } }
+                        },
+                        required = new[] { "property", "operation", "value" },
+                        additionalProperties = false
+                    }
+                }
+            }
+        });
 
     internal async Task<GuardianTurnResult> ProposeGardenToolAsync(string text, CancellationToken token)
     {
@@ -34,27 +50,39 @@ public sealed partial class Workshop
         var source = GeniusSource("cpu");
         try
         {
-            if (string.IsNullOrEmpty((await EndpointAsync(token)).Token))
-                return GuardianTurnResult.Retry(OfflineGarden, source);
-            LanternHeightProposal? proposal = null;
-            var reply = await _genius.ReplyAsync(ToolInstructions, text, "cpu", 120, 80, token, output =>
+            var endpoint = await EndpointAsync(token);
+            if (string.IsNullOrEmpty(endpoint.Token)) return GuardianTurnResult.Retry(OfflineGarden, source);
+            var result = await GetAsync<JsonElement>(endpoint, GardenRoute + "/tools", 8, token);
+            var catalog = result.GetProperty("models");
+            if (!catalog.EnumerateObject().Any())
+                return GuardianTurnResult.Retry("Ainda não há modelos colocados para personalizar.", source);
+
+            var properties = catalog.EnumerateObject().SelectMany(asset =>
+                asset.Value.GetProperty("parameters").EnumerateObject().Select(parameter =>
+                {
+                    var model = asset.Value.GetProperty("label").GetString() ?? asset.Name;
+                    var label = parameter.Value.GetProperty("label").GetString();
+                    var unit = parameter.Value.GetProperty("unit").GetString();
+                    return new GardenProperty(asset.Name, parameter.Name, model, label, unit);
+                })).ToDictionary(p => p.Id, StringComparer.Ordinal);
+            var definitions = string.Join('\n', properties.Values.Select(p => $"{p.Id}: {p.Model}, {p.Label} ({p.Unit})"));
+            GardenModelProposal? proposal = null;
+            var reply = await _genius.ReplyAsync(ToolInstructions + "\nCatalog:\n" + definitions, text, "cpu", 120, 100, token, output =>
             {
-                proposal = ReadHeightProposal(output);
+                proposal = ReadModelProposal(output, properties);
                 if (proposal is null) return "Nenhuma alteração foi aplicada no jardim.";
-                var magnitude = Math.Abs(proposal.DeltaM).ToString("0.##", CultureInfo.GetCultureInfo("pt-BR"));
-                var verb = proposal.DeltaM > 0 ? "aumentar" : "diminuir";
-                return $"Posso {verb} em {magnitude} m a altura de até duas luminárias próximas. Quer aplicar?";
-            }, HeightTools);
+                return proposal.Preview;
+            }, ModelTools(properties.Keys));
             return new(reply, source, KeepDraft: true, Proposal: proposal);
         }
         catch (Exception ex) when (!token.IsCancellationRequested &&
-            ex is JSException or OperationCanceledException or JsonException or InvalidOperationException or KeyNotFoundException)
+            ex is JSException or OperationCanceledException or HttpRequestException or JsonException or InvalidOperationException or KeyNotFoundException)
         {
             return GuardianTurnResult.Retry("A IA local não conseguiu propor uma edição válida. Nenhuma alteração foi aplicada.", source);
         }
     }
 
-    private static LanternHeightProposal? ReadHeightProposal(string output)
+    private static GardenModelProposal? ReadModelProposal(string output, IReadOnlyDictionary<string, GardenProperty> properties)
     {
         using var document = JsonDocument.Parse(output);
         var calls = document.RootElement.GetProperty("calls");
@@ -62,37 +90,60 @@ public sealed partial class Workshop
         if (calls.GetArrayLength() != 1 || calls[0].GetProperty("type").GetString() != "function")
             throw new JsonException("Expected one garden tool call.");
         var function = calls[0].GetProperty("function");
-        if (function.GetProperty("name").GetString() != HeightTool)
+        if (function.GetProperty("name").GetString() != CustomizeModelTool)
             throw new JsonException("The requested garden tool is unavailable.");
-        var arguments = function.GetProperty("arguments").GetString() ?? throw new JsonException("Missing arguments.");
-        using var parsed = JsonDocument.Parse(arguments);
-        var fields = parsed.RootElement.EnumerateObject();
-        if (!fields.MoveNext() || fields.Current.Name != "delta_m" || fields.Current.Value.ValueKind != JsonValueKind.Number ||
-            !fields.Current.Value.TryGetDouble(out var delta) || !double.IsFinite(delta) ||
-            Math.Abs(delta) is < 0.01 or > 4.5 || Math.Round(delta, 2) != delta || fields.MoveNext())
-            throw new JsonException("Invalid height displacement.");
-        return new(delta);
+        using var parsed = JsonDocument.Parse(function.GetProperty("arguments").GetString() ?? throw new JsonException("Missing arguments."));
+        var args = parsed.RootElement;
+        if (args.EnumerateObject().Any(p => p.Name is not ("property" or "operation" or "value")))
+            throw new JsonException("Unknown garden tool argument.");
+        var id = args.GetProperty("property").GetString() ?? "";
+        var operation = args.GetProperty("operation").GetString();
+        if (operation is not ("set" or "add") || !properties.TryGetValue(id, out var property))
+            throw new JsonException("The model does not declare that operation or parameter.");
+        var value = args.GetProperty("value");
+        var display = DisplayValue(value, property.Unit, operation);
+        var verb = operation == "set" ? "Definir" : "Somar";
+        var arguments = JsonSerializer.SerializeToElement(new
+        {
+            asset = property.Asset, parameter = property.Key, operation, value
+        });
+        return new(arguments, $"{verb} {display} em {property.Label} de até duas instâncias de {property.Model}. Quer aplicar?");
     }
 
-    internal async Task<GuardianTurnResult> ApplyGardenToolAsync(LanternHeightProposal proposal, CancellationToken token)
+    private sealed record GardenProperty(string Asset, string Key, string Model, string? Label, string? Unit)
+    {
+        internal string Id => Asset + "/" + Key;
+    }
+
+    private static string DisplayValue(JsonElement value, string? unit, string operation)
+    {
+        if (unit == "sRGB24" && operation == "set")
+        {
+            if (value.ValueKind == JsonValueKind.String && value.GetString() is { Length: 7 } color && color[0] == '#' &&
+                color.AsSpan(1).ToArray().All(char.IsAsciiHexDigit))
+                return color.ToUpperInvariant();
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var rgb) && rgb is >= 0 and <= 0xffffff)
+                return $"#{rgb:X6}";
+        }
+        else if (unit != "sRGB24" && value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number) && double.IsFinite(number))
+            return $"{number.ToString("G", CultureInfo.GetCultureInfo("pt-BR"))} {unit}";
+        throw new JsonException("Invalid parameter value.");
+    }
+
+    internal async Task<GuardianTurnResult> ApplyGardenToolAsync(GardenModelProposal proposal, CancellationToken token)
     {
         var source = GeniusSource("cpu") + " · Oficina do jardim";
         try
         {
             var endpoint = await EndpointAsync(token);
             if (string.IsNullOrEmpty(endpoint.Token)) return GuardianTurnResult.Retry(OfflineGarden, source);
-            using var request = JsonContent.Create(new
-            {
-                name = HeightTool,
-                arguments = new { delta_m = proposal.DeltaM }
-            });
+            using var request = JsonContent.Create(new { name = CustomizeModelTool, arguments = proposal.Arguments });
             var result = await SendAsync<JsonElement>(endpoint, HttpMethod.Post, GardenRoute + "/tools", request, 12, token);
-            var reply = ReadReply(result) ?? "O jardim não confirmou o ajuste.";
-            return await GardenReplyAsync(result, reply, source, token);
+            return await GardenReplyAsync(result, ReadReply(result) ?? "O jardim não confirmou o ajuste.", source, token);
         }
-        catch (WorkshopException ex) when (!token.IsCancellationRequested && ex.Code == "lantern_height_out_of_range")
+        catch (WorkshopException ex) when (!token.IsCancellationRequested && ex.Code == "model_parameter_out_of_range")
         {
-            return GuardianTurnResult.Retry("Esse ajuste ultrapassaria o limite de uma luminária. Nenhuma foi alterada.", source);
+            return GuardianTurnResult.Retry("A alteração ultrapassaria os limites do modelo. Nenhuma instância foi alterada.", source);
         }
         catch (Exception ex) when (!token.IsCancellationRequested && ex is HttpRequestException or JSException or JsonException or OperationCanceledException)
         {
@@ -101,4 +152,4 @@ public sealed partial class Workshop
     }
 }
 
-internal sealed record LanternHeightProposal(double DeltaM);
+internal sealed record GardenModelProposal(JsonElement Arguments, string Preview);
