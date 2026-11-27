@@ -95,6 +95,12 @@ both hands alternating fore and aft in actor space, with 36–40 cm of travel
 per hand during walking. The same test verified rotation in the pelvis,
 thorax, both clavicles and both elbows and retained sub-millimetre ankle
 alignment across both profiles and renderers.
+The published build `8ac8c38c7ff4df99ee632c7cb31da4f5119cd500` reproduced
+those checks with 34–39 cm of hand travel across the four runs. The preceding
+build already moved the hands through about 27 cm in the default profile,
+but published joint samples showed effectively constant rotations at the
+pelvis, thorax, clavicles and elbows.
+[Pages workflow](https://github.com/sufficit/sufficit-game-ultima/actions/runs/46081474377)
 
 Next action. Exercise the same retargeting on a controlled slope and low
 obstacle. Measure stance drift against the world and frame cost in both
