@@ -7,8 +7,8 @@
 | [build_reference.py](build_reference.py) | Procedural authoring and deformation checks for this reference. |
 
 This original Ultima reference uses the [repository MIT license](../../LICENSE).
-It has four flat-color materials and no textures. The lower body is connected
-across the pelvis and crotch. The wrists drive placeholder hands, while the
+It has four flat-color materials and no textures. The mesh forms one connected surface across the shoulders, pelvis and crotch.
+Sleeves share a border with the torso and blend chest and shoulder weights. The wrists drive placeholder hands, while the
 finger bones are present for later weighting. The reference has no gameplay
 collider or animation clips. See the
 [implementation plan](../../docs/PLAN-HUMANOID-SKINNED-RIG.md) for integration.
@@ -42,9 +42,9 @@ blender --background --python assets/characters/build_reference.py -- \
 ```
 
 The checked export uses Blender 4.5.3 LTS. It contains 74 bones, one skin,
-and four material primitives. The Blender source mesh has 699 vertices.
+and four material primitives. The Blender source mesh has 679 vertices.
 The build checks closed mesh edges, normalized weights, and independent
-hip, knee and ankle deformation. The production Babylon.js version imported
+shoulder, hip, knee and ankle deformation. The production Babylon.js version imported
 the GLB in Chromium and verified its skin, exact hierarchy, joint pivots
-within 0.05 mm, and deformation of all three joints. The Khronos glTF
+within 0.05 mm, and deformation at both shoulders, the hip, knee and ankle. The Khronos glTF
 validator reported zero errors and warnings.

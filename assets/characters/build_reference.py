@@ -63,10 +63,12 @@ class Shell:
             for angle in angles
         ]
 
-    def bridge(self, a, b, material):
+    def bridge(self, a, b, material, openings=()):
         if len(a) != len(b):
             raise ValueError("Ring sizes differ")
         for i in range(len(a)):
+            if i in openings:
+                continue
             n = (i + 1) % len(a)
             self.face((a[i], a[n], b[n], b[i]), material)
 
@@ -82,7 +84,17 @@ class Shell:
         bpy.context.collection.objects.link(obj)
         bm = bmesh.new()
         bm.from_mesh(mesh)
-        assert all(edge.is_manifold for edge in bm.edges), "Reference shells must have closed edges"
+        assert all(edge.is_manifold for edge in bm.edges), "The reference surface must have closed edges"
+        pending = [next(iter(bm.verts))]
+        connected = set(pending)
+        while pending:
+            vertex = pending.pop()
+            for edge in vertex.link_edges:
+                neighbor = edge.other_vert(vertex)
+                if neighbor not in connected:
+                    connected.add(neighbor)
+                    pending.append(neighbor)
+        assert len(connected) == len(bm.verts), "The sleeves and body must form one connected surface"
         bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
         bm.to_mesh(mesh)
         bm.free()
@@ -125,6 +137,7 @@ def torso_and_legs(shell, joints):
     angles = [math.tau * i / 16 for i in range(16)]
     pelvis = shell.ring(0, hip_y - .025, 0, .164, .101, angles, {"pelvis": 1})
     last = pelvis
+    shoulders = {}
     for y, rx, rz, front, material, weights in [
         (hip_y + .065, .165, .105, 0, 0, pair("pelvis", "upper-body", .2)),
         (.925, .132, .084, .006, 1, pair("pelvis", "upper-body", .65)),
@@ -140,7 +153,17 @@ def torso_and_legs(shell, joints):
         (1.75, .024, .030, 0, 2, {"head-pivot": 1}),
     ]:
         ring = shell.ring(0, y, front, rx, rz, angles, weights)
-        shell.bridge(last, ring, material)
+        openings = ()
+        if y == 1.39:
+            for side, center in (("right", 4), ("left", 12)):
+                start = center - 2
+                end = center + 3
+                lower, upper = last[start:end], ring[start:end]
+                shoulders[side] = lower + upper[::-1]
+                for vertex in lower + upper:
+                    shell.weights[vertex] = pair("chest", "shoulder-" + side, .25)
+            openings = (*range(2, 6), *range(10, 14))
+        shell.bridge(last, ring, material, openings)
         last = ring
     shell.face(last, 2)
 
@@ -156,6 +179,7 @@ def torso_and_legs(shell, joints):
         ("left", -1, pelvis[8:] + pelvis[:1] + seam[::-1]),
     ]:
         leg(shell, joints, side, sign, rim)
+    return shoulders
 
 
 def leg(shell, joints, side, sign, last):
@@ -189,17 +213,24 @@ def leg(shell, joints, side, sign, last):
     shell.face(last, 3)
 
 
-def arms(shell, joints):
+def align_ring(shell, anchor, ring):
+    """Choose the closest cyclic correspondence for the sleeve opening."""
+    candidates = [seq[i:] + seq[:i] for seq in (ring, ring[::-1]) for i in range(len(ring))]
+    return min(candidates, key=lambda indices: sum(
+        (shell.vertices[a] - shell.vertices[b]).length_squared
+        for a, b in zip(anchor, indices, strict=True)))
+
+
+def arms(shell, joints, shoulders):
     angles = [math.tau * i / 10 for i in range(10)]
     for side in ("left", "right"):
         shoulder, elbow, wrist = (f"{name}-{side}" for name in ("shoulder", "elbow", "wrist"))
         ey, wy = joints[elbow]["y"], joints[wrist]["y"]
         x = joints[shoulder]["x"]
-        last = None
+        last = shoulders[side]
         for y, rx, rz, material, weights in [
-            (1.426, .034, .042, 1, pair("chest", shoulder, .35)),
-            (1.36, .058, .061, 1, {shoulder: 1}),
-            (1.257, .047, .050, 1, {shoulder: 1}),
+            (1.263, .052, .050, 1, {shoulder: 1}),
+            (1.220, .044, .046, 1, {shoulder: 1}),
             (ey + .045, .037, .039, 2, pair(shoulder, elbow, .2)),
             (ey, .036, .037, 2, pair(shoulder, elbow, .5)),
             (ey - .045, .037, .039, 2, pair(shoulder, elbow, .8)),
@@ -209,10 +240,8 @@ def arms(shell, joints):
             (wy - .090, .021, .017, 2, {wrist: 1}),
         ]:
             ring = shell.ring(x, y, 0, rx, rz, angles, weights)
-            if last is None:
-                shell.face(ring[::-1], material)
-            else:
-                shell.bridge(last, ring, material)
+            ring = align_ring(shell, last, ring)
+            shell.bridge(last, ring, material)
             last = ring
         shell.face(last, 2)
 
@@ -228,7 +257,8 @@ def verify_skin(mesh, rig, joints, shell):
     scene.frame_set(1)
     graph = bpy.context.evaluated_depsgraph_get()
     rest = [v.co.copy() for v in mesh.evaluated_get(graph).data.vertices]
-    for name, angle in (("hip-right", .4), ("knee-right", .9), ("ankle-right", .28)):
+    for name, angle in (("hip-right", .4), ("knee-right", .9), ("ankle-right", .28),
+                        ("shoulder-right", .55), ("shoulder-left", .55)):
         bone = rig.pose.bones[name]
         flex = joints[name]["flexion"]
         axis = blender_point((flex["axisX"], flex["axisY"], flex["axisZ"]))
@@ -260,8 +290,8 @@ def main():
     bpy.context.scene.unit_settings.system = "METRIC"
     rig = build_armature(joints)
     shell = Shell()
-    torso_and_legs(shell, by_name)
-    arms(shell, by_name)
+    shoulders = torso_and_legs(shell, by_name)
+    arms(shell, by_name, shoulders)
     mesh = shell.make_mesh(rig)
     verify_skin(mesh, rig, by_name, shell)
     bpy.context.preferences.filepaths.save_version = 0

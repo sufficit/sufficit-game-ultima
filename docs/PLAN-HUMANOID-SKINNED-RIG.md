@@ -39,7 +39,8 @@ their 74 bones from the C# neutral pose, including the actor root. The closed
 lower-body surface blends weights across the hip, knee and ankle. Khronos
 validation reported zero errors and warnings. Babylon.js in Chromium verified
 the skin, the named hierarchy, rest pivots within 0.05 mm and independent
-deformation of those joints.
+deformation of those joints. The reference was refined to join the sleeves to
+the torso, and the isolated Chromium test also verified both shoulders.
 
 Next action. Bind the existing C# pose to the GLB rest transforms in the main
 and worker renderer paths, using the current joint map and foot contacts.
