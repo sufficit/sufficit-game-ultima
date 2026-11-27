@@ -77,6 +77,19 @@ internal static class BrowserResources
             }
             """);
         Check(await TileMaterials() == materialsBefore, "Tile replacement and removal dispose owned materials.");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Abrir painel do jogo", Exact = true }).ClickAsync();
+        await page.GetByText("Oficina do mundo", new() { Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Gráficos", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Econômico", Exact = true }).ClickAsync();
+        Check(await page.EvaluateAsync<string>("() => localStorage.getItem('ultima.graficos')") == "economico",
+            "The graphics menu persists Economy.");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Recarregar para aplicar", Exact = true }).ClickAsync();
+        await WaitAsync(async () => await page.EvaluateAsync<bool>("""
+            async () => {
+                const status = await window.game?.graphicsStatus?.();
+                return status?.style === 'economico' && status?.softwareRenderer;
+            }
+            """), "Reload restores Economy without replacing software protection.");
         Check(errors.IsEmpty, "No browser errors during resource tests.", errors);
         Log(new { mode = Mode, dimensions, idleDraws = draws, modelRequests });
 

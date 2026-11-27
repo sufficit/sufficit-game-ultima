@@ -302,23 +302,8 @@
                                         </SUIStack>
                                     </SUIExpansionPanel>
 
-                                    <SUIExpansionPanel Title="Gráficos" StartIcon="settings">
-                                        <SUIStack Spacing="2">
-                                            <SUIStack Row="true" Spacing="1" Wrap="true">
-                                                <SUIButton SizeValue="SUISize.Small" VariantValue="@(_gfxStyle == "padrao" ? SUIVariant.Soft : SUIVariant.Outlined)"
-                                                           aria-pressed="@(_gfxStyle == "padrao" ? "true" : "false")" OnClick="@(() => SetGfxAsync("padrao"))">Padrão (leve)</SUIButton>
-                                                <SUIButton SizeValue="SUISize.Small" VariantValue="@(_gfxStyle == "pbr" ? SUIVariant.Soft : SUIVariant.Outlined)"
-                                                           aria-pressed="@(_gfxStyle == "pbr" ? "true" : "false")" OnClick="@(() => SetGfxAsync("pbr"))">PBR + IBL</SUIButton>
-                                                <SUIButton SizeValue="SUISize.Small" VariantValue="@(_gfxStyle == "cinema" ? SUIVariant.Soft : SUIVariant.Outlined)"
-                                                           aria-pressed="@(_gfxStyle == "cinema" ? "true" : "false")" OnClick="@(() => SetGfxAsync("cinema"))">Cinemático</SUIButton>
-                                            </SUIStack>
-                                            <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@(_gfxDirty ? "Recarregue para aplicar." : "Ativo: " + (_gfxStyle == "cinema" ? "cinemático" : _gfxStyle == "pbr" ? "PBR + IBL" : "padrão") + ".")</SUIText>
-                                            @if (_gfxDirty)
-                                            {
-                                                <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="restart" OnClick="ReloadPage">Recarregar para aplicar</SUIButton>
-                                            }
-                                        </SUIStack>
-                                    </SUIExpansionPanel>
+                                    <GameGraphicsOptions Style="@_gfxStyle" Dirty="@_gfxDirty"
+                                                         StyleChanged="SetGfxAsync" Reload="ReloadPage" />
 
                                     <SUIExpansionPanel Title="Estilo do mundo" StartIcon="palette">
                                         <SUIStack Spacing="2">

@@ -67,7 +67,7 @@
 
     const GRAPHICS_PREF_KEY = 'ultima.graficos';
     function graphicsStyle(value) {
-        return value === 'pbr' || value === 'cinema' ? value : 'padrao';
+        return value === 'economico' || value === 'pbr' || value === 'cinema' ? value : 'padrao';
     }
     function graphicsPref() {
         try { return graphicsStyle(qs2.get('gfx') || localStorage.getItem(GRAPHICS_PREF_KEY)); }

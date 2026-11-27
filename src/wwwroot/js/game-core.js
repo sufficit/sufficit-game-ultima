@@ -39,6 +39,9 @@
     // F7b: 'padrao' (StandardMaterial convertido, iluminação atual) ou 'pbr' (materiais
     // glTF originais + IBL de um env procedural). Padrão = padrao; troca pede recarga.
     const graphicsStyle = host.graphics || 'padrao';
+    const economy = graphicsStyle === 'economico';
+    const graphicsBudget = globalThis.UltimaGraphicsBudget;
+    const economyBudget = economy ? graphicsBudget.create() : null;
     const usePbr = graphicsStyle === 'pbr' || graphicsStyle === 'cinema';
     const graphicsEffects = { csm: false, ssao: false, depthOfField: false };
     // id do modelo procedural -> id do asset GLB que o substitui no estilo lowpoly
@@ -48,6 +51,8 @@
     let pageVisible = host.pageVisible !== false;
     let softwareRenderer = false, lastDrawAt = -Infinity, lastFrameAt = null;
     let activeDrawUntil = 0, drawnFps = 0, drawDeltaMs = 0;
+    let viewportMetrics = null;
+    const cappedRendering = () => softwareRenderer || economy;
     const SOFTWARE_IDLE_DRAW_MS = 125, SOFTWARE_ACTIVE_DRAW_MS = 1000 / 24;
     let scene = null;
     let sceneShadows = null;
@@ -2237,9 +2242,9 @@
             } catch (error) { console.warn('[gráficos] CSM indisponível', error); }
         }
         if (!softwareRenderer) {
-            shadows ??= new BABYLON.ShadowGenerator(2048, sun);
+            shadows ??= new BABYLON.ShadowGenerator(economy ? 512 : 2048, sun);
             shadows.usePercentageCloserFiltering = true;
-            shadows.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM;
+            shadows.filteringQuality = economy ? BABYLON.ShadowGenerator.QUALITY_LOW : BABYLON.ShadowGenerator.QUALITY_MEDIUM;
             shadows.bias = 0.0006;
             shadows.normalBias = 0.02;
             shadows.darkness = 0.5;
@@ -2263,7 +2268,7 @@
             if (usePbr) { setupProceduralEnv(); }
             ensureChunksAround(spawn.x, spawn.z);
             void loadGroundMaterials();
-            const updateWeather = weatherUpdate(sun, hemi, sky, horizon, softwareRenderer ? 240 : 520);
+            const updateWeather = weatherUpdate(sun, hemi, sky, horizon, cappedRendering() ? 240 : 520);
             scene.registerBeforeRender(function () {
                 if (waterTex) { waterTex.uOffset += drawDeltaMs * 0.00003; }
                 updateWeather();
@@ -2332,7 +2337,7 @@
         }
 
         // v3: pós-processamento (MSAA 4x, bloom discreto, nitidez) com recuo gracioso.
-        try {
+        if (!economy) try {
             const pipeline = new BABYLON.DefaultRenderingPipeline('pipe', true, scene, [camera]);
             if (softwareRenderer) {
                 pipeline.samples = 1;                 // software: efeitos fora, frames de volta
@@ -2946,7 +2951,7 @@
         lastTick = nowMs;
         if (dotnet && player) {
             const fin = (v) => (Number.isFinite(v) ? v : 0);
-            dotnet.invokeMethodAsync('OnMoveTick', fin(player.position.x), fin(player.position.y), fin(player.position.z), fin(softwareRenderer ? drawnFps : engine.getFps()));
+            dotnet.invokeMethodAsync('OnMoveTick', fin(player.position.x), fin(player.position.y), fin(player.position.z), fin(cappedRendering() ? drawnFps : engine.getFps()));
         }
         if (player) {
             if (!authored) updateGardenLights();
@@ -2992,15 +2997,15 @@
                 catch (e) { adapter = null; }
             }
             if (adapter) {
-                const gpu = new BABYLON.WebGPUEngine(host.canvas, { adaptToDeviceRatio: dom, stencil: false });
+                const gpu = new BABYLON.WebGPUEngine(host.canvas, { adaptToDeviceRatio: dom, antialias: !economy, stencil: false });
                 await gpu.initAsync();   // falha aqui = canvas queimado: propaga pro fatal
                 engine = gpu;
             } else {
-                engine = new BABYLON.Engine(host.canvas, true, { adaptToDeviceRatio: dom, stencil: false });
+                engine = new BABYLON.Engine(host.canvas, !economy, { adaptToDeviceRatio: dom, stencil: false });
             }
             buildScene(host.canvas);
             if (!dom && host.size) { applySize(host.size.width, host.size.height, host.size.dpr); }
-            else if (softwareRenderer) applySize(host.canvas.clientWidth, host.canvas.clientHeight, 1);
+            else if (cappedRendering()) applySize(host.canvas.clientWidth, host.canvas.clientHeight, globalThis.devicePixelRatio || 1);
             // Cena pronta: o shell só resolve o game.init DAQUI para frente — o C# passa
             // a registrar modelos com a cena garantida (antes: "cena ainda não criada").
             if (host.onCoreReady) { host.onCoreReady(); }
@@ -3032,7 +3037,7 @@
             inputFrame = terrain.ReadPlayerInput();
             inputDirty = false;
         }
-        if (softwareRenderer) {
+        if (cappedRendering()) {
             const [x, z, moveX, moveZ, lookX, lookY] = inputFrame;
             if ((!frozen && (x || z || moveX || moveZ || lookX || lookY)) ||
                 camPending.dx || camPending.dy || camPending.wheel) activeDrawUntil = frameStart + 180;
@@ -3062,12 +3067,21 @@
         if (crowdCount) { updateCrowd(delta); }
         updateCollectionPreview(frameStart);
         // Pace GPU submissions without throttling the C# simulation or input sampling.
-        const drawInterval = frameStart < activeDrawUntil ? SOFTWARE_ACTIVE_DRAW_MS : SOFTWARE_IDLE_DRAW_MS;
-        if (!softwareRenderer || frameStart - lastDrawAt >= drawInterval - 1) {
+        const active = frameStart < activeDrawUntil;
+        const drawInterval = softwareRenderer
+            ? (active ? SOFTWARE_ACTIVE_DRAW_MS : SOFTWARE_IDLE_DRAW_MS)
+            : (active ? graphicsBudget.activeFrameMs : graphicsBudget.idleFrameMs);
+        if (!cappedRendering() || frameStart - lastDrawAt >= drawInterval - 1) {
             drawDeltaMs = Number.isFinite(lastDrawAt) ? frameStart - lastDrawAt : 0;
             if (drawDeltaMs > 0) drawnFps = 1000 / drawDeltaMs;
             lastDrawAt = frameStart;
+            const submitStart = performance.now();
             scene.render();
+            if (economyBudget && !softwareRenderer) {
+                if (!active) economyBudget.reset();
+                else if (drawDeltaMs && economyBudget.sample(frameStart, drawDeltaMs, performance.now() - submitStart))
+                    applySize(...viewportMetrics);
+            }
         }
         framePerf(performance.now() - frameStart);
         tick(performance.now());
@@ -3108,7 +3122,7 @@
         },
         resize(w, h, dpr) {
             if (!engine) { return; }
-            if (dom && !softwareRenderer) engine.resize();
+            if (dom && !cappedRendering()) engine.resize();
             else applySize(w, h, dpr || host.size?.dpr || 1);
         },
         inputMode(kind) { setActiveInput(kind); }
@@ -3120,7 +3134,9 @@
     // como no adaptToDeviceRatio da main thread.
     function applySize(width, height, dpr) {
         if (!engine) { return; }
-        const ratio = softwareRenderer ? Math.min(1, dpr || 1, 1280 / width, 720 / height)
+        viewportMetrics = [width, height, dpr];
+        const scale = softwareRenderer ? 1 : economyBudget?.scale ?? 1;
+        const ratio = cappedRendering() ? Math.min(1, dpr || 1, 1280 / width, 720 / height) * scale
             : Math.max(.25, dpr || 1);
         engine.setHardwareScalingLevel(1 / ratio);
         engine.setSize(Math.max(1, Math.floor((width || 1280) * ratio)), Math.max(1, Math.floor((height || 720) * ratio)));
@@ -3153,6 +3169,7 @@
             lastDrawAt = -Infinity;
             lastFrameAt = null;
             activeDrawUntil = 0;
+            economyBudget?.reset();
             if (visible) engine.runRenderLoop(renderFrame);
             else { input.clear(); engine.stopRenderLoop(renderFrame); }
         },
@@ -3349,7 +3366,10 @@
             scatter(id, opts) { return scatterSeeded(id, opts); }
         },
         crowdStatus() { return crowd?.status() || { requested: crowdCount, error: crowdError }; },
-        graphicsStatus() { return { style: graphicsStyle, env: envOk, pageVisible, softwareRenderer, ...graphicsEffects }; },
+        graphicsStatus() {
+            return { style: graphicsStyle, env: envOk, pageVisible, softwareRenderer,
+                resolutionScale: softwareRenderer ? 1 : economyBudget?.scale ?? 1, ...graphicsEffects };
+        },
         perf: {
             // Custo de CPU do loop de render (sem incluir a espera de GPU): amostras dos
             // últimos 600 frames, medianas e máximos para validar o orçamento dos modelos.

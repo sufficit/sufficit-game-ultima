@@ -16,6 +16,7 @@
 - [Decisões históricas](../decisions/) — input, visual e API.
 
 ## Planos ativos (`PLAN-*.md`)
+- [Economy graphics profile](PLAN-ECONOMY-GRAPHICS.md).
 
 Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em

@@ -1,0 +1,31 @@
+@using Sufficit.Blazor.UI.Components
+
+<SUIExpansionPanel Title="Gráficos" StartIcon="settings">
+    <SUIStack Spacing="2">
+        <SUIStack Row="true" Spacing="1" Wrap="true">
+            @foreach (var (style, label) in Options)
+            {
+                <SUIButton SizeValue="SUISize.Small"
+                           VariantValue="@(Style == style ? SUIVariant.Soft : SUIVariant.Outlined)"
+                           aria-pressed="@(Style == style ? "true" : "false")"
+                           OnClick="@(() => StyleChanged.InvokeAsync(style))">@label</SUIButton>
+            }
+        </SUIStack>
+        <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">@(Dirty ? "Recarregue para aplicar." : "Ativo: " + Options.First(option => option.Style == Style).Label + ".")</SUIText>
+        @if (Dirty)
+        {
+            <SUIButton SizeValue="SUISize.Small" VariantValue="SUIVariant.Outlined" StartIcon="restart"
+                       OnClick="@(() => Reload.InvokeAsync())">Recarregar para aplicar</SUIButton>
+        }
+    </SUIStack>
+</SUIExpansionPanel>
+
+@code {
+    private static readonly (string Style, string Label)[] Options =
+        [("padrao", "Padrão (leve)"), ("economico", "Econômico"), ("pbr", "PBR + IBL"), ("cinema", "Cinemático")];
+
+    [Parameter, EditorRequired] public string Style { get; set; } = "padrao";
+    [Parameter] public bool Dirty { get; set; }
+    [Parameter] public EventCallback<string> StyleChanged { get; set; }
+    [Parameter] public EventCallback Reload { get; set; }
+}
