@@ -7,7 +7,7 @@ and contact solving in C#, and validate the result on the existing game paths.
 1. [complete] Specify the neutral pose, axes and angular limits. Keep stable
    joint IDs and hierarchy. Export primary flexion metadata and verify the
    contract and custom body proportions in RulesSmoke.
-2. [pending] Author a reference humanoid mesh and armature in Blender. Map it to
+2. [complete] Author a reference humanoid mesh and armature in Blender. Map it to
    the game IDs, document rest-space transforms, weight the mesh, and export a
    GLB. Check the imported skin, bind pose and deformation at hips, knees and
    ankles before extending to arms and hands.
@@ -32,6 +32,14 @@ The same Chromium scenario passed on the public Pages build
 `a68bcad84ca6d5bbce3524529f4064d9f047de5c` in both renderer modes.
 [Pages workflow](https://github.com/sufficit/sufficit-game-ultima/actions/runs/45995042423)
 
-Next action. Build the Blender reference armature and weighted mesh from the
-[joint map](figures/humanoid-rig.svg) and
-[bind-pose contract](USAGE-ANIMACOES.md#humanoid-bind-pose-contract).
+## Checkpoint 2 evidence
+
+The [Blender master and GLB reference](../assets/characters/README.md) derive
+their 74 bones from the C# neutral pose, including the actor root. The closed
+lower-body surface blends weights across the hip, knee and ankle. Khronos
+validation reported zero errors and warnings. Babylon.js in Chromium verified
+the skin, the named hierarchy, rest pivots within 0.05 mm and independent
+deformation of those joints.
+
+Next action. Bind the existing C# pose to the GLB rest transforms in the main
+and worker renderer paths, using the current joint map and foot contacts.

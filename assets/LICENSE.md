@@ -46,3 +46,8 @@ auditável no git, e continua disponível mesmo se o CDN mudar.
 `grass.webp` e `dirt.webp` foram geradas para o Ultima com OpenAI ImageGen a
 partir de descrições originais de grama curta e terra compactada. As imagens
 ortográficas foram convertidas em WebP sRGB de 256 × 256 para publicação.
+
+## Humanoid reference
+
+The [procedural humanoid reference](characters/README.md) is original Ultima
+work and uses the [repository MIT license](../LICENSE).
