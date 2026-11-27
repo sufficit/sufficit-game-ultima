@@ -21,6 +21,8 @@ internal static partial class PlayerAnatomy
     private static AnatomyFlexion Pitch(int axisX, double minDegrees, double maxDegrees) =>
         new(axisX, 0, 0, double.DegreesToRadians(minDegrees), double.DegreesToRadians(maxDegrees));
 
+    private static readonly HumanoidBody DefaultHumanoid = Humanoid.ResolveBody(null);
+
     private static void AddHumanoid(List<AnatomyJoint> joints, double height, HumanoidBody? body)
     {
         void Add(string name, string parent, double x, double y, double z,
@@ -38,14 +40,15 @@ internal static partial class PlayerAnatomy
         var ankle = body is null ? .039 * 1.25 * .55 - .004 / height : body.AnkleJoint / height;
         var knee = body is null ? (hip + ankle) / 2 : body.KneeHeight / height;
         var shoulder = body?.ShoulderHeightRatio ?? HumanoidBody.DefaultShoulderHeightRatio;
-        var elbow = body is null ? .63 : body.ElbowHeight / height;
-        var wrist = body is null ? .45 : body.WristHeight / height;
+        var armBody = body ?? DefaultHumanoid;
+        var elbow = armBody.ElbowHeight / armBody.Height;
+        var wrist = armBody.WristHeight / armBody.Height;
         foreach (var side in new[] { "left", "right" })
         {
             var sign = side == "left" ? -1 : 1;
-            var arm = sign * (body is null ? .088 + .026 * 1.3 : body.ArmOffset / height);
+            var arm = sign * armBody.ArmOffset / armBody.Height;
             var leg = sign * (body is null ? .052 : body.LegSpacing / height);
-            Add("clavicle-" + side, "chest", sign * .025, HumanoidBody.DefaultShoulderHeightRatio, 0);
+            Add("clavicle-" + side, "chest", sign * HumanoidBody.ClavicleOffsetRatio, HumanoidBody.ClavicleHeightRatio, 0);
             Add("shoulder-" + side, "clavicle-" + side, arm, shoulder, 0, flexion: ShoulderPitch);
             Add("elbow-" + side, "shoulder-" + side, arm, elbow, 0, "hinge", flexion: ElbowFlexion);
             Add("wrist-" + side, "elbow-" + side, arm, wrist, 0, flexion: WristPitch);

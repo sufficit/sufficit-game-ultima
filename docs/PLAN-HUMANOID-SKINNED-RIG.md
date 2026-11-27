@@ -40,10 +40,13 @@ lower-body surface blends weights across the hip, knee and ankle. Khronos
 validation reported zero errors and warnings. Babylon.js in Chromium verified
 the skin, the named hierarchy, rest pivots within 0.05 mm and independent
 deformation of those joints. The reference was refined to join the sleeves to
-the torso. It uses a 0.82 shoulder-to-standing-height ratio for its 1.75 m
-profile. The isolated Chromium test verified both shoulders after the change.
+the torso. The isolated Chromium test verified both shoulders after that change.
 
-Next action. Fit the shoulder silhouette and arm pivots separately against the
-[measured references](activities/202611270952-humanoid-shoulder-references.md).
-Then bind the existing C# pose to the GLB rest transforms in both render paths,
+The playable avatar and Blender reference now share the MPFB2-based default
+shoulder pivots. The playable sleeve geometry follows separate external
+heights and width from one central ANSUR II profile. The Blender model uses
+the same exterior heights at the sleeve opening.
+[Measured references](activities/202611270952-humanoid-shoulder-references.md)
+
+Next action. Bind the existing C# pose to the GLB rest transforms in both render paths,
 using the current joint map and foot contacts.

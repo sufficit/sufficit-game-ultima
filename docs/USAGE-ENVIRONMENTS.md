@@ -75,7 +75,7 @@ server is reachable. This example changes height, mass, build and skin tone.
 | `legRatio` | 0.40–0.48 of total height | 0.44 |
 | `femurRatio` | 0.42–0.58 of the hip-to-ankle length | 0.50 |
 | `armLengthRatio` | 0.30–0.42 of total height, shoulder to wrist | 0.35 |
-| `shoulderHeightRatio` | 0.77–0.84 of standing height, measured from the soles to the shoulder pivot | 0.80 |
+| `shoulderHeightRatio` | 0.77–0.84 of standing height, measured from the soles to the shoulder pivot | 0.80518 |
 | `upperArmRatio` | 0.43–0.57 of the shoulder-to-wrist length | 0.17 / 0.35 |
 | `waistCircumference` | 0.60–1.65 m around the widest abdominal cross-section | Existing torso contour |
 | `chestScale` | 0.80–1.25 chest diameter multiplier | 1.00 |
@@ -87,8 +87,14 @@ server is reachable. This example changes height, mass, build and skin tone.
 The catalog rejects an invalid profile. The game resolves dimensions at
 scene startup. `legRatio` sets the hip height and `femurRatio` changes the
 knee position within that length. The remaining segment length belongs to
-the tibia. The arm ratios place the elbow and wrist in the same way. The
-regional multipliers apply after `build`. An explicit waist circumference
+the tibia. The arm ratios place the elbow and wrist in the same way.
+
+The shoulder pivot uses the MPFB2 base rig as a reference, with separate outer shoulder and axilla
+targets for the rendered sleeve. The default surface targets are from one
+1.75 m ANSUR II profile near the sample medians. Existing explicit pivot ratios
+still apply. [Shoulder reference study](activities/202611270952-humanoid-shoulder-references.md)
+
+The regional multipliers apply after `build`. An explicit waist circumference
 sets the abdominal diameter in meters independently of those multipliers.
 The movement solver uses both leg lengths to keep the ankle on its target.
 Mass is stored independently of all measurements for future force and inertia

@@ -16,7 +16,20 @@ public abstract class VillagerBase : ModelBase
         _shirt = shirt; _pants = pants; _skin = skin; _hair = hair;
     }
 
-    public override int Version => 4;
+    public override int Version => 5;
+
+    private static void AddShoulderCaps(ModelBuilder b, HumanoidBody body)
+    {
+        // The two deltoid volumes share one render group and follow the chest.
+        // The caps extend medially to the body centerline so the shirt has a continuous upper silhouette.
+        var span = body.ShoulderSurfaceHeight - body.AxillaHeight;
+        var x = body.ShoulderOuterEdge / 2;
+        var scaleX = body.ShoulderOuterEdge / span;
+        var scaleZ = 2 * body.UpperArmRadius / span;
+        b.Group("shoulders", "shirt")
+         .SphereAt("deltoid-l", "torso", span, body.AxillaHeight, x: -x, segments: 8, scaleX: scaleX, scaleZ: scaleZ)
+         .SphereAt("deltoid-r", "torso", span, body.AxillaHeight, x: x, segments: 8, scaleX: scaleX, scaleZ: scaleZ);
+    }
 
     protected override void Compose(ModelBuilder b)
     {
@@ -24,8 +37,7 @@ public abstract class VillagerBase : ModelBase
         var height = body.Height;
         var legH = body.HipHeight;
         var torsoH = height * .82 - legH;
-        var armH = height * (body.ArmLengthRatio + .01);
-        var armRise = body.ShoulderHeight - height * HumanoidBody.DefaultShoulderHeightRatio;
+        var armH = body.ShoulderHeight - body.WristHeight;
         var headR = height * .07;
         var legR = height * .040 * body.Build;
         var torsoR = body.TorsoRadius;
@@ -64,7 +76,8 @@ public abstract class VillagerBase : ModelBase
             b.CapsuleOn("torso", "leg-l", 2 * torsoR, torsoH, subdivisions: 5);
         }
         // The torso supports both arms at their profile-dependent resting height.
-        var armOverlap = b.TopOf("torso") - (legH + armRise);
+        var armOverlap = b.TopOf("torso") - body.WristHeight;
+        AddShoulderCaps(b, body);
         b.Group("arm-left", "shirt")
          .CapsuleOn("arm-l", "torso", 2 * armR, armH, x: -armX, overlap: armOverlap, subdivisions: 2);
         b.Group("arm-right", "shirt")

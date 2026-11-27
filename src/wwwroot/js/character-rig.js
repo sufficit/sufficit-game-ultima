@@ -2,6 +2,7 @@
     'use strict';
     // Legacy dimensions are used by the renderer when a body packet is unavailable.
     const PLAYER_HEIGHT = 1.75;
+    const SHOULDER_RATIO = 0.80518;
     const HIP_HEIGHT = PLAYER_HEIGHT * .44;
     const LEG_RADIUS = PLAYER_HEIGHT * .039;
     const ANKLE_HEIGHT = LEG_RADIUS * 1.25 * .55;
@@ -40,19 +41,19 @@
             const head = joints?.get('head-pivot') ?? createCharacterJoint(root, 'head-pivot', upper, 0, headBase);
             const eyes = joints?.get('eye-pivot') ?? createCharacterJoint(root, 'eye-pivot', head, 0, headBase + 1.1 * headRadius);
             eyes.setEnabled(false);
-            const armX = PLAYER_HEIGHT * (0.088 + 0.026 * 1.3);
+            const armX = PLAYER_HEIGHT * 0.10067;
             const shoulders = guardian ? [] : [-1, 1].map(side =>
                 joints?.get(side < 0 ? 'shoulder-left' : 'shoulder-right') ??
-                    createCharacterJoint(root, side < 0 ? 'shoulder-left' : 'shoulder-right', upper, side * armX, PLAYER_HEIGHT * 0.80));
+                    createCharacterJoint(root, side < 0 ? 'shoulder-left' : 'shoulder-right', upper, side * armX, PLAYER_HEIGHT * SHOULDER_RATIO));
             const elbows = shoulders.map((shoulder, i) => {
                 const side = i === 0 ? 'left' : 'right';
                 return joints?.get('elbow-' + side) ?? createCharacterJoint(root, 'elbow-' + side,
-                    shoulder, (i * 2 - 1) * armX, PLAYER_HEIGHT * 0.63);
+                    shoulder, (i * 2 - 1) * armX, PLAYER_HEIGHT * (SHOULDER_RATIO - 0.17));
             });
             const wrists = elbows.map((elbow, i) => {
                 const side = i === 0 ? 'left' : 'right';
                 return joints?.get('wrist-' + side) ?? createCharacterJoint(root, 'wrist-' + side,
-                    elbow, (i * 2 - 1) * armX, PLAYER_HEIGHT * 0.45);
+                    elbow, (i * 2 - 1) * armX, PLAYER_HEIGHT * (SHOULDER_RATIO - 0.35));
             });
             if (shoulders.length) {
                 shoulders[0].rotation.z = -0.055;
@@ -84,7 +85,7 @@
                 side * headRadius * 0.36 * (body?.faceWidth ?? 1), headRadius * 1.34, headRadius * 0.9, 0.038, 0.009));
             const mouth = facialFeature('mouth', face, 0, headRadius * 0.68, headRadius * 0.96, 0.048, 0.008);
             const attachments = {
-                torso: upper, tunic: upper, neck: upper, head, ears: head, hair: head, hood: head, skin: head, eyes,
+                torso: upper, shoulders: upper, tunic: upper, neck: upper, head, ears: head, hair: head, hood: head, skin: head, eyes,
                 'arm-left': shoulders[0], 'hand-left': wrists[0],
                 'arm-right': shoulders[1], 'hand-right': wrists[1]
             };

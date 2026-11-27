@@ -89,8 +89,18 @@ public sealed record HumanoidBody(
     public double ArmRadius => Height * .026 * Build;
     public double UpperArmRadius => ArmRadius * UpperArmScale;
     public double ForearmRadius => ArmRadius * ForearmScale;
-    public double ArmOffset => TorsoRadius + Math.Max(UpperArmRadius, ForearmRadius) * 1.3;
-    public const double DefaultShoulderHeightRatio = .80;
+    // Normalized joint helpers from the CC0 MPFB2 base mesh.
+    public const double DefaultShoulderHeightRatio = .80518;
+    public const double ClavicleHeightRatio = .80191;
+    public const double ClavicleOffsetRatio = .01594;
+    public const double ShoulderOffsetRatio = .10067;
+    public double ArmOffset => Height * ShoulderOffsetRatio * Build * ChestScale;
+
+    // Source landmarks belong to one 1.75 m ANSUR II participant near the sample medians.
+    // These describe the exterior in the neutral pose. Sleeve width also accommodates thicker arms.
+    public double ShoulderSurfaceHeight => ShoulderHeight + Height * (1.435 / 1.75 - DefaultShoulderHeightRatio);
+    public double AxillaHeight => ShoulderHeight + Height * (1.324 / 1.75 - DefaultShoulderHeightRatio);
+    public double ShoulderOuterEdge => Math.Max(Height * (.246 / 1.75) * Build * ChestScale, ArmOffset + UpperArmRadius);
     /// <summary>Height of the shoulder pivot above the sole in meters.</summary>
     public double ShoulderHeight => Height * ShoulderHeightRatio;
     public double ElbowHeight => ShoulderHeight - Height * ArmLengthRatio * UpperArmRatio;
@@ -106,7 +116,8 @@ public sealed record HumanoidBody(
             var armGrowth = (TorsoRadius - Height * .088 * Build) +
                 (Math.Max(UpperArmRadius, ForearmRadius) - ArmRadius) * 2.3;
             var radius = .25 * (Height / 1.75) * Build + Math.Max(0, armGrowth);
-            return Math.Max(radius, Math.Max(WaistRadius, LegSpacing + Math.Max(ThighRadius, CalfRadius)));
+            return Math.Max(Math.Max(radius, ShoulderOuterEdge),
+                Math.Max(WaistRadius, LegSpacing + Math.Max(ThighRadius, CalfRadius)));
         }
     }
 }

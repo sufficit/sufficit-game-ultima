@@ -44,7 +44,7 @@ Normalize the centroid by the sole-to-crown height. The
 `joint-r-shoulder` and `joint-l-shoulder` helpers give **80.518%**,
 or **1409.1 mm** at 1.75 m. The inner clavicle helpers give **80.191%**,
 or **1403.3 mm**. These are rig positions for one base mesh and pose.
-The current Ultima reference places the arm pivot at **1435 mm**. Its
+The original Ultima reference in commit a0b89cb placed the arm pivot at **1435 mm**. Its
 similarity to the survey's external shoulder median cannot establish that
 the pivot or the sleeve contour is representative. The API's
 `shoulderHeightRatio` interval serves as an authoring limit for a pivot.

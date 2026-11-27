@@ -74,7 +74,13 @@ internal static class HumanoidBodyBrowser
                     const thigh = scene.getMeshByName('player-thigh-left');
                     const shin = scene.getMeshByName('player-shin-left');
                     const torso = scene.getMeshByName('char-character.villager-torso-player');
-                    return !!earMaterial() && root.metadata?.modelId === 'character.villager' &&
+                    const shoulders = scene.getMeshByName('char-character.villager-shoulders-player');
+                    const bounds = shoulders?.getBoundingInfo().boundingBox;
+                    return !!bounds && shoulders.parent.name === 'player-upper-body' &&
+                        Math.abs(bounds.maximum.y - 2.02 * (.83 + 1.435 / 1.75 - .80518)) < .002 &&
+                        Math.abs(bounds.minimum.y - 2.02 * (.83 + 1.324 / 1.75 - .80518)) < .002 &&
+                        Math.abs(shoulder.metadata.modelOffset.x - 2.02 * .10067 * 1.17 * 1.04) < .001 &&
+                        !!earMaterial() && root.metadata?.modelId === 'character.villager' &&
                         Math.abs(hip.position.x + 2.02 * .052 * 1.17) < .001 &&
                         Math.abs(shoulder.metadata.modelOffset.y + 2.02 * .83) < .001 &&
                         knee.metadata.flexion?.axisX === 1 &&

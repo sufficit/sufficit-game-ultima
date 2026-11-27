@@ -138,13 +138,14 @@ def torso_and_legs(shell, joints):
     pelvis = shell.ring(0, hip_y - .025, 0, .164, .101, angles, {"pelvis": 1})
     last = pelvis
     shoulders = {}
-    shoulder_y = joints["shoulder-right"]["y"]
-    sleeve_top = shoulder_y + .005
+    # The exterior targets come from the same 1.75 m ANSUR II record as the playable model.
+    sleeve_top = 1.435
+    axilla_y = 1.324
     for y, rx, rz, front, material, weights in [
         (hip_y + .065, .165, .105, 0, 0, pair("pelvis", "upper-body", .2)),
         (.925, .132, .084, .006, 1, pair("pelvis", "upper-body", .65)),
         (1.105, .143, .096, .005, 1, pair("upper-body", "chest", .5)),
-        (shoulder_y - .120, .174, .103, 0, 1, {"chest": 1}),
+        (axilla_y, .174, .103, 0, 1, {"chest": 1}),
         (sleeve_top, .190, .081, 0, 1, {"chest": 1}),
         (1.45, .082, .052, 0, 1, pair("chest", "neck-pivot", .3)),
         (1.49, .047, .045, 0, 2, pair("neck-pivot", "head-pivot", .3)),
