@@ -55,7 +55,7 @@ public sealed partial class Workshop
     }
 
     internal async Task<GuardianTurnResult> TalkToGuardianAsync(
-        string text, bool gpu, bool cpu, CancellationToken token)
+        string text, bool gpu, bool cpu, GardenModelProposal? pending, CancellationToken token)
     {
         if (await _genius.MemoryCommandAsync(text, token) is { } reply)
             return new(reply, GuardianGenius.SourcePrefix);
@@ -66,7 +66,7 @@ public sealed partial class Workshop
             if (string.IsNullOrEmpty(endpoint.Token))
                 return await TalkOfflineAsync(text, gpu, cpu, token);
             if (local)
-                return await ProposeGardenToolAsync(endpoint, text, gpu ? "gpu" : "cpu", token);
+                return await ProposeGardenToolAsync(endpoint, text, gpu ? "gpu" : "cpu", pending, token);
             // Preview support is required before starting a hosted background turn.
             var protocol = await GetAsync<JsonElement>(endpoint, GardenRoute + "/context", 8, token);
             if (protocol.ValueKind != JsonValueKind.Object ||

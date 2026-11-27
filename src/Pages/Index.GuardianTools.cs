@@ -11,16 +11,12 @@ public partial class Index
     private void UpdateDialogueDraft(string value)
     {
         if (GuardianBusy || ConversationDraft == value) return;
-        if (GuardianOpen)
-        {
-            DiscardGuardianProposal();
-            _dialogDraft = value;
-        }
+        if (GuardianOpen) _dialogDraft = value;
         else _wandererDraft = value;
     }
 
     private async Task<GuardianTurnResult> RunGuardianTurnAsync(string text,
-        Action<GuardianRuntime> selectRuntime, CancellationToken token)
+        GardenModelProposal? pending, Action<GuardianRuntime> selectRuntime, CancellationToken token)
     {
         await RefreshLocalAiAsync(token);
         if (_aiState != "ready" && _aiCpuState == "off")
@@ -30,7 +26,7 @@ public partial class Index
         var cpu = _aiCpuState == "ready";
         var cpuRuntime = CpuRuntime();
         selectRuntime(gpu ? new("gpu", "unknown") : cpu ? cpuRuntime : new("server", "unknown"));
-        var result = await WorkshopService.TalkToGuardianAsync(text, gpu, cpu, token);
+        var result = await WorkshopService.TalkToGuardianAsync(text, gpu, cpu, pending, token);
         // Offline dialogue can fall back from GPU to CPU.
         if (result.Source == GuardianGenius.SourcePrefix + " · CPU") selectRuntime(cpuRuntime);
         if (result.Source == GuardianGenius.SourcePrefix && !result.KeepDraft) selectRuntime(new("local", "none"));

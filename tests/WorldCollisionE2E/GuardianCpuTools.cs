@@ -144,12 +144,16 @@ internal static class GuardianCpuTools
         var applied = baseline;
         if (positiveMatch)
         {
-            await Button("Aplicar alteração").ClickAsync();
+            var modelCalls = await page.EvaluateAsync<int>("() => window.gardenToolTurns ?? 0");
+            await SubmitAsync("faça");
             await dialog.GetByText("Apliquei as mudanças no jardim. Atualizei a propriedade: altura da haste", new() { Exact = false }).WaitForAsync();
+            Check(await page.EvaluateAsync<int>("() => window.gardenToolTurns ?? 0") == modelCalls,
+                "A typed confirmation reuses the proposal without requesting another model turn.");
             applied = await ReadMapAsync();
             Check(applied.Placements.Count(p => p.Asset == "prop.lantern" && p.Parameters?.PoleHeight == 2.4 &&
                 p.Parameters.LightIntensity is null) == 2 && applied.Revision == baseline.Revision + 2,
                 "The real model tool increased both poles by one metre and kept default intensity.", applied);
+            if (trial is not null) Log(new { trial, typedConfirmationApplied = true, applied.Revision });
         }
 
         if (trial is not null)

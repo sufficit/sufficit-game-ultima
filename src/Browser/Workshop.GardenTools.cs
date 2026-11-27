@@ -53,7 +53,7 @@ public sealed partial class Workshop
             }
         });
 
-    private async Task<GuardianTurnResult> ProposeGardenToolAsync(Endpoint endpoint, string text, string engine, CancellationToken token)
+    private async Task<GuardianTurnResult> ProposeGardenToolAsync(Endpoint endpoint, string text, string engine, GardenModelProposal? pending, CancellationToken token)
     {
         var source = GeniusSource(engine);
         var failure = "context_failed";
@@ -83,6 +83,12 @@ public sealed partial class Workshop
             }
             var definitions = string.Join('\n', properties.Values.Select(p => $"{p.Id}: {p.Model}, {p.Label} ({p.Unit})"));
             var instructions = ToolInstructions + "\nCatalog:\n" + definitions;
+            if (pending is not null)
+            {
+                instructions += "\nA proposed edit is awaiting the player's approval. It has not been applied. " +
+                    "Use the proposal to interpret references and answer questions. Propose a replacement only " +
+                    "if the player explicitly asks to change the edit. Pending proposal: " + pending.Preview;
+            }
             var tools = ModelTools(properties.Keys);
             if (allowPlan)
             {
@@ -200,9 +206,20 @@ public sealed partial class Workshop
         throw new JsonException("Invalid parameter value.");
     }
 
-    internal async Task<GuardianTurnResult> ApplyGardenToolAsync(GardenModelProposal proposal, CancellationToken token)
+    internal async Task<GuardianTurnResult> ApplyGardenToolAsync(GardenModelProposal proposal, string confirmation,
+        string engine, CancellationToken token)
     {
-        var source = GeniusSource("cpu") + " · Oficina do jardim";
+        var local = engine is "cpu" or "gpu";
+        var source = local ? GeniusSource(engine) + " · Oficina do jardim" : "Oficina do jardim";
+        var result = await SendGardenProposalAsync(proposal, source, token);
+        if (local && !token.IsCancellationRequested)
+            await _genius.RememberReceiptAsync(confirmation, $"Proposta confirmada pelo jogador: {proposal.Preview}\n{result.Reply}", token);
+        return result;
+    }
+
+    private async Task<GuardianTurnResult> SendGardenProposalAsync(GardenModelProposal proposal, string source,
+        CancellationToken token)
+    {
         try
         {
             var endpoint = await EndpointAsync(token);

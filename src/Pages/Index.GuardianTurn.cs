@@ -6,19 +6,31 @@ namespace Ultima.Pages;
 
 public partial class Index
 {
+    // Only standalone confirmations authorize the pending write. Questions and modifiers go to inference.
+    private static bool IsGuardianConfirmation(string text, bool replyingToPreview) =>
+        text.TrimEnd('.', '!', '…').Trim().ToLowerInvariant() switch
+        {
+            "sim" => replyingToPreview,
+            "faça" or "faca" or "pode fazer" or "pode aplicar" or "aplique" or "confirmo" or
+            "confirmo a alteração" or "confirmo a alteracao" or "sim, pode aplicar" or "sim, faça" or "sim, faca" => true,
+            _ => false,
+        };
+
     private async Task SubmitDialogAsync(bool lightGarden = false, GardenModelProposal? confirmedProposal = null)
     {
         var text = confirmedProposal is not null ? "Confirmo a alteração." :
             lightGarden ? "Ilumine a entrada do jardim." : ConversationDraft.Trim();
         if (_view is null || GuardianBusy || text.Length == 0) return;
         var speaker = _view.Speaker;
+        var pending = GuardianOpen ? _guardianProposal : null;
+        var replyingToPreview = pending is not null && _view.Lines.ElementAtOrDefault(_view.CurrentLine)?.Text == pending.Preview;
+        var typedConfirmation = GuardianOpen && !lightGarden && confirmedProposal is null &&
+            IsGuardianConfirmation(text, replyingToPreview);
+        if (typedConfirmation) confirmedProposal = pending;
         var runtime = confirmedProposal is not null ? _proposalRuntime
             : lightGarden ? new("shortcut", "none") : new("local", "none");
-        if (GuardianOpen)
-        {
-            if (confirmedProposal is not null) _guardianProposal = null;
-            else DiscardGuardianProposal();
-        }
+        // Consume the confirmed proposal before sending a write. A lost receipt cannot safely be retried.
+        if (confirmedProposal is not null) _guardianProposal = null;
         if (text.Length > 300) text = text[..300];
         _speechError = string.Empty;
         var started = _turnStartedMs = NowMs();
@@ -38,9 +50,10 @@ public partial class Index
         try
         {
             result = confirmedProposal is not null
-                ? await WorkshopService.ApplyGardenToolAsync(confirmedProposal, token)
+                ? await WorkshopService.ApplyGardenToolAsync(confirmedProposal, text, runtime.Engine, token)
+                : typedConfirmation ? new("Não há uma proposta pendente. Diga o que você quer alterar no jardim.", "Oficina do jardim")
                 : lightGarden ? await WorkshopService.LightGardenAsync(token)
-                : await RunGuardianTurnAsync(text, selected => runtime = selected, token);
+                : await RunGuardianTurnAsync(text, pending, selected => runtime = selected, token);
         }
         catch (Exception ex) when (!token.IsCancellationRequested && ex is JSException or OperationCanceledException)
         {
@@ -51,8 +64,12 @@ public partial class Index
         if (token.IsCancellationRequested) return;
 
         if (!lightGarden && !result.KeepDraft) _dialogDraft = string.Empty;
-        _guardianProposal = result.Proposal;
-        if (result.Proposal is not null) _proposalRuntime = runtime;
+        if (result.Proposal is { } proposal)
+        {
+            DiscardGuardianProposal();
+            _guardianProposal = proposal;
+            _proposalRuntime = runtime;
+        }
         var outcome = result.QualityOutcome ?? (confirmedProposal is not null || lightGarden
             ? result.KeepDraft ? "apply_failed" : "applied"
             : result.Proposal is not null ? "proposal" : result.KeepDraft ? "turn_failed" : "reply");

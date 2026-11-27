@@ -213,6 +213,8 @@ public partial class Index
         values["aiTest"] = GuardianOpen ? _guardianAiTest : "";
         values["draft"] = ConversationDraft;
         values["gardenProposal"] = GuardianOpen && _guardianProposal is not null ? "1" : "";
+        values["pendingPreview"] = GuardianOpen && _guardianProposal is { } pending &&
+            view.Lines.ElementAtOrDefault(view.CurrentLine)?.Text != pending.Preview ? pending.Preview : "";
         BindDiagnosticReport(values);
         values["dictation"] = _dictating ? "Parar ditado" : "Ditar";
         values["speechError"] = _speechError;
@@ -248,7 +250,6 @@ public partial class Index
         {
             if (_view is not null && !GuardianBusy)
             {
-                if (GuardianOpen) DiscardGuardianProposal();
                 Dispatch(new DialogTopicSelected(NowMs(), action[topicPrefix.Length..]));
             }
             return Task.CompletedTask;
@@ -276,7 +277,7 @@ public partial class Index
             case "guardian-test": return TestGuardianAiAsync();
             case "garden-tool-apply" when _guardianProposal is { } proposal && GuardianOpen && !GuardianBusy:
                 return SubmitDialogAsync(confirmedProposal: proposal);
-            case "garden-tool-cancel":
+            case "garden-tool-cancel" when !GuardianBusy:
                 DiscardGuardianProposal();
                 break;
             case "light-garden" when GuardianOpen && !GuardianBusy:

@@ -35,6 +35,23 @@ public sealed class GuardianGenius(IJSRuntime js) : IAsyncDisposable
         }
     }
 
+    internal async Task RememberReceiptAsync(string confirmation, string receipt, CancellationToken token)
+    {
+        try
+        {
+            var module = await ModuleAsync();
+            var id = await module.InvokeAsync<string>("guardianConversationId", token);
+            var runtime = new ConversationRuntime(new IndexedConversationStorage(module));
+            // Commit an observed result to history without consulting the model.
+            await runtime.SubmitAsync(id, "", confirmation, (_, _) => ValueTask.FromResult<string?>(receipt),
+                cancellationToken: token);
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException or JsonException or OperationCanceledException)
+        {
+            // The API receipt remains authoritative if browser history cannot be written.
+        }
+    }
+
     public async Task<string?> MemoryCommandAsync(string text, CancellationToken token)
     {
         var trimmed = text.Trim();

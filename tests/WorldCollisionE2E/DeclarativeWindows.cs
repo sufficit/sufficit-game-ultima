@@ -1,7 +1,7 @@
 using Microsoft.Playwright;
 using static BrowserTest;
 
-internal static class DeclarativeWindows
+internal static partial class DeclarativeWindows
 {
     internal static async Task RunAsync(IBrowser browser)
     {
@@ -46,8 +46,8 @@ internal static class DeclarativeWindows
                 const api = game.live.api;
                 game.live.api = () => window.testGardenEdits ? location.origin : api();
                 game.live.token = () => window.testGardenEdits ? 'browser-test-token' : null;
-                game.aiCpu.garden = (_, text, tokens, history) => {
-                    window.guardianProbe = { text, tokens, history };
+                game.aiCpu.garden = (prompt, text, tokens, history) => {
+                    window.guardianProbe = { prompt, text, tokens, history };
                     if (window.holdGuardianReply)
                         return new Promise(resolve => { window.finishGuardianReply = resolve; });
                     return window.guardianReplyOverride ?? 'Olá, caminhante.';
@@ -263,82 +263,6 @@ internal static class DeclarativeWindows
         Check(await page.EvaluateAsync<bool>("request => guardianProbe.text === request", request),
             "The retry sends the original text without retyping.");
         await page.EvaluateAsync("() => { delete window.guardianReplyOverride; }");
-    }
-
-    private static async Task VerifyGardenReceiptAsync(IPage page, ILocator conversation, ILocator draft)
-    {
-        var writes = 0;
-        await page.RouteAsync("**/v1/game/garden/tools", route =>
-            route.FulfillAsync(new() { Json = new { models = new { } } }));
-        await page.RouteAsync("**/v1/game/garden/context", route =>
-            route.FulfillAsync(new() { Json = new { prompt = "Propose a garden edit." } }));
-        await page.RouteAsync("**/v1/game/garden/edits", route =>
-            route.FulfillAsync(new() { Json = new { applied = writes++ } }));
-        await page.EvaluateAsync("""
-            () => {
-                window.testGardenEdits = true;
-                window.guardianReplyOverride = JSON.stringify({calls:[{type:'function',function:{
-                    name:'submit_garden_plan', arguments:JSON.stringify({
-                        reply: 'Plantei uma flor.',
-                        actions: [{ action: 'place', asset: 'plant.flower', x: 2, z: 3 }]
-                    })
-                }}]});
-            }
-            """);
-        const string request = "Plante uma flor perto do banco";
-        var send = Button(conversation, "Enviar para a Guardiã");
-        await page.EvaluateAsync("() => { window.holdGuardianReply = true; delete window.finishGuardianReply; }");
-        await draft.FillAsync(request);
-        await send.ClickAsync();
-        await WaitAsync(() => page.EvaluateAsync<bool>("() => typeof window.finishGuardianReply === 'function'"),
-            "The garden turn started.");
-        Check(await page.EvaluateAsync<bool>("() => guardianProbe.tokens === -1"), "Garden generation has no output cap.");
-        await CloseAsync(conversation);
-        await conversation.WaitForAsync(new() { State = WaitForSelectorState.Hidden });
-        await page.Locator("#game-canvas").FocusAsync();
-        await page.Keyboard.PressAsync("e");
-        await conversation.WaitForAsync();
-        Check(!await send.IsEnabledAsync(), "Reopening preserves the outstanding turn.");
-        await CloseAsync(conversation);
-        await conversation.WaitForAsync(new() { State = WaitForSelectorState.Hidden });
-        await page.EvaluateAsync("""
-            () => {
-                window.holdGuardianReply = false;
-                window.finishGuardianReply(window.guardianReplyOverride);
-            }
-            """);
-        await WaitAsync(() => page.EvaluateAsync<bool>("""
-            request => Object.values(JSON.parse(localStorage.getItem('ultima-dialog-history') || '{}'))
-                .some(turns => turns.some(turn => turn.player === request && turn.reply.includes('Quer aplicar?')))
-            """, request), "The completed background turn is saved before reopening the dialogue.");
-        Check(writes == 0, "A background proposal must wait for confirmation.");
-        await page.Locator("#game-canvas").FocusAsync();
-        await page.Keyboard.PressAsync("e");
-        await conversation.WaitForAsync();
-        await conversation.GetByRole(AriaRole.Region, new() { Name = "Histórico da conversa" })
-            .GetByText(request, new() { Exact = true }).WaitForAsync();
-        var confirm = Button(conversation, "Aplicar alteração");
-        await confirm.WaitForAsync();
-        await Button(conversation, "Descartar proposta").ClickAsync();
-        await page.EvaluateAsync("""
-            () => {
-                window.guardianReplyOverrideBackup = window.guardianReplyOverride;
-                window.guardianReplyOverride = JSON.stringify({calls:[{type:'function',function:{name:'unknown',arguments:'{}'}}]});
-            }
-            """);
-        await send.ClickAsync();
-        await conversation.GetByText("A IA local não conseguiu propor uma edição válida.", new() { Exact = false }).WaitForAsync();
-        await page.EvaluateAsync("() => { window.guardianReplyOverride = window.guardianReplyOverrideBackup; }");
-        await send.ClickAsync();
-        await confirm.WaitForAsync();
-        await confirm.ClickAsync();
-        await conversation.GetByText("O jardim não confirmou nenhuma alteração.", new() { Exact = false }).WaitForAsync();
-        Check(await draft.InputValueAsync() == request, "An unconfirmed change preserves the request.");
-        await send.ClickAsync();
-        await confirm.ClickAsync();
-        await conversation.GetByText("Apliquei as mudanças no jardim. Plantei uma flor.").WaitForAsync();
-        Check(writes == 2 && await draft.InputValueAsync() == "", "The confirmed retry completes the request.");
-        await page.EvaluateAsync("() => { window.testGardenEdits = false; delete window.guardianReplyOverride; }");
     }
 
     // Waits for a text of the local AI in the window. If it does not show up, prints what the two
