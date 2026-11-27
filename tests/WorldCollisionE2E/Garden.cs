@@ -31,8 +31,13 @@ internal static class Garden
                         const tool = (name, arguments_) => JSON.stringify({calls:[{type:'function',function:{
                             name, arguments:JSON.stringify(arguments_)
                         }}]});
-                        if (tools.some(entry => entry.function.name === 'inspect_scene'))
+                        if (tools.some(entry => entry.function.name === 'inspect_scene')) {
+                            const nearby = prompt.split('\n').find(item => item.startsWith('Nearby scene: '));
+                            const scene = JSON.parse(nearby.slice('Nearby scene: '.length));
+                            if (!Number.isFinite(scene.player.x) || !scene.instances.some(item => item.asset === 'flora.fern'))
+                                throw Error('Expected real player and placement context on the first model call.');
                             return tool('inspect_scene', {asset:'flora.fern',x:3,z:-12,radius:1});
+                        }
                         const prefix = 'Scene observation (read-only): ';
                         const line = prompt.split('\n').find(item => item.startsWith(prefix));
                         const fern = JSON.parse(line.slice(prefix.length)).instances.find(p => p.asset === 'flora.fern' && p.x === 3);

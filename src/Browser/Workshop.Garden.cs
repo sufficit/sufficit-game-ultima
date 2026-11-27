@@ -78,8 +78,12 @@ public sealed partial class Workshop
         reply = cpu ? await GenerateLocalAsync(OfflinePrompt, text, "cpu", token) : null;
         if (reply is not null)
             return new($"{reply} {OfflineGarden}", GeniusSource("cpu"));
-        return gpu || cpu ? GuardianTurnResult.Retry($"A IA local não conseguiu responder. {OfflineGarden}", GuardianGenius.SourcePrefix) with { QualityOutcome = "generation_failed" }
-            : GuardianTurnResult.Retry("Ative a IA local ou conecte-se ao servidor do jogo para conversar comigo.");
+        if (!gpu && !cpu)
+            return GuardianTurnResult.Retry("Ative a IA local ou conecte-se ao servidor do jogo para conversar comigo.");
+        var failure = GuardianTurnResult.Retry($"A IA local não conseguiu responder. {OfflineGarden}", GuardianGenius.SourcePrefix)
+            with { QualityOutcome = "generation_failed" };
+        await _genius.RememberTurnAsync(text, failure.Reply, token);
+        return failure;
     }
 
     private static string GeniusSource(string engine) => $"{GuardianGenius.SourcePrefix} · {engine.ToUpperInvariant()}";

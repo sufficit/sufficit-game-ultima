@@ -243,8 +243,10 @@ internal static partial class DeclarativeWindows
         await send.ClickAsync();
         await conversation.GetByText("Entendi onde você quer as flores.", new() { Exact = false }).WaitForAsync();
         Check(await draft.InputValueAsync() == "", "A successful retry clears the draft.");
-        Check(await page.EvaluateAsync<bool>("request => guardianProbe.text === request", request),
-            "The retry sends the original text without retyping.");
+        Check(await page.EvaluateAsync<bool>("""
+            request => guardianProbe.text === request && guardianProbe.history.some(turn =>
+                turn.user === request && turn.assistant.includes('A IA local não conseguiu responder.'))
+            """, request), "The retry sees the failed turn and its visible reply in Genius history.");
         await page.EvaluateAsync("() => { delete window.guardianReplyOverride; }");
     }
 

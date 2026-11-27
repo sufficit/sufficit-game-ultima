@@ -43,20 +43,20 @@ public sealed class GuardianGenius(IJSRuntime js) : IAsyncDisposable
                 JsonSerializer.Serialize(request, GuardianGeniusJson.Default.InferenceRequest), UnlimitedPrediction, id, tools);
     }
 
-    internal async Task RememberReceiptAsync(string confirmation, string receipt, CancellationToken token)
+    internal async Task RememberTurnAsync(string text, string reply, CancellationToken token)
     {
         try
         {
             var module = await ModuleAsync();
             var id = await module.InvokeAsync<string>("guardianConversationId", token);
             var runtime = new ConversationRuntime(new IndexedConversationStorage(module));
-            // Commit an observed result to history without consulting the model.
-            await runtime.SubmitAsync(id, "", confirmation, (_, _) => ValueTask.FromResult<string?>(receipt),
+            // Preserve a visible game result in the same history as inferred responses.
+            await runtime.SubmitAsync(id, "", text, (_, _) => ValueTask.FromResult<string?>(reply),
                 cancellationToken: token);
         }
         catch (Exception ex) when (ex is JSException or InvalidOperationException or JsonException or OperationCanceledException)
         {
-            // The API receipt remains authoritative if browser history cannot be written.
+            // The visible game reply remains available when browser history cannot be written.
         }
     }
 

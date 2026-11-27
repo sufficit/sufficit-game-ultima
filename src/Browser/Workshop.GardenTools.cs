@@ -86,6 +86,9 @@ public sealed partial class Workshop
                     QualityOutcome: answer is null ? failure : null);
             }
             var instructions = ToolInstructions;
+            if (allowPlan)
+                instructions += "\nContinue the ongoing conversation in Portuguese. Resolve references from prior turns.";
+
             if (pending is not null)
             {
                 instructions += "\nA proposed edit is awaiting the player's approval. It has not been applied. " +
@@ -97,6 +100,14 @@ public sealed partial class Workshop
                 var context = await GetAsync<JsonElement>(endpoint, GardenRoute + "/context", 8, token);
                 if (context.TryGetProperty("toolInstructions", out var prompt) || context.TryGetProperty("prompt", out prompt))
                     instructions += "\n" + prompt.GetString();
+                if (inspect)
+                {
+                    var nearby = await ReadNearbySceneAsync();
+                    if (nearby is not null)
+                        instructions += "\nNearby scene: " + nearby.ToJsonString() +
+                            "\nUse these known positions without asking the player for their coordinates. " +
+                            "Use inspect_scene when you need a more specific search.";
+                }
             }
             var tools = BuildGardenTools(properties, allowPlan, inspect);
             instructions += PropertyInstructions(properties.Values);
@@ -116,8 +127,12 @@ public sealed partial class Workshop
         catch (Exception ex) when (!token.IsCancellationRequested &&
             ex is JSException or OperationCanceledException or HttpRequestException or JsonException or InvalidOperationException or KeyNotFoundException)
         {
-            return GuardianTurnResult.Retry("A IA local não conseguiu propor uma edição válida. Nenhuma alteração foi aplicada.", source)
+            var result = GuardianTurnResult.Retry(
+                "A IA local não conseguiu propor uma edição válida. Nenhuma alteração foi aplicada.", source)
                 with { QualityOutcome = failure };
+            if (ex is not ConversationChangedException)
+                await _genius.RememberTurnAsync(text, result.Reply, token);
+            return result;
         }
 
         async Task<(InferenceRequest Request, string Tools)?> ObserveAsync(InferenceRequest request, string output, CancellationToken ct)
@@ -129,16 +144,33 @@ public sealed partial class Workshop
                 return null;
             }
             failure = "context_failed";
-            using var query = JsonContent.Create(new { name = InspectSceneTool, arguments });
-            var scene = await SendAsync<JsonObject>(endpoint, HttpMethod.Post, GardenRoute + "/tools", query, 8, ct)
-                ?? throw new JsonException("Missing scene observation.");
-            if (scene.Remove("models", out var descriptions) && descriptions is JsonObject)
-                AddProperties(JsonSerializer.SerializeToElement(descriptions), units, properties);
+            var scene = await ReadSceneAsync(arguments, ct);
             failure = "generation_failed";
             var next = request with { Instructions = request.Instructions +
                 "\nScene observation (read-only): " + scene.ToJsonString() + PropertyInstructions(properties.Values) +
                 "\nAnswer the original request using this observation. Call an edit tool only to propose a requested change." };
             return (next, BuildGardenTools(properties, allowPlan, inspect: false));
+        }
+
+        async Task<JsonObject> ReadSceneAsync(JsonElement arguments, CancellationToken ct)
+        {
+            using var query = JsonContent.Create(new { name = InspectSceneTool, arguments });
+            var scene = await SendAsync<JsonObject>(endpoint, HttpMethod.Post, GardenRoute + "/tools", query, 8, ct)
+                ?? throw new JsonException("Missing scene observation.");
+            if (scene.Remove("models", out var descriptions) && descriptions is JsonObject)
+                AddProperties(JsonSerializer.SerializeToElement(descriptions), units, properties);
+            return scene;
+        }
+
+        async Task<JsonObject?> ReadNearbySceneAsync()
+        {
+            try { return await ReadSceneAsync(JsonSerializer.SerializeToElement(new JsonObject()), token); }
+            catch (Exception ex) when (!token.IsCancellationRequested &&
+                ex is HttpRequestException or JsonException or OperationCanceledException)
+            {
+                // A failed background read must not prevent an ordinary conversation.
+                return null;
+            }
         }
     }
 
@@ -240,7 +272,7 @@ public sealed partial class Workshop
         var source = local ? GeniusSource(engine) + " · Oficina do jardim" : "Oficina do jardim";
         var result = await SendGardenProposalAsync(proposal, source, token);
         if (local && !token.IsCancellationRequested)
-            await _genius.RememberReceiptAsync(confirmation, $"Proposta confirmada pelo jogador: {proposal.Preview}\n{result.Reply}", token);
+            await _genius.RememberTurnAsync(confirmation, $"Proposta confirmada pelo jogador: {proposal.Preview}\n{result.Reply}", token);
         return result;
     }
 

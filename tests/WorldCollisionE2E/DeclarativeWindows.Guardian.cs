@@ -87,6 +87,8 @@ internal static partial class DeclarativeWindows
         Check(writes == 1 && await confirm.IsVisibleAsync(), "A question preserves the proposal without applying it.");
         Check(await page.EvaluateAsync<bool>("""
             request => guardianProbe.prompt.includes('Pending proposal:') &&
+                guardianProbe.history.some(turn => turn.user === request &&
+                    turn.assistant.includes('não conseguiu propor uma edição válida')) &&
                 guardianProbe.history.some(turn => turn.user === request && turn.assistant.includes('Quer aplicar?'))
             """, request), "The model receives both the pending proposal and earlier dialogue.");
         await page.EvaluateAsync("""
