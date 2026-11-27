@@ -75,6 +75,8 @@ The `skin-feet` Chromium scenario passed for the default 1.75 m body and a
 1.90 m body with different leg proportions, in both renderer modes. It
 checked walking, stopping, a 180-degree reversal and preservation of both
 segment lengths. Horizontal error stayed under 1 mm in the sampled frames.
+The same scenario passed on Pages build `653ab919cae19390ffaca1c07d079024eb2c8584`
+in both modes. [Pages workflow](https://github.com/sufficit/sufficit-game-ultima/actions/runs/46076513787)
 
 Next action. Exercise the same retargeting on a controlled slope and low
 obstacle. Measure stance drift against the world and frame cost in both

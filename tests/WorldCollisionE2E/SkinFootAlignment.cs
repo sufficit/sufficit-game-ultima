@@ -69,12 +69,14 @@ internal static class SkinFootAlignment
         var walk = await TravelAsync(page, "w");
         await page.WaitForTimeoutAsync(700);
         var stop = await RenderAsync<Pose>(page, SamplePose);
+        await page.WaitForTimeoutAsync(250);
+        var settled = await RenderAsync<Pose>(page, SamplePose);
         var reverse = await TravelAsync(page, "s");
         Check(Distance(rest, walk[^1]) > .2 && Math.Abs(reverse[^1].Yaw - rest.Yaw) > 2.8,
             "The player walked and reversed direction.");
-        Check(Distance(stop, walk[^1]) < .35, "The player stopped after releasing movement.");
+        Check(Distance(stop, settled) < .005, "The player stopped after releasing movement.", new { stop, settled });
 
-        Pose[] poses = [rest, .. walk, stop, .. reverse];
+        Pose[] poses = [rest, .. walk, stop, settled, .. reverse];
         var peak = poses.Max(pose => pose.Feet.Max(foot => foot.Error));
         var heightError = poses.Max(pose => pose.Feet.Select((foot, i) => Math.Abs(foot.HeightDelta - rest.Feet[i].HeightDelta)).Max());
         var lengthError = poses.Max(pose => pose.Feet.Select((foot, i) =>
