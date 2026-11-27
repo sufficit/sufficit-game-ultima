@@ -16,8 +16,6 @@
 - [Decisões históricas](../decisions/) — input, visual e API.
 
 ## Planos ativos (`PLAN-*.md`)
-- [Economy graphics profile](PLAN-ECONOMY-GRAPHICS.md).
-
 Cada frente de trabalho tem um plano próprio. Um plano permanece aberto
 enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
@@ -43,6 +41,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Economy graphics for integrated GPUs](activities/202611271043-economy-graphics.md).
 
 - [Browser resource budget](activities/202611271032-browser-resource-budget.md).
 
