@@ -39,6 +39,11 @@ overview and [README.md](README.md) for the repository map.
 
 ## Code and interface
 
+- Use only LLMs that can return structured tool calls with the exact inference
+  adapter shipped or configured for the game. Validate the model/runtime pair
+  with a real tool call before making it selectable. Game code validates
+  arguments, permissions and effects before applying an action.
+
 - Prefer C# for new logic and migrate existing code to C# wherever practical.
   Use Blazor or WebAssembly for client-side logic. Keep JavaScript focused on
   browser and rendering APIs that require it. Batch JavaScript–WebAssembly

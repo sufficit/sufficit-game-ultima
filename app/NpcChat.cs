@@ -4,9 +4,7 @@ using System.Text.Json.Nodes;
 
 namespace Ultima.Server;
 
-/// <summary>Conversa com a Guardiã: regras por palavra-chave; modo servidor Sufficit AI
-/// (formato OpenAI /chat/completions) INATIVO por padrão — só liga com NPC_SERVER_AI=sufficit
-/// e NPC_LLM_URL/KEY/MODEL. O modo principal é a IA local na GPU do jogador (ai.js).</summary>
+/// <summary>NPC conversation with a rules fallback and an optional hosted tool-capable provider.</summary>
 sealed class NpcChat(ILogger log)
 {
     public const int MaxMsg = 300;
@@ -60,8 +58,14 @@ sealed class NpcChat(ILogger log)
         foreach (var (who, line) in history.TakeLast(History))
             messages.Add(new JsonObject { ["role"] = who == 'p' ? "user" : "assistant", ["content"] = line });
         messages.Add(new JsonObject { ["role"] = "user", ["content"] = $"Jogador {(player.Length > 0 ? player : "Viajante")}: \"{text}\"" });
-        var response = await CompleteAsync(messages, 160, 0.7, CancellationToken.None);
-        return response is null ? null : J.Cut(J.Clean(response, 400), 400);
+        var response = await CompleteAsync(messages, 160, 0.7, "reply_to_player", CancellationToken.None);
+        if (string.IsNullOrEmpty(response)) return null;
+        try
+        {
+            var result = JsonNode.Parse(response) as JsonObject;
+            return J.Clean(result?["reply"], 400) is { Length: > 0 } reply ? reply : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
     }
 
     public async Task<(int, JsonObject?)> GardenReplyAsync(string id, string ip, string prompt, string text, CancellationToken cancellation)
@@ -78,12 +82,10 @@ sealed class NpcChat(ILogger log)
         foreach (var (who, line) in history)
             messages.Add(new JsonObject { ["role"] = who == 'p' ? "user" : "assistant", ["content"] = line });
         messages.Add(new JsonObject { ["role"] = "user", ["content"] = text });
-        var output = await CompleteAsync(messages, 1300, 0.2, cancellation);
-        if (string.IsNullOrWhiteSpace(output)) return (503, null);
+        var output = await CompleteAsync(messages, 1300, 0.2, "submit_garden_plan", cancellation);
+        if (output is null) return (503, null);
         try
         {
-            output = output.Trim();
-            if (output.StartsWith("```json") && output.EndsWith("```")) output = output[7..^3].Trim();
             return JsonNode.Parse(output) is JsonObject plan ? (200, plan) : (422, J.Err("invalid_ai_response"));
         }
         catch (System.Text.Json.JsonException) { return (422, J.Err("invalid_ai_response")); }
@@ -109,14 +111,45 @@ sealed class NpcChat(ILogger log)
         }
     }
 
-    async Task<string?> CompleteAsync(JsonArray messages, int maxTokens, double temperature, CancellationToken cancellation)
+    async Task<string?> CompleteAsync(JsonArray messages, int maxTokens, double temperature, string tool, CancellationToken cancellation)
     {
         if (!ServerAiEnabled()) return null;
         var url = (Environment.GetEnvironmentVariable("NPC_LLM_URL") ?? "").Trim();
         var key = (Environment.GetEnvironmentVariable("NPC_LLM_KEY") ?? "").Trim();
         var model = (Environment.GetEnvironmentVariable("NPC_LLM_MODEL") ?? "").Trim();
         if (url.Length == 0 || key.Length == 0 || model.Length == 0) return null;
-        var body = new JsonObject { ["model"] = model, ["messages"] = messages, ["max_tokens"] = maxTokens, ["temperature"] = temperature };
+        var properties = new JsonObject { ["reply"] = new JsonObject { ["type"] = "string" } };
+        var required = new JsonArray("reply");
+        if (tool == "submit_garden_plan")
+        {
+            properties["actions"] = new JsonObject
+            {
+                ["type"] = "array", ["items"] = new JsonObject { ["type"] = "object" }
+            };
+            required.Add("actions");
+        }
+        var body = new JsonObject
+        {
+            ["model"] = model, ["messages"] = messages, ["max_tokens"] = maxTokens, ["temperature"] = temperature,
+            ["tools"] = new JsonArray(new JsonObject
+            {
+                ["type"] = "function",
+                ["function"] = new JsonObject
+                {
+                    ["name"] = tool,
+                    ["description"] = "Submit the requested response using the provided schema.",
+                    ["parameters"] = new JsonObject
+                    {
+                        ["type"] = "object", ["properties"] = properties,
+                        ["required"] = required, ["additionalProperties"] = false
+                    }
+                }
+            }),
+            ["tool_choice"] = new JsonObject
+            {
+                ["type"] = "function", ["function"] = new JsonObject { ["name"] = tool }
+            }
+        };
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Post, url)
@@ -127,7 +160,12 @@ sealed class NpcChat(ILogger log)
             using var res = await Http.SendAsync(req, cancellation);
             res.EnsureSuccessStatusCode();
             var data = JsonNode.Parse(await res.Content.ReadAsStringAsync(cancellation));
-            return J.StrOrNull(data?["choices"]?[0]?["message"]?["content"]);
+            // Providers must return exactly the requested structured call. Plain text cannot authorize actions.
+            if (data?["choices"]?[0]?["message"]?["tool_calls"] is not JsonArray { Count: 1 } calls ||
+                calls[0] is not JsonObject call || J.Str(call["type"]) != "function" ||
+                call["function"] is not JsonObject function || J.Str(function["name"]) != tool)
+                return "";
+            return J.Str(function["arguments"]);
         }
         catch (Exception ex) when (!cancellation.IsCancellationRequested)
         {

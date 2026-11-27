@@ -66,18 +66,13 @@ public sealed partial class Workshop
             if (string.IsNullOrEmpty(endpoint.Token))
                 return await TalkOfflineAsync(text, gpu, cpu, token);
             if (local)
-            {
-                var context = await GetAsync<JsonElement>(endpoint, GardenRoute + "/context", 8, token);
-                if (context.ValueKind == JsonValueKind.Object && context.TryGetProperty("prompt", out var prompt) &&
-                    prompt.ValueKind == JsonValueKind.String && prompt.GetString() is { Length: > 0 } instructions)
-                {
-                    if (gpu && await AskLocalGardenAsync(endpoint, instructions, text, "gpu", 60, token) is { } gpuReply)
-                        return gpuReply;
-                    if (cpu && await AskLocalGardenAsync(endpoint, instructions, text, "cpu", 120, token) is { } cpuReply)
-                        return cpuReply;
-                }
-                return GuardianTurnResult.Retry("A IA local não conseguiu concluir o pedido. Tente novamente.", GuardianGenius.SourcePrefix);
-            }
+                return await ProposeGardenToolAsync(endpoint, text, gpu ? "gpu" : "cpu", token);
+            // Older hosted releases accept free-form plans. Use only the structured tool protocol.
+            var protocol = await GetAsync<JsonElement>(endpoint, GardenRoute + "/context", 8, token);
+            if (protocol.ValueKind != JsonValueKind.Object ||
+                !protocol.TryGetProperty("toolCallsRequired", out var required) || required.ValueKind != JsonValueKind.True)
+                return GuardianTurnResult.Retry("A IA do servidor ainda não oferece chamadas de ferramentas. Use a IA na CPU.");
+
             using var message = JsonContent.Create(new Dictionary<string, string> { ["message"] = text });
             var turn = await SendAsync<JsonElement>(endpoint, HttpMethod.Post, GardenRoute + "/dialog", message, 18, token);
             if (turn.ValueKind != JsonValueKind.Object)
@@ -133,40 +128,6 @@ public sealed partial class Workshop
         {
             return null;
         }
-    }
-
-    private async Task<GuardianTurnResult?> AskLocalGardenAsync(Endpoint endpoint, string prompt, string text,
-        string engine, int seconds, CancellationToken token)
-    {
-        JsonElement actions = default;
-        string? proposedReply = null;
-        var reply = await GenerateLocalAsync(prompt, text, engine, seconds, 1200, token, output =>
-        {
-            using var document = JsonDocument.Parse(UnwrapJson(output));
-            var root = document.RootElement;
-            var response = ReadReply(root);
-            if (response is null || !root.TryGetProperty("actions", out var proposed) || proposed.ValueKind != JsonValueKind.Array)
-                throw new JsonException("Plano do jardim inválido.");
-            actions = proposed.Clone();
-            proposedReply = response;
-            return actions.GetArrayLength() == 0 ? response : "Propus alterações para o jardim.";
-        });
-        if (reply is null || proposedReply is null) return null;
-        var source = GeniusSource(engine);
-        if (actions.GetArrayLength() == 0) return new(reply, source);
-
-        token.ThrowIfCancellationRequested();
-        using var request = new StringContent("{\"actions\":" + actions.GetRawText() + "}", System.Text.Encoding.UTF8, "application/json");
-        var result = await SendAsync<JsonElement>(endpoint, HttpMethod.Post, GardenRoute + "/edits", request, 12, token);
-        return await GardenReplyAsync(result, proposedReply, source, token, requiresChanges: true);
-    }
-
-    private static string UnwrapJson(string output)
-    {
-        if (output.StartsWith("```", StringComparison.Ordinal) && output.EndsWith("```", StringComparison.Ordinal)
-            && output.IndexOf('\n') is > 0 and var firstLine && firstLine < output.Length - 3)
-            return output[(firstLine + 1)..^3].Trim();
-        return output;
     }
 
     private async Task<GuardianTurnResult> GardenReplyAsync(JsonElement result, string reply, string source,

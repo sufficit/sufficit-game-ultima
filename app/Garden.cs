@@ -37,7 +37,7 @@ sealed partial class GameWorld
                 ["scale"] = p.Scale, ["rot"] = p.Rot, ["parameters"] = p.Parameters?.DeepClone() });
         return """
             Você é a Guardiã do Jardim de Ultima. Converse em português e, quando o jogador pedir mudanças, planeje e execute com o catálogo abaixo.
-            Retorne somente JSON no formato {"reply":"resposta curta","actions":[]}. Para conversa ou pedido sem informação suficiente, use actions vazio.
+            Preencha os argumentos da ferramenta submit_garden_plan com reply e actions. Para conversa ou pedido sem informação suficiente, use actions vazio.
             Use coordenadas absolutas em metros. A Guardiã está em (0,-14), o eixo z positivo aponta para a clareira (0,0).
             Use o jardim com criatividade e composição. Se a posição não foi especificada, escolha um lugar coerente no jardim.
             Use ações do catálogo, sem código, URLs ou comandos externos. Não afirme que executou: o jogo confirma depois de gravar.
@@ -64,7 +64,7 @@ sealed partial class GameWorld
         lock (_lock)
         {
             if (Session(token) is null) return (401, J.Err("invalid_token"));
-            return (200, new JsonObject { ["prompt"] = GardenPrompt() });
+            return (200, new JsonObject { ["prompt"] = GardenPrompt(), ["toolCallsRequired"] = true });
         }
     }
 

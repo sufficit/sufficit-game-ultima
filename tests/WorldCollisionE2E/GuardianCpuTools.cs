@@ -10,7 +10,7 @@ internal static class GuardianCpuTools
             "Tool writes require a disposable loopback garden.");
         var url = new UriBuilder(GameUrl(forceWebGl: true))
         {
-            Query = $"rede=0&gpu=0&iacpu=qwen05tools&api={Uri.EscapeDataString(endpoint!.GetLeftPart(UriPartial.Authority))}" +
+            Query = $"rede=0&gpu=0&api={Uri.EscapeDataString(endpoint!.GetLeftPart(UriPartial.Authority))}" +
                 (MainThread ? "&render=main" : "")
         };
         var page = await browser.NewPageAsync();
@@ -89,12 +89,8 @@ internal static class GuardianCpuTools
             "The real model tool increased both poles by one metre and kept default intensity.", applied);
 
         await SubmitAsync("Não aumente a altura dessas luminárias.");
-        await WaitAsync(async () =>
-        {
-            var reply = await dialog.Locator(".ultima-dialog__line").InnerTextAsync();
-            return reply.EndsWith("Quer aplicar?", StringComparison.Ordinal) ||
-                reply.Contains("Nenhuma alteração foi aplicada", StringComparison.Ordinal);
-        }, "The negated turn finished.", 125_000);
+        await WaitAsync(() => Button("Enviar para a Guardiã").IsEnabledAsync(),
+            "The negated turn finished.", 125_000);
         if (await Button("Descartar proposta").IsVisibleAsync())
             await Button("Descartar proposta").ClickAsync();
         Check((await ReadMapAsync()).Revision == applied.Revision, "An unconfirmed reply cannot edit the world.");

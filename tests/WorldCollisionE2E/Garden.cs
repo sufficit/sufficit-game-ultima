@@ -25,19 +25,20 @@ internal static class Garden
                     ? { state: 'ready', progress: 1, detail: 'Motor de teste' } : status();
                 game.aiCpu.garden = (prompt, text) => {
                     window.lastGardenCpuPrompt = text;
+                    const plan = (reply, actions) => JSON.stringify({calls:[{type:'function',function:{
+                        name:'submit_garden_plan', arguments:JSON.stringify({reply,actions})
+                    }}]});
                     if (text === 'Deixe a samambaia duas vezes mais alta e gire um pouco') {
                         const prefix = 'Objetos colocados no jardim: ';
                         const line = prompt.split('\n').find(item => item.startsWith(prefix));
                         const fern = JSON.parse(line.slice(prefix.length)).find(p => p.asset === 'flora.fern' && p.x === 3);
-                        return JSON.stringify({ reply: 'Ajustei a samambaia.',
-                            actions: [{action: 'customize', uid: fern.uid, parameters: {scaleY: 2, rotationY: 1.2}}] });
+                        return plan('Ajustei a samambaia.',
+                            [{action: 'customize', uid: fern.uid, parameters: {scaleY: 2, rotationY: 1.2}}]);
                     }
                     if (text === 'Plante outra samambaia mantendo o tamanho padrão')
-                        return JSON.stringify({ reply: 'Plantei a outra samambaia.',
-                            actions: [{action: 'place', asset: 'flora.fern', x: 6, z: -12}] });
+                        return plan('Plantei a outra samambaia.', [{action: 'place', asset: 'flora.fern', x: 6, z: -12}]);
                     return prompt.includes('prop.lantern') && text === 'Plante uma samambaia'
-                        ? JSON.stringify({ reply: 'Uma samambaia para o jardim.',
-                            actions: [{action: 'place', asset: 'flora.fern', x: 3, z: -12}] })
+                        ? plan('Uma samambaia para o jardim.', [{action: 'place', asset: 'flora.fern', x: 3, z: -12}])
                         : 'Resposta de teste sem JSON';
                 };
             }, { once: true });
@@ -176,16 +177,19 @@ internal static class Garden
             if (req.Url.EndsWith("/v1/game/garden/dialog")) Interlocked.Increment(ref serverCalls);
         };
         await AskAsync("provedor fora");
-        await page.GetByText("A IA local não conseguiu concluir o pedido.", new() { Exact = false }).WaitForAsync();
+        await page.GetByText("A IA local não conseguiu propor uma edição válida.", new() { Exact = false }).WaitForAsync();
         Check(serverCalls == 0, "falha local não transmite a fala ao provedor remoto");
         Check((await MapAsync(page)).Revision == edited.Revision, "resposta inválida preserva o jardim");
         await AskAsync("Plante uma samambaia");
-        await page.GetByText("✦ origem da resposta: Genius local · CPU").WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Aplicar alteração", Exact = true }).ClickAsync();
+        await page.GetByText("Uma samambaia para o jardim.", new() { Exact = false }).WaitForAsync();
         var fern = (await MapAsync(page)).Placements.Single(p => p.Asset == "flora.fern");
         await AskAsync("Plante outra samambaia mantendo o tamanho padrão");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Aplicar alteração", Exact = true }).ClickAsync();
         await page.GetByText("Plantei a outra samambaia.", new() { Exact = false }).WaitForAsync();
         var original = (await MapAsync(page)).Placements.Single(p => p.Asset == "flora.fern" && p.Uid != fern.Uid);
         await AskAsync("Deixe a samambaia duas vezes mais alta e gire um pouco");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Aplicar alteração", Exact = true }).ClickAsync();
         await page.GetByText("Ajustei a samambaia.", new() { Exact = false }).WaitForAsync();
         var changed = (await MapAsync(page)).Placements.Single(p => p.Uid == fern.Uid);
         Check(changed.Parameters is { ScaleY: 2, RotationY: 1.2 }, "o plano alterou os parâmetros da mesma samambaia");

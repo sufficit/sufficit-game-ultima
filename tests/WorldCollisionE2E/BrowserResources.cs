@@ -15,6 +15,7 @@ internal static class BrowserResources
         await page.AddInitScriptAsync("""
             localStorage.setItem('ultima-ia-local', '1');
             localStorage.setItem('ultima-ia-cpu', '1');
+            localStorage.setItem('ultima-ia-cpu-modelo', 'gemma270');
             """);
         await page.RouteAsync("**/@wllama/wllama@*/esm/index.min.js", route =>
         {
@@ -35,6 +36,11 @@ internal static class BrowserResources
                 return graphics?.softwareRenderer && !!(await game.playerState());
             }
             """), "The software renderer and AI controls are ready.");
+        Check(await page.EvaluateAsync<bool>("""
+            () => game.ai.status().state === 'unsupported' &&
+                game.aiCpu.status().modelKey === 'qwen05tools' &&
+                localStorage.getItem('ultima-ia-cpu-modelo') === 'qwen05tools'
+            """), "A legacy model preference migrates to the qualified CPU model.");
         Check(modelRequests == 0 && await page.EvaluateAsync<string>("() => game.aiCpu.status().state") == "off",
             "Saved AI preferences do not allocate a model on startup.");
         Check(await page.EvaluateAsync<bool>("() => game.aiCpu.resume()") &&

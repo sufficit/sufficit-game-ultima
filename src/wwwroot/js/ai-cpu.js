@@ -9,21 +9,13 @@
     const PREF = 'ultima-ia-cpu';
     const STALL_MS = 90000;     // sem progresso por 90 s => "parado em X%"
     const THINK_MS = 120000;    // geração sem fim => volta a "ready" e o servidor responde
-    // Dois modelos, propostas diferentes (t48):
-    // - qwen05b : melhor qualidade de conversa em português (Qwen2.5 0.5B Instruct Q4_K_M)
-    // - gemma270: leveza/velocidade máxima em máquinas fracas (Gemma 3 270M Q4_K_M)
-    const MODELS = {
-        'gemma270': {
-            url: 'https://huggingface.co/unsloth/gemma-3-270m-it-GGUF/resolve/main/gemma-3-270m-it-Q4_K_M.gguf',
-            label: 'Gemma 3 270M', why: 'leveza e velocidade máxima em máquinas fracas', mb: 253115424 / 1048576
-        },
-        'qwen05b': {
+    // Proven native tool-call pair. Legacy model preferences resolve to this entry.
+    const MODELS = Object.freeze({
+        qwen05tools: {
             url: 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf',
-            label: 'Qwen2.5 0.5B', why: 'melhor qualidade de conversa em português', mb: 491400032 / 1048576
+            label: 'Qwen2.5 0.5B · ferramentas', why: 'chamadas estruturadas de ferramentas', mb: 491400032 / 1048576
         }
-    };
-    MODELS.qwen05tools = { ...MODELS.qwen05b, label: 'Qwen2.5 0.5B · ferramentas',
-        why: 'modo experimental para propor ações no jardim' };
+    });
     const PERSONA = 'Você é a Guardiã do Jardim do jogo Ultima: serena, acolhedora, sábia. Responda em português do Brasil, em primeira pessoa, com 2 a 4 frases curtas. Nunca saia do personagem.';
 
     let dotnet = null, inst = null, loading = null, source = '';
@@ -43,9 +35,9 @@
     }
     function modelKeyDefault() {
         const q = new URLSearchParams(location.search).get('iacpu');
-        if (q && MODELS[q]) return q;
+        if (Object.hasOwn(MODELS, q)) return q;
         const saved = localStorage.getItem(PREF + '-modelo');
-        return saved && MODELS[saved] ? saved : 'gemma270';
+        return Object.hasOwn(MODELS, saved) ? saved : 'qwen05tools';
     }
     function emit(s, p, d) {
         state = s;
@@ -191,7 +183,7 @@
             });
             signal?.throwIfAborted();
             const message = output?.choices?.[0]?.message;
-            if (tools && message) return JSON.stringify({ calls: message.tool_calls ?? [] });
+            if (tools && message) return JSON.stringify({ calls: message.tool_calls ?? [], content: message.content });
             return message?.content || null;
         } catch {
             return null;
@@ -202,7 +194,7 @@
 
     // Troca de modelo pelo painel: grava a escolha e descarrega o modelo anterior.
     async function setModel(key) {
-        if (!MODELS[key] || loading) return false;
+        if (!Object.hasOwn(MODELS, key) || loading) return false;
         localStorage.setItem(PREF + '-modelo', key);
         modelKey = key;
         if (inst) { try { await inst.exit(); } catch { } inst = null; }
@@ -214,6 +206,7 @@
     async function init(dotnetRef) {
         dotnet = dotnetRef;
         modelKey = modelKeyDefault();
+        if (localStorage.getItem(PREF + '-modelo') !== null) localStorage.setItem(PREF + '-modelo', modelKey);
         const m = MODELS[modelKey];
         emit('off', 0, 'Modelo sugerido: ' + m.label + ' (~' + humanMB(m.mb) + ' — ' + m.why + ').');
     }

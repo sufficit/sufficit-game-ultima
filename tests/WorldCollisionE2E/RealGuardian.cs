@@ -6,8 +6,8 @@ internal static class RealGuardian
     internal static async Task RunAsync(IBrowser browser)
     {
         var device = Environment.GetEnvironmentVariable("ULTIMA_AI_DEVICE") ?? "cpu";
-        Check(device is "cpu" or "gpu", "expected cpu or gpu");
-        var api = device == "cpu" ? "aiCpu" : "ai";
+        Check(device == "cpu", "Only the CPU model has qualified tool support.");
+        const string api = "aiCpu";
         var page = await browser.NewPageAsync(new() { ViewportSize = new() { Width = 1200, Height = 800 } });
         var errors = TrackErrors(page);
         await page.AddInitScriptAsync($$"""
@@ -20,7 +20,7 @@ internal static class RealGuardian
                 };
             }, { once: true });
             """);
-        var url = GameUrl(forceWebGl: true) + "&iacpu=gemma270&ia=smol";
+        var url = GameUrl(forceWebGl: true);
         await page.GotoAsync(url, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
         var build = await CheckBuildAsync(page);
         var first = "Responda em uma frase curta: gosto de ipês.";

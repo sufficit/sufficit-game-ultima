@@ -266,6 +266,8 @@ async Task Garden(Harness h, string root)
         Check(Str((await h.Json(url, garden + "/dialog", new JsonObject { ["message"] = "Trilha" }, token, 409))["error"]) == "guardian_out_of_reach",
             "Guardiã longe");
         await h.Json(url, command, new JsonObject { ["action"] = "pose", ["x"] = 0, ["z"] = -12 }, token);
+        Check(Str((await h.Json(url, garden + "/dialog", new JsonObject { ["message"] = "só texto" }, token, 422))["error"]) == "invalid_ai_response",
+            "plain text cannot act as a hosted tool call");
         Check(Str((await h.Json(url, garden + "/dialog", new JsonObject { ["message"] = "resposta ruim" }, token, 422))["error"]) == "invalid_ai_response",
             "resposta inválida da IA");
         Check(Str((await h.Json(url, garden + "/dialog", new JsonObject { ["message"] = "provedor fora" }, token, 503))["error"]) == "ai_unavailable",
@@ -607,101 +609,5 @@ sealed class Harness(string server) : IDisposable
             try { Directory.Delete(dir, recursive: true); }
             catch (Exception) { /* temporário do sistema */ }
         }
-    }
-}
-
-/// <summary>Provedor de IA fictício no formato OpenAI /chat/completions, isolado em porta local.</summary>
-sealed class Provider : IDisposable
-{
-    readonly HttpListener _listener = new();
-    readonly ConcurrentQueue<string> _failures = new();
-
-    public Dictionary<string, string?> Settings { get; }
-
-    public Provider()
-    {
-        var port = FreePort();
-        _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-        _listener.Start();
-        Settings = new Dictionary<string, string?>
-        {
-            ["NPC_SERVER_AI"] = "on", ["NPC_LLM_URL"] = $"http://127.0.0.1:{port}/chat",
-            ["NPC_LLM_KEY"] = "isolado", ["NPC_LLM_MODEL"] = "teste",
-        };
-        _ = Task.Run(ServeAsync);
-    }
-
-    public string[] Failures => [.. _failures];
-
-    async Task ServeAsync()
-    {
-        while (_listener.IsListening)
-        {
-            HttpListenerContext context;
-            try { context = await _listener.GetContextAsync(); }
-            catch (Exception) when (!_listener.IsListening) { return; }
-            _ = Task.Run(() => AnswerAsync(context));
-        }
-    }
-
-    async Task AnswerAsync(HttpListenerContext context)
-    {
-        var response = context.Response;
-        try
-        {
-            string text;
-            using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
-                text = await reader.ReadToEndAsync();
-            var messages = Arr(JsonNode.Parse(text)?["messages"]);
-            var said = Str(messages[^1]?["content"]);
-            Require(Str(messages[0]?["content"]).Contains("prop.lantern", StringComparison.Ordinal), "prompt da Guardiã sem o catálogo");
-            if (said == "provedor fora")
-            {
-                response.StatusCode = 503;
-                return;
-            }
-            var actions = new JsonArray(
-                new JsonObject
-                {
-                    ["action"] = "path", ["mat"] = "dirt", ["r"] = 1,
-                    ["points"] = new JsonArray(new JsonObject { ["x"] = 0, ["z"] = -12 }, new JsonObject { ["x"] = 0, ["z"] = -8 }),
-                },
-                new JsonObject { ["action"] = "place", ["asset"] = "prop.lantern", ["x"] = 2, ["z"] = -12 },
-                new JsonObject { ["action"] = "place", ["asset"] = "flora.flowers", ["x"] = -2, ["z"] = -12 });
-            if (said == "e o que eu pedi?")
-            {
-                Require(messages.Any(message => Str(message?["content"]) == "Luminária, flores e trilha"), "histórico sem o pedido anterior");
-                actions = [];
-            }
-            var content = said == "resposta ruim"
-                ? "JSON truncado"
-                : new JsonObject { ["reply"] = "Trilha, luz e flores.", ["actions"] = actions }.ToJsonString();
-            var body = Encoding.UTF8.GetBytes(new JsonObject
-            {
-                ["choices"] = new JsonArray(new JsonObject { ["message"] = new JsonObject { ["content"] = content } }),
-            }.ToJsonString());
-            response.StatusCode = 200;
-            response.ContentType = "application/json";
-            response.ContentLength64 = body.Length;
-            await response.OutputStream.WriteAsync(body);
-        }
-        catch (Failure failure) { _failures.Enqueue(failure.Message); response.StatusCode = 500; }
-        catch (Exception error) { _failures.Enqueue(error.Message); response.StatusCode = 500; }
-        finally { response.Close(); }
-    }
-
-    static int FreePort()
-    {
-        var probe = new TcpListener(IPAddress.Loopback, 0);
-        probe.Start();
-        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
-        probe.Stop();
-        return port;
-    }
-
-    public void Dispose()
-    {
-        _listener.Stop();
-        _listener.Close();
     }
 }

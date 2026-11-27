@@ -233,6 +233,8 @@ internal static class DeclarativeWindows
     private static async Task VerifyGardenReceiptAsync(IPage page, ILocator conversation, ILocator draft)
     {
         var writes = 0;
+        await page.RouteAsync("**/v1/game/garden/tools", route =>
+            route.FulfillAsync(new() { Json = new { models = new { } } }));
         await page.RouteAsync("**/v1/game/garden/context", route =>
             route.FulfillAsync(new() { Json = new { prompt = "Propose a garden edit." } }));
         await page.RouteAsync("**/v1/game/garden/edits", route =>
@@ -240,19 +242,26 @@ internal static class DeclarativeWindows
         await page.EvaluateAsync("""
             () => {
                 window.testGardenEdits = true;
-                window.guardianReplyOverride = JSON.stringify({
-                    reply: 'Plantei uma flor.',
-                    actions: [{ action: 'place', asset: 'plant.flower', x: 2, z: 3 }]
-                });
+                window.guardianReplyOverride = JSON.stringify({calls:[{type:'function',function:{
+                    name:'submit_garden_plan', arguments:JSON.stringify({
+                        reply: 'Plantei uma flor.',
+                        actions: [{ action: 'place', asset: 'plant.flower', x: 2, z: 3 }]
+                    })
+                }}]});
             }
             """);
         const string request = "Plante uma flor perto do banco";
         var send = Button(conversation, "Enviar para a Guardiã");
         await draft.FillAsync(request);
         await send.ClickAsync();
+        var confirm = Button(conversation, "Aplicar alteração");
+        await confirm.WaitForAsync();
+        Check(writes == 0, "A structured plan is previewed before the game writes.");
+        await confirm.ClickAsync();
         await conversation.GetByText("O jardim não confirmou nenhuma alteração.", new() { Exact = false }).WaitForAsync();
         Check(await draft.InputValueAsync() == request, "An unconfirmed change preserves the request.");
         await send.ClickAsync();
+        await confirm.ClickAsync();
         await conversation.GetByText("Apliquei as mudanças no jardim. Plantei uma flor.").WaitForAsync();
         Check(writes == 2 && await draft.InputValueAsync() == "", "The confirmed retry completes the request.");
         await page.EvaluateAsync("() => { window.testGardenEdits = false; delete window.guardianReplyOverride; }");

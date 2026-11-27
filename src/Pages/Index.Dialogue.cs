@@ -113,7 +113,6 @@ public partial class Index
 
     private CancellationTokenSource? _guardianTurn;
     private GardenModelProposal? _guardianProposal;
-    private string? _activeCpuModel;
     private bool _journalOpen;
     private bool _windowContrast;
     private readonly WindowState _conversationState = new();
@@ -151,7 +150,6 @@ public partial class Index
         await Task.WhenAll(gpu, cpu);
         var gpuStatus = await gpu;
         var cpuStatus = await cpu;
-        _activeCpuModel = cpuStatus.ModelKey;
         (_aiState, _aiProgress, _aiDetail) = (gpuStatus.State, gpuStatus.Progress, gpuStatus.Detail);
         (_aiCpuState, _aiCpuProgress, _aiCpuDetail) = (cpuStatus.State, cpuStatus.Progress, cpuStatus.Detail);
     }

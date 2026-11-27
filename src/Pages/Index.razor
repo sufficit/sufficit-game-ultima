@@ -668,13 +668,10 @@
     private Task EnableAiCpuAsync() => LoadLocalAiAsync("aiCpu", "load");
     private Task DisableAiCpuAsync() => JS.InvokeVoidAsync("game.aiCpu.disable").AsTask();
     private Task RetryAiCpuAsync() => LoadLocalAiAsync("aiCpu", "retry");
-    private string _aiCpuModel = "gemma270";
-    // The experimental tool mode reuses the conversational Qwen download.
+    private string _aiCpuModel = "qwen05tools";
     private static readonly Dictionary<string, (string Label, string Why)> AiCpuModels = new()
     {
-        ["gemma270"] = ("Gemma 3 270M", "leve, ~241 MB, rápido"),
-        ["qwen05b"] = ("Qwen2.5 0.5B", "melhor português, ~469 MB"),
-        ["qwen05tools"] = ("Qwen2.5 0.5B · ferramentas", "experimental, ~469 MB"),
+        ["qwen05tools"] = ("Qwen2.5 0.5B", "ferramentas, ~469 MB"),
     };
     private async Task SelectAiCpuModelAsync(string key)
     {
