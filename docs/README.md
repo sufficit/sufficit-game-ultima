@@ -23,7 +23,6 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
 - [Humanoid rig and skinned reference model](PLAN-HUMANOID-SKINNED-RIG.md).
-- [Browser resource budget](PLAN-BROWSER-RESOURCE-BUDGET.md).
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
 
@@ -43,6 +42,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Browser resource budget](activities/202611271032-browser-resource-budget.md).
 
 - [Humanoid rig diagram](activities/202611270857-humanoid-rig-diagram.md)
 - [Garden edits driven by model contracts](activities/202611270052-garden-model-contracts.md)
