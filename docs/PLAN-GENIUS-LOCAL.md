@@ -54,3 +54,7 @@ API and appear when the scene reloads. Callable NPC tools remain in checkpoint
 The [CPU tool pilot](activities/202611270028-guardian-cpu-tools.md) validates one garden tool with a real local
 model and player confirmation. Expansion to other tool families remains in
 checkpoint 5.
+
+[Model-driven garden tools](activities/202611270052-garden-model-contracts.md) replace the initial lantern-only
+tool with catalog discovery and generic property edits. Other API families
+remain in checkpoint 5.

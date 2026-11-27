@@ -42,6 +42,7 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Garden edits driven by model contracts](activities/202611270052-garden-model-contracts.md)
 - [Guardian native CPU tool pilot](activities/202611270028-guardian-cpu-tools.md)
 - [Apply height-only requests to garden lanterns](activities/202611270007-guardian-lantern-height.md)
 - [Preserve Guardian requests through failed turns](activities/202611262354-guardian-reported-turns.md)
