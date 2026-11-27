@@ -31,10 +31,11 @@ integration scenarios and the local dialogue window regression passed.
 The hosted fixture returned a valid named call, malformed arguments and
 a plain-text response. Only the valid call changed the world.
 
-Chromium ran real Qwen inference in the worker against a disposable
-garden. The model proposed a one-metre change for both lanterns. The
-world changed only after confirmation, and an unconfirmed turn left it
-intact. The published browser build `f28ee76` passed preference migration,
+Chromium ran real Qwen inference against disposable gardens in the
+worker and main-thread render modes. The model proposed a one-metre
+change for both lanterns after 84.6 s and 88.7 s in the two isolated runs.
+The world changed only after confirmation, and an unconfirmed turn left
+it intact. The published browser build `f28ee76` passed preference migration,
 GPU exclusion and on-demand model startup in worker and main-thread modes.
 [GitHub Pages delivery](https://github.com/sufficit/sufficit-game-ultima/actions/runs/46032158177)
 
