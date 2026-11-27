@@ -8,28 +8,30 @@ namespace Ultima.Browser;
 public sealed class GuardianGenius(IJSRuntime js) : IAsyncDisposable
 {
     internal const string SourcePrefix = "Genius local";
+    // llama.cpp uses -1 to generate until the runtime stops naturally.
+    private const int UnlimitedPrediction = -1;
     private Task<IJSObjectReference>? _module;
 
-    public async Task<string> ReplyAsync(string prompt, string text, string engine, int seconds,
-        int maxTokens, CancellationToken token, Func<string, string>? interpret = null, string? toolsJson = null)
+    public async Task<string> ReplyAsync(string prompt, string text, string engine, CancellationToken token, Func<string, string>? interpret = null, string? toolsJson = null)
     {
         var module = await ModuleAsync();
         var id = await module.InvokeAsync<string>("guardianConversationId", token);
         var runtime = new ConversationRuntime(new IndexedConversationStorage(module));
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
         var requestId = Guid.NewGuid().ToString("N");
         try
         {
             return await runtime.SubmitAsync(id, prompt, text, (request, ct) =>
                 module.InvokeAsync<string?>("generate", ct, requestId, engine,
-                    JsonSerializer.Serialize(request, GuardianGeniusJson.Default.InferenceRequest), maxTokens, id, toolsJson),
-                interpret is null ? null : (answer, _) => ValueTask.FromResult(interpret(answer)), timeout.Token);
+                    JsonSerializer.Serialize(request, GuardianGeniusJson.Default.InferenceRequest), UnlimitedPrediction, id, toolsJson),
+                interpret is null ? null : (answer, _) => ValueTask.FromResult(interpret(answer)), token);
         }
         finally
         {
-            if (timeout.IsCancellationRequested)
-                await module.InvokeVoidAsync("cancel", CancellationToken.None, requestId);
+            if (token.IsCancellationRequested)
+            {
+                try { await module.InvokeVoidAsync("cancel", CancellationToken.None, requestId); }
+                catch (Exception ex) when (ex is JSException or ObjectDisposedException) { /* Browser teardown. */ }
+            }
         }
     }
 

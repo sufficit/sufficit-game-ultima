@@ -5,11 +5,18 @@ namespace Ultima.Pages;
 
 public partial class Index
 {
+    private string _wandererDraft = string.Empty;
+    private string ConversationDraft => GuardianOpen ? _dialogDraft : _wandererDraft;
+
     private void UpdateDialogueDraft(string value)
     {
-        if (_view?.Thinking == true || _dialogDraft == value) return;
-        _guardianProposal = null;
-        _dialogDraft = value;
+        if (GuardianBusy || ConversationDraft == value) return;
+        if (GuardianOpen)
+        {
+            _guardianProposal = null;
+            _dialogDraft = value;
+        }
+        else _wandererDraft = value;
     }
 
     private async Task<GuardianTurnResult> RunGuardianTurnAsync(string text, bool lightGarden,

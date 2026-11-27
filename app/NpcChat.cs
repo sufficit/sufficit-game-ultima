@@ -16,7 +16,7 @@ sealed class NpcChat(ILogger log)
     readonly Dictionary<string, Entry> _sessions = new(StringComparer.Ordinal);
     readonly Dictionary<string, List<double>> _rate = new(StringComparer.Ordinal);
     readonly List<double> _global = [];
-    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
+    static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     bool RateOk(string key, double now)
     {
@@ -82,7 +82,7 @@ sealed class NpcChat(ILogger log)
         foreach (var (who, line) in history)
             messages.Add(new JsonObject { ["role"] = who == 'p' ? "user" : "assistant", ["content"] = line });
         messages.Add(new JsonObject { ["role"] = "user", ["content"] = text });
-        var output = await CompleteAsync(messages, 1300, 0.2, "submit_garden_plan", cancellation);
+        var output = await CompleteAsync(messages, null, 0.2, "submit_garden_plan", cancellation);
         if (output is null) return (503, null);
         try
         {
@@ -111,7 +111,7 @@ sealed class NpcChat(ILogger log)
         }
     }
 
-    async Task<string?> CompleteAsync(JsonArray messages, int maxTokens, double temperature, string tool, CancellationToken cancellation)
+    async Task<string?> CompleteAsync(JsonArray messages, int? maxTokens, double temperature, string tool, CancellationToken cancellation)
     {
         if (!ServerAiEnabled()) return null;
         var url = (Environment.GetEnvironmentVariable("NPC_LLM_URL") ?? "").Trim();
@@ -130,7 +130,7 @@ sealed class NpcChat(ILogger log)
         }
         var body = new JsonObject
         {
-            ["model"] = model, ["messages"] = messages, ["max_tokens"] = maxTokens, ["temperature"] = temperature,
+            ["model"] = model, ["messages"] = messages, ["temperature"] = temperature,
             ["tools"] = new JsonArray(new JsonObject
             {
                 ["type"] = "function",
@@ -150,6 +150,12 @@ sealed class NpcChat(ILogger log)
                 ["type"] = "function", ["function"] = new JsonObject { ["name"] = tool }
             }
         };
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        if (maxTokens is { } budget)
+        {
+            body["max_tokens"] = budget;
+            deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        }
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Post, url)
@@ -157,11 +163,12 @@ sealed class NpcChat(ILogger log)
                 Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
             };
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
-            using var res = await Http.SendAsync(req, cancellation);
+            using var res = await Http.SendAsync(req, deadline.Token);
             res.EnsureSuccessStatusCode();
-            var data = JsonNode.Parse(await res.Content.ReadAsStringAsync(cancellation));
+            var data = JsonNode.Parse(await res.Content.ReadAsStringAsync(deadline.Token));
             // Providers must return exactly the requested structured call. Plain text cannot authorize actions.
-            if (data?["choices"]?[0]?["message"]?["tool_calls"] is not JsonArray { Count: 1 } calls ||
+            if (J.Str(data?["choices"]?[0]?["finish_reason"]) == "length" ||
+                data?["choices"]?[0]?["message"]?["tool_calls"] is not JsonArray { Count: 1 } calls ||
                 calls[0] is not JsonObject call || J.Str(call["type"]) != "function" ||
                 call["function"] is not JsonObject function || J.Str(function["name"]) != tool)
                 return "";

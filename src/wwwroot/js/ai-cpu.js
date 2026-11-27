@@ -166,7 +166,7 @@
             if (inst && state === 'thinking') emit('ready', 1, modelLabel + ' pronta na sua CPU' + (tokensPerSec ? ' · ' + tokensPerSec + ' tok/s' : ''));
         }
     }
-    async function garden(prompt, text, maxTokens = 1200, history = [], signal, tools) {
+    async function garden(prompt, text, maxTokens = -1, history = [], signal, tools) {
         const model = inst;
         if (!model || state !== 'ready') return null;
         signal?.throwIfAborted();
@@ -182,7 +182,9 @@
                 ...(tools ? { tools, tool_choice: 'auto', seed: 42 } : {})
             });
             signal?.throwIfAborted();
-            const message = output?.choices?.[0]?.message;
+            const choice = output?.choices?.[0];
+            if (choice?.finish_reason === 'length') return null;
+            const message = choice?.message;
             if (tools && message) return JSON.stringify({ calls: message.tool_calls ?? [], content: message.content });
             return message?.content || null;
         } catch {

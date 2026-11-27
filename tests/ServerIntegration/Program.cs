@@ -274,6 +274,13 @@ async Task Garden(Harness h, string root)
             "provedor fora");
         Check(Same(Owned(await h.Json(url, "/v1/game/map")), Owned(initial)), "falhas da IA preservam o mundo");
 
+        var contextual = await h.Json(url, garden + "/context", token: token);
+        Check(contextual["toolProposalsSupported"]?.GetValue<bool>() == true, "Hosted proposal capability is declared.");
+        var preview = await h.Json(url, garden + "/dialog",
+            new JsonObject { ["message"] = "Prévia do jardim", ["preview"] = true }, token);
+        Check(Arr(preview["actions"]).Count == 3, "Hosted preview returns structured actions.", preview);
+        Check(Same(Owned(await h.Json(url, "/v1/game/map")), Owned(initial)), "Hosted preview leaves the world untouched.");
+
         var edited = await h.Json(url, garden + "/dialog", new JsonObject { ["message"] = "Luminária, flores e trilha" }, token);
         Check(Str(edited["source"]) == "llm" && Num(edited["applied"]) == 7, "plano do provedor aplicado", edited);
         Check(Same(Owned(Obj(edited["map"])), Owned(await h.Json(url, "/v1/game/map"))), "mapa do diálogo igual ao mapa público");

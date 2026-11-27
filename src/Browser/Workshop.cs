@@ -241,13 +241,15 @@ public sealed partial class Workshop(HttpClient http, IJSRuntime js, GuardianGen
     private Task<T?> GetAsync<T>(Endpoint endpoint, string path, int seconds, CancellationToken token)
         => SendAsync<T>(endpoint, HttpMethod.Get, path, null, seconds, token);
 
+    private static readonly HttpClient InferenceHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
+
     private async Task<T?> SendAsync<T>(Endpoint endpoint, HttpMethod method, string path,
-        HttpContent? content, int seconds, CancellationToken token)
+        HttpContent? content, int? seconds, CancellationToken token)
     {
         using var timeout = TimeoutToken(seconds, token);
         using var request = Request(endpoint, method, path);
         request.Content = content;
-        using var response = await http.SendAsync(request, timeout.Token);
+        using var response = await (seconds is null ? InferenceHttp : http).SendAsync(request, timeout.Token);
         if (response.IsSuccessStatusCode) return await response.Content.ReadFromJsonAsync<T>(timeout.Token);
         string? code = null;
         try { code = (await response.Content.ReadFromJsonAsync<Reply>(timeout.Token))?.Error; }
@@ -263,10 +265,10 @@ public sealed partial class Workshop(HttpClient http, IJSRuntime js, GuardianGen
         return request;
     }
 
-    private static CancellationTokenSource TimeoutToken(int seconds, CancellationToken token)
+    private static CancellationTokenSource TimeoutToken(int? seconds, CancellationToken token)
     {
         var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
+        if (seconds is { } limit) timeout.CancelAfter(TimeSpan.FromSeconds(limit));
         return timeout;
     }
 

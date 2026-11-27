@@ -59,6 +59,9 @@ internal static class DeclarativeWindows
             """);
         await page.GotoAsync(GameUrl(), new() { WaitUntil = WaitUntilState.DOMContentLoaded });
         var build = await CheckBuildAsync(page);
+        var controlsHint = page.GetByText("WASD anda · Setas ou mouse olham", new() { Exact = false });
+        await controlsHint.WaitForAsync();
+        await controlsHint.WaitForAsync(new() { State = WaitForSelectorState.Hidden });
 
         var panel = Button(page, "Abrir painel do jogo");
         var journal = page.GetByRole(AriaRole.Dialog, new() { Name = "Diário", Exact = true });
@@ -72,7 +75,7 @@ internal static class DeclarativeWindows
         // Screen stack: the open window is modal — the focus enters it, what stays behind is inert and
         // Tab does not reach the game controls; on close, the focus returns to the canvas.
         Check(await journal.GetAttributeAsync("aria-modal") == "true", "o Diário é uma janela modal");
-        Check(await FocusInsideAsync(page, ".ultima-dialog"), "o foco entra no Diário ao abrir", await ActiveAsync(page));
+        await WaitAsync(() => FocusInsideAsync(page, ".ultima-dialog"), "o foco entra no Diário ao abrir");
         Check(await page.EvaluateAsync<bool>("() => document.querySelector('.ultima-menu').inert"), "atrás do Diário: menu e painel inertes");
         var leaked = await TabLeakAsync(page, 8);
         Check(leaked is null, "Tab não escapa do Diário", leaked);
@@ -153,8 +156,8 @@ internal static class DeclarativeWindows
         await conversation.GetByText("Olá, caminhante. Conecte-se ao servidor do jogo para aplicar alterações no jardim.").WaitForAsync();
         await conversation.GetByText("✦ origem da resposta: Genius local · CPU").WaitForAsync();
         Check(await draft.InputValueAsync() == "", "A completed reply clears the submitted draft.");
-        Check(await page.EvaluateAsync<bool>("() => guardianProbe.text === 'Quero novas árvores' && guardianProbe.tokens === 120"),
-            "conversa sem sessão usa a IA local com contexto curto");
+        Check(await page.EvaluateAsync<bool>("() => guardianProbe.text === 'Quero novas árvores' && guardianProbe.tokens === -1"),
+            "conversa sem sessão usa a IA local sem teto de geração");
         var reply = await line.InnerTextAsync();
         var history = conversation.GetByRole(AriaRole.Region, new() { Name = "Histórico da conversa" });
         await history.GetByText("Quero novas árvores", new() { Exact = true }).WaitForAsync();
@@ -252,11 +255,38 @@ internal static class DeclarativeWindows
             """);
         const string request = "Plante uma flor perto do banco";
         var send = Button(conversation, "Enviar para a Guardiã");
+        await page.EvaluateAsync("() => { window.holdGuardianReply = true; delete window.finishGuardianReply; }");
         await draft.FillAsync(request);
         await send.ClickAsync();
+        await WaitAsync(() => page.EvaluateAsync<bool>("() => typeof window.finishGuardianReply === 'function'"),
+            "The garden turn started.");
+        Check(await page.EvaluateAsync<bool>("() => guardianProbe.tokens === -1"), "Garden generation has no output cap.");
+        await CloseAsync(conversation);
+        await conversation.WaitForAsync(new() { State = WaitForSelectorState.Hidden });
+        await page.Locator("#game-canvas").FocusAsync();
+        await page.Keyboard.PressAsync("e");
+        await conversation.WaitForAsync();
+        Check(!await send.IsEnabledAsync(), "Reopening preserves the outstanding turn.");
+        await CloseAsync(conversation);
+        await conversation.WaitForAsync(new() { State = WaitForSelectorState.Hidden });
+        await page.EvaluateAsync("""
+            () => {
+                window.holdGuardianReply = false;
+                window.finishGuardianReply(window.guardianReplyOverride);
+            }
+            """);
+        await WaitAsync(() => page.EvaluateAsync<bool>("""
+            request => Object.values(JSON.parse(localStorage.getItem('ultima-dialog-history') || '{}'))
+                .some(turns => turns.some(turn => turn.player === request && turn.reply.includes('Quer aplicar?')))
+            """, request), "The completed background turn is saved before reopening the dialogue.");
+        Check(writes == 0, "A background proposal must wait for confirmation.");
+        await page.Locator("#game-canvas").FocusAsync();
+        await page.Keyboard.PressAsync("e");
+        await conversation.WaitForAsync();
+        await conversation.GetByRole(AriaRole.Region, new() { Name = "Histórico da conversa" })
+            .GetByText(request, new() { Exact = true }).WaitForAsync();
         var confirm = Button(conversation, "Aplicar alteração");
         await confirm.WaitForAsync();
-        Check(writes == 0, "A structured plan is previewed before the game writes.");
         await confirm.ClickAsync();
         await conversation.GetByText("O jardim não confirmou nenhuma alteração.", new() { Exact = false }).WaitForAsync();
         Check(await draft.InputValueAsync() == request, "An unconfirmed change preserves the request.");

@@ -67,21 +67,27 @@ public sealed partial class Workshop
                 return await TalkOfflineAsync(text, gpu, cpu, token);
             if (local)
                 return await ProposeGardenToolAsync(endpoint, text, gpu ? "gpu" : "cpu", token);
-            // Older hosted releases accept free-form plans. Use only the structured tool protocol.
+            // Preview support is required before starting a hosted background turn.
             var protocol = await GetAsync<JsonElement>(endpoint, GardenRoute + "/context", 8, token);
             if (protocol.ValueKind != JsonValueKind.Object ||
-                !protocol.TryGetProperty("toolCallsRequired", out var required) || required.ValueKind != JsonValueKind.True)
-                return GuardianTurnResult.Retry("A IA do servidor ainda não oferece chamadas de ferramentas. Use a IA na CPU.");
+                !protocol.TryGetProperty("toolProposalsSupported", out var required) || required.ValueKind != JsonValueKind.True)
+                return GuardianTurnResult.Retry("A IA do servidor ainda não oferece prévias de edição. Use a IA na CPU.");
 
-            using var message = JsonContent.Create(new Dictionary<string, string> { ["message"] = text });
-            var turn = await SendAsync<JsonElement>(endpoint, HttpMethod.Post, GardenRoute + "/dialog", message, 18, token);
+            using var message = JsonContent.Create(new { message = text, preview = true });
+            var turn = await SendAsync<JsonElement>(endpoint, HttpMethod.Post, GardenRoute + "/dialog", message, null, token);
             if (turn.ValueKind != JsonValueKind.Object)
                 return GuardianTurnResult.Retry("O jardim retornou uma resposta inválida. Confira o cenário antes de tentar novamente.");
             var source = turn.TryGetProperty("source", out var origin) && origin.ValueKind == JsonValueKind.String && origin.GetString() == "garden"
                 ? "Oficina do jardim" : "IA do servidor";
             if (ReadReply(turn) is not { } serverReply)
                 return GuardianTurnResult.Retry("O jardim não confirmou o pedido. Confira o cenário antes de tentar novamente.", source);
-            return await GardenReplyAsync(turn, serverReply, source, token);
+            if (turn.TryGetProperty("actions", out var actions) && actions.ValueKind == JsonValueKind.Array && actions.GetArrayLength() > 0)
+            {
+                var proposal = new GardenModelProposal(turn.Clone(),
+                    $"Proponho {actions.GetArrayLength()} alterações no jardim. Quer aplicar?", IsPlan: true);
+                return new(proposal.Preview, source, KeepDraft: true, Proposal: proposal);
+            }
+            return new(serverReply, source);
         }
         catch (WorkshopException ex) when (!token.IsCancellationRequested)
         {
@@ -107,10 +113,10 @@ public sealed partial class Workshop
     private async Task<GuardianTurnResult> TalkOfflineAsync(
         string text, bool gpu, bool cpu, CancellationToken token)
     {
-        var reply = gpu ? await GenerateLocalAsync(OfflinePrompt, text, "gpu", 60, 120, token) : null;
+        var reply = gpu ? await GenerateLocalAsync(OfflinePrompt, text, "gpu", token) : null;
         if (reply is not null)
             return new($"{reply} {OfflineGarden}", GeniusSource("gpu"));
-        reply = cpu ? await GenerateLocalAsync(OfflinePrompt, text, "cpu", 120, 120, token) : null;
+        reply = cpu ? await GenerateLocalAsync(OfflinePrompt, text, "cpu", token) : null;
         if (reply is not null)
             return new($"{reply} {OfflineGarden}", GeniusSource("cpu"));
         return gpu || cpu ? GuardianTurnResult.Retry($"A IA local não conseguiu responder. {OfflineGarden}", GuardianGenius.SourcePrefix)
@@ -119,10 +125,9 @@ public sealed partial class Workshop
 
     private static string GeniusSource(string engine) => $"{GuardianGenius.SourcePrefix} · {engine.ToUpperInvariant()}";
 
-    private async Task<string?> GenerateLocalAsync(string prompt, string text, string engine, int seconds,
-        int maxTokens, CancellationToken token, Func<string, string>? interpret = null)
+    private async Task<string?> GenerateLocalAsync(string prompt, string text, string engine, CancellationToken token, Func<string, string>? interpret = null)
     {
-        try { return await _genius.ReplyAsync(prompt, text, engine, seconds, maxTokens, token, interpret ?? (reply => Limit(reply, 300))); }
+        try { return await _genius.ReplyAsync(prompt, text, engine, token, interpret ?? (reply => Limit(reply, 300))); }
         catch (Exception ex) when (!token.IsCancellationRequested &&
             ex is JSException or OperationCanceledException or JsonException or InvalidOperationException)
         {

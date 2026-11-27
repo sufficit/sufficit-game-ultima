@@ -48,6 +48,7 @@ sealed class Provider : IDisposable
             using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
                 text = await reader.ReadToEndAsync();
             var request = JsonNode.Parse(text);
+            Require(request?["max_tokens"] is null, "hosted garden inference must not specify a generation cap");
             var messages = Arr(request?["messages"]);
             const string tool = "submit_garden_plan";
             Require(Str(request?["tools"]?[0]?["function"]?["name"]) == tool &&

@@ -12,6 +12,22 @@ lighting displays instructions. Use **Iluminar o jardim** to request a world
 edit. Authored topic turns stay in the open transcript. The Journal retains
 free-text replies through the existing history pipeline.
 
+## Background Guardian replies
+
+Close the conversation while the Guardian is thinking to return to the
+game. Reopening the conversation shows the pending turn or its reply.
+The game retains proposed changes for review and announces completion
+when the game screen is open. The player confirms an edit from the Guardian's
+conversation. Generation has no fixed game-imposed token budget or
+deadline. The model, provider and browser keep their own runtime limits.
+The browser must keep the game page open for the turn to continue.
+
+A hosted server advertises `toolProposalsSupported` on
+`GET /v1/game/garden/context`. Send `preview: true` with the message to
+`POST /v1/game/garden/dialog` to receive structured actions for review.
+The preview leaves the map unchanged. Confirm through the regular edit
+route, which validates the actions against the current garden state.
+
 ## Add a topic
 
 Add an entry to the corresponding character in

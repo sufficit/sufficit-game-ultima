@@ -64,7 +64,7 @@ sealed partial class GameWorld
         lock (_lock)
         {
             if (Session(token) is null) return (401, J.Err("invalid_token"));
-            return (200, new JsonObject { ["prompt"] = GardenPrompt(), ["toolCallsRequired"] = true });
+            return (200, new JsonObject { ["prompt"] = GardenPrompt(), ["toolCallsRequired"] = true, ["toolProposalsSupported"] = true });
         }
     }
 
@@ -92,6 +92,12 @@ sealed partial class GameWorld
             _chat.RememberGardenReply(id, text, reply);
             return (200, new JsonObject { ["reply"] = reply, ["source"] = "llm", ["applied"] = 0 });
         }
+        if (data["preview"] is JsonValue preview && preview.TryGetValue<bool>(out var requested) && requested)
+        {
+            _chat.RememberGardenReply(id, text, "Proposta aguardando confirmação: " + reply);
+            return (200, new JsonObject { ["reply"] = reply, ["source"] = "llm", ["actions"] = actions.DeepClone() });
+        }
+
         var (appliedStatus, result) = GardenEdit(token, actions, requireGuardian: true);
         if (appliedStatus == 200)
         {

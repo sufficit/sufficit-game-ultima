@@ -56,7 +56,6 @@ public sealed partial class Workshop
     private async Task<GuardianTurnResult> ProposeGardenToolAsync(Endpoint endpoint, string text, string engine, CancellationToken token)
     {
         var source = GeniusSource(engine);
-        var seconds = engine == "gpu" ? 60 : 120;
         try
         {
             var result = await GetAsync<JsonElement>(endpoint, GardenRoute + "/tools", 8, token);
@@ -76,7 +75,7 @@ public sealed partial class Workshop
             if (properties.Count == 0 && !allowPlan)
             {
                 const string prompt = "Responda como a Guardiã em português. Nenhuma propriedade compatível está disponível para editar.";
-                var answer = await GenerateLocalAsync(prompt, text, engine, seconds, 120, token);
+                var answer = await GenerateLocalAsync(prompt, text, engine, token);
                 return new(answer ?? "Não encontrei uma propriedade compatível por aqui.", source);
             }
             var definitions = string.Join('\n', properties.Values.Select(p => $"{p.Id}: {p.Model}, {p.Label} ({p.Unit})"));
@@ -93,7 +92,7 @@ public sealed partial class Workshop
                 tools = calls.ToJsonString();
             }
             GardenModelProposal? proposal = null;
-            var reply = await _genius.ReplyAsync(instructions, text, engine, seconds, allowPlan ? 480 : 100, token, output =>
+            var reply = await _genius.ReplyAsync(instructions, text, engine, token, output =>
             {
                 proposal = ReadModelProposal(output, properties, allowPlan);
                 if (proposal is null)

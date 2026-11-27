@@ -43,6 +43,8 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Background Guardian turns](activities/202611271520-guardian-background.md).
+
 - [Guardian CPU model matrix](activities/202611271424-guardian-cpu-model-matrix.md).
 
 - [Lightweight CPU model qualification](activities/202611271400-lightweight-cpu-model.md).
