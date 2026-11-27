@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Ultima.Models.Characters;
 using Ultima.Models.Core;
 using Ultima.Terrain;
@@ -13,6 +14,7 @@ internal static class HumanoidBodyChecks
                 .SequenceEqual(File.ReadLines(Path.Combine(root, "models", "Ultima.Models.Core", file))));
 
         var standard = Humanoid.ResolveBody(null);
+        CheckRigContract(standard, check);
         check("Legacy characters receive the human body default",
             standard.Species == HomoSapiens.SpeciesId && standard.Height == 1.75 &&
             standard.ColliderRadius == .25 && standard.Skin == new BodyColor(.90, .72, .58));
@@ -73,6 +75,41 @@ internal static class HumanoidBodyChecks
                 Close(Math.PI * abdomen.Diameter * abdomen.ScaleX, body.WaistCircumference!.Value));
             CheckAnkleTarget(body, check);
         }
+    }
+
+    private static void CheckRigContract(HumanoidBody body, Action<string, bool> check)
+    {
+        var anatomy = PlayerAnatomy.Create("humano", body.Height, body);
+        var joints = anatomy.ToDictionary(joint => joint.Name);
+        check("The reference rig keeps 73 pivots and the coincident pelvis and upper-body points",
+            anatomy.Length == 73 && joints["pelvis"].Parent == "root" &&
+            joints["upper-body"].Parent == "pelvis" && joints["upper-body"].Y == joints["pelvis"].Y &&
+            Close(joints["pelvis"].Y, body.HipHeight));
+        check("Every humanoid hinge has a unit axis and finite bounds that include neutral",
+            anatomy.Where(joint => joint.Motion == "hinge").All(joint => joint.Flexion is not null) &&
+            anatomy.Select(joint => joint.Flexion).OfType<AnatomyFlexion>().All(flexion =>
+                Math.Abs(flexion.AxisX) == 1 && flexion.AxisY == 0 && flexion.AxisZ == 0 &&
+                double.IsFinite(flexion.MinRadians) && double.IsFinite(flexion.MaxRadians) &&
+                flexion.MinRadians <= 0 && flexion.MaxRadians > 0));
+        check("Knees bend back, elbows bend forward and ankle flexion lifts the toes on both sides",
+            new[] { "left", "right" }.All(side =>
+                joints[$"knee-{side}"].Flexion is { AxisX: 1, MinRadians: 0 } &&
+                joints[$"elbow-{side}"].Flexion is { AxisX: -1, MinRadians: 0 } &&
+                joints[$"ankle-{side}"].Flexion is { AxisX: -1, MinRadians: < 0 }));
+
+        var frame = new PlayerBodyFrame(body, anatomy);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(frame, PlayerBodyJson.Default.PlayerBodyFrame));
+        var packet = json.RootElement.GetProperty("anatomy");
+        var knee = packet.EnumerateArray().Single(joint => joint.GetProperty("name").GetString() == "knee-left");
+        var eye = packet.EnumerateArray().Single(joint => joint.GetProperty("name").GetString() == "eye-pivot");
+        var metadata = knee.GetProperty("flexion");
+        check("The startup packet exports the signed axis and radians and omits absent flexion",
+            metadata.GetProperty("axisX").GetInt32() == 1 &&
+            Close(metadata.GetProperty("maxRadians").GetDouble(), double.DegreesToRadians(145)) &&
+            !eye.TryGetProperty("flexion", out _));
+        check("Animal anatomy retains its existing contract",
+            new[] { "canino", "equino", "ave" }.All(kind =>
+                PlayerAnatomy.Create(kind, body.Height).All(joint => joint.Flexion is null)));
     }
 
     private static bool Close(double a, double b) => Math.Abs(a - b) < 1e-8;

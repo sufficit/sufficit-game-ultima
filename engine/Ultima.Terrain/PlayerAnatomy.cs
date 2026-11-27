@@ -5,9 +5,13 @@ using Ultima.Models.Core;
 namespace Ultima.Terrain;
 
 // Neutral joint pivots in model-space meters. A parent precedes its children.
-internal sealed record AnatomyJoint(string Name, string Parent, double X, double Y, double Z, string Motion);
+internal sealed record AnatomyJoint(string Name, string Parent, double X, double Y, double Z, string Motion,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AnatomyFlexion? Flexion = null);
 
-internal static class PlayerAnatomy
+/// <summary>Unit axis in neutral model space and signed primary-flexion bounds in radians.</summary>
+internal sealed record AnatomyFlexion(int AxisX, int AxisY, int AxisZ, double MinRadians, double MaxRadians);
+
+internal static partial class PlayerAnatomy
 {
     internal static AnatomyJoint[] Create(string kind, double height, HumanoidBody? body = null)
     {
@@ -19,44 +23,7 @@ internal static class PlayerAnatomy
         switch (kind)
         {
             case "humano":
-                var hip = body?.LegRatio ?? .44;
-                Add("pelvis", "root", 0, hip, 0);
-                Add("upper-body", "pelvis", 0, hip, 0);
-                Add("chest", "upper-body", 0, .70, 0);
-                Add("neck-pivot", "chest", 0, .82, 0);
-                Add("head-pivot", "neck-pivot", 0, .86, 0);
-                Add("eye-pivot", "head-pivot", 0, .937, 0);
-                Add("jaw", "head-pivot", 0, .9, .035, "hinge");
-                var ankle = body is null ? .039 * 1.25 * .55 - .004 / height : body.AnkleJoint / height;
-                var knee = body is null ? (hip + ankle) / 2 : body.KneeHeight / height;
-                var elbow = body is null ? .63 : body.ElbowHeight / height;
-                var wrist = body is null ? .45 : body.WristHeight / height;
-                foreach (var side in new[] { "left", "right" })
-                {
-                    var sign = side == "left" ? -1 : 1;
-                    var arm = sign * (body is null ? .088 + .026 * 1.3 : body.ArmOffset / height);
-                    var leg = sign * (body is null ? .052 : body.LegSpacing / height);
-                    Add("clavicle-" + side, "chest", sign * .025, .80, 0);
-                    Add("shoulder-" + side, "clavicle-" + side, arm, .80, 0);
-                    Add("elbow-" + side, "shoulder-" + side, arm, elbow, 0, "hinge");
-                    Add("wrist-" + side, "elbow-" + side, arm, wrist, 0);
-                    Add("hip-" + side, "pelvis", leg, hip, 0);
-                    Add("knee-" + side, "hip-" + side, leg, knee, 0, "hinge");
-                    Add("ankle-" + side, "knee-" + side, leg, ankle, 0);
-                    Add("ball-" + side, "ankle-" + side, leg, .009, .065, "hinge");
-                    for (var digit = 1; digit <= 5; digit++)
-                    {
-                        var x = arm + sign * (digit - 3) * .009;
-                        var finger = $"finger-{digit}-{side}";
-                        Add(finger, "wrist-" + side, x, wrist - .018, 0);
-                        Add(finger + "-middle", finger, x, wrist - .033, 0, "hinge");
-                        Add(finger + "-tip", finger + "-middle", x, wrist - .043, 0, "hinge");
-                        var toe = $"toe-{digit}-{side}";
-                        var toeX = leg + sign * (digit - 3) * .01;
-                        Add(toe, "ball-" + side, toeX, .009, .082, "hinge");
-                        Add(toe + "-tip", toe, toeX, .009, .104, "hinge");
-                    }
-                }
+                AddHumanoid(joints, height, body);
                 break;
             case "canino":
             case "equino":

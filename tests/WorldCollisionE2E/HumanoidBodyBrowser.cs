@@ -77,6 +77,9 @@ internal static class HumanoidBodyBrowser
                     return !!earMaterial() && root.metadata?.modelId === 'character.villager' &&
                         Math.abs(hip.position.x + 2.02 * .052 * 1.17) < .001 &&
                         Math.abs(shoulder.metadata.modelOffset.y + 2.02 * .80) < .001 &&
+                        knee.metadata.flexion?.axisX === 1 &&
+                        Math.abs(knee.metadata.flexion.maxRadians - 145 * Math.PI / 180) < .0001 &&
+                        ankle.metadata.flexion?.axisX === -1 && elbow.metadata.flexion?.axisX === -1 &&
                         Math.abs(knee.position.y / (knee.position.y + ankle.position.y) - .56) < .001 &&
                         Math.abs(elbow.position.y / (elbow.position.y + wrist.position.y) - .53) < .001 &&
                         Math.abs(elbow.position.y + wrist.position.y + 2.02 * .4) < .001 &&

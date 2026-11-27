@@ -22,9 +22,10 @@
         function createJointHierarchy(root, anatomy) {
             // The C# packet provides ordered model-space pivots. Babylon nodes store parent-relative transforms.
             const joints = new Map([['root', root]]);
-            for (const { name, parent, x, y, z, motion } of anatomy) {
+            for (const { name, parent, x, y, z, motion, flexion } of anatomy) {
                 const node = createCharacterJoint(root, name, joints.get(parent), x, y, z);
                 node.metadata.motion = motion;
+                if (flexion) node.metadata.flexion = flexion;
                 joints.set(name, node);
             }
             return joints;

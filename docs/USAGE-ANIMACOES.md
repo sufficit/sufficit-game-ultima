@@ -42,6 +42,28 @@ and lines connect each child to its parent. The pelvis and upper-body pivots
 share the same coordinates. Right-hand and right-foot insets show all five
 digit chains. The left side mirrors the right.
 
+### Humanoid bind-pose contract
+
+Joint IDs and parent links are stable. The neutral pose has the arms down
+and the soles on the floor. The implicit `root` is at the model origin.
+Coordinates are in metres in model space, with +X to the right, +Y up, and
++Z forward. Subtract the parent's neutral coordinates to get a local
+translation. A shared pivot, such as `pelvis` and `upper-body`, still represents
+two joints. Blender bones at coincident pivots need an explicit tail for
+authoring while retaining the pivot and parent relation.
+
+The startup packet may provide `flexion` with a unit vector
+(`axisX`, `axisY`, `axisZ`) and signed `minRadians` and `maxRadians`.
+Use the right-hand rule around that axis in neutral model space. For example,
+positive rotation around +X bends the knee rearward. Positive rotation
+around −X bends the elbow forward or lifts the toes at the ankle.
+These are initial authoring limits around the primary flexion axis. The
+locomotion solver will use them when the skinned model is integrated.
+Other rotation axes and species can define their own constraints later.
+
+[Humanoid definitions](../engine/Ultima.Terrain/PlayerAnatomy.Humanoid.cs)
+· [Skinned rig plan](PLAN-HUMANOID-SKINNED-RIG.md)
+
 | Espécie | Referência da altura | Estrutura |
 | --- | --- | --- |
 | `humano` | Estatura | Pelve, coluna, cabeça, mandíbula, braços, pernas e dedos |
