@@ -32,6 +32,16 @@ frente. O pai vem antes do filho, e `root` é o nó do personagem.
 dos controladores. A hierarquia deste estágio é cinemática.
 [Definições das espécies](../engine/Ultima.Terrain/PlayerAnatomy.cs)
 
+### Humanoid joint map
+
+![Ultima's default humanoid rig in front and side views, with enlarged hand and foot detail.](figures/humanoid-rig.svg)
+
+The diagram uses the neutral coordinates from the default 1.75 m player
+profile. Circles identify spherical pivots, diamonds identify hinge pivots,
+and lines connect each child to its parent. The pelvis and upper-body pivots
+share the same coordinates. Right-hand and right-foot insets show all five
+digit chains. The left side mirrors the right.
+
 | Espécie | Referência da altura | Estrutura |
 | --- | --- | --- |
 | `humano` | Estatura | Pelve, coluna, cabeça, mandíbula, braços, pernas e dedos |

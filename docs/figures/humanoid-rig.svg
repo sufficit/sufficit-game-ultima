@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1460" height="1050" viewBox="0 0 1460 1050" role="img" aria-labelledby="title description">
+<title id="title">Ultima humanoid rig</title>
+<desc id="description">Neutral pose of the default 1.75 metre player. Front and side projections show parent connections and primary pivots. Insets show every finger and toe on the right side.</desc>
+<style>
+  text{font-family:system-ui,sans-serif;fill:#eaf2fb}
+  .kicker{font-size:15px;letter-spacing:3px;font-weight:700;fill:#76d4ff}
+  .title{font-size:51px;font-weight:710}.subtitle{font-size:19px;fill:#a9bcd0}
+  .heading{font-size:25px;font-weight:680}.sub{font-size:14px;fill:#9aafc4}
+  .label{font-size:15px;font-weight:600}.axis{font-size:13px;fill:#8fa7c0}
+  .minor{font-size:13px;fill:#a9bcd0}.panel{fill:#111e2f;stroke:#263a50}
+  .grid{stroke:#263a50;stroke-width:1}.floor{stroke:#7b92aa;stroke-width:1.5}
+  .edge{stroke:#84cbea;stroke-width:3;stroke-linecap:round;fill:none}
+  .leader{stroke:#6888a4;stroke-width:1.15;fill:none}
+  .ball{fill:#6dd6ff;stroke:#111e2f;stroke-width:1.5}
+  .hinge{fill:#ffbe71;stroke:#111e2f;stroke-width:1.25}
+  .root{fill:#eaf2fb;stroke:#111e2f;stroke-width:1}
+</style>
+<rect width="1460" height="1050" fill="#0b1522"/>
+
+<rect x="40" y="151" width="600" height="761" rx="16" class="panel"/>
+<rect x="660" y="151" width="390" height="761" rx="16" class="panel"/>
+<rect x="1070" y="151" width="350" height="352" rx="16" class="panel"/>
+<rect x="1070" y="525" width="350" height="387" rx="16" class="panel"/>
+<text x="42" y="49" class="kicker" text-anchor="start">ULTIMA · CHARACTER ANATOMY</text>
+<text x="40" y="101" class="title" text-anchor="start">Humanoid rig</text>
+<text x="43" y="128" class="subtitle" text-anchor="start">Neutral pose · default 1.75 m player · 73 joint pivots plus the actor root</text>
+<text x="65" y="187" class="heading" text-anchor="start">Front</text>
+<text x="65" y="208" class="sub" text-anchor="start">X / Y projection</text>
+<text x="685" y="187" class="heading" text-anchor="start">Side</text>
+<text x="685" y="208" class="sub" text-anchor="start">Z / Y projection · left and right overlap</text>
+<path d="M 94,858.00 H 614 M 684,858.00 H 1025" class="floor"/>
+<text x="86" y="862.0" class="axis" text-anchor="end">0</text>
+<path d="M 94,765.00 H 614 M 684,765.00 H 1025" class="grid"/>
+<text x="86" y="769.0" class="axis" text-anchor="end">0.25</text>
+<path d="M 94,672.00 H 614 M 684,672.00 H 1025" class="grid"/>
+<text x="86" y="676.0" class="axis" text-anchor="end">0.5</text>
+<path d="M 94,579.00 H 614 M 684,579.00 H 1025" class="grid"/>
+<text x="86" y="583.0" class="axis" text-anchor="end">0.75</text>
+<path d="M 94,486.00 H 614 M 684,486.00 H 1025" class="grid"/>
+<text x="86" y="490.0" class="axis" text-anchor="end">1</text>
+<path d="M 94,393.00 H 614 M 684,393.00 H 1025" class="grid"/>
+<text x="86" y="397.0" class="axis" text-anchor="end">1.25</text>
+<path d="M 94,300.00 H 614 M 684,300.00 H 1025" class="grid"/>
+<text x="86" y="304.0" class="axis" text-anchor="end">1.5</text>
+<text x="87" y="235" class="axis" text-anchor="end">Y (m)</text>
+<path d="M 337.00,858.00 L 337.00,571.56 M 337.00,571.56 L 337.00,571.56 M 337.00,571.56 L 337.00,402.30 M 337.00,402.30 L 337.00,324.18 M 337.00,324.18 L 337.00,298.14 M 337.00,298.14 L 337.00,248.01 M 337.00,298.14 L 337.00,272.10 M 337.00,402.30 L 320.73,337.20 M 320.73,337.20 L 257.71,337.20 M 257.71,337.20 L 257.71,447.87 M 257.71,447.87 L 257.71,565.05 M 337.00,571.56 L 303.15,571.56 M 303.15,571.56 L 303.15,706.80 M 303.15,706.80 L 303.15,842.03 M 303.15,842.03 L 303.15,852.14 M 257.71,565.05 L 269.43,576.77 M 269.43,576.77 L 269.43,586.53 M 269.43,586.53 L 269.43,593.04 M 303.15,852.14 L 316.17,852.14 M 316.17,852.14 L 316.17,852.14 M 257.71,565.05 L 263.57,576.77 M 263.57,576.77 L 263.57,586.53 M 263.57,586.53 L 263.57,593.04 M 303.15,852.14 L 309.66,852.14 M 309.66,852.14 L 309.66,852.14 M 257.71,565.05 L 257.71,576.77 M 257.71,576.77 L 257.71,586.53 M 257.71,586.53 L 257.71,593.04 M 303.15,852.14 L 303.15,852.14 M 303.15,852.14 L 303.15,852.14 M 257.71,565.05 L 251.85,576.77 M 251.85,576.77 L 251.85,586.53 M 251.85,586.53 L 251.85,593.04 M 303.15,852.14 L 296.64,852.14 M 296.64,852.14 L 296.64,852.14 M 257.71,565.05 L 245.99,576.77 M 245.99,576.77 L 245.99,586.53 M 245.99,586.53 L 245.99,593.04 M 303.15,852.14 L 290.13,852.14 M 290.13,852.14 L 290.13,852.14 M 337.00,402.30 L 353.27,337.20 M 353.27,337.20 L 416.29,337.20 M 416.29,337.20 L 416.29,447.87 M 416.29,447.87 L 416.29,565.05 M 337.00,571.56 L 370.85,571.56 M 370.85,571.56 L 370.85,706.80 M 370.85,706.80 L 370.85,842.03 M 370.85,842.03 L 370.85,852.14 M 416.29,565.05 L 404.57,576.77 M 404.57,576.77 L 404.57,586.53 M 404.57,586.53 L 404.57,593.04 M 370.85,852.14 L 357.83,852.14 M 357.83,852.14 L 357.83,852.14 M 416.29,565.05 L 410.43,576.77 M 410.43,576.77 L 410.43,586.53 M 410.43,586.53 L 410.43,593.04 M 370.85,852.14 L 364.34,852.14 M 364.34,852.14 L 364.34,852.14 M 416.29,565.05 L 416.29,576.77 M 416.29,576.77 L 416.29,586.53 M 416.29,586.53 L 416.29,593.04 M 370.85,852.14 L 370.85,852.14 M 370.85,852.14 L 370.85,852.14 M 416.29,565.05 L 422.15,576.77 M 422.15,576.77 L 422.15,586.53 M 422.15,586.53 L 422.15,593.04 M 370.85,852.14 L 377.36,852.14 M 377.36,852.14 L 377.36,852.14 M 416.29,565.05 L 428.01,576.77 M 428.01,576.77 L 428.01,586.53 M 428.01,586.53 L 428.01,593.04 M 370.85,852.14 L 383.87,852.14 M 383.87,852.14 L 383.87,852.14" class="edge"/>
+<circle cx="337.00" cy="571.56" r="5" class="ball"/><circle cx="337.00" cy="571.56" r="5" class="ball"/><circle cx="337.00" cy="402.30" r="5" class="ball"/><circle cx="337.00" cy="324.18" r="5" class="ball"/><circle cx="337.00" cy="298.14" r="5" class="ball"/><circle cx="337.00" cy="248.01" r="5" class="ball"/><path d="M 337.00,267.10 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="320.73" cy="337.20" r="5" class="ball"/><circle cx="257.71" cy="337.20" r="5" class="ball"/><path d="M 257.71,442.87 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="257.71" cy="565.05" r="5" class="ball"/><circle cx="303.15" cy="571.56" r="5" class="ball"/><path d="M 303.15,701.80 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="303.15" cy="842.03" r="5" class="ball"/><path d="M 303.15,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="269.43" cy="576.77" r="5" class="ball"/><path d="M 269.43,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 269.43,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 316.17,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 316.17,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="263.57" cy="576.77" r="5" class="ball"/><path d="M 263.57,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 263.57,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 309.66,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 309.66,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="257.71" cy="576.77" r="5" class="ball"/><path d="M 257.71,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 257.71,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 303.15,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 303.15,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="251.85" cy="576.77" r="5" class="ball"/><path d="M 251.85,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 251.85,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 296.64,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 296.64,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="245.99" cy="576.77" r="5" class="ball"/><path d="M 245.99,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 245.99,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 290.13,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 290.13,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="353.27" cy="337.20" r="5" class="ball"/><circle cx="416.29" cy="337.20" r="5" class="ball"/><path d="M 416.29,442.87 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="416.29" cy="565.05" r="5" class="ball"/><circle cx="370.85" cy="571.56" r="5" class="ball"/><path d="M 370.85,701.80 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="370.85" cy="842.03" r="5" class="ball"/><path d="M 370.85,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="404.57" cy="576.77" r="5" class="ball"/><path d="M 404.57,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 404.57,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 357.83,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 357.83,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="410.43" cy="576.77" r="5" class="ball"/><path d="M 410.43,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 410.43,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 364.34,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 364.34,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="416.29" cy="576.77" r="5" class="ball"/><path d="M 416.29,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 416.29,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 370.85,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 370.85,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="422.15" cy="576.77" r="5" class="ball"/><path d="M 422.15,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 422.15,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 377.36,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 377.36,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="428.01" cy="576.77" r="5" class="ball"/><path d="M 428.01,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 428.01,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 383.87,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 383.87,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><rect x="332.00" y="853.00" width="10" height="10" rx="1" class="root"/>
+<path d="M 778.00,858.00 L 778.00,571.56 M 778.00,571.56 L 778.00,571.56 M 778.00,571.56 L 778.00,402.30 M 778.00,402.30 L 778.00,324.18 M 778.00,324.18 L 778.00,298.14 M 778.00,298.14 L 778.00,248.01 M 778.00,298.14 L 800.78,272.10 M 778.00,402.30 L 778.00,337.20 M 778.00,337.20 L 778.00,337.20 M 778.00,337.20 L 778.00,447.87 M 778.00,447.87 L 778.00,565.05 M 778.00,571.56 L 778.00,571.56 M 778.00,571.56 L 778.00,706.80 M 778.00,706.80 L 778.00,842.03 M 778.00,842.03 L 820.32,852.14 M 778.00,565.05 L 778.00,576.77 M 778.00,576.77 L 778.00,586.53 M 778.00,586.53 L 778.00,593.04 M 820.32,852.14 L 831.38,852.14 M 831.38,852.14 L 845.70,852.14 M 778.00,565.05 L 778.00,576.77 M 778.00,576.77 L 778.00,586.53 M 778.00,586.53 L 778.00,593.04 M 820.32,852.14 L 831.38,852.14 M 831.38,852.14 L 845.70,852.14 M 778.00,565.05 L 778.00,576.77 M 778.00,576.77 L 778.00,586.53 M 778.00,586.53 L 778.00,593.04 M 820.32,852.14 L 831.38,852.14 M 831.38,852.14 L 845.70,852.14 M 778.00,565.05 L 778.00,576.77 M 778.00,576.77 L 778.00,586.53 M 778.00,586.53 L 778.00,593.04 M 820.32,852.14 L 831.38,852.14 M 831.38,852.14 L 845.70,852.14 M 778.00,565.05 L 778.00,576.77 M 778.00,576.77 L 778.00,586.53 M 778.00,586.53 L 778.00,593.04 M 820.32,852.14 L 831.38,852.14 M 831.38,852.14 L 845.70,852.14 M 778.00,402.30 L 778.00,337.20 M 778.00,337.20 L 778.00,337.20 M 778.00,337.20 L 778.00,447.87 M 778.00,447.87 L 778.00,565.05 M 778.00,571.56 L 778.00,571.56 M 778.00,571.56 L 778.00,706.80 M 778.00,706.80 L 778.00,842.03 M 778.00,842.03 L 820.32,852.14 M 778.00,565.05 L 778.00,576.77 M 778.00,576.77 L 778.00,586.53 M 778.00,586.53 L 778.00,593.04 M 820.32,852.14 L 831.38,852.14 M 831.38,852.14 L 845.70,852.14 M 778.00,565.05 L 778.00,576.77 M 778.00,576.77 L 778.00,586.53 M 778.00,586.53 L 778.00,593.04 M 820.32,852.14 L 831.38,852.14 M 831.38,852.14 L 845.70,852.14 M 778.00,565.05 L 778.00,576.77 M 778.00,576.77 L 778.00,586.53 M 778.00,586.53 L 778.00,593.04 M 820.32,852.14 L 831.38,852.14 M 831.38,852.14 L 845.70,852.14 M 778.00,565.05 L 778.00,576.77 M 778.00,576.77 L 778.00,586.53 M 778.00,586.53 L 778.00,593.04 M 820.32,852.14 L 831.38,852.14 M 831.38,852.14 L 845.70,852.14 M 778.00,565.05 L 778.00,576.77 M 778.00,576.77 L 778.00,586.53 M 778.00,586.53 L 778.00,593.04 M 820.32,852.14 L 831.38,852.14 M 831.38,852.14 L 845.70,852.14" class="edge"/>
+<circle cx="778.00" cy="571.56" r="5" class="ball"/><circle cx="778.00" cy="571.56" r="5" class="ball"/><circle cx="778.00" cy="402.30" r="5" class="ball"/><circle cx="778.00" cy="324.18" r="5" class="ball"/><circle cx="778.00" cy="298.14" r="5" class="ball"/><circle cx="778.00" cy="248.01" r="5" class="ball"/><path d="M 800.78,267.10 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="337.20" r="5" class="ball"/><circle cx="778.00" cy="337.20" r="5" class="ball"/><path d="M 778.00,442.87 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="565.05" r="5" class="ball"/><circle cx="778.00" cy="571.56" r="5" class="ball"/><path d="M 778.00,701.80 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="842.03" r="5" class="ball"/><path d="M 820.32,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="576.77" r="5" class="ball"/><path d="M 778.00,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 778.00,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 831.38,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 845.70,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="576.77" r="5" class="ball"/><path d="M 778.00,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 778.00,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 831.38,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 845.70,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="576.77" r="5" class="ball"/><path d="M 778.00,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 778.00,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 831.38,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 845.70,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="576.77" r="5" class="ball"/><path d="M 778.00,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 778.00,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 831.38,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 845.70,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="576.77" r="5" class="ball"/><path d="M 778.00,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 778.00,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 831.38,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 845.70,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="337.20" r="5" class="ball"/><circle cx="778.00" cy="337.20" r="5" class="ball"/><path d="M 778.00,442.87 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="565.05" r="5" class="ball"/><circle cx="778.00" cy="571.56" r="5" class="ball"/><path d="M 778.00,701.80 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="842.03" r="5" class="ball"/><path d="M 820.32,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="576.77" r="5" class="ball"/><path d="M 778.00,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 778.00,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 831.38,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 845.70,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="576.77" r="5" class="ball"/><path d="M 778.00,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 778.00,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 831.38,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 845.70,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="576.77" r="5" class="ball"/><path d="M 778.00,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 778.00,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 831.38,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 845.70,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="576.77" r="5" class="ball"/><path d="M 778.00,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 778.00,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 831.38,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 845.70,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><circle cx="778.00" cy="576.77" r="5" class="ball"/><path d="M 778.00,581.53 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 778.00,588.04 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 831.38,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><path d="M 845.70,847.14 l 5,5 -5,5 -5,-5 z" class="hinge"/><rect x="773.00" y="853.00" width="10" height="10" rx="1" class="root"/>
+<path d="M 337.00,248.01 L 389,234 H 401" class="leader"/>
+<text x="409" y="239" class="label" text-anchor="start">Eye pivot</text>
+<path d="M 337.00,298.14 L 389,281 H 401" class="leader"/>
+<text x="409" y="286" class="label" text-anchor="start">Head pivot</text>
+<path d="M 337.00,324.18 L 389,312 H 401" class="leader"/>
+<text x="409" y="317" class="label" text-anchor="start">Neck pivot</text>
+<path d="M 257.71,337.20 L 236,315 H 224" class="leader"/>
+<text x="216" y="320" class="label" text-anchor="end">Shoulder</text>
+<path d="M 320.73,337.20 L 236,354 H 224" class="leader"/>
+<text x="216" y="359" class="label" text-anchor="end">Clavicle</text>
+<path d="M 337.00,402.30 L 447,408 H 459" class="leader"/>
+<text x="467" y="413" class="label" text-anchor="start">Chest</text>
+<path d="M 257.71,447.87 L 236,445 H 224" class="leader"/>
+<text x="216" y="450" class="label" text-anchor="end">Elbow</text>
+<path d="M 257.71,565.05 L 236,552 H 224" class="leader"/>
+<text x="216" y="557" class="label" text-anchor="end">Wrist</text>
+<path d="M 370.85,571.56 L 419,549 H 431" class="leader"/>
+<text x="439" y="554" class="label" text-anchor="start">Hip</text>
+<path d="M 337.00,571.56 L 419,626 H 431" class="leader"/>
+<text x="439" y="631" class="label" text-anchor="start">Pelvis / upper body</text>
+<path d="M 370.85,706.80 L 419,701 H 431" class="leader"/>
+<text x="439" y="706" class="label" text-anchor="start">Knee</text>
+<path d="M 370.85,842.03 L 419,806 H 431" class="leader"/>
+<text x="439" y="811" class="label" text-anchor="start">Ankle</text>
+<path d="M 337.00,858.00 L 243,811 H 231" class="leader"/>
+<text x="223" y="816" class="label" text-anchor="end">Actor root</text>
+<path d="M 800.78,272.10 L 851,270 H 863" class="leader"/>
+<text x="871" y="275" class="label" text-anchor="start">Jaw</text>
+<path d="M 778.00,571.56 L 849,553 H 861" class="leader"/>
+<text x="869" y="558" class="label" text-anchor="start">Pelvis / upper body</text>
+<path d="M 778.00,706.80 L 849,702 H 861" class="leader"/>
+<text x="869" y="707" class="label" text-anchor="start">Knee</text>
+<path d="M 778.00,842.03 L 849,800 H 861" class="leader"/>
+<text x="869" y="805" class="label" text-anchor="start">Ankle</text>
+<path d="M 820.32,852.14 L 890,830 H 902" class="leader"/>
+<text x="910" y="835" class="label" text-anchor="start">Ball of foot</text>
+<text x="145" y="888" class="axis" text-anchor="start">−X · LEFT</text>
+<text x="555" y="888" class="axis" text-anchor="end">RIGHT · +X</text>
+<text x="1023" y="888" class="axis" text-anchor="end">FORWARD → +Z</text>
+<text x="1095" y="187" class="heading" text-anchor="start">Right hand</text>
+<text x="1095" y="208" class="sub" text-anchor="start">Front detail · X / Y · enlarged</text>
+<path d="M 1247.00,263.00 L 1177.70,332.30 M 1177.70,332.30 L 1177.70,390.05 M 1177.70,390.05 L 1177.70,428.55 M 1247.00,263.00 L 1212.35,332.30 M 1212.35,332.30 L 1212.35,390.05 M 1212.35,390.05 L 1212.35,428.55 M 1247.00,263.00 L 1247.00,332.30 M 1247.00,332.30 L 1247.00,390.05 M 1247.00,390.05 L 1247.00,428.55 M 1247.00,263.00 L 1281.65,332.30 M 1281.65,332.30 L 1281.65,390.05 M 1281.65,390.05 L 1281.65,428.55 M 1247.00,263.00 L 1316.30,332.30 M 1316.30,332.30 L 1316.30,390.05 M 1316.30,390.05 L 1316.30,428.55" class="edge"/>
+<circle cx="1247.00" cy="263.00" r="4.5" class="ball"/><circle cx="1177.70" cy="332.30" r="4.5" class="ball"/><path d="M 1177.70,385.55 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1177.70,424.05 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><circle cx="1212.35" cy="332.30" r="4.5" class="ball"/><path d="M 1212.35,385.55 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1212.35,424.05 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><circle cx="1247.00" cy="332.30" r="4.5" class="ball"/><path d="M 1247.00,385.55 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1247.00,424.05 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><circle cx="1281.65" cy="332.30" r="4.5" class="ball"/><path d="M 1281.65,385.55 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1281.65,424.05 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><circle cx="1316.30" cy="332.30" r="4.5" class="ball"/><path d="M 1316.30,385.55 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1316.30,424.05 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/>
+<text x="1247" y="247" class="label" text-anchor="middle">Wrist</text>
+<text x="1178" y="458" class="axis" text-anchor="middle">1</text>
+<text x="1212" y="458" class="axis" text-anchor="middle">2</text>
+<text x="1247" y="458" class="axis" text-anchor="middle">3</text>
+<text x="1282" y="458" class="axis" text-anchor="middle">4</text>
+<text x="1316" y="458" class="axis" text-anchor="middle">5</text>
+<text x="1247" y="483" class="minor" text-anchor="middle">Finger chains · base → middle → tip</text>
+<text x="1095" y="563" class="heading" text-anchor="start">Right foot</text>
+<text x="1095" y="584" class="sub" text-anchor="start">Top detail · X / Z · enlarged</text>
+<path d="M 1247.00,871.00 L 1247.00,745.88 M 1247.00,745.88 L 1185.75,713.15 M 1185.75,713.15 L 1185.75,670.80 M 1247.00,745.88 L 1216.38,713.15 M 1216.38,713.15 L 1216.38,670.80 M 1247.00,745.88 L 1247.00,713.15 M 1247.00,713.15 L 1247.00,670.80 M 1247.00,745.88 L 1277.62,713.15 M 1277.62,713.15 L 1277.62,670.80 M 1247.00,745.88 L 1308.25,713.15 M 1308.25,713.15 L 1308.25,670.80" class="edge"/>
+<circle cx="1247.00" cy="871.00" r="4.5" class="ball"/><path d="M 1247.00,741.38 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1185.75,708.65 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1185.75,666.30 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1216.38,708.65 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1216.38,666.30 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1247.00,708.65 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1247.00,666.30 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1277.62,708.65 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1277.62,666.30 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1308.25,708.65 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/><path d="M 1308.25,666.30 l 4.5,4.5 -4.5,4.5 -4.5,-4.5 z" class="hinge"/>
+<text x="1186" y="657" class="axis" text-anchor="middle">1</text>
+<text x="1216" y="657" class="axis" text-anchor="middle">2</text>
+<text x="1247" y="657" class="axis" text-anchor="middle">3</text>
+<text x="1278" y="657" class="axis" text-anchor="middle">4</text>
+<text x="1308" y="657" class="axis" text-anchor="middle">5</text>
+<path d="M 1247.00,745.88 L 1334,770 H 1346" class="leader"/>
+<text x="1354" y="775" class="label" text-anchor="start">Ball</text>
+<path d="M 1247.00,871.00 L 1310,862 H 1322" class="leader"/>
+<text x="1330" y="867" class="label" text-anchor="start">Ankle</text>
+<text x="1095" y="896" class="axis" text-anchor="start">+Z points toward the toes</text>
+<path d="M 41,938 H 1419" class="grid"/>
+<circle cx="55.00" cy="971.00" r="6" class="ball"/>
+<text x="71" y="976" class="minor" text-anchor="start">Spherical pivot</text>
+<path d="M 254.00,965.00 l 6,6 -6,6 -6,-6 z" class="hinge"/>
+<text x="270" y="976" class="minor" text-anchor="start">Hinge pivot</text>
+<rect x="427.00" y="965.00" width="12" height="12" rx="1" class="root"/>
+<text x="449" y="976" class="minor" text-anchor="start">Actor root</text>
+<path d="M 610,971 H 641" class="edge"/>
+<text x="652" y="976" class="minor" text-anchor="start">Parent–child connection</text>
+<text x="42" y="1014" class="minor" text-anchor="start">Pelvis and upper-body pivots coincide at Y = 0.77 m. Detail views separate joints that overlap in the full projections.</text>
+</svg>

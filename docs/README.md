@@ -42,6 +42,7 @@ as medições de cada entrega.
 
 ## Atividades (`activities/`)
 
+- [Humanoid rig diagram](activities/202611270857-humanoid-rig-diagram.md)
 - [Garden edits driven by model contracts](activities/202611270052-garden-model-contracts.md)
 - [Guardian native CPU tool pilot](activities/202611270028-guardian-cpu-tools.md)
 - [Apply height-only requests to garden lanterns](activities/202611270007-guardian-lantern-height.md)
