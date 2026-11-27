@@ -8,6 +8,16 @@ internal static class DeclarativeWindows
         var page = await browser.NewPageAsync(new() { ViewportSize = new() { Width = 1200, Height = 720 } });
         var errors = TrackErrors(page);
         string? reported = null;
+        string? qualityBatch = null;
+        var acceptTelemetry = false;
+        var failedTelemetry = false;
+        await page.RouteAsync("**/v1/analytics/guardian", async route =>
+        {
+            if (acceptTelemetry) qualityBatch = route.Request.PostData;
+            else failedTelemetry = true;
+            await route.FulfillAsync(new() { Status = acceptTelemetry ? 200 : 503, ContentType = "application/json",
+                Body = acceptTelemetry ? "{\"ok\":true}" : "{}" });
+        });
         await page.RouteAsync("**/v1/diagnostics/reports", async route =>
         {
             reported = route.Request.PostData;
@@ -26,7 +36,7 @@ internal static class DeclarativeWindows
                 let ready = false;
                 game.aiCpu.load = () => { ready = true; };
                 game.aiCpu.status = () => ready
-                    ? { state: 'ready', progress: 1, detail: 'Modelo de teste pronto' }
+                    ? { state: 'ready', progress: 1, detail: 'Modelo de teste pronto', modelKey: 'lfm350' }
                     : cpuStatus();
                 const reportCpuStatus = game.aiCpu.status;
                 game.aiCpu.status = () => {
@@ -181,6 +191,11 @@ internal static class DeclarativeWindows
         await CloseAsync(journal);
         await page.EvaluateAsync("() => sessionStorage.setItem('guardian-test-engine', 'gpu')");
         await page.ReloadAsync(new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+        await WaitAsync(() => Task.FromResult(failedTelemetry), "The queued events survive a collector outage.");
+        acceptTelemetry = true;
+        await page.ReloadAsync(new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+        await WaitAsync(() => Task.FromResult(qualityBatch is not null), "The persisted queue retries after reload.");
+        VerifyQualityBatch(qualityBatch!);
         await WaitAsync(() => page.EvaluateAsync<bool>("() => game.teleportToGuardian()"), "reencontra a Guardiã após recarregar");
         await page.Locator("#game-canvas").FocusAsync();
         await page.Locator(".ultima-hint").GetByText("para conversar").WaitForAsync();
@@ -195,6 +210,23 @@ internal static class DeclarativeWindows
             "o segundo turno recebe o histórico do Genius depois de recarregar");
         Check(errors.IsEmpty, "erros no navegador", errors);
         Log(new { build, mode = Mode, journal = true, dialogue = true, contrast = true, reply });
+    }
+
+    private static void VerifyQualityBatch(string batch)
+    {
+        using var json = System.Text.Json.JsonDocument.Parse(batch);
+        var events = json.RootElement.GetProperty("events").EnumerateArray();
+        var outcomes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in events)
+        {
+            Check(entry.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal)
+                .SetEquals(["id", "build", "engine", "model", "outcome", "elapsedMs"]),
+                "Only structured telemetry fields are sent.", entry);
+            if (entry.GetProperty("model").GetString() == "lfm350")
+                outcomes.Add(entry.GetProperty("outcome").GetString()!);
+        }
+        Check(outcomes.IsSupersetOf(["generation_failed", "tool_rejected", "proposal", "apply_failed", "applied", "dismissed"]),
+            "The local CPU model is attributed to generation, proposal and confirmation outcomes.", outcomes);
     }
 
     private static async Task VerifyGuardianRetryAsync(IPage page, ILocator conversation, ILocator draft)
@@ -286,6 +318,18 @@ internal static class DeclarativeWindows
         await conversation.GetByRole(AriaRole.Region, new() { Name = "Histórico da conversa" })
             .GetByText(request, new() { Exact = true }).WaitForAsync();
         var confirm = Button(conversation, "Aplicar alteração");
+        await confirm.WaitForAsync();
+        await Button(conversation, "Descartar proposta").ClickAsync();
+        await page.EvaluateAsync("""
+            () => {
+                window.guardianReplyOverrideBackup = window.guardianReplyOverride;
+                window.guardianReplyOverride = JSON.stringify({calls:[{type:'function',function:{name:'unknown',arguments:'{}'}}]});
+            }
+            """);
+        await send.ClickAsync();
+        await conversation.GetByText("A IA local não conseguiu propor uma edição válida.", new() { Exact = false }).WaitForAsync();
+        await page.EvaluateAsync("() => { window.guardianReplyOverride = window.guardianReplyOverrideBackup; }");
+        await send.ClickAsync();
         await confirm.WaitForAsync();
         await confirm.ClickAsync();
         await conversation.GetByText("O jardim não confirmou nenhuma alteração.", new() { Exact = false }).WaitForAsync();

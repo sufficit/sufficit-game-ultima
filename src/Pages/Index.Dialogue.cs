@@ -153,6 +153,7 @@ public partial class Index
         var cpuStatus = await cpu;
         (_aiState, _aiProgress, _aiDetail) = (gpuStatus.State, gpuStatus.Progress, gpuStatus.Detail);
         (_aiCpuState, _aiCpuProgress, _aiCpuDetail) = (cpuStatus.State, cpuStatus.Progress, cpuStatus.Detail);
+        _activeGuardianCpuModel = cpuStatus.ModelKey;
     }
 
     private string GuardianAiStatus()
@@ -247,7 +248,7 @@ public partial class Index
         {
             if (_view is not null && !GuardianBusy)
             {
-                if (GuardianOpen) _guardianProposal = null;
+                if (GuardianOpen) DiscardGuardianProposal();
                 Dispatch(new DialogTopicSelected(NowMs(), action[topicPrefix.Length..]));
             }
             return Task.CompletedTask;
@@ -276,7 +277,7 @@ public partial class Index
             case "garden-tool-apply" when _guardianProposal is { } proposal && GuardianOpen && !GuardianBusy:
                 return SubmitDialogAsync(confirmedProposal: proposal);
             case "garden-tool-cancel":
-                _guardianProposal = null;
+                DiscardGuardianProposal();
                 break;
             case "light-garden" when GuardianOpen && !GuardianBusy:
                 return SubmitDialogAsync(lightGarden: true);

@@ -12,7 +12,13 @@ public partial class Index
             lightGarden ? "Ilumine a entrada do jardim." : ConversationDraft.Trim();
         if (_view is null || GuardianBusy || text.Length == 0) return;
         var speaker = _view.Speaker;
-        if (GuardianOpen) _guardianProposal = null;
+        var runtime = confirmedProposal is not null ? _proposalRuntime
+            : lightGarden ? new("shortcut", "none") : new("local", "none");
+        if (GuardianOpen)
+        {
+            if (confirmedProposal is not null) _guardianProposal = null;
+            else DiscardGuardianProposal();
+        }
         if (text.Length > 300) text = text[..300];
         _speechError = string.Empty;
         var started = _turnStartedMs = NowMs();
@@ -31,7 +37,10 @@ public partial class Index
         GuardianTurnResult result;
         try
         {
-            result = await RunGuardianTurnAsync(text, lightGarden, confirmedProposal, token);
+            result = confirmedProposal is not null
+                ? await WorkshopService.ApplyGardenToolAsync(confirmedProposal, token)
+                : lightGarden ? await WorkshopService.LightGardenAsync(token)
+                : await RunGuardianTurnAsync(text, selected => runtime = selected, token);
         }
         catch (Exception ex) when (!token.IsCancellationRequested && ex is JSException or OperationCanceledException)
         {
@@ -43,6 +52,11 @@ public partial class Index
 
         if (!lightGarden && !result.KeepDraft) _dialogDraft = string.Empty;
         _guardianProposal = result.Proposal;
+        if (result.Proposal is not null) _proposalRuntime = runtime;
+        var outcome = result.QualityOutcome ?? (confirmedProposal is not null || lightGarden
+            ? result.KeepDraft ? "apply_failed" : "applied"
+            : result.Proposal is not null ? "proposal" : result.KeepDraft ? "turn_failed" : "reply");
+        _ = QualityTelemetry.RecordAsync(runtime.Engine, runtime.Model, outcome, NowMs() - started);
         if (GuardianOpen)
         {
             _turnStartedMs = started;

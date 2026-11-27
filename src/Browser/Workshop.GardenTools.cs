@@ -56,6 +56,7 @@ public sealed partial class Workshop
     private async Task<GuardianTurnResult> ProposeGardenToolAsync(Endpoint endpoint, string text, string engine, CancellationToken token)
     {
         var source = GeniusSource(engine);
+        var failure = "context_failed";
         try
         {
             var result = await GetAsync<JsonElement>(endpoint, GardenRoute + "/tools", 8, token);
@@ -75,8 +76,10 @@ public sealed partial class Workshop
             if (properties.Count == 0 && !allowPlan)
             {
                 const string prompt = "Responda como a Guardiã em português. Nenhuma propriedade compatível está disponível para editar.";
+                failure = "generation_failed";
                 var answer = await GenerateLocalAsync(prompt, text, engine, token);
-                return new(answer ?? "Não encontrei uma propriedade compatível por aqui.", source);
+                return new(answer ?? "Não encontrei uma propriedade compatível por aqui.", source,
+                    QualityOutcome: answer is null ? failure : null);
             }
             var definitions = string.Join('\n', properties.Values.Select(p => $"{p.Id}: {p.Model}, {p.Label} ({p.Unit})"));
             var instructions = ToolInstructions + "\nCatalog:\n" + definitions;
@@ -91,27 +94,34 @@ public sealed partial class Workshop
                 calls.Add(JsonNode.Parse(GardenPlanTool));
                 tools = calls.ToJsonString();
             }
+            failure = "generation_failed";
             GardenModelProposal? proposal = null;
             var reply = await _genius.ReplyAsync(instructions, text, engine, token, output =>
             {
+                // Failures after entering the interpreter concern the model output.
+                failure = "tool_rejected";
                 proposal = ReadModelProposal(output, properties, allowPlan);
-                if (proposal is null)
-                {
-                    using var document = JsonDocument.Parse(output);
-                    return document.RootElement.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String
-                        && content.GetString() is { Length: > 0 } answer
-                        ? Limit(answer, 300)
-                        : "Nenhuma alteração foi aplicada no jardim.";
-                }
-                return proposal.Preview;
+                var response = proposal?.Preview ?? ReadToolReply(output);
+                failure = "turn_failed";
+                return response;
             }, tools);
             return new(reply, source, KeepDraft: proposal is not null, Proposal: proposal);
         }
         catch (Exception ex) when (!token.IsCancellationRequested &&
             ex is JSException or OperationCanceledException or HttpRequestException or JsonException or InvalidOperationException or KeyNotFoundException)
         {
-            return GuardianTurnResult.Retry("A IA local não conseguiu propor uma edição válida. Nenhuma alteração foi aplicada.", source);
+            return GuardianTurnResult.Retry("A IA local não conseguiu propor uma edição válida. Nenhuma alteração foi aplicada.", source)
+                with { QualityOutcome = failure };
         }
+    }
+
+    private static string ReadToolReply(string output)
+    {
+        using var document = JsonDocument.Parse(output);
+        return document.RootElement.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String
+            && content.GetString() is { Length: > 0 } answer
+            ? Limit(answer, 300)
+            : "Nenhuma alteração foi aplicada no jardim.";
     }
 
     // Measurements narrow tool discovery by unit without guessing a model or an operation.

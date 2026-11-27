@@ -15,7 +15,7 @@ using System.Text.RegularExpressions;
 using static Kit;
 
 var wanted = args.ToHashSet(StringComparer.OrdinalIgnoreCase);
-string[] scenarios = ["world", "assets", "garden", "diagnostics", "office", "character-profile"];
+string[] scenarios = ["world", "assets", "garden", "diagnostics", "office", "character-profile", "guardian-telemetry"];
 if (wanted.Any(name => !scenarios.Contains(name)))
 {
     Console.Error.WriteLine($"Cenários disponíveis: {string.Join(", ", scenarios)}.");
@@ -45,6 +45,7 @@ try
             case "garden": await Garden(harness, root!); break;
             case "character-profile": await CharacterProfileIntegration.RunAsync(harness); break;
             case "office": await OfficeIntegration.RunAsync(harness); break;
+            case "guardian-telemetry": await GuardianTelemetryIntegration.RunAsync(harness); break;
             default: await Diagnostics(harness, root!); break;
         }
         Console.WriteLine($"OK {scenario} ({clock.ElapsedMilliseconds} ms)");

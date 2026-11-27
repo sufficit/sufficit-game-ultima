@@ -19,6 +19,7 @@ builder.Services.AddScoped<Ultima.Models.ModelLoader>();
 
 builder.Services.AddTransient<Ultima.Browser.Backpack>();
 builder.Services.AddScoped<Ultima.Browser.GuardianGenius>();
+builder.Services.AddTransient<Ultima.Browser.GuardianTelemetry>();
 builder.Services.AddTransient<Ultima.Browser.Workshop>();
 builder.Services.AddTransient<Ultima.Browser.GameUpdate>();
 builder.Services.AddTransient<Ultima.Browser.DialogLog>();

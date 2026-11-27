@@ -54,7 +54,7 @@ game.Start(app.Lifetime.ApplicationStopping);
 if (int.TryParse(Environment.GetEnvironmentVariable("ULTIMA_ASSET_GC_DAYS"), out var days) && days >= 7)
     _ = assetsSvc.PruneOrphansAsync(TimeSpan.FromDays(days), app.Lifetime.ApplicationStopping);
 
-var api = new Api(content, game, net, chat, assetsSvc, new DialogAnalytics(log), new DiagnosticReports(dataDir, log), log);
+var api = new Api(content, game, net, chat, assetsSvc, new DialogAnalytics(log), new DiagnosticReports(dataDir, log), new GuardianAnalytics(dataDir, log), log);
 var missions = new MissionApi(new MissionStore(Path.Combine(dataDir, "missions.json")),
     Environment.GetEnvironmentVariable("ULTIMA_MISSIONS_AUTHOR_KEY"),
     Environment.GetEnvironmentVariable("ULTIMA_MISSIONS_AGENT_KEY"));

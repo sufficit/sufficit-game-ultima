@@ -844,6 +844,7 @@
         await JS.InvokeVoidAsync("game.ai.init", _bridge);
         await JS.InvokeVoidAsync("game.aiCpu.init", _bridge);
         _ = WorkshopService.WatchAsync(_browserLifetime.Token);
+        _ = QualityTelemetry.WatchAsync(GameUpdates.Build, _browserLifetime.Token);
         try
         {
             await Dialogs.InitializeAsync(GameUpdates.Build, _browserLifetime.Token);

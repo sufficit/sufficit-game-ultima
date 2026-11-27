@@ -38,7 +38,7 @@ public sealed partial class Workshop
             var missing = entrance.Where(lantern => !map.Placements.Any(placed =>
                 placed.Asset == lantern.Asset && double.Hypot(placed.X - lantern.X, placed.Z - lantern.Z) < 0.25)).ToArray();
             if (missing.Length == 0)
-                return new("A entrada do jardim já está iluminada.", "Oficina do jardim");
+                return new("A entrada do jardim já está iluminada.", "Oficina do jardim", QualityOutcome: "no_change");
 
             using var request = JsonContent.Create(new LanternBatch(missing));
             var result = await SendAsync<JsonElement>(endpoint, HttpMethod.Post, GardenRoute + "/decor", request, 12, token);
@@ -119,7 +119,7 @@ public sealed partial class Workshop
         reply = cpu ? await GenerateLocalAsync(OfflinePrompt, text, "cpu", token) : null;
         if (reply is not null)
             return new($"{reply} {OfflineGarden}", GeniusSource("cpu"));
-        return gpu || cpu ? GuardianTurnResult.Retry($"A IA local não conseguiu responder. {OfflineGarden}", GuardianGenius.SourcePrefix)
+        return gpu || cpu ? GuardianTurnResult.Retry($"A IA local não conseguiu responder. {OfflineGarden}", GuardianGenius.SourcePrefix) with { QualityOutcome = "generation_failed" }
             : GuardianTurnResult.Retry("Ative a IA local ou conecte-se ao servidor do jogo para conversar comigo.");
     }
 
@@ -155,7 +155,7 @@ public sealed partial class Workshop
         if (confirmed) return new($"Apliquei as mudanças no jardim. {reply}", source);
         return requiresChanges
             ? GuardianTurnResult.Retry("O jardim não confirmou nenhuma alteração. Confira o cenário antes de tentar novamente.", source)
-            : new(reply, source);
+            : new(reply, source, QualityOutcome: "no_change");
     }
 
     private static string? ReadReply(JsonElement value) => value.ValueKind == JsonValueKind.Object &&
@@ -164,7 +164,8 @@ public sealed partial class Workshop
 }
 
 /// <summary>The visible reply and whether the submitted text should stay available to retry.</summary>
-internal sealed record GuardianTurnResult(string Reply, string Source, bool KeepDraft = false, GardenModelProposal? Proposal = null)
+internal sealed record GuardianTurnResult(string Reply, string Source, bool KeepDraft = false, GardenModelProposal? Proposal = null,
+    string? QualityOutcome = null)
 {
     public static GuardianTurnResult Retry(string reply, string source = "") => new(reply, source, KeepDraft: true);
 }

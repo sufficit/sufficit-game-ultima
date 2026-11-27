@@ -3,12 +3,13 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Http;
 using Ultima.Models.Core;
+using Ultima.Telemetry;
 
 namespace Ultima.Server;
 
 /// <summary>Roteador HTTP: mesmas rotas, códigos e cabeçalhos do backend anterior (main.py).</summary>
 sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat chat, WorldAssets assets,
-    DialogAnalytics dialogs, DiagnosticReports reports, ILogger log)
+    DialogAnalytics dialogs, DiagnosticReports reports, GuardianAnalytics guardian, ILogger log)
 {
     const int MaxBody = 64 * 1024;
     const string ApiVersion = "v1";
@@ -30,6 +31,7 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
         "/v1/assets", "/v1/assets/jobs/{id}", "/v1/assets/file/{name}",
         "POST /v1/assets/generate", "POST /v1/assets/upload",
         "GET " + GameWorld.GardenRoute + "/tools", "POST " + GameWorld.GardenRoute + "/tools",
+        GuardianQuality.Route, "POST " + GuardianQuality.Route,
         "/v1/analytics/dialogs", "POST /v1/analytics/dialogs", "POST /v1/diagnostics/reports",
     ];
 
@@ -161,6 +163,10 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
                 await Json(ctx, new JsonObject { ["utcMs"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }, 200, NoStore);
                 return;
             case "/v1/net/rooms": await Json(ctx, new JsonObject { ["rooms"] = net.Rooms() }, 200, NoStore); return;
+            case GuardianQuality.Route:
+                var (status, summary) = guardian.Summary(ctx.Request.Query["build"].ToString());
+                await Json(ctx, summary, status, NoStore);
+                return;
             case "/v1/analytics/dialogs":
             {
                 var npc = J.Cut(ctx.Request.Query["npc"].ToString(), 40);
@@ -299,6 +305,14 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
             var report = await Body(ctx);
             if (report is null) { await Json(ctx, J.Err("bad_request"), 400, NoStore); return; }
             await Json(ctx, reports.Post(Ip(ctx), report));
+            return;
+        }
+        if (path == GuardianQuality.Route)
+        {
+            var batch = await Body(ctx, allowStreaming: true);
+            if (batch is null) { await Json(ctx, J.Err("bad_request"), 400, NoStore); return; }
+            var (status, receipt) = guardian.Post(Ip(ctx), batch);
+            await Json(ctx, receipt, status, NoStore);
             return;
         }
         if (path == "/v1/analytics/dialogs")

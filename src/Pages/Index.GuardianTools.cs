@@ -13,23 +13,28 @@ public partial class Index
         if (GuardianBusy || ConversationDraft == value) return;
         if (GuardianOpen)
         {
-            _guardianProposal = null;
+            DiscardGuardianProposal();
             _dialogDraft = value;
         }
         else _wandererDraft = value;
     }
 
-    private async Task<GuardianTurnResult> RunGuardianTurnAsync(string text, bool lightGarden,
-        GardenModelProposal? confirmedProposal, CancellationToken token)
+    private async Task<GuardianTurnResult> RunGuardianTurnAsync(string text,
+        Action<GuardianRuntime> selectRuntime, CancellationToken token)
     {
-        if (confirmedProposal is not null) return await WorkshopService.ApplyGardenToolAsync(confirmedProposal, token);
-        if (lightGarden) return await WorkshopService.LightGardenAsync(token);
-
         await RefreshLocalAiAsync(token);
         if (_aiState != "ready" && _aiCpuState == "off")
             await ResumeLocalAiAsync("aiCpu", token);
 
-        return await WorkshopService.TalkToGuardianAsync(text, _aiState == "ready", _aiCpuState == "ready", token);
+        var gpu = _aiState == "ready";
+        var cpu = _aiCpuState == "ready";
+        var cpuRuntime = CpuRuntime();
+        selectRuntime(gpu ? new("gpu", "unknown") : cpu ? cpuRuntime : new("server", "unknown"));
+        var result = await WorkshopService.TalkToGuardianAsync(text, gpu, cpu, token);
+        // Offline dialogue can fall back from GPU to CPU.
+        if (result.Source == GuardianGenius.SourcePrefix + " · CPU") selectRuntime(cpuRuntime);
+        if (result.Source == GuardianGenius.SourcePrefix && !result.KeepDraft) selectRuntime(new("local", "none"));
+        return result;
     }
 
     private async Task ResumeLocalAiAsync(string engine, CancellationToken token)
