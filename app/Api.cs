@@ -29,6 +29,7 @@ sealed class Api(ContentStore content, GameWorld game, Signaling net, NpcChat ch
         "POST /v1/game/environments/{environment}/missions/{id}/events",
         "/v1/assets", "/v1/assets/jobs/{id}", "/v1/assets/file/{name}",
         "POST /v1/assets/generate", "POST /v1/assets/upload",
+        "POST " + GameWorld.GardenRoute + "/tools",
         "/v1/analytics/dialogs", "POST /v1/analytics/dialogs", "POST /v1/diagnostics/reports",
     ];
 
