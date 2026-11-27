@@ -3,6 +3,7 @@
 ## Jogar
 
 - [Guia do jogador](USAGE-JOGO.md) — controles, coleta, Guardiã e multiplayer.
+- [Desktop packages for Linux and Windows](USAGE-DESKTOP.md)
 - [NPC dialogue guide](USAGE-DIALOGUE.md) — conversation topics and how to extend them.
 - [Environments and mission API guide](USAGE-ENVIRONMENTS.md).
 - [Edições, relógio e clima](USAGE-MUNDO.md) — Oficina do mundo e tempo local.
@@ -43,6 +44,8 @@ Os registros preservam as referências técnicas do estudo do lineage-rust e
 as medições de cada entrega.
 
 ## Atividades (`activities/`)
+
+- [Portable desktop packages](activities/202611271849-desktop-packages.md).
 
 - [Persistent player UUID](activities/202611271833-player-uuid.md).
 

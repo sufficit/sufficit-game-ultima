@@ -6,6 +6,7 @@ em **ASP.NET Core** oferece sessões e persistência no mundo compartilhado.
 
 - [Jogar no GitHub Pages](https://sufficit.github.io/sufficit-game-ultima/)
 - [Guia do jogador](docs/USAGE-JOGO.md)
+- [Desktop packages for Linux and Windows](docs/USAGE-DESKTOP.md)
 - [Visão do jogo](PROJECT.md)
 - [Design e uso da Sufficit.Blazor.UI](DESIGN.md)
 - [Arquitetura e evolução do C# no cliente](ARCHITECTURE.md)

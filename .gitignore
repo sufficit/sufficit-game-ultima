@@ -30,3 +30,8 @@ src/wwwroot/terrain-wasm/
 engine/**/bin/
 engine/**/obj/
 .worktrees/
+
+# Portable desktop build output
+desktop/bin/
+desktop/obj/
+/publish/
