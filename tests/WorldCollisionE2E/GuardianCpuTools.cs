@@ -53,6 +53,18 @@ internal static class GuardianCpuTools
             "Qwen tool model is ready.", 240_000, 750);
         await Button("Iluminar o jardim").ClickAsync();
         await dialog.GetByText("As duas luminárias estão na entrada do jardim.", new() { Exact = false }).WaitForAsync();
+        await page.EvaluateAsync("""
+            async () => {
+                const response = await fetch(game.live.api() + '/v1/game/garden/plants', {
+                    method: 'POST', headers: {'Content-Type':'application/json','X-Game-Token':game.live.token()},
+                    body: JSON.stringify({actions:[
+                        {action:'place',asset:'flora.pine',x:3,z:-9},
+                        {action:'place',asset:'flora.flowers',x:5,z:-9}
+                    ]})
+                });
+                if (!response.ok) throw Error('Could not place alternate model types.');
+            }
+            """);
         var baseline = await ReadMapAsync();
         const string request = "aumente a altura dessas luminarias 1m cada";
         var clock = System.Diagnostics.Stopwatch.StartNew();

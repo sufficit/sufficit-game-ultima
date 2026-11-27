@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.JSInterop;
 
 namespace Ultima.Browser;
@@ -57,6 +58,7 @@ public sealed partial class Workshop
             if (!catalog.EnumerateObject().Any())
                 return GuardianTurnResult.Retry("Ainda não há modelos colocados para personalizar.", source);
 
+            var units = RequestedUnits(text);
             var properties = catalog.EnumerateObject().SelectMany(asset =>
                 asset.Value.GetProperty("parameters").EnumerateObject().Select(parameter =>
                 {
@@ -64,7 +66,10 @@ public sealed partial class Workshop
                     var label = parameter.Value.GetProperty("label").GetString();
                     var unit = parameter.Value.GetProperty("unit").GetString();
                     return new GardenProperty(asset.Name, parameter.Name, model, label, unit);
-                })).ToDictionary(p => p.Id, StringComparer.Ordinal);
+                })).Where(p => units.Count == 0 || (p.Unit is { } unit && units.Contains(unit)))
+                .ToDictionary(p => p.Id, StringComparer.Ordinal);
+            if (properties.Count == 0)
+                return GuardianTurnResult.Retry("Os modelos próximos não declaram uma propriedade com a unidade pedida.", source);
             var definitions = string.Join('\n', properties.Values.Select(p => $"{p.Id}: {p.Model}, {p.Label} ({p.Unit})"));
             GardenModelProposal? proposal = null;
             var reply = await _genius.ReplyAsync(ToolInstructions + "\nCatalog:\n" + definitions, text, "cpu", 120, 100, token, output =>
@@ -81,6 +86,25 @@ public sealed partial class Workshop
             return GuardianTurnResult.Retry("A IA local não conseguiu propor uma edição válida. Nenhuma alteração foi aplicada.", source);
         }
     }
+
+    // Measurements narrow tool discovery by unit without guessing a model or an operation.
+    private static HashSet<string> RequestedUnits(string message)
+    {
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        if (LengthInRequest().IsMatch(message)) result.Add("m");
+        if (LumensInRequest().IsMatch(message)) result.Add("lm");
+        if (ColorInRequest().IsMatch(message)) result.Add("sRGB24");
+        return result;
+    }
+
+    [GeneratedRegex(@"\d\s*(?:cm|m|metros?|cent[ií]metros?)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex LengthInRequest();
+
+    [GeneratedRegex(@"\d\s*(?:lm|l[uú]mens?|l[uú]menes)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex LumensInRequest();
+
+    [GeneratedRegex(@"#[0-9a-f]{6}\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ColorInRequest();
 
     private static GardenModelProposal? ReadModelProposal(string output, IReadOnlyDictionary<string, GardenProperty> properties)
     {
