@@ -53,3 +53,33 @@ shoulder, hip, knee and ankle deformation. The production Babylon.js version imp
 the GLB in Chromium and verified its skin, exact hierarchy, joint pivots
 within 0.05 mm, and deformation at both shoulders, the hip, knee and ankle. The Khronos glTF
 validator reported zero errors and warnings.
+
+## Innerscene player preview
+
+Add `?avatar=innerscene` to the game URL to preview the skinned mannequin on
+the local player. Add `&render=main&gpu=0` to test the WebGL main-thread path.
+The default player, other players, NPCs, and C# contact shapes keep using the
+procedural avatar. The preview is a gray mannequin with no textures or clips.
+It inherits the profile's height through uniform scale. Its proportions and
+surface materials come from the source model.
+
+[Innerscene's Human Base Mesh](https://www.innerscene.com/tools/library/3d-parts/human-base-mesh-with-editable-53-bone-rig-8e7c8ab1)
+is a CC0 derivative of the MakeHuman/MPFB anatomical base. The source file
+`human-base-rigged.glb` has SHA-256
+`f3cd655e44af0a79786b1b4349c4acf1ae342fe6bd0d5fc714e68470dea1b429`.
+The preview reduces 107,024 triangles to 18,000 while retaining the 53-bone
+skeleton. Blender exports the four strongest normalized weights per vertex.
+
+Rebuild with Blender 4.5.3 LTS from the repository root. If the result changes,
+update its SHA-256 in `loadPlayerSkinPreview` and rerun the renderer checks.
+
+```bash
+blender --background --python-exit-code 1 --python assets/characters/build_innerscene.py -- \
+  human-base-rigged.glb assets/characters/innerscene-preview.glb
+bash scripts/build-assets.sh
+```
+
+The render bridge carries the C# pose through the existing Babylon transform
+nodes to 14 mapped joints using actor-space rotation deltas. It lowers the
+arms from the imported A-pose. Visual foot placement may differ from the
+procedural contact probes because the preview retains its own bind lengths.

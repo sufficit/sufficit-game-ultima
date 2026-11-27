@@ -9,6 +9,7 @@ importScripts('https://cdn.jsdelivr.net/npm/babylonjs@9.36.0/babylon.js');
 importScripts('assets.js' + V);
 importScripts('game-crowd.js' + V);
 importScripts('character-rig.js' + V);
+importScripts('character-skin-preview.js' + V);
 importScripts('environment-geometry.js' + V);
 importScripts('game-placements.js' + V);
 importScripts('graphics-budget.js' + V);

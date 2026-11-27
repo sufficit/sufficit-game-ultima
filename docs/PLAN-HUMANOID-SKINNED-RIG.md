@@ -11,10 +11,13 @@ and contact solving in C#, and validate the result on the existing game paths.
    the game IDs, document rest-space transforms, weight the mesh, and export a
    GLB. Check the imported skin, bind pose and deformation at hips, knees and
    ankles before extending to arms and hands.
-3. [pending] Drive the skin from the C# pose. Map model rest space to the
+3. [in progress] Drive the skin from the C# pose. Map model rest space to the
    imported bone space, keep the current foot contacts and IK, and verify
    equivalent poses in the worker and main-thread renderer. Define when to use
    authored clips and when to apply procedural contact corrections.
+   First, prepare and verify an optimized Innerscene human base mesh as the
+   maintainer's visual reference. Then exercise the C# pose on that mesh in
+   the game before considering it for the default avatar.
 4. [pending] Validate walking, stopping, a 180° turn, stepping over a low log,
    and walking on a slope with two different body profiles. Measure planted
    foot drift and frame cost against the current rig under the same conditions.
@@ -48,5 +51,17 @@ heights and width from one central ANSUR II profile. The Blender model uses
 the same exterior heights at the sleeve opening.
 [Measured references](activities/202611270952-humanoid-shoulder-references.md)
 
-Next action. Bind the existing C# pose to the GLB rest transforms in both render paths,
-using the current joint map and foot contacts.
+## Checkpoint 3 progress
+
+The [Innerscene preview](../assets/characters/README.md#innerscene-player-preview)
+uses 18,000 triangles and 53 bones. The local player can select it with
+`?avatar=innerscene`. Main-thread and worker Chromium runs verified that the
+body renders and the left knee rotates when the player walks. The preview
+carries pose deltas onto the imported rig while C# still drives contacts.
+A corrupted download was rejected by SHA-256 and left the procedural player
+visible. The default URL made no preview asset request. RulesSmoke, all 16
+JavaScript tests, and the Blazor Release publish passed.
+
+Next action. Reconcile visual ankle positions with the C# foot targets
+across body profiles and validate the rest of the motion scenarios in
+checkpoint 4.

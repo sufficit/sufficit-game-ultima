@@ -24,3 +24,7 @@ for glb in "$SRC"/*.glb; do
 done
 ( IFS=,; echo "{\"version\":1,\"assets\":[${entries[*]}]}" ) > "$OUT/assets.json"
 echo "catálogo: $OUT/assets.json"
+
+# Skinned previews use a separate renderer and must stay out of the scenery catalog.
+mkdir -p "$OUT/characters"
+cp "$ROOT/assets/characters/innerscene-preview.glb" "$OUT/characters/"

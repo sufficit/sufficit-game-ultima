@@ -1529,7 +1529,8 @@
     function trackCharacterShadow(rig, mesh) {
         rig.shadowMeshes.push(mesh);
         if (rig.root.name === 'player') mesh.layerMask = PLAYER_LAYER;
-        if (rig.castsShadow) { sceneShadows?.addShadowCaster(mesh); }
+        if (rig.skinPreview) { mesh.visibility = 0; }
+        else if (rig.castsShadow) { sceneShadows?.addShadowCaster(mesh); }
     }
 
     function setCharacterShadows(rig, enabled) {
@@ -1825,6 +1826,20 @@
                 .catch(function () { /* cache é só otimização */ });
         }
         return buf;
+    }
+
+    function loadPlayerSkinPreview(rig) {
+        const skin = G.UltimaCharacterSkinPreview;
+        const bind = skin.prepare(BABYLON, rig);
+        const entry = {
+            id: 'character.innerscene-preview', file: 'assets/characters/innerscene-preview.glb',
+            sha256: '6cb7ec1b9d31cc7cbc31964188b25b441ce15b2f5d48d8395a264584863c197b'
+        };
+        modelStatus.skinPreview = 'loading';
+        Promise.all([ensureGlbLoaders(), fetchVerifiedGlb(entry)])
+            .then(([, bytes]) => skin.load(BABYLON, scene, bytes, container => bind(container, sceneShadows, PLAYER_LAYER)))
+            .then(update => { rig.skinPreview = update; modelStatus.skinPreview = 'ready'; })
+            .catch(error => { modelStatus.skinPreview = 'error'; modelStatus.errors.push(entry.id + ': ' + error.message); });
     }
 
     // glTF traz materiais PBR; o resto do jogo usa StandardMaterial com a iluminação
@@ -2301,6 +2316,9 @@
         // modelo C# (character.guardian) carregado em runtime, fallback JS centrado.
         for (const mesh of player.getChildMeshes()) mesh.layerMask = PLAYER_LAYER;
         if (preview) player.setEnabled(false);
+        else if (new URL(host.pageBase).searchParams.get('avatar') === 'innerscene') {
+            loadPlayerSkinPreview(characterRigs.get(player));
+        }
         if (!authored) {
             guardianRoot = spawnFromModel('character.guardian', 'npc',
                 new BABYLON.Vector3(NPC_POSITION.x, terrainHeight(NPC_POSITION.x, NPC_POSITION.z) + 0.03, NPC_POSITION.z), 0,
@@ -2484,6 +2502,7 @@
             if (progress >= 1) { rig.action = null; }
         }
         rigRenderer.applyUpperBody(rig, frame, root === player);
+        rig.skinPreview?.();
     }
 
     function checkNear() {
