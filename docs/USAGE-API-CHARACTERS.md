@@ -44,3 +44,6 @@ The UUID identifies a player for conversation storage and telemetry. Character
 IDs still route poses to active avatars. Session tokens and profile keys still
 protect game operations. Public presence and aggregate analytics do not expose
 individual player UUIDs.
+
+See the [player UUID decision](../decisions/player-uuid-v4.md) for the
+rationale and the conditions for adopting UUID v7 for telemetry event IDs.
