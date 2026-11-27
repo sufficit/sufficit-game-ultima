@@ -26,38 +26,43 @@ for keyboard and pointer selection in the browser.
 
 ## Qualify a local CPU model
 
-Use the C# Playwright scenario `guardian-cpu-tools` with a disposable garden.
-The scenario confirms a real one-metre lantern edit and checks the resulting
-map revision. The optional `ULTIMA_CPU_TOOL_TRIAL` mode also checks Portuguese
-unit conversion, negation, color and a follow-up that references the prior
-turn. It exits with a failure if the model misses any of those cases.
+With Python 3.11+, .NET 10 and Playwright Chromium available, run these
+commands from the repository root.
 
-1. Publish the client with `dotnet publish src/Ultima.csproj -c Release` and
-   serve the resulting `wwwroot` on loopback. Set `ULTIMA_SITE` to its URL.
-2. Start the standalone API on loopback with `ULTIMA_DATA_DIR` pointing to a
-   new empty directory and `NPC_SERVER_AI=off`. Set `ULTIMA_GARDEN_API` to its
-   URL. Use a fresh directory for each model.
-3. Set `ULTIMA_TOOL_CACHE` to a loopback static URL. Serve these files from
-   it, preferably on the same origin as the game.
+```sh
+dotnet publish src/Ultima.csproj -c Release
+dotnet build app/UltimaServer.csproj -c Release
+dotnet build tests/WorldCollisionE2E -c Release
+python3 tests/WorldCollisionE2E/run-cpu-matrix.py \
+  --cache /tmp/ultima-gguf-cache --output /tmp/ultima-cpu-results
+```
 
-   | Fixture name | Published artifact |
-   | --- | --- |
-   | `wllama.mjs` | [wllama 3.13.0 ESM](https://cdn.jsdelivr.net/npm/@wllama/wllama@3.13.0/esm/index.min.js) |
-   | `wllama.wasm` | [wllama 3.13.0 WASM](https://cdn.jsdelivr.net/npm/@wllama/wllama@3.13.0/esm/wasm/wllama.wasm) |
-   | `qwen.gguf` | [Qwen2.5 0.5B Q4_K_M](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/blob/main/qwen2.5-0.5b-instruct-q4_k_m.gguf) |
-   | `lfm350.gguf` | [LFM2.5-350M Q4_K_M](https://huggingface.co/LiquidAI/LFM2.5-350M-GGUF/blob/657e078c94084481950a2d555a941481f715536b/LFM2.5-350M-Q4_K_M.gguf) |
+The [manifest](../tests/WorldCollisionE2E/cpu-models.json) pins each GGUF
+URL and SHA-256. Add an entry under `models` with a lowercase ID, a
+pinned HTTPS `url` and a lowercase `sha256` to qualify a new artifact.
+Use `--manifest` to point to a local manifest without editing the repository.
+Pass IDs at the end of the command to test a subset. The runner verifies
+cached files and downloads and serves weights on loopback. Use a dedicated
+cache directory. It starts an empty disposable garden and a fresh
+Chromium instance for every model. Exit code 0 means all models qualified,
+1 denotes rejection or a model load failure, and 2 denotes an execution
+error. It writes `results.json` and separate browser and API logs.
 
-4. Run the scenario for each model with the same renderer and browser flags.
-   Change `ULTIMA_CPU_TOOL_TRIAL` to `lfm350` to run the candidate.
+The underlying C# Playwright scenario is `guardian-cpu-tools`. To run it
+with your own local servers, set `ULTIMA_SITE`, `ULTIMA_GARDEN_API`,
+`ULTIMA_TOOL_CACHE` and `ULTIMA_CPU_TOOL_TRIAL`. The cache server must
+serve `wllama.mjs`, `wllama.wasm` and `<model-id>.gguf` and allow
+cross-origin requests if hosted separately from the client. Point
+`ULTIMA_GARDEN_API` at a disposable loopback API instance with a new
+`ULTIMA_DATA_DIR` and `NPC_SERVER_AI=off`.
 
-   ```sh
-   ULTIMA_CPU_TOOL_TRIAL=qwen dotnet run --project tests/WorldCollisionE2E -c Release -- guardian-cpu-tools
-   ```
-
-The fixture substitutes only asset URLs in the game adapter. It uses the
-real browser runtime, tool schemas, dialogue history, confirmation UI and
-garden API. The first turn logs latency, browser animation callback gaps
-over 50 ms and, on Linux, sampled Chromium proportional set size (PSS) in
-KiB. Callback frequency measures main-thread responsiveness. Actual draws
-may run at a different rate. PSS includes Chromium, the running scene and
-the model. Use the same hardware and scene settings when comparing runs.
+The fixture substitutes asset URLs in the game adapter. It uses the real
+browser runtime, tool schemas, confirmation UI and garden API. It clears
+stored Genius history before independent cases and retains the color turn
+for the follow-up. If a timed-out generation leaves the adapter busy, the
+fixture reloads the tab before the next independent case. Negation runs last.
+The first turn samples browser animation callback gaps over 50 ms
+and, on Linux, Chromium proportional set size (PSS) in KiB. Browser
+callback frequency measures page responsiveness. Actual draws may run at
+a different rate. PSS includes Chromium, the scene and the model. Compare
+runs on the same hardware and renderer.

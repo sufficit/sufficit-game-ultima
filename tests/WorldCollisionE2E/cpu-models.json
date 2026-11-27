@@ -1,0 +1,24 @@
+{
+  "models": {
+    "qwen": {
+      "url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+      "sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+    },
+    "lfm350": {
+      "url": "https://huggingface.co/LiquidAI/LFM2.5-350M-GGUF/resolve/657e078c94084481950a2d555a941481f715536b/LFM2.5-350M-Q4_K_M.gguf",
+      "sha256": "7e6f72643caafc9a68256686638c4d7916f2cec76d1df478d4c3ddcd95a6aed4"
+    },
+    "functiongemma": {
+      "url": "https://huggingface.co/unsloth/functiongemma-270m-it-GGUF/resolve/1de0f7fc7cae0062012c2e91ef02e642c161aa57/functiongemma-270m-it-Q4_K_M.gguf",
+      "sha256": "7474135cf63b5de86bd29d2feb92c644d48e9df5e1ac31550662af373c67d0fc"
+    },
+    "nanoagent": {
+      "url": "https://huggingface.co/matrixportalx/NanoAgent-135M-Q4_K_M-GGUF/resolve/f366822474887d2f125f9170d4afee83c7b0ecc0/nanoagent-135m-q4_k_m.gguf",
+      "sha256": "ca6114e9176a064839edb4408609ba19e104356b2d17acda644ae2db7bd793e5"
+    },
+    "distil-functiongemma": {
+      "url": "https://huggingface.co/distil-labs/distil-home-assistant-functiongemma-gguf/resolve/376ae9fc0d6fb9b3211d4b7b081fb2d1e9fc248b/distil-home-assistant-functiongemma.gguf",
+      "sha256": "7fd3299e54b9fe593ddf7134c01b2da62288bfe99d537e7a735d17c52e206d3a"
+    }
+  }
+}
