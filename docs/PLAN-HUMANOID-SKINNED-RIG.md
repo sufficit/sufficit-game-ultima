@@ -43,5 +43,7 @@ deformation of those joints. The reference was refined to join the sleeves to
 the torso. It uses a 0.82 shoulder-to-standing-height ratio for its 1.75 m
 profile. The isolated Chromium test verified both shoulders after the change.
 
-Next action. Bind the existing C# pose to the GLB rest transforms in the main
-and worker renderer paths, using the current joint map and foot contacts.
+Next action. Fit the shoulder silhouette and arm pivots separately against the
+[measured references](activities/202611270952-humanoid-shoulder-references.md).
+Then bind the existing C# pose to the GLB rest transforms in both render paths,
+using the current joint map and foot contacts.
