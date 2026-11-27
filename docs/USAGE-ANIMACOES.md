@@ -34,13 +34,20 @@ dos controladores. A hierarquia deste estágio é cinemática.
 
 ### Humanoid joint map
 
-![Ultima's default humanoid rig in front and side views, with enlarged hand and foot detail.](figures/humanoid-rig.svg)
+![Ultima's default humanoid rig in front and side views, with anatomical curves and enlarged hand and foot detail.](figures/humanoid-rig.svg)
 
 The diagram uses the neutral coordinates from the default 1.75 m player
 profile. Circles identify spherical pivots, diamonds identify hinge pivots,
 and lines connect each child to its parent. The pelvis and upper-body pivots
 share the same coordinates. Right-hand and right-foot insets show all five
 digit chains. The left side mirrors the right.
+
+Violet guides illustrate the sagittal curves of the spine and femur, and
+the S-shape of the clavicles in a top-view inset. They are schematic and
+have no physical scale. The blue lines show the runtime parent graph.
+[Spinal curves](https://openstax.org/books/anatomy-and-physiology-2e/pages/7-3-the-vertebral-column)
+· [Femoral bow](https://pmc.ncbi.nlm.nih.gov/articles/PMC6177158/)
+· [Clavicle](https://openstax.org/books/anatomy-and-physiology/pages/8-1-the-pectoral-girdle)
 
 ### Humanoid bind-pose contract
 
