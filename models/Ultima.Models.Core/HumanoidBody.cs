@@ -23,6 +23,7 @@ namespace Ultima.Models.Core;
 /// <param name="CalfScale">Calf diameter multiplier applied after baseline build.</param>
 /// <param name="UpperArmScale">Upper arm diameter multiplier applied after baseline build.</param>
 /// <param name="ForearmScale">Forearm diameter multiplier applied after baseline build.</param>
+/// <param name="ShoulderHeightRatio">Shoulder joint height as a fraction of standing height, independent of arm length.</param>
 public sealed record HumanoidProfile(
     string Species = HomoSapiens.SpeciesId,
     double? Height = null,
@@ -42,7 +43,8 @@ public sealed record HumanoidProfile(
     double? ThighScale = null,
     double? CalfScale = null,
     double? UpperArmScale = null,
-    double? ForearmScale = null);
+    double? ForearmScale = null,
+    double? ShoulderHeightRatio = null);
 
 /// <summary>A color expressed as red, green, and blue channels in the range 0 to 1.</summary>
 public readonly record struct BodyColor(double Red, double Green, double Blue)
@@ -59,7 +61,8 @@ public sealed record HumanoidBody(
     string Species, double Height, double Mass, double Build, double LegRatio,
     double FaceWidth, double EarScale, BodyColor Skin, BodyColor Eyes, BodyColor Hair,
     double FemurRatio, double ArmLengthRatio, double UpperArmRatio, double ChestScale,
-    double? WaistCircumference, double ThighScale, double CalfScale, double UpperArmScale, double ForearmScale)
+    double? WaistCircumference, double ThighScale, double CalfScale, double UpperArmScale, double ForearmScale,
+    double ShoulderHeightRatio = HumanoidBody.DefaultShoulderHeightRatio)
 {
     /// <summary>Offsets the ankle pivot from the center of the sole geometry.</summary>
     public const double SoleClearance = .004;
@@ -87,8 +90,11 @@ public sealed record HumanoidBody(
     public double UpperArmRadius => ArmRadius * UpperArmScale;
     public double ForearmRadius => ArmRadius * ForearmScale;
     public double ArmOffset => TorsoRadius + Math.Max(UpperArmRadius, ForearmRadius) * 1.3;
-    public double ElbowHeight => Height * (.80 - ArmLengthRatio * UpperArmRatio);
-    public double WristHeight => Height * (.80 - ArmLengthRatio);
+    public const double DefaultShoulderHeightRatio = .80;
+    /// <summary>Height of the shoulder pivot above the sole in meters.</summary>
+    public double ShoulderHeight => Height * ShoulderHeightRatio;
+    public double ElbowHeight => ShoulderHeight - Height * ArmLengthRatio * UpperArmRatio;
+    public double WristHeight => ShoulderHeight - Height * ArmLengthRatio;
     /// <summary>
     /// Horizontal movement envelope. Regional geometry can expand the baseline
     /// radius to account for wider arms, chest, abdomen, or legs.

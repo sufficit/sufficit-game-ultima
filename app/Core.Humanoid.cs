@@ -67,6 +67,7 @@ public sealed class HomoSapiens : Humanoid
             Read(profile.ThighScale, 1, .75, 1.5, nameof(profile.ThighScale)),
             Read(profile.CalfScale, 1, .75, 1.5, nameof(profile.CalfScale)),
             Read(profile.UpperArmScale, 1, .75, 1.5, nameof(profile.UpperArmScale)),
-            Read(profile.ForearmScale, 1, .75, 1.5, nameof(profile.ForearmScale)));
+            Read(profile.ForearmScale, 1, .75, 1.5, nameof(profile.ForearmScale)),
+            Read(profile.ShoulderHeightRatio, HumanoidBody.DefaultShoulderHeightRatio, .77, .84, nameof(profile.ShoulderHeightRatio)));
     }
 }

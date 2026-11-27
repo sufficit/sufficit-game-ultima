@@ -75,6 +75,7 @@ server is reachable. This example changes height, mass, build and skin tone.
 | `legRatio` | 0.40–0.48 of total height | 0.44 |
 | `femurRatio` | 0.42–0.58 of the hip-to-ankle length | 0.50 |
 | `armLengthRatio` | 0.30–0.42 of total height, shoulder to wrist | 0.35 |
+| `shoulderHeightRatio` | 0.77–0.84 of standing height, measured from the soles to the shoulder pivot | 0.80 |
 | `upperArmRatio` | 0.43–0.57 of the shoulder-to-wrist length | 0.17 / 0.35 |
 | `waistCircumference` | 0.60–1.65 m around the widest abdominal cross-section | Existing torso contour |
 | `chestScale` | 0.80–1.25 chest diameter multiplier | 1.00 |

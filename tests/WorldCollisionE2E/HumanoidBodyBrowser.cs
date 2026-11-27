@@ -16,7 +16,7 @@ internal static class HumanoidBodyBrowser
                 {
                   "species":"homo-sapiens", "height":2.02, "mass":94, "build":1.17,
                   "legRatio":0.46, "faceWidth":1.12, "earScale":1.2,
-                  "femurRatio":0.56, "armLengthRatio":0.4, "upperArmRatio":0.53,
+                  "femurRatio":0.56, "armLengthRatio":0.4, "upperArmRatio":0.53, "shoulderHeightRatio":0.83,
                   "waistCircumference":1.38, "chestScale":1.04, "thighScale":1.4,
                   "calfScale":0.85, "upperArmScale":1.3, "forearmScale":0.9,
                   "skin":{"red":0.34,"green":0.19,"blue":0.12},
@@ -76,7 +76,7 @@ internal static class HumanoidBodyBrowser
                     const torso = scene.getMeshByName('char-character.villager-torso-player');
                     return !!earMaterial() && root.metadata?.modelId === 'character.villager' &&
                         Math.abs(hip.position.x + 2.02 * .052 * 1.17) < .001 &&
-                        Math.abs(shoulder.metadata.modelOffset.y + 2.02 * .80) < .001 &&
+                        Math.abs(shoulder.metadata.modelOffset.y + 2.02 * .83) < .001 &&
                         knee.metadata.flexion?.axisX === 1 &&
                         Math.abs(knee.metadata.flexion.maxRadians - 145 * Math.PI / 180) < .0001 &&
                         ankle.metadata.flexion?.axisX === -1 && elbow.metadata.flexion?.axisX === -1 &&

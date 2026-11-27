@@ -2,6 +2,7 @@ using System.Text.Json;
 using Ultima.Models.Core;
 using Ultima.Terrain;
 
-var body = Humanoid.ResolveBody(null);
+// The skinned reference uses a higher shoulder profile than the legacy avatar.
+var body = Humanoid.ResolveBody(new(ShoulderHeightRatio: .82));
 var joints = PlayerAnatomy.Create("humano", body.Height, body);
 Console.WriteLine(JsonSerializer.Serialize(joints, AnatomyJsonContext.Default.AnatomyJointArray));

@@ -37,6 +37,7 @@ internal static partial class PlayerAnatomy
         Add("jaw", "head-pivot", 0, .9, .035, "hinge", flexion: JawPitch);
         var ankle = body is null ? .039 * 1.25 * .55 - .004 / height : body.AnkleJoint / height;
         var knee = body is null ? (hip + ankle) / 2 : body.KneeHeight / height;
+        var shoulder = body?.ShoulderHeightRatio ?? HumanoidBody.DefaultShoulderHeightRatio;
         var elbow = body is null ? .63 : body.ElbowHeight / height;
         var wrist = body is null ? .45 : body.WristHeight / height;
         foreach (var side in new[] { "left", "right" })
@@ -44,8 +45,8 @@ internal static partial class PlayerAnatomy
             var sign = side == "left" ? -1 : 1;
             var arm = sign * (body is null ? .088 + .026 * 1.3 : body.ArmOffset / height);
             var leg = sign * (body is null ? .052 : body.LegSpacing / height);
-            Add("clavicle-" + side, "chest", sign * .025, .80, 0);
-            Add("shoulder-" + side, "clavicle-" + side, arm, .80, 0, flexion: ShoulderPitch);
+            Add("clavicle-" + side, "chest", sign * .025, HumanoidBody.DefaultShoulderHeightRatio, 0);
+            Add("shoulder-" + side, "clavicle-" + side, arm, shoulder, 0, flexion: ShoulderPitch);
             Add("elbow-" + side, "shoulder-" + side, arm, elbow, 0, "hinge", flexion: ElbowFlexion);
             Add("wrist-" + side, "elbow-" + side, arm, wrist, 0, flexion: WristPitch);
             Add("hip-" + side, "pelvis", leg, hip, 0, flexion: HipFlexion);

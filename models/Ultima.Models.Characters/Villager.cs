@@ -25,6 +25,7 @@ public abstract class VillagerBase : ModelBase
         var legH = body.HipHeight;
         var torsoH = height * .82 - legH;
         var armH = height * (body.ArmLengthRatio + .01);
+        var armRise = body.ShoulderHeight - height * HumanoidBody.DefaultShoulderHeightRatio;
         var headR = height * .07;
         var legR = height * .040 * body.Build;
         var torsoR = body.TorsoRadius;
@@ -62,10 +63,12 @@ public abstract class VillagerBase : ModelBase
         {
             b.CapsuleOn("torso", "leg-l", 2 * torsoR, torsoH, subdivisions: 5);
         }
+        // The torso supports both arms at their profile-dependent resting height.
+        var armOverlap = b.TopOf("torso") - (legH + armRise);
         b.Group("arm-left", "shirt")
-         .CapsuleOn("arm-l", "leg-l", 2 * armR, armH, x: -armX, subdivisions: 2);
+         .CapsuleOn("arm-l", "torso", 2 * armR, armH, x: -armX, overlap: armOverlap, subdivisions: 2);
         b.Group("arm-right", "shirt")
-         .CapsuleOn("arm-r", "leg-l", 2 * armR, armH, x: armX, subdivisions: 2);
+         .CapsuleOn("arm-r", "torso", 2 * armR, armH, x: armX, overlap: armOverlap, subdivisions: 2);
 
         b.Group("neck", "skin")
          .CylinderOn("neck", "torso", 0, 0.9 * headR, 0.9 * headR, 0.7 * headR, tessellation: 10);
@@ -100,7 +103,7 @@ public abstract class VillagerBase : ModelBase
         }
 
         b.Collision(body.ColliderRadius);
-        b.BakeCrowdWalk(legH, height * 0.8);
+        b.BakeCrowdWalk(legH, body.ShoulderHeight);
         b.Action("inspect", new(0.56, 0.17, 0.42, []));
         b.Action("gather", new(0.44, 0.23, 0.84, [new("hit", 0.50, "collect"), new("sound", 0.66, "gather")]));
         b.Action("dig", new(0.50, 0.34, 0.62, [new("hit", 0.50, "collect"), new("sound", 0.62, "dig")]));

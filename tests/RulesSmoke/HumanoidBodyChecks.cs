@@ -15,6 +15,7 @@ internal static class HumanoidBodyChecks
 
         var standard = Humanoid.ResolveBody(null);
         CheckRigContract(standard, check);
+        CheckShoulderHeight(standard, check);
         check("Legacy characters receive the human body default",
             standard.Species == HomoSapiens.SpeciesId && standard.Height == 1.75 &&
             standard.ColliderRadius == .25 && standard.Skin == new BodyColor(.90, .72, .58));
@@ -74,6 +75,31 @@ internal static class HumanoidBodyChecks
                 Close(joints["elbow-left"].Y, body.ElbowHeight) && Close(joints["wrist-left"].Y, body.WristHeight) &&
                 Close(Math.PI * abdomen.Diameter * abdomen.ScaleX, body.WaistCircumference!.Value));
             CheckAnkleTarget(body, check);
+        }
+    }
+
+    private static void CheckShoulderHeight(HumanoidBody standard, Action<string, bool> check)
+    {
+        var lower = Humanoid.ResolveBody(new(ShoulderHeightRatio: .77));
+        var higher = Humanoid.ResolveBody(new(ShoulderHeightRatio: .84));
+        check("Shoulder height varies at fixed stature and preserves arm length",
+            Close(standard.ShoulderHeight, 1.40) && lower.Height == higher.Height &&
+            Close(higher.ShoulderHeight - lower.ShoulderHeight, .07 * standard.Height) &&
+            Close(higher.ShoulderHeight - higher.WristHeight, lower.ShoulderHeight - lower.WristHeight) &&
+            Rejects(new(ShoulderHeightRatio: .85)) && Rejects(new(ShoulderHeightRatio: double.NaN)));
+
+        foreach (var body in new[] { lower, higher })
+        {
+            var joints = PlayerAnatomy.Create("humano", body.Height, body).ToDictionary(joint => joint.Name);
+            var model = new Villager().Build(new() { Body = body });
+            var arm = model.Groups.Single(group => group.Id == "arm-right").Parts.Single();
+            check("The shoulder profile drives both rig pivots and the arm mesh position",
+                Close(joints["shoulder-left"].Y, body.ShoulderHeight) &&
+                Close(joints["shoulder-right"].Y, body.ShoulderHeight) &&
+                Close(joints["clavicle-right"].Y, standard.ShoulderHeight) &&
+                Close(joints["elbow-right"].Y, body.ElbowHeight) &&
+                Close(joints["wrist-right"].Y, body.WristHeight) &&
+                Close(arm.BaseY, body.HipHeight + body.ShoulderHeight - standard.ShoulderHeight));
         }
     }
 

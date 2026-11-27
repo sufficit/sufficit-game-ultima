@@ -23,17 +23,18 @@ internal static class CharacterProfileIntegration
 
             var first = await harness.Json(server.Url, Body,
                 new JsonObject { ["height"] = 1.8, ["mass"] = 90, ["femurRatio"] = .56 }, token);
-            var update = new JsonObject { ["waistCircumference"] = 1.1, ["thighScale"] = 1.3 };
+            var update = new JsonObject { ["waistCircumference"] = 1.1, ["thighScale"] = 1.3, ["shoulderHeightRatio"] = .83 };
             var result = await harness.Json(server.Url, Body, update, token);
             var profile = Obj(result["profile"]);
             Check(Num(Obj(first["profile"])["height"]) == 1.8 &&
                 Num(profile["mass"]) == 90 && Num(profile["femurRatio"]) == .56 &&
-                Num(profile["waistCircumference"]) == 1.1 && Num(profile["thighScale"]) == 1.3,
+                Num(profile["waistCircumference"]) == 1.1 && Num(profile["thighScale"]) == 1.3 &&
+                Num(profile["shoulderHeightRatio"]) == .83,
                 "Partial edits preserve other measurements", result);
             Check(Same(result, await harness.Json(server.Url, Body, update, token)), "Identical edits are idempotent");
 
             foreach (var invalid in new[] {
-                new JsonObject { ["height"] = 4 }, new JsonObject { ["profileKey"] = key },
+                new JsonObject { ["height"] = 4 }, new JsonObject { ["shoulderHeightRatio"] = .85 }, new JsonObject { ["profileKey"] = key },
                 new JsonObject { ["skin"] = new JsonObject { ["red"] = .4 } } })
                 await harness.Json(server.Url, Body, invalid, token, 400);
             Check(Same(result, await harness.Json(server.Url, Body, token: token)), "Invalid edits leave the profile intact");
@@ -46,7 +47,8 @@ internal static class CharacterProfileIntegration
             var resumed = await JoinAsync(server, "Alex", key);
             var token = Str(resumed["token"]);
             var profile = Obj((await harness.Json(server.Url, Body, token: token))["profile"]);
-            Check(Str(resumed["profileKey"]) == key && Num(profile["waistCircumference"]) == 1.1,
+            Check(Str(resumed["profileKey"]) == key && Num(profile["waistCircumference"]) == 1.1 &&
+                Num(profile["shoulderHeightRatio"]) == .83,
                 "The owner can resume a saved character after a process restart", profile);
             var result = await harness.Json(server.Url, Body, new JsonObject { ["waistCircumference"] = null }, token);
             profile = Obj(result["profile"]);

@@ -138,12 +138,14 @@ def torso_and_legs(shell, joints):
     pelvis = shell.ring(0, hip_y - .025, 0, .164, .101, angles, {"pelvis": 1})
     last = pelvis
     shoulders = {}
+    shoulder_y = joints["shoulder-right"]["y"]
+    sleeve_top = shoulder_y + .005
     for y, rx, rz, front, material, weights in [
         (hip_y + .065, .165, .105, 0, 0, pair("pelvis", "upper-body", .2)),
         (.925, .132, .084, .006, 1, pair("pelvis", "upper-body", .65)),
         (1.105, .143, .096, .005, 1, pair("upper-body", "chest", .5)),
-        (1.28, .174, .103, 0, 1, {"chest": 1}),
-        (1.39, .190, .081, 0, 1, {"chest": 1}),
+        (shoulder_y - .120, .174, .103, 0, 1, {"chest": 1}),
+        (sleeve_top, .190, .081, 0, 1, {"chest": 1}),
         (1.45, .082, .052, 0, 1, pair("chest", "neck-pivot", .3)),
         (1.49, .047, .045, 0, 2, pair("neck-pivot", "head-pivot", .3)),
         (1.515, .069, .065, .018, 2, {"head-pivot": 1}),
@@ -154,7 +156,7 @@ def torso_and_legs(shell, joints):
     ]:
         ring = shell.ring(0, y, front, rx, rz, angles, weights)
         openings = ()
-        if y == 1.39:
+        if y == sleeve_top:
             for side, center in (("right", 4), ("left", 12)):
                 start = center - 2
                 end = center + 3
@@ -225,12 +227,12 @@ def arms(shell, joints, shoulders):
     angles = [math.tau * i / 10 for i in range(10)]
     for side in ("left", "right"):
         shoulder, elbow, wrist = (f"{name}-{side}" for name in ("shoulder", "elbow", "wrist"))
-        ey, wy = joints[elbow]["y"], joints[wrist]["y"]
+        sy, ey, wy = (joints[joint]["y"] for joint in (shoulder, elbow, wrist))
         x = joints[shoulder]["x"]
         last = shoulders[side]
         for y, rx, rz, material, weights in [
-            (1.263, .052, .050, 1, {shoulder: 1}),
-            (1.220, .044, .046, 1, {shoulder: 1}),
+            (sy - .137, .052, .050, 1, {shoulder: 1}),
+            (sy - .180, .044, .046, 1, {shoulder: 1}),
             (ey + .045, .037, .039, 2, pair(shoulder, elbow, .2)),
             (ey, .036, .037, 2, pair(shoulder, elbow, .5)),
             (ey - .045, .037, .039, 2, pair(shoulder, elbow, .8)),

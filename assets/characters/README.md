@@ -15,6 +15,10 @@ collider or animation clips. See the
 
 ## Rest transforms
 
+The 1.75 m reference sets `ShoulderHeightRatio` to 0.82 (1.435 m above
+the soles). The legacy player profile defaults to 0.80. The shoulder-to-wrist
+span is preserved and the sleeve opening follows the shoulder pivot.
+
 Bone heads follow the [neutral pose contract](../../docs/USAGE-ANIMACOES.md#humanoid-bind-pose-contract)
 and stable C# joint IDs. The implicit actor root becomes a bone at the origin.
 During authoring, Ultima coordinates `(x, y, z)` become Blender
