@@ -1830,7 +1830,7 @@
 
     function loadPlayerSkinPreview(rig) {
         const skin = G.UltimaCharacterSkinPreview;
-        const bind = skin.prepare(BABYLON, rig);
+        const bind = skin.prepare(BABYLON, rig, legs => terrain.SolvePlayerSkinLegs(legs));
         const entry = {
             id: 'character.innerscene-preview', file: 'assets/characters/innerscene-preview.glb',
             sha256: '6cb7ec1b9d31cc7cbc31964188b25b441ce15b2f5d48d8395a264584863c197b'
@@ -2502,7 +2502,6 @@
             if (progress >= 1) { rig.action = null; }
         }
         rigRenderer.applyUpperBody(rig, frame, root === player);
-        rig.skinPreview?.();
     }
 
     function checkNear() {
@@ -3078,6 +3077,7 @@
             terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
         }
         syncCharacterHitboxes();
+        characterRigs.get(player)?.skinPreview?.();
         applyCameraView(p);
         if (!authored) {
             checkNear();

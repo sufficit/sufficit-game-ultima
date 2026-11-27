@@ -34,6 +34,9 @@ try
             });
             await new WorldCollision(page).RunAsync();
             break;
+        case "skin-feet":
+            await SkinFootAlignment.RunAsync(browser);
+            break;
         case "step":
             await ArticulatedStep.RunAsync(browser);
             break;

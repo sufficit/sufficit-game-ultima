@@ -57,5 +57,34 @@ internal static class PlayerSupportChecks
             turnSupport &= double.Hypot((feet[2] + feet[6]) / 2, (feet[3] + feet[7]) / 2) < .16;
         }
         check("Aimed turning in place keeps a compact stance and a grounded foot", turnSupport);
+        CheckSkinRetargeting(check);
+    }
+
+    private static void CheckSkinRetargeting(Action<string, bool> check)
+    {
+        double[] leg = [0, .92, 0, 0, .50, .12, 0, .10, 0, .12, .18, .25, 0, 0, 1];
+        Span<double> result = stackalloc double[PlayerSkinLegs.LegOutputSize];
+
+        PlayerSkinLegs.Solve(leg, result);
+        check("Skin IK closes on a reachable ankle target", Distance(leg.AsSpan(9), result[3..]) < 1e-5);
+        check("Skin IK preserves both bind segment lengths",
+            Math.Abs(Distance(leg, result) - Distance(leg, leg.AsSpan(3))) < 1e-5 &&
+            Math.Abs(Distance(result, result[3..]) - Distance(leg.AsSpan(3), leg.AsSpan(6))) < 1e-5);
+        check("Skin IK keeps the knee on the forward side of the leg", result[2] > result[5] / 2);
+
+        leg[10] = -.5;
+        PlayerSkinLegs.Solve(leg, result);
+        check("Skin IK clamps an unreachable target without stretching",
+            Distance(leg, result[3..]) < Distance(leg, leg.AsSpan(3)) + Distance(leg.AsSpan(3), leg.AsSpan(6)) &&
+            Math.Abs(Distance(result, result[3..]) - Distance(leg.AsSpan(3), leg.AsSpan(6))) < 1e-5);
+
+        leg[10] = .085;
+        var hipShift = PlayerSkinLegs.LowestReachableHipShift(leg);
+        PlayerSkinLegs.Solve(leg, result, hipShift);
+        check("Lowering the visual hips allows the projected step to reach its support",
+            hipShift is < 0 and > -.15f && Distance(leg.AsSpan(9), result[3..]) < 1e-5);
+
+        static double Distance(ReadOnlySpan<double> a, ReadOnlySpan<double> b)
+            => double.Hypot(a[0] - b[0], double.Hypot(a[1] - b[1], a[2] - b[2]));
     }
 }

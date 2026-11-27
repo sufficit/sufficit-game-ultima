@@ -18,6 +18,8 @@ and contact solving in C#, and validate the result on the existing game paths.
    First, prepare and verify an optimized Innerscene human base mesh as the
    maintainer's visual reference. Then exercise the C# pose on that mesh in
    the game before considering it for the default avatar.
+   Fit its legs to the final procedural ankle targets with a two-bone solve
+   that preserves segment lengths, knee bend direction, and sole rotation.
 4. [pending] Validate walking, stopping, a 180° turn, stepping over a low log,
    and walking on a slope with two different body profiles. Measure planted
    foot drift and frame cost against the current rig under the same conditions.
@@ -62,6 +64,21 @@ A corrupted download was rejected by SHA-256 and left the procedural player
 visible. The default URL made no preview asset request. RulesSmoke, all 16
 JavaScript tests, and the Blazor Release publish passed.
 
-Next action. Reconcile visual ankle positions with the C# foot targets
-across body profiles and validate the rest of the motion scenarios in
-checkpoint 4.
+The Innerscene preview now passes both leg chains to one C# two-bone solve
+after gameplay contacts settle. The solve preserves bone lengths and the
+incoming knee plane, lowers the visual pelvis within a 15 cm allowance, and
+clamps unreachable targets. Babylon applies the solved joint positions while
+keeping the posed sole orientation.
+
+The previous release averaged 11 cm of horizontal ankle error during walking.
+The `skin-feet` Chromium scenario passed for the default 1.75 m body and a
+1.90 m body with different leg proportions, in both renderer modes. It
+checked walking, stopping, a 180-degree reversal and preservation of both
+segment lengths. Horizontal error stayed under 1 mm in the sampled frames.
+
+Next action. Exercise the same retargeting on a controlled slope and low
+obstacle. Measure stance drift against the world and frame cost in both
+renderers before considering the preview for the default avatar.
+
+[Kovar, Schreiner and Gleicher's footskate study](https://graphics.cs.wisc.edu/Papers/2002/KSG02/)
+motivates treating support positions as constraints during retargeting.

@@ -81,5 +81,9 @@ bash scripts/build-assets.sh
 
 The render bridge carries the C# pose through the existing Babylon transform
 nodes to 14 mapped joints using actor-space rotation deltas. It lowers the
-arms from the imported A-pose. Visual foot placement may differ from the
-procedural contact probes because the preview retains its own bind lengths.
+arms from the imported A-pose. After the gameplay contact pass, C# solves
+both leg chains against the procedural ankle positions with a rest-height
+offset for the imported soles. It preserves both bone lengths and can lower
+the visual pelvis by up to 0.15 m to reach the targets. The renderer keeps
+the posed foot orientation when applying the solve. Targets outside the
+available reach are clamped.

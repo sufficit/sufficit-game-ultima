@@ -18,16 +18,73 @@
         ];
     }
 
-    function prepare(BABYLON, rig) {
+    function fitLegs(BABYLON, rig, visual, targets, solve) {
+        const point = new BABYLON.Vector3(), from = new BABYLON.Vector3(), to = new BABYLON.Vector3(), start = new BABYLON.Vector3();
+        const delta = new BABYLON.Quaternion();
+        const rotation = new BABYLON.Matrix(), desired = new BABYLON.Matrix(), inverseParent = new BABYLON.Matrix();
+        const input = new Float64Array(30);
+        const legs = rig.legs.map((leg, index) => {
+            const side = index === 0 ? 'l' : 'r';
+            const find = prefix => targets.find(binding => binding.name === prefix + side);
+            const foot = find('foot_');
+            // Both neutral transforms are measured with the actor upright. Keep the imported sole height.
+            const rise = foot.rest.getTranslationToRef(point).y - foot.driverRestY;
+            return { hip: find('thigh_').target, knee: find('calf_').target, ankle: foot.target,
+                driver: leg.ankle, rise, sole: new BABYLON.Matrix() };
+        });
+
+        function orient(node, world) {
+            node.parent.computeWorldMatrix(true).invertToRef(inverseParent);
+            world.multiplyToRef(inverseParent, desired);
+            desired.decompose(undefined, node.rotationQuaternion, undefined);
+        }
+
+        function aim(node, child, target) {
+            node.computeWorldMatrix(true).getTranslationToRef(start);
+            child.computeWorldMatrix(true).getTranslationToRef(from).subtractInPlace(start).normalize();
+            to.copyFrom(target).subtractInPlace(start).normalize();
+            BABYLON.Quaternion.FromUnitVectorsToRef(from, to, delta);
+            BABYLON.Matrix.FromQuaternionToRef(delta, rotation);
+            node.getWorldMatrix().multiplyToRef(rotation, desired);
+            orient(node, desired);
+        }
+
+        return function alignFeet() {
+            const yaw = rig.root.rotation.y;
+            for (let index = 0; index < legs.length; index++) {
+                const { hip, knee, ankle, driver, rise, sole } = legs[index];
+                const offset = index * 15;
+                hip.computeWorldMatrix(true).getTranslationToRef(point).toArray(input, offset);
+                knee.computeWorldMatrix(true).getTranslationToRef(point).toArray(input, offset + 3);
+                sole.copyFrom(ankle.computeWorldMatrix(true)).getTranslationToRef(point).toArray(input, offset + 6);
+                driver.computeWorldMatrix(true).getTranslationToRef(point);
+                point.y += rise;
+                point.toArray(input, offset + 9);
+                point.set(Math.sin(yaw), 0, Math.cos(yaw)).toArray(input, offset + 12);
+            }
+            const output = solve(input);
+            visual.position.y += output[12];
+            for (let index = 0; index < legs.length; index++) {
+                const { hip, knee, ankle, sole } = legs[index];
+                aim(hip, knee, point.fromArray(output, index * 6));
+                aim(knee, ankle, point.fromArray(output, index * 6 + 3));
+                orient(ankle, sole);
+            }
+        };
+    }
+
+    function prepare(BABYLON, rig, solveLegs) {
         const actorInverse = new BABYLON.Matrix();
         const actorLocal = new BABYLON.Matrix();
         const transform = new BABYLON.Matrix();
         const desired = new BABYLON.Matrix();
         const parentInverse = new BABYLON.Matrix();
+        const position = new BABYLON.Vector3();
         rig.root.computeWorldMatrix(true).invertToRef(actorInverse);
         const driverRest = drivers(rig).map(([name, node, armRest]) => {
             node.computeWorldMatrix(true).multiplyToRef(actorInverse, actorLocal);
-            return { name, node, armRest, inverseRest: actorLocal.invertToRef(new BABYLON.Matrix()) };
+            return { name, node, armRest, driverRestY: actorLocal.getTranslationToRef(position).y,
+                inverseRest: actorLocal.invertToRef(new BABYLON.Matrix()) };
         });
 
         return function bind(container, shadows, layer) {
@@ -36,15 +93,16 @@
                 throw new Error('Unexpected Innerscene skeleton');
             }
 
-            const targets = driverRest.map(({ name, node, inverseRest, armRest }) => {
-                const target = skeleton.bones.find(bone => bone.name === name)?.getTransformNode();
-                if (!target?.rotationQuaternion) throw new Error('Missing skin joint: ' + name);
-                return { node, target, inverseRest, armRest };
+            const targets = driverRest.map(binding => {
+                const target = skeleton.bones.find(bone => bone.name === binding.name)?.getTransformNode();
+                if (!target?.rotationQuaternion) throw new Error('Missing skin joint: ' + binding.name);
+                return { ...binding, target };
             });
             const importedRoot = container.rootNodes[0];
             const visual = new BABYLON.TransformNode('innerscene-player-preview', rig.root.getScene());
             visual.parent = rig.root;
             visual.scaling.setAll(rig.body.height / 1.6803);
+            visual.position.y = -rig.body.floorOffset;
             importedRoot.parent = visual;
             rig.root.computeWorldMatrix(true).invertToRef(actorInverse);
             for (const binding of targets) {
@@ -52,6 +110,7 @@
                 // Lower each arm from the source A-pose around actor Z before applying gait deltas.
                 if (binding.armRest) binding.rest.multiplyToRef(BABYLON.Matrix.RotationZ(binding.armRest), binding.rest);
             }
+            const alignFeet = fitLegs(BABYLON, rig, visual, targets, solveLegs);
 
             // Let Babylon deform the display mesh. The procedural rig still provides all contacts and hitboxes.
             for (const mesh of container.meshes) {
@@ -65,6 +124,7 @@
                 shadows?.removeShadowCaster(mesh);
             }
             return function update() {
+                visual.position.y = -rig.body.floorOffset;
                 const actorWorld = rig.root.computeWorldMatrix(true);
                 actorWorld.invertToRef(actorInverse);
                 for (const { node, target, inverseRest, rest } of targets) {
@@ -78,6 +138,7 @@
                     // Preserve bind translations and scale. C# drives the rotation of each mapped joint.
                     desired.decompose(undefined, target.rotationQuaternion, undefined);
                 }
+                alignFeet();
             };
         };
     }
