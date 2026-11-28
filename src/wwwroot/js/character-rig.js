@@ -264,6 +264,28 @@
             for (let joint = 0; joint < 6; joint++) rig.skinMotion.fingerAngles[joint] = frame[index + 12 + joint];
         }
 
+        function applyPosture(rig, pose) {
+            const [, , crouch, prone, sit, stride, tuck, crawl] = pose;
+            rig.upper.rotation.x += crouch * .65 + sit * .16;
+            for (let side = 0; side < 2; side++) {
+                const sign = side === 0 ? 1 : -1;
+                const shoulder = rig.shoulders[side], elbow = rig.elbows[side];
+                shoulder.rotation.x += (-.12 - 2.16 * crawl + stride * sign * .92 - shoulder.rotation.x) * prone;
+                elbow.rotation.x += (-.1 - crawl * .38 - elbow.rotation.x) * prone;
+                shoulder.rotation.x += (-.32 - shoulder.rotation.x) * sit - tuck * .20;
+                if (prone || sit || tuck) {
+                    const leg = rig.legs[side];
+                    const hip = -1.42 * sit + stride * sign * .42 - .19 * tuck;
+                    const knee = 2.42 * sit + prone * (.08 + Math.max(0, stride * -sign) * .42) + .38 * tuck;
+                    const blend = Math.min(1, prone + sit + tuck);
+                    const current = leg.hip.rotationQuaternion.toEulerAngles().x;
+                    leg.hip.rotationQuaternion.copyFrom(BABYLON.Quaternion.RotationAxis(BABYLON.Axis.X,
+                        current * (1 - blend) + hip));
+                    leg.knee.rotation.x = leg.knee.rotation.x * (1 - blend) + knee;
+                }
+            }
+        }
+
         function mount(rig, modelId, protos) {
             rig.face.setEnabled(!rig.skinPreview);
             rig.eyes.setEnabled(!rig.skinPreview);
@@ -316,7 +338,7 @@
             for (const material of rig.fallbackLegMaterials.splice(0)) { material.dispose(); }
         }
 
-        return { create: createCharacterRig, mount, applyLeg, applyLegs, applyUpperBody };
+        return { create: createCharacterRig, mount, applyLeg, applyLegs, applyUpperBody, applyPosture };
     }
     root.UltimaCharacterRig = { createRenderer };
 })(globalThis);

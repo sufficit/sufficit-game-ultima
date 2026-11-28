@@ -62,6 +62,37 @@ internal static class PlayerSupportChecks
         CheckSkinHeight(check);
         CheckHandSwing(check);
         CheckAnkleSwing(check);
+        CheckOutfitAndPosture(check);
+    }
+
+    private static void CheckOutfitAndPosture(Action<string, bool> check)
+    {
+        var outfit = PlayerOutfit.Select("first-identity");
+        check("Player outfit is stable per identity and varies between identities",
+            outfit.SequenceEqual(PlayerOutfit.Select("first-identity")) && !outfit.SequenceEqual(PlayerOutfit.Select("second-identity")));
+        var cloth = new PlayerOutfit();
+        var deflected = 0d;
+        for (var i = 0; i < 60; i++) deflected = cloth.Advance(3, .3, 0, 1d / 60);
+        var settled = deflected;
+        for (var i = 0; i < 120; i++) settled = cloth.Advance(0, 0, 0, 1d / 60);
+        check("Wind drag deflects the cloth and gravity brings it back", deflected > .05 && Math.Abs(settled) < .01);
+
+        var posture = new PlayerPosture();
+        Span<double> pose = stackalloc double[8];
+        posture.Jump();
+        var apex = 0d;
+        for (var i = 0; i < 70; i++)
+        {
+            posture.Advance(pose, 0, .25, 1d / 60, 0, 0);
+            apex = Math.Max(apex, pose[1]);
+        }
+        check("Jump respects overhead clearance and lands", apex is > .20 and <= .25 && pose[1] == 0);
+        posture.Toggle(PlayerPosture.Kind.Crawling);
+        posture.Advance(pose, 0, 1, .05, 0, 0);
+        check("Crawl lowers the pose and limits movement", pose[3] > 0 && posture.SpeedScale is > 0 and < .5);
+        posture.Toggle(PlayerPosture.Kind.Sitting);
+        posture.Advance(pose, 0, 1, .05, 0, 0);
+        check("Sitting changes the pose and holds position", pose[4] > 0 && posture.SpeedScale == 0);
     }
 
     private static void CheckAnkleSwing(Action<string, bool> check)

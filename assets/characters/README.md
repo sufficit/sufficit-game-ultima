@@ -54,14 +54,19 @@ the GLB in Chromium and verified its skin, exact hierarchy, joint pivots
 within 0.05 mm, and deformation at both shoulders, the hip, knee and ankle. The Khronos glTF
 validator reported zero errors and warnings.
 
-## Innerscene player preview
+## Innerscene local player
 
-Add `?avatar=innerscene` to the game URL to preview the skinned mannequin on
-the local player. Add `&render=main&gpu=0` to test the WebGL main-thread path.
-The default player, other players, NPCs, and C# contact shapes keep using the
-procedural avatar. The preview is a gray mannequin with no textures or clips.
+The local player uses the Innerscene skin by default. Select `?avatar=procedural`
+to exercise the previous renderer, or `?render=main&gpu=0` for WebGL on the main
+thread. Remote peers, NPCs and contact shapes use the procedural avatar.
 It inherits the profile's height through uniform scale. Its proportions and
-surface materials come from the source model.
+bind pose come from the source model.
+
+Fitted shirts, trousers and boots reuse the original vertices and skin weights.
+The C# wardrobe selects their colors and an optional scarf from the local
+player UUID. The scarf tail uses a bounded damped pendulum with gravity and
+air drag from travel and the current weather. Garment shapes are fitted
+surface regions. The scarf is the only freely moving garment element.
 
 [Innerscene's Human Base Mesh](https://www.innerscene.com/tools/library/3d-parts/human-base-mesh-with-editable-53-bone-rig-8e7c8ab1)
 is a CC0 derivative of the MakeHuman/MPFB anatomical base. The source file
@@ -76,6 +81,7 @@ update its SHA-256 in `loadPlayerSkinPreview` and rerun the renderer checks.
 ```bash
 blender --background --python-exit-code 1 --python assets/characters/build_innerscene.py -- \
   human-base-rigged.glb assets/characters/innerscene-preview.glb
+python3 assets/characters/partition_garments.py assets/characters/innerscene-preview.glb
 bash scripts/build-assets.sh
 ```
 

@@ -130,7 +130,51 @@
         };
     }
 
-    function prepare(BABYLON, rig, solveLegs) {
+    function dress(BABYLON, container, visual, rig, chest, outfit, layer) {
+        const color = rgb => BABYLON.Color3.FromInts(rgb >> 16, (rgb >> 8) & 255, rgb & 255).toLinearSpace();
+        const names = ['outfit-shirt', 'outfit-trousers', 'outfit-boots'];
+        for (let slot = 0; slot < names.length; slot++) {
+            const material = container.materials.find(item => item.name === names[slot]);
+            if (material) material.albedoColor = color(outfit[slot]);
+        }
+        const skin = container.materials.find(item => item.name === 'avatar-skin');
+        const tone = rig.body.skin;
+        if (skin && tone) skin.albedoColor = new BABYLON.Color3(tone.red, tone.green, tone.blue).toLinearSpace();
+        if (!outfit[3]) return null;
+        const scene = visual.getScene();
+        const anchor = new BABYLON.TransformNode('outfit-scarf-anchor', scene);
+        anchor.parent = visual;
+        anchor.position.set(-.035, 1.368, -.085);
+        anchor.setParent(chest);
+        const tail = new BABYLON.TransformNode('outfit-scarf-hinge', scene);
+        tail.parent = rig.root;
+        const ribbon = BABYLON.MeshBuilder.CreateBox('outfit-scarf-tail', { width: .095, height: .28, depth: .009 }, scene);
+        ribbon.parent = tail;
+        ribbon.position.y = -.12;
+        ribbon.layerMask = layer;
+        ribbon.isPickable = false;
+        const material = new BABYLON.StandardMaterial('outfit-scarf-color', scene);
+        material.diffuseColor = color(outfit[0]).scale(1.6);
+        ribbon.material = material;
+        const collar = BABYLON.MeshBuilder.CreateTorus('outfit-scarf-collar', { diameter: .20, thickness: .027, tessellation: 12 }, scene);
+        collar.parent = visual;
+        collar.position.set(0, 1.375, .015);
+        collar.layerMask = layer;
+        collar.isPickable = false;
+        collar.material = material;
+        collar.setParent(chest);
+        const inverse = new BABYLON.Matrix(), point = new BABYLON.Vector3();
+        return (support, angle) => {
+            anchor.computeWorldMatrix(true).getTranslationToRef(point);
+            rig.root.computeWorldMatrix(true).invertToRef(inverse);
+            BABYLON.Vector3.TransformCoordinatesToRef(point, inverse, tail.position);
+            // The loose end hangs in gravity space even when the chest lies flat.
+            tail.scaling.setAll(Math.min(visual.scaling.y, Math.max(.05, (point.y - support) / .28)));
+            tail.rotation.x = angle;
+        };
+    }
+
+    function prepare(BABYLON, rig, solveLegs, outfit) {
         const actorInverse = new BABYLON.Matrix();
         const actorLocal = new BABYLON.Matrix();
         const transform = new BABYLON.Matrix();
@@ -179,13 +223,17 @@
                 if (mesh.skeleton && rig.castsShadow) shadows?.addShadowCaster(mesh);
             }
             container.addAllToScene();
+            const scarf = dress(BABYLON, container, visual, rig,
+                targets.find(binding => binding.name === 'spine_03').target, outfit, layer);
             for (const mesh of rig.shadowMeshes) {
                 mesh.visibility = 0;
                 shadows?.removeShadowCaster(mesh);
             }
-            return function update(support, delta) {
+            return function update(support, delta, posture, scarfAngle) {
+                const [, elevation, crouch, prone, sit, , tuck] = posture;
                 visual.position.y = -rig.body.floorOffset;
                 visual.position.x = rig.skinMotion.sway;
+                visual.rotation.x = 0;
                 const actorWorld = rig.root.computeWorldMatrix(true);
                 actorWorld.invertToRef(actorInverse);
                 for (const { name, node, target, inverseRest, rest } of targets) {
@@ -205,7 +253,14 @@
                     desired.decompose(undefined, target.rotationQuaternion, undefined);
                 }
                 curlFingers(rig.skinMotion.fingerAngles);
-                alignFeet(support, delta);
+                if (prone < .025 && sit < .025 && tuck < .025) alignFeet(support + elevation - crouch, delta);
+                if (prone || sit) {
+                    visual.rotation.x = prone * Math.PI / 2;
+                    const standingY = -rig.body.floorOffset;
+                    const lowY = support - rig.root.position.y + .16 * visual.scaling.y;
+                    visual.position.y = standingY + (lowY - standingY) * prone - .60 * visual.scaling.y * sit;
+                }
+                scarf?.(support, scarfAngle);
             };
         };
     }

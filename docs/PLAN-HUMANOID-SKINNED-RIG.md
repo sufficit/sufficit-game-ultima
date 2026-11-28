@@ -67,7 +67,7 @@ the same exterior heights at the sleeve opening.
 
 ## Checkpoint 3 progress
 
-The [Innerscene preview](../assets/characters/README.md#innerscene-player-preview)
+The [Innerscene preview](../assets/characters/README.md#innerscene-local-player)
 uses 18,000 triangles and 53 bones. The local player can select it with
 `?avatar=innerscene`. Main-thread and worker Chromium runs verified that the
 body renders and the left knee rotates when the player walks. The preview

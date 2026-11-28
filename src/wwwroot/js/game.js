@@ -194,7 +194,7 @@
                     spawn,
                     terrainSettings,
                     authoredScene,
-                    bodyProfile,
+                    bodyProfile, playerUuid: window.game.player.uuid(),
                     baseUrl: document.baseURI,
                     global: window,
                     dom: true,
@@ -236,7 +236,7 @@
                 reject(new Error('worker: ' + (e && e.message || 'erro')));
             };
             worker.postMessage(
-                { type: 'init', canvas: off, pageVisible: !document.hidden, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref(), spawn, terrainSettings, authoredScene, bodyProfile, baseUrl: document.baseURI },
+                { type: 'init', canvas: off, pageVisible: !document.hidden, size: canvasMetrics(canvas), build: buildStamp(), pageBase: location.href, scenery: sceneryPref(), graphics: graphicsPref(), gpuOff: GPU_OFF, weather: weatherPref(), spawn, terrainSettings, authoredScene, bodyProfile, playerUuid: window.game.player.uuid(), baseUrl: document.baseURI },
                 [off]);
         });
     }
@@ -310,7 +310,7 @@
     }
 
     // ---------- Input capturado aqui e entregue ao core (qualquer modo) ----------
-    const gameCodes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
+    const gameCodes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'Space', 'KeyC', 'KeyX', 'KeyZ', 'KeyF'];
     const editable = (el) => !!(el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)));
 
     function deliver(method, args) {

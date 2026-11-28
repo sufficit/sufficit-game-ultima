@@ -23,6 +23,7 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 [atividade](activities/) (veja o [AGENTS.md](../AGENTS.md)).
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
+- [Default humanoid, outfits and player postures](PLAN-PLAYER-OUTFITS-POSTURES.md).
 - [Humanoid rig and skinned reference model](PLAN-HUMANOID-SKINNED-RIG.md).
 - [LLM tool qualification](PLAN-LLM-TOOL-QUALIFICATION.md).
 

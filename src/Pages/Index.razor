@@ -23,7 +23,7 @@
    do jogo e nunca podem ser renderizados condicionalmente. *@
 <div class="game-shell ultima-theme@((_menuOpen ? " ultima-menu-open" : "") + (_view is not null ? " ultima-dialog-open" : "") + (WindowOpen ? " ultima-window-open" : ""))">
     <main class="viewport">
-        <canvas @ref="_canvas" id="game-canvas" tabindex="@(WindowOpen ? -1 : 0)" aria-label="Mundo 3D. WASD anda, setas controlam a câmera, Shift corre, E conversa. O joystick também move."></canvas>
+        <canvas @ref="_canvas" id="game-canvas" tabindex="@(WindowOpen ? -1 : 0)" aria-label="Mundo 3D. WASD anda, setas controlam a câmera, Shift corre, Espaço salta, C agacha, X rasteja, Z deita, F senta e E conversa."></canvas>
 
         @if (_newBuild is not null)
         {
@@ -444,7 +444,7 @@
                             <SUIExpansionPanel Title="Controles e ajuda">
                                 <SUIStack Spacing="2">
                                     <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
-                                        teclado: <kbd>WASD</kbd>/<kbd>↑↓←→</kbd> andar · <kbd>Shift</kbd> correr · <kbd>E</kbd> conversa · <kbd>Esc</kbd> fecha · mouse gira a câmera
+                                        teclado: <kbd>WASD</kbd> andar · <kbd>↑↓←→</kbd> olhar · <kbd>Shift</kbd> correr · <kbd>Espaço</kbd> saltar · <kbd>C</kbd> agachar · <kbd>X</kbd> rastejar · <kbd>Z</kbd> deitar · <kbd>F</kbd> sentar · <kbd>E</kbd> conversar · <kbd>Esc</kbd> fechar
                                     </SUIText>
                                     <SUIText Typo="SUITypo.caption" Color="SUIColor.Secondary">
                                         controle: <kbd>LS</kbd> mover · <kbd>RS</kbd> câmera · botão <kbd>Ⓐ</kbd>/<kbd>✕</kbd> conversar · celular: analógicos na tela
@@ -862,7 +862,7 @@
         try { _gfxStyle = await JS.InvokeAsync<string>("game.graphics.get"); }
         catch (JSException) { _gfxStyle = "padrao"; }
         // Dica de controles como mensagem transitória (snackbar SUI), não bloco fixo na tela.
-        Snackbar.Info("WASD anda · Setas ou mouse olham · Shift corre · E conversa · Esc fecha");
+        Snackbar.Info("WASD anda · Espaço salta · C agacha · X rasteja · Z deita · F senta · E conversa");
         StateHasChanged();
         _ = LoadRemoteContentAsync();
     }

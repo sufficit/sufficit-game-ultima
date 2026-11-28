@@ -58,6 +58,7 @@ self.addEventListener('message', function (e) {
                 terrainSettings: msg.terrainSettings,
                 authoredScene: msg.authoredScene,
                 bodyProfile: msg.bodyProfile,
+                playerUuid: msg.playerUuid,
                 baseUrl: msg.baseUrl,
                 size: msg.size || null,
                 terrainRuntime,

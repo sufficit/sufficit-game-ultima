@@ -36,6 +36,7 @@ internal static partial class BrowserExports
         _body = body;
         _characters = new();
         _movement = new(body.Height, body.KneeHeight, body.FloorOffset, _characters, body.ColliderRadius);
+        ResetPlayerPosture();
         (_kneeHeight, _footGap, _hipHeight, _femurLength, _tibiaLength, _ankleOffset, _spacing, _shoeOffset) =
             (body.KneeHeight, body.FloorOffset, body.HipHeight, body.FemurLength, body.TibiaLength, body.AnkleHeight + HumanoidBody.SoleClearance,
                 body.LegSpacing, body.ShoeOffset);
@@ -161,7 +162,7 @@ internal static partial class BrowserExports
     internal static void SetColliders(double[] colliders) => _movement.SetColliders(colliders);
 
     [JSExport]
-    internal static bool SetPlayerInputKey(string code, bool down) => Input.SetKey(code, down);
+    internal static bool SetPlayerInputKey(string code, bool down) => HandlePostureKey(code, down) || Input.SetKey(code, down);
 
     [JSExport]
     internal static bool SetPlayerInputTouch(bool look, double x, double y) => Input.SetTouch(look, x, y);
@@ -369,11 +370,11 @@ internal static partial class BrowserExports
     internal static double[] SolveSupportedLegs(double ground, double previousY, double delta,
         double leftForward, double leftLift, double leftFloor, double leftSupport,
         double rightForward, double rightLift, double rightFloor, double rightSupport, double leftPitch, double rightPitch,
-        double leftLateral, double rightLateral)
+        double leftLateral, double rightLateral, double bodyDrop = 0)
     {
         PlayerPose.SolveLegs(LegResult, ground, previousY, delta, _footGap, _hipHeight, _femurLength, _ankleOffset,
             leftForward, leftLift, leftSupport, leftSupport > leftFloor,
-            rightForward, rightLift, rightSupport, rightSupport > rightFloor, leftPitch, rightPitch, leftLateral, rightLateral, _tibiaLength);
+            rightForward, rightLift, rightSupport, rightSupport > rightFloor, leftPitch, rightPitch, leftLateral, rightLateral, _tibiaLength, bodyDrop);
         return LegResult;
     }
 }

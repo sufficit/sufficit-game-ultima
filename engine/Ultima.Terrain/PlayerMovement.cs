@@ -5,9 +5,11 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
     internal const double WalkSpeed = 3.5;
     internal const double RunSpeed = 6.5;
     internal bool NaturalGait { get; set; }
+    internal double SpeedScale { get; set; } = 1;
     internal double WalkingSpeed => NaturalGait ? 1.65 : WalkSpeed;
     internal double RunningSpeed => NaturalGait ? 4.15 : RunSpeed;
     private readonly double _radius = radius;
+    private readonly double _standingHeight = height;
     private const double Deadzone = 0.18;
     internal const int ColliderStride = 6;
     private double[] _colliders = [];
@@ -66,6 +68,11 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
         double keyX, double keyZ, double analogX, double analogZ, bool sprint, double delta,
         TerrainSurface surface, TerrainVolumes volumes, bool hasTunnels, double aimYaw = double.NaN)
     {
+        if (SpeedScale == 0)
+        {
+            Stop();
+            return (x, z, aimYaw, 0);
+        }
         var inputX = keyX + analogX;
         var inputZ = keyZ + analogZ;
         var magnitude = Math.Min(1, double.Hypot(inputX, inputZ));
@@ -91,7 +98,7 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
         }
 
         var running = sprint || double.Hypot(analogX, analogZ) > 0.92;
-        var targetSpeed = (running ? RunningSpeed : WalkingSpeed) * magnitude;
+        var targetSpeed = (running && SpeedScale == 1 ? RunningSpeed : WalkingSpeed) * magnitude * SpeedScale;
         var pivoting = PivotProgress >= 0;
         var yaw = aimYaw;
         if (pivoting)
@@ -240,7 +247,7 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
         return index;
     }
 
-    private bool TouchesHeight(double y, double minY, double maxY) => y + height > minY && y < maxY;
+    private bool TouchesHeight(double y, double minY, double maxY) => y + _standingHeight > minY && y < maxY;
 
     private bool PassesVolume(TerrainVolumes volumes, double x, double z, double nextX, double nextZ,
         double y, double originalFloor)

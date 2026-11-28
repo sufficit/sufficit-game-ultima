@@ -34,6 +34,9 @@ try
             });
             await new WorldCollision(page).RunAsync();
             break;
+        case "outfit-posture":
+            await PlayerOutfitPosture.RunAsync(browser);
+            break;
         case "skin-feet":
             await SkinFootAlignment.RunAsync(browser);
             break;

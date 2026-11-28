@@ -65,4 +65,16 @@ internal sealed partial class PlayerMovement
     }
 
     private readonly record struct Box(double MinX, double MaxX, double MinY, double MaxY, double MinZ, double MaxZ);
+
+    internal double JumpCeiling(double x, double z, double support)
+    {
+        var ceiling = double.PositiveInfinity;
+        foreach (var box in _solidBoxes)
+        {
+            if (box.MinY > support + .15 && x + _radius > box.MinX && x - _radius < box.MaxX &&
+                z + _radius > box.MinZ && z - _radius < box.MaxZ)
+                ceiling = Math.Min(ceiling, box.MinY - _standingHeight);
+        }
+        return ceiling;
+    }
 }

@@ -74,6 +74,7 @@
     const camPending = { dx: 0, dy: 0, wheel: 0 };
     let cameraFrame = null;
     let cameraFloor = 0;
+    let playerPosture = null;
     let cameraGeometryRevision = 0;
     let cameraObstaclesDirty = true;
     let zoomTarget = initialCamera.radius;    // zoom escolhido pelo jogador, independente do recuo por colisão
@@ -851,7 +852,8 @@
 
         if (cameraView === 1) {
             const yaw = Math.atan2(-Math.cos(camera.alpha), -Math.sin(camera.alpha));
-            const eye = position.y + playerBody.eyeHeight;
+            const eye = position.y + Math.max(.23, playerBody.eyeHeight -
+                (playerPosture?.[3] ?? 0) * 1.35 - (playerPosture?.[4] ?? 0) * .6);
             perspectiveCamera.position.set(position.x, eye, position.z);
             perspectiveCamera.rotation.set(cameraFrame[9], yaw, 0);
             return;
@@ -1830,10 +1832,12 @@
 
     function loadPlayerSkinPreview(rig) {
         const skin = G.UltimaCharacterSkinPreview;
-        const bind = skin.prepare(BABYLON, rig, (...args) => terrain.SolvePlayerSkinLegs(...args));
+        const outfit = terrain.ChoosePlayerOutfit(host.playerUuid ?? '');
+        modelStatus.outfit = Array.from(outfit);
+        const bind = skin.prepare(BABYLON, rig, (...args) => terrain.SolvePlayerSkinLegs(...args), outfit);
         const entry = {
             id: 'character.innerscene-preview', file: 'assets/characters/innerscene-preview.glb',
-            sha256: '6cb7ec1b9d31cc7cbc31964188b25b441ce15b2f5d48d8395a264584863c197b'
+            sha256: 'eb58855018cf39ac126b419416d79f88575794dd03fbdf6a53ce841622bfe0d3'
         };
         modelStatus.skinPreview = 'loading';
         Promise.all([ensureGlbLoaders(), fetchVerifiedGlb(entry)])
@@ -2324,7 +2328,7 @@
         // modelo C# (character.guardian) carregado em runtime, fallback JS centrado.
         for (const mesh of player.getChildMeshes()) mesh.layerMask = PLAYER_LAYER;
         if (preview) player.setEnabled(false);
-        else if (new URL(host.pageBase).searchParams.get('avatar') === 'innerscene') {
+        else if (new URL(host.pageBase).searchParams.get('avatar') !== 'procedural') {
             loadPlayerSkinPreview(characterRigs.get(player));
         }
         if (!authored) {
@@ -2510,6 +2514,7 @@
             if (progress >= 1) { rig.action = null; }
         }
         rigRenderer.applyUpperBody(rig, frame, root === player);
+        if (root === player && playerPosture) rigRenderer.applyPosture(rig, playerPosture);
     }
 
     function checkNear() {
@@ -2542,14 +2547,18 @@
             const platform = leftSupport > leftFloor && rightSupport > rightFloor
                 ? Math.min(leftSupport, rightSupport) : ground;
             cameraFloor = Math.max(ground, platform) + FOOT_GAP;
-            if (leftSupport > leftFloor || rightSupport > rightFloor) {
+            playerPosture = rig.skinPreview
+                ? terrain.AdvancePlayerPosture(root.position.x, root.position.z, cameraFloor, delta, frame[0], frame[1], worldTunnels.length > 0)
+                : null;
+            if (leftSupport > leftFloor || rightSupport > rightFloor || playerPosture?.[2] > 0) {
                 angles = terrain.SolveSupportedLegs(ground, root.position.y, delta,
                     frame[28], frame[29], leftFloor, leftSupport, frame[33], frame[34], rightFloor, rightSupport,
-                    frame[35], frame[36], frame[41], frame[42]);
+                    frame[35], frame[36], frame[41], frame[42], playerPosture?.[2] ?? 0);
                 i = 0;
             }
         }
         rigRenderer.applyLegs(rig, frame, angles, i, root === player);
+        if (root === player && playerPosture) root.position.y += playerPosture[1];
     }
 
     // Tronco provisório enquanto o pacote de malhas do personagem é carregado.
@@ -3085,7 +3094,9 @@
             terrain.SetCharacterPositions(p.x, p.y, p.z, g.x, g.y, g.z, w.x, w.y, w.z);
         }
         syncCharacterHitboxes();
-        characterRigs.get(player)?.skinPreview?.(cameraFloor, delta);
+        const skin = characterRigs.get(player)?.skinPreview;
+        if (skin) skin(cameraFloor, delta, playerPosture,
+            modelStatus.outfit[3] ? terrain.AdvancePlayerAccessory(delta > 0 ? travelled / delta : 0, windLevel, player.rotation.y, delta) : 0);
         applyCameraView(p);
         if (!authored) {
             checkNear();
@@ -3177,6 +3188,8 @@
     function resetPlayerGait() {
         terrain?.StopPlayer();
         terrain?.ResetFootContacts();
+        terrain?.ResetPlayerPosture();
+        playerPosture = null;
         const rig = characterRigs.get(player);
         if (rig) { rig.gaitPhase = rig.gaitWeight = 0; }
     }

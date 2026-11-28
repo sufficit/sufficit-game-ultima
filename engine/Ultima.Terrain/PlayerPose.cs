@@ -91,11 +91,11 @@ internal static class PlayerPose
         double footGap, double hipHeight, double legLength, double ankleOffset,
         double leftForward, double leftLift, double leftSupport, bool leftOnObstacle,
         double rightForward, double rightLift, double rightSupport, bool rightOnObstacle,
-        double leftPitch = 0, double rightPitch = 0, double leftLateral = 0, double rightLateral = 0, double? tibiaLength = null)
+        double leftPitch = 0, double rightPitch = 0, double leftLateral = 0, double rightLateral = 0, double? tibiaLength = null, double bodyDrop = 0)
     {
         var leftAnkle = leftSupport + ankleOffset + leftLift;
         var rightAnkle = rightSupport + ankleOffset + rightLift;
-        var bodyY = ground + footGap;
+        var bodyY = ground + footGap - bodyDrop;
         var lowerLength = tibiaLength ?? legLength;
         var reach = legLength + lowerLength;
         var spanSquared = reach * reach;
@@ -103,7 +103,7 @@ internal static class PlayerPose
         var rightReach = rightAnkle + Math.Sqrt(Math.Max(0, spanSquared - rightForward * rightForward - rightLateral * rightLateral)) - hipHeight;
         if (leftOnObstacle || rightOnObstacle)
         {
-            var top = Math.Max(leftSupport, rightSupport) + footGap;
+            var top = Math.Max(leftSupport, rightSupport) + footGap - bodyDrop;
             var riseLimit = Math.Max(bodyY, previousY) + delta * 3;
             bodyY = Math.Min(Math.Max(bodyY, top), riseLimit);
         }
