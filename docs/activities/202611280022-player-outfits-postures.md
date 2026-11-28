@@ -1,16 +1,6 @@
 # Default humanoid, outfits and player postures
 
-Make the verified Innerscene humanoid the local player default, give each player
-identity a repeatable outfit, and add keyboard locomotion and posture actions.
-
-1. [complete locally] Verify asset sources and implement the default skin, seeded
-   clothing, and one lightweight accessory with gravity and air drag.
-2. [complete locally] Implement jumping, crouching, crawling, lying and sitting with C#
-   state and shared renderer integration.
-3. [in progress] Verify identity stability, visual coverage, the actions, both
-   renderer paths and the live release. Record any remaining limitations.
-
-Next action. Repeat the outfit and posture checks on the published build.
+## Investigation
 
 The fitted regions reuse the CC0 Innerscene body geometry and skin weights.
 This follows [Babylon.js's skinned clothing guidance](https://doc.babylonjs.com/features/featuresDeepDive/mesh/bonesSkeletons).
@@ -18,12 +8,26 @@ Jakobsen's [Advanced Character Physics](https://www.cs.cmu.edu/afs/cs/academic/c
 informed bounded substeps for the optional scarf. The scarf uses a single
 damped hinge subject to gravity and quadratic relative air drag.
 
+## Changes
+
+The local player defaults to the Innerscene skin. The player's stored UUID
+selects the shirt, trousers and boots palette and whether to attach a scarf.
+
 Keyboard controls are Space for jump, C for crouch, X for crawl, Z for lying
 face down and F for sitting on the ground. Repeating the posture key returns
 to standing. Space first exits a lowered posture. Jumping uses an absolute
 vertical trajectory, tests overhead clearance for authored boxes and checks
 landing against the current support. Near tunnel volumes, jumping is disabled
 until their vertical sweep is implemented.
+
+## Validation and delivery
+
+RulesSmoke and all 16 JavaScript tests passed. Chromium verified the default
+skin, outfit persistence, scarf attachment and all five keyboard actions in
+both renderer paths. The jump reached 0.62 m. The two-profile gait regression
+also passed in both renderers.
+
+[GitHub Pages build `0dd2bfa`](https://github.com/sufficit/sufficit-game-ultima/actions/runs/46102218188)
 
 This delivery covers the local player in both render paths. The standing
 movement collider remains conservative for low postures. The low poses are
