@@ -368,6 +368,11 @@ internal static partial class BrowserExports
         gait[11] = RightArmSwing.Advance(rightForearm, delta);
         LeftArmSwing.AdvanceFingers(leftForearm, delta, gait[12..15]);
         RightArmSwing.AdvanceFingers(rightForearm, delta, gait[15..18]);
+        if (naturalGait && _posture.CanBalance)
+        {
+            LimbPendulums.Apply(_body, result, gait, Balance.Lean.Y, delta);
+            AdvancePlayerBalance(result, gait, speed, delta);
+        }
     }
 
     private static double Floor(double x, double z, double y, bool useVolume)

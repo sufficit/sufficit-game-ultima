@@ -78,7 +78,7 @@ internal static class PlayerSupportChecks
         check("Wind drag deflects the cloth and gravity brings it back", deflected > .05 && Math.Abs(settled) < .01);
 
         var posture = new PlayerPosture();
-        Span<double> pose = stackalloc double[8];
+        Span<double> pose = stackalloc double[9];
         posture.Jump();
         var apex = 0d;
         for (var i = 0; i < 70; i++)

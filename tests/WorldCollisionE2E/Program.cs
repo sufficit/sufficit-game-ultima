@@ -37,6 +37,9 @@ try
         case "outfit-posture":
             await PlayerOutfitPosture.RunAsync(browser);
             break;
+        case "balance":
+            await PlayerBalanceScenario.RunAsync(browser);
+            break;
         case "skin-feet":
             await SkinFootAlignment.RunAsync(browser);
             break;

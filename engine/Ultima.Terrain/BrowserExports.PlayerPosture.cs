@@ -5,12 +5,14 @@ namespace Ultima.Terrain;
 internal static partial class BrowserExports
 {
     private static PlayerPosture _posture = new();
-    private static readonly double[] PostureFrame = new double[8];
+    private static readonly double[] PostureFrame = new double[9];
 
     [JSExport]
     internal static void ResetPlayerPosture()
     {
         _posture = new();
+        Balance.ResetDynamics();
+        LimbPendulums.Reset();
         Array.Clear(PostureFrame);
         _movement.SpeedScale = 1;
     }
@@ -29,7 +31,16 @@ internal static partial class BrowserExports
     {
         if (code is not ("Space" or "KeyC" or "KeyX" or "KeyZ" or "KeyF")) return false;
         if (!down || !_movement.NaturalGait) return true;
-        if (code == "Space") _posture.Jump();
+        if (code == "Space")
+        {
+            var fallen = _posture.Target == PlayerPosture.Kind.Fallen;
+            _posture.Jump();
+            if (fallen && _posture.Target == PlayerPosture.Kind.Standing)
+            {
+                Balance.ResetDynamics();
+                LimbPendulums.Reset();
+            }
+        }
         else _posture.Toggle(code switch
         {
             "KeyC" => PlayerPosture.Kind.Crouching,

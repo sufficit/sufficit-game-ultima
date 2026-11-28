@@ -44,7 +44,7 @@
         const identity = BABYLON.Quaternion.Identity();
         const rotation = new BABYLON.Matrix(), desired = new BABYLON.Matrix(), inverse = new BABYLON.Matrix();
 
-        const headWorld = new BABYLON.Matrix();
+        const headWorld = new BABYLON.Matrix(), restAxes = new BABYLON.Matrix();
 
         function rotate(node, worldRotation) {
             BABYLON.Matrix.FromQuaternionToRef(worldRotation, rotation);
@@ -70,15 +70,17 @@
             rotate(node, turn);
         }
 
-        function apply(weight, support) {
+        function apply(weight, support, yaw) {
             if (weight <= .001) return;
             const actorWorld = actor.getWorldMatrix();
+            BABYLON.Matrix.RotationYToRef(yaw, restAxes);
+            restAxes.multiplyToRef(actorWorld, restAxes);
             // Preserve the face-up head orientation while shaping the supporting neck.
             headWorld.copyFrom(head.computeWorldMatrix(true));
             for (const { node, child, direction } of chains) {
                 node.computeWorldMatrix(true).getTranslationToRef(point);
                 child.computeWorldMatrix(true).getTranslationToRef(current).subtractInPlace(point).normalize();
-                BABYLON.Vector3.TransformNormalToRef(direction, actorWorld, target);
+                BABYLON.Vector3.TransformNormalToRef(direction, restAxes, target);
                 BABYLON.Quaternion.FromUnitVectorsToRef(current, target.normalize(), turn);
                 BABYLON.Quaternion.SlerpToRef(identity, turn, weight, partial);
                 rotate(node, partial);
@@ -87,7 +89,7 @@
             headWorld.multiplyToRef(inverse, desired);
             desired.decompose(undefined, head.rotationQuaternion, undefined);
             head.computeWorldMatrix(true);
-            BABYLON.Vector3.TransformNormalToRef(BABYLON.Axis.Z, actorWorld, target);
+            BABYLON.Vector3.TransformNormalToRef(BABYLON.Axis.Z, restAxes, target);
             BABYLON.Quaternion.RotationAxisToRef(target.normalize(), .12 * weight, turn);
             rotate(head, turn);
             for (const hand of hands) relaxHand(hand, weight);
@@ -95,6 +97,7 @@
             actorWorld.invertToRef(inverse);
             pelvis.computeWorldMatrix(true).getTranslationToRef(point);
             BABYLON.Vector3.TransformCoordinatesToRef(point, inverse, target);
+            visual.position.x -= target.x * weight;
             visual.position.z -= target.z * weight;
             // The 8.2 cm pelvis offset was calibrated against the back of the dressed mesh
             // at reference scale. Supporting the pelvis keeps a low hand from lifting the torso.

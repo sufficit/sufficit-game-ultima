@@ -6,7 +6,7 @@ namespace Ultima.Models.Core;
 /// </summary>
 /// <param name="Species">Stable catalog identifier for the species resolver.</param>
 /// <param name="Height">Standing height in meters, measured from the sole.</param>
-/// <param name="Mass">Body mass in kilograms. Currently stored for future dynamics.</param>
+/// <param name="Mass">Body mass in kilograms for the player dynamics.</param>
 /// <param name="Build">Baseline width multiplier for the body, including limb diameters.</param>
 /// <param name="LegRatio">Hip height as a fraction of standing height.</param>
 /// <param name="FaceWidth">Horizontal multiplier for the head and facial features.</param>

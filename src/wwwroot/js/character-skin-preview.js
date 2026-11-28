@@ -231,11 +231,11 @@
                 shadows?.removeShadowCaster(mesh);
             }
             return function update(support, delta, posture, scarfAngle, floor) {
-                const [, elevation, crouch, prone, sit, , tuck, crawl] = posture;
+                const [, elevation, crouch, prone, sit, , tuck, crawl, fallYaw] = posture;
                 visual.position.y = -rig.body.floorOffset;
                 visual.position.x = rig.skinMotion.sway;
                 visual.position.z = 0;
-                visual.rotation.x = 0;
+                visual.rotation.x = visual.rotation.y = 0;
                 restOnFloor.reset();
                 const actorWorld = rig.root.computeWorldMatrix(true);
                 actorWorld.invertToRef(actorInverse);
@@ -263,7 +263,8 @@
                     const standingY = -rig.body.floorOffset;
                     const lowY = support - rig.root.position.y + .16 * visual.scaling.y;
                     visual.position.y = standingY + (lowY - standingY) * crawl - .60 * visual.scaling.y * sit;
-                    restOnFloor.apply(lying, floor);
+                    visual.rotation.y = lying * fallYaw;
+                    restOnFloor.apply(lying, floor, visual.rotation.y);
                 }
                 scarf?.(support, scarfAngle);
             };

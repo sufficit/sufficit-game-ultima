@@ -472,7 +472,6 @@
         source.connect(animationAudio.destination);
         source.start();
     }
-
     function setupWorldPointer(canvas) {
         // Clique e câmera usam a mesma ponte nos dois renderizadores.
         // Um dedo/mouse arrasta e gira; dois dedos são pinça (zoom) e o giro fica
@@ -561,7 +560,6 @@
         }, { passive: false });
 
     }
-
     // No modo main o Babylon só redimensiona no 'resize' da janela; mudanças de layout
     // (painéis, barra de endereço do celular) também alteram o canvas — observa e
     // redimensiona, como no worker.
@@ -575,7 +573,6 @@
             if (core && core.input) { core.input.resize(canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio || 1); }
         }).observe(canvas);
     }
-
     // Acompanha o tamanho de exibição: ResizeObserver pega mudanças de layout que não
     // são resize de janela (painéis, HUD); matchMedia pega zoom e troca de monitor.
     function watchSize(canvas) {
@@ -599,7 +596,6 @@
         watchDpr();
         push();
     }
-
     function setupVirtualStick(hostId, thumbId, set) {
         const host = document.getElementById(hostId);
         const thumb = document.getElementById(thumbId);
@@ -631,7 +627,6 @@
             set(dx, -dy);
         }
     }
-
     // ---------- Contrato público (igual nos dois modos) ----------
     window.game = window.game || {};
     Object.assign(window.game, {
@@ -697,6 +692,11 @@
         crowdStatus() { return query('crowdStatus'); },
         graphicsStatus() { return query('graphicsStatus'); },
         teleportToGuardian() { return query('teleportToGuardian'); },
+        balance: {
+            setProfile(profile) { return query('balance.setProfile', [profile]); },
+            impulse(lateral, forward) { return query('balance.impulse', [lateral, forward]); },
+            state() { return query('balance.state'); }
+        },
         addRemote(id, name) { post('addRemote', [id, name]); },
         renameRemote(id, name) { post('renameRemote', [id, name]); },
         updateRemote(id, x, z, ry) { post('updateRemote', [id, x, z, ry]); },

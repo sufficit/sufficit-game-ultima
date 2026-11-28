@@ -16,7 +16,7 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
     internal const int ColliderStride = 6;
     private double[] _colliders = [];
     private double _speed, _directionX, _directionZ;
-    private double _stumble, _strength;
+    private double _stumble, _strength, _balanceImpact;
     private const double RecoveryTime = 0.48;
     private const double PivotDuration = 0.42;
     private const double PivotThreshold = 2.2;
@@ -30,6 +30,7 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
         if (_stumble > 0 && !(strength < 0 && _strength > 0)) return;
         _stumble = RecoveryTime;
         _strength = strength;
+        _balanceImpact = strength * .38;
         _speed *= 0.45;
     }
 
@@ -45,7 +46,16 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
         return _stumble > 0 ? Math.Sin(Math.PI * t) * _strength : 0;
     }
 
-    internal void ResetRecovery() => _stumble = 0;
+    internal void ResetRecovery() => (_stumble, _balanceImpact) = (0, 0);
+
+    internal double TakeBalanceImpact()
+    {
+        var impact = _balanceImpact;
+        _balanceImpact = 0;
+        return impact;
+    }
+
+    internal void BrakeForBalance() => _speed *= .65;
 
     internal void SetColliders(double[] values) => _colliders = values;
     internal void Stop()

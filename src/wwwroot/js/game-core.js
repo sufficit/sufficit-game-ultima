@@ -3248,6 +3248,22 @@
             checkNear();
             return true;
         },
+        balance: {
+            setProfile(profile) {
+                return typeof profile === 'string' && terrain?.SetPlayerBalanceProfile(profile) === true;
+            },
+            impulse(lateral, forward) {
+                return Number.isFinite(lateral) && Number.isFinite(forward) &&
+                    terrain?.ApplyPlayerBalanceImpulse(lateral, forward) === true;
+            },
+            state() {
+                if (!terrain) return null;
+                const [profile, state, mass, x, y, z, captureX, captureZ, margin, gravity] = terrain.GetPlayerBalance();
+                return { profile: ['normal', 'drunk', 'focused'][profile],
+                    state: ['stable', 'swaying', 'stumbling', 'fallen'][state], mass, gravity, weight: mass * gravity,
+                    center: { x, y, z }, capture: { x: captureX, z: captureZ }, margin };
+            }
+        },
         addRemote,
         renameRemote,
         updateRemote,

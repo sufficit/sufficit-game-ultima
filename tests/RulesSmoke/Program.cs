@@ -513,6 +513,7 @@ Check("inversão em ambos os sentidos alterna apoio com base compacta",
     turnKeepsSupport && maxPivotWidth < .28);
 
 PlayerSupportChecks.Run(Check);
+PlayerBalanceChecks.Run(Check);
 HumanoidBodyChecks.Run(Check);
 SceneCollisionChecks.Run(Check);
 
