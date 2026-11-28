@@ -158,6 +158,8 @@ one with decreasing amplitude. A unit test verifies the ordered peaks and
 settling. Side-view sampling reduced the index-to-pinky distal span from
 1.30 to 1.09 times the base span. Both body profiles and both renderer paths
 passed the local regression scenario.
+All four runs also passed on [published build `52ac4e4`](https://github.com/sufficit/sufficit-game-ultima/actions/runs/46100686392),
+which supplied the after footage for the finger comparison.
 
 Next action. Exercise the same retargeting on a controlled slope and low
 obstacle. Measure stance drift against the world and frame cost in both
