@@ -1842,6 +1842,9 @@
                 terrain.UseNaturalGait();
                 rig.skinMotion = { yaw: 0, roll: 0, sway: 0, curl: [1, 1] };
                 rig.skinPreview = update;
+                // The imported head already contains its own facial geometry.
+                rig.face.setEnabled(false);
+                rig.eyes.setEnabled(false);
                 modelStatus.skinPreview = 'ready';
             })
             .catch(error => { modelStatus.skinPreview = 'error'; modelStatus.errors.push(entry.id + ': ' + error.message); });

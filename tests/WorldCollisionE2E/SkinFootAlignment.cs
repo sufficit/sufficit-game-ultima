@@ -78,7 +78,17 @@ internal static class SkinFootAlignment
         var build = await CheckBuildAsync(page);
         await WaitAsync(async () => await ReadAsync<string?>(page,
             "async () => (await globalThis.game?.models?.status())?.skinPreview") == "ready", "The Innerscene skin did not load.");
+        await WaitAsync(async () => await ReadAsync<bool>(page, """
+            async () => (await game.models.status()).loaded.some(name => name.startsWith('character.villager v'))
+            """), "The procedural player model did not load.");
         Check(await page.EvaluateAsync<string>("() => game.mode") == Mode, "Expected renderer mode", Mode);
+        Check(await RenderAsync<bool>(page, """
+            () => {
+                const scene = BABYLON.EngineStore.LastCreatedScene;
+                return ['player-brow--1', 'player-brow-1', 'player-mouth'].every(name =>
+                    scene.getMeshByName(name)?.isEnabled() === false);
+            }
+            """), "The imported head hides the procedural eyebrows and mouth.");
         await page.WaitForTimeoutAsync(250);
         var rest = await RenderAsync<Pose>(page, SamplePose);
         var walk = await TravelAsync(page, "w");

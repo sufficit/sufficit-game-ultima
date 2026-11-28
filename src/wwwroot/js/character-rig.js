@@ -265,8 +265,8 @@
         }
 
         function mount(rig, modelId, protos) {
-            rig.face.setEnabled(true);
-            rig.eyes.setEnabled(true);
+            rig.face.setEnabled(!rig.skinPreview);
+            rig.eyes.setEnabled(!rig.skinPreview);
             for (const proto of protos) {
                 const group = proto.name.slice(('model-' + modelId + '-').length);
                 if (rig.legs.length && group === 'legs') {
