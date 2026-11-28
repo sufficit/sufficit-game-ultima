@@ -170,6 +170,7 @@ by foot clearance, and resets the swing contribution during support. The
 fixed-step check verifies delayed pitch, reversal and a stable planted foot.
 Both profiles and renderer paths passed the browser checks for resting wrist
 spacing, arm and finger motion, and ankle alignment.
+The same four browser runs passed on [published build `2e9b868`](https://github.com/sufficit/sufficit-game-ultima/actions/runs/46101124099).
 
 Next action. Exercise the same retargeting on a controlled slope and low
 obstacle. Measure stance drift against the world and frame cost in both
