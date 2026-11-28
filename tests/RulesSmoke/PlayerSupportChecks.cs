@@ -60,6 +60,21 @@ internal static class PlayerSupportChecks
         CheckSkinRetargeting(check);
         CheckGaitPose(check);
         CheckSkinHeight(check);
+        CheckHandSwing(check);
+    }
+
+    private static void CheckHandSwing(Action<string, bool> check)
+    {
+        var wrist = new PlayerHandSwing();
+        var first = wrist.Advance(.3, 1d / 60);
+        var second = wrist.Advance(.3, 1d / 60);
+        double settled = 0;
+        for (var frame = 0; frame < 60; frame++) settled = wrist.Advance(.3, 1d / 60);
+        var reversal = wrist.Advance(-.3, 1d / 60);
+        check("The wrist follows the forearm with bounded lag, then settles",
+            first is < 0 and > -.1 && second < first && Math.Abs(settled) < .001 && reversal is > 0 and < .1);
+        wrist.Reset();
+        check("Teleport clears residual wrist motion", wrist.Advance(0, .016) == 0);
     }
 
     private static void CheckSkinHeight(Action<string, bool> check)
@@ -96,7 +111,7 @@ internal static class PlayerSupportChecks
         check("The pelvis moves toward the support side and the running elbows bend further",
             leftLeads[2] < 0 && leftLeads[8] < rightLeads[8]);
         PlayerGaitPose.Write(leftLeads, Math.PI / 2, 0, PlayerMovement.RunSpeed, 1.75);
-        check("The gait blends back into the relaxed body pose", leftLeads.IndexOfAnyExcept(0d) < 0);
+        check("The gait blends back into the relaxed body pose", leftLeads[..10].IndexOfAnyExcept(0d) < 0);
     }
 
     private static void CheckSkinRetargeting(Action<string, bool> check)

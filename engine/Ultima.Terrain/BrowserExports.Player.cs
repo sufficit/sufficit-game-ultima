@@ -45,6 +45,8 @@ internal static partial class BrowserExports
         CameraObstacles.Set([], 0);
         PlayerFeet = new(body.LegLength / DefaultBody.LegLength, body.Build * body.Height / DefaultBody.Height);
         SkinHeight.Reset();
+        LeftHandSwing.Reset();
+        RightHandSwing.Reset();
         Input.Clear();
         return JsonSerializer.Serialize(new PlayerBodyFrame(body, PlayerAnatomy.Create("humano", body.Height, body)),
             PlayerBodyJson.Default.PlayerBodyFrame);
@@ -55,6 +57,8 @@ internal static partial class BrowserExports
     {
         PlayerFeet.Reset();
         SkinHeight.Reset();
+        LeftHandSwing.Reset();
+        RightHandSwing.Reset();
         _movement.ResetRecovery();
     }
 
@@ -348,7 +352,12 @@ internal static partial class BrowserExports
         result[44] = PlayerPose.KneeSwivel(contact[3]);
         result[45] = pivot is > 0 and < 1 ? -Math.Sign(_movement.PivotTurn) * 0.23 * Math.Sin(Math.PI * pivot) : 0;
         var gaitWeight = result[1] * (1 - Math.Sin(Math.PI * Math.Clamp(progress, 0, 1)));
-        PlayerGaitPose.Write(result[GaitChannelsStart..], result[0], gaitWeight, speed, _body.Height, walkSpeed, runSpeed);
+        var gait = result[GaitChannelsStart..];
+        PlayerGaitPose.Write(gait, result[0], gaitWeight, speed, _body.Height, walkSpeed, runSpeed);
+        gait[10] = LeftHandSwing.Advance(result[10] + gait[8], delta);
+        gait[11] = RightHandSwing.Advance(result[11] + gait[9], delta);
+        gait[12] = 1 + .3 * gait[10]; // Subtle finger response to wrist flexion.
+        gait[13] = 1 + .3 * gait[11];
     }
 
     private static double Floor(double x, double z, double y, bool useVolume)

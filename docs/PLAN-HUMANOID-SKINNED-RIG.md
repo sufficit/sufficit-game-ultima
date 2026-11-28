@@ -26,6 +26,9 @@ and contact solving in C#, and validate the result on the existing game paths.
    Measure vertical bounce on a repeatable route. Tune travel pace and damp
    presentation height against real support while keeping both ankle targets.
    Repeat the measurements and verify the published preview.
+   Calibrate the imported arm rest pose against the motion comparison, add
+   damped hand follow-through and relaxed finger curl, then re-record the
+   profile and verify the published build.
 4. [pending] Validate walking, stopping, a 180° turn, stepping over a low log,
    and walking on a slope with two different body profiles. Measure planted
    foot drift and frame cost against the current rig under the same conditions.
@@ -128,6 +131,20 @@ The installed [unity-animation](https://github.com/gamedev-skills/awesome-gamede
 and [physics-tuning](https://github.com/gamedev-skills/awesome-gamedev-agent-skills/tree/c6ca6c41c839b68319ffc08430b99ab768debc32/skills/disciplines/physics-tuning)
 skills informed speed-driven blending, damping and the choice of one owner
 for the final visual height.
+
+## Arm and hand follow-through
+
+A side-view recording of the previous preview measured 46 degrees of elbow
+flexion at rest and 50–63 degrees during walking, compared with 2–27 degrees
+in UFSC's selected neutral male motion-capture trial. The recorded index,
+middle and thumb joints kept one local rotation throughout the old clip.
+
+The preview now corrects the imported forearm rest orientation. Two damped
+states per wrist respond to the forearm swing. The fingers use a progressive
+resting curl and a small wrist-dependent change. The new local recording
+measured about 13 degrees at rest and 17–30 degrees during walking. Both
+renderer paths and both body profiles passed wrist, finger and ankle checks.
+[UFSC locomotion dataset](https://tecmidia.ufsc.br/en/locomotion-dataset/)
 
 Next action. Exercise the same retargeting on a controlled slope and low
 obstacle. Measure stance drift against the world and frame cost in both

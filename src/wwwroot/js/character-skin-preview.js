@@ -9,14 +9,52 @@
                 return [
                     ['clavicle_' + side, rig.clavicles[index]],
                     ['upperarm_' + side, rig.shoulders[index], index === 0 ? 0.5 : -0.5],
-                    ['lowerarm_' + side, rig.elbows[index], index === 0 ? 0.5 : -0.5],
-                    ['hand_' + side, rig.wrists[index], index === 0 ? 0.5 : -0.5],
+                    ['lowerarm_' + side, rig.elbows[index], index === 0 ? 0.5 : -0.5, 0.59],
+                    ['hand_' + side, rig.wrists[index], index === 0 ? 0.5 : -0.5, 0.59],
                     ['thigh_' + side, leg.hip],
                     ['calf_' + side, leg.knee],
                     ['foot_' + side, leg.ankle]
                 ];
             })
         ];
+    }
+
+    function bindFingers(BABYLON, skeleton, actor) {
+        const digitCurls = [
+            ['index', [.12, .22, .09]], ['middle', [.16, .27, .12]],
+            ['ring', [.20, .32, .14]], ['pinky', [.25, .36, .16]], ['thumb', [.08, .13, .07]]
+        ];
+        const joint = name => skeleton.bones.find(bone => bone.name === name)?.getTransformNode();
+        const position = node => node.computeWorldMatrix(true).getTranslation();
+        const delta = new BABYLON.Quaternion();
+        const hands = ['l', 'r'].map((side, index) => {
+            const wrist = position(joint('hand_' + side));
+            const middle = position(joint('middle_01_' + side)).subtract(wrist);
+            const across = position(joint('index_01_' + side)).subtract(position(joint('pinky_01_' + side)));
+            const palm = BABYLON.Vector3.Cross(across, middle).normalize();
+            const inward = BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(index === 0 ? 1 : -1, 0, 0), actor);
+            if (BABYLON.Vector3.Dot(palm, inward) < 0) palm.negateInPlace();
+            return digitCurls.flatMap(([digit, curls]) => {
+                const chain = curls.map((_, segment) => joint(digit + '_0' + (segment + 1) + '_' + side));
+                return chain.map((node, segment) => {
+                    const next = Math.min(segment + 1, 2), previous = Math.min(segment, 1);
+                    const along = position(chain[next]).subtract(position(chain[previous]));
+                    const inverse = node.computeWorldMatrix(true).clone().invert();
+                    // Compute the curl axis in bone space, including the imported mirror transform.
+                    const axis = BABYLON.Vector3.Cross(BABYLON.Vector3.TransformNormal(along, inverse),
+                        BABYLON.Vector3.TransformNormal(palm, inverse)).normalize();
+                    return { node, axis, rest: node.rotationQuaternion.clone(), curl: curls[segment] };
+                });
+            });
+        });
+        return scales => {
+            for (let side = 0; side < hands.length; side++) {
+                for (const { node, axis, rest, curl } of hands[side]) {
+                    BABYLON.Quaternion.RotationAxisToRef(axis, curl * scales[side], delta);
+                    rest.multiplyToRef(delta, node.rotationQuaternion);
+                }
+            }
+        };
     }
 
     function fitLegs(BABYLON, rig, visual, targets, solve) {
@@ -82,9 +120,9 @@
         const parentInverse = new BABYLON.Matrix();
         const position = new BABYLON.Vector3();
         rig.root.computeWorldMatrix(true).invertToRef(actorInverse);
-        const driverRest = drivers(rig).map(([name, node, armRest]) => {
+        const driverRest = drivers(rig).map(([name, node, armRest, forearmRest]) => {
             node.computeWorldMatrix(true).multiplyToRef(actorInverse, actorLocal);
-            return { name, node, armRest, driverRestY: actorLocal.getTranslationToRef(position).y,
+            return { name, node, armRest, forearmRest, driverRestY: actorLocal.getTranslationToRef(position).y,
                 inverseRest: actorLocal.invertToRef(new BABYLON.Matrix()) };
         });
 
@@ -110,7 +148,10 @@
                 binding.rest = binding.target.computeWorldMatrix(true).multiply(actorInverse);
                 // Lower each arm from the source A-pose around actor Z before applying gait deltas.
                 if (binding.armRest) binding.rest.multiplyToRef(BABYLON.Matrix.RotationZ(binding.armRest), binding.rest);
+                // The source forearms start flexed. Keep a slight bend when the hands hang at rest.
+                if (binding.forearmRest) binding.rest.multiplyToRef(BABYLON.Matrix.RotationX(binding.forearmRest), binding.rest);
             }
+            const curlFingers = bindFingers(BABYLON, skeleton, rig.root.getWorldMatrix());
             const alignFeet = fitLegs(BABYLON, rig, visual, targets, solveLegs);
 
             // Let Babylon deform the display mesh. The procedural rig still provides all contacts and hitboxes.
@@ -145,6 +186,7 @@
                     // Preserve bind translations and scale. C# drives the rotation of each mapped joint.
                     desired.decompose(undefined, target.rotationQuaternion, undefined);
                 }
+                curlFingers(rig.skinMotion.curl);
                 alignFeet(support, delta);
             };
         };

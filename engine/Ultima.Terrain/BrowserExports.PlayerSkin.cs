@@ -6,6 +6,8 @@ internal static partial class BrowserExports
 {
     private static readonly double[] SkinLegResults = new double[2 * PlayerSkinLegs.LegOutputSize + 1];
     private static readonly PlayerSkinHeight SkinHeight = new();
+    private static readonly PlayerHandSwing LeftHandSwing = new();
+    private static readonly PlayerHandSwing RightHandSwing = new();
 
     [JSExport]
     internal static void UseNaturalGait() => _movement.NaturalGait = true;

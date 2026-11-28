@@ -31,7 +31,16 @@ internal static class SkinFootAlignment
             const joints = ['pelvis', 'spine_03', 'clavicle_l', 'clavicle_r', 'lowerarm_l', 'lowerarm_r']
                 .map(name => joint(name).rotationQuaternion.asArray());
             const headY = position(joint('head')).y;
-            return { x: player.position.x, z: player.position.z, yaw: player.rotation.y, feet, scale, hands, joints, headY };
+            const arms = ['l', 'r'].map(side => {
+                const elbow = position(joint('lowerarm_' + side));
+                const hand = joint('hand_' + side);
+                const upper = elbow.subtract(position(joint('upperarm_' + side))).normalize();
+                const forearm = position(hand).subtract(elbow).normalize();
+                const bend = Math.acos(Math.max(-1, Math.min(1, BABYLON.Vector3.Dot(upper, forearm))));
+                return { bend, wrist: hand.rotationQuaternion.asArray(),
+                    finger: joint('index_02_' + side).rotationQuaternion.asArray() };
+            });
+            return { x: player.position.x, z: player.position.z, yaw: player.rotation.y, feet, scale, hands, joints, headY, arms };
         }
         """;
 
@@ -92,11 +101,18 @@ internal static class SkinFootAlignment
         var handSeparation = walk.Select(pose => pose.Hands[0] - pose.Hands[1]).ToArray();
         var levelTrail = walk.Where(pose => pose.Z is > .55 and < 1.80).ToArray();
         var headRange = levelTrail.Length > 0 ? levelTrail.Max(pose => pose.HeadY) - levelTrail.Min(pose => pose.HeadY) : 0;
-        var evidence = new { build, mode = Mode, custom, rest.Scale, peak, heightError, lengthError, handTravel, jointMotion, headRange };
+        var elbowRest = rest.Arms.Max(arm => arm.Bend);
+        var elbowWalk = walk.Max(pose => pose.Arms.Max(arm => arm.Bend));
+        var wristMotion = rest.Arms.Select((arm, i) => walk.Max(pose => AngleBetween(arm.Wrist, pose.Arms[i].Wrist))).ToArray();
+        var fingerMotion = rest.Arms.Select((arm, i) => walk.Max(pose => AngleBetween(arm.Finger, pose.Arms[i].Finger))).ToArray();
+        var evidence = new { build, mode = Mode, custom, rest.Scale, peak, heightError, lengthError, handTravel,
+            jointMotion, headRange, elbowRest, elbowWalk, wristMotion, fingerMotion };
         Check(levelTrail.Length >= 3 && headRange < .025, "The head stays steady across the level trail.", evidence);
         Check(handTravel.All(distance => distance > .10) && handSeparation.Min() < -.06 && handSeparation.Max() > .06,
             "Both hands swing in opposite phases of the stride.", evidence);
         Check(jointMotion.All(angle => angle > .025), "Pelvis, thorax, clavicles and elbows participate in the gait.", evidence);
+        Check(elbowRest < .35 && elbowWalk < .63 && wristMotion.All(angle => angle > .10) &&
+            fingerMotion.All(angle => angle is > .004 and < .04), "Relaxed arms show wrist lag and subtle finger motion.", evidence);
         Check(!custom || Math.Abs(rest.Scale * 1.6803 - 1.9) < .001, "The custom profile scaled the skin.", evidence);
         Check(peak < .005 && heightError < .005 && lengthError < .001,
             "The skin tracks both ankle targets and preserves leg lengths.", evidence);
@@ -128,6 +144,8 @@ internal static class SkinFootAlignment
     private static double AngleBetween(double[] a, double[] b)
         => 2 * Math.Acos(Math.Clamp(Math.Abs(a.Zip(b, (x, y) => x * y).Sum()), 0, 1));
 
-    private sealed record Pose(double X, double Z, double Yaw, Foot[] Feet, double Scale, double[] Hands, double[][] Joints, double HeadY);
+    private sealed record Pose(double X, double Z, double Yaw, Foot[] Feet, double Scale, double[] Hands, double[][] Joints,
+        double HeadY, Arm[] Arms);
     private sealed record Foot(double Error, double HeightDelta, double Femur, double Tibia);
+    private sealed record Arm(double Bend, double[] Wrist, double[] Finger);
 }
