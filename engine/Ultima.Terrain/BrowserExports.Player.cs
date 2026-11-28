@@ -354,10 +354,12 @@ internal static partial class BrowserExports
         var gaitWeight = result[1] * (1 - Math.Sin(Math.PI * Math.Clamp(progress, 0, 1)));
         var gait = result[GaitChannelsStart..];
         PlayerGaitPose.Write(gait, result[0], gaitWeight, speed, _body.Height, walkSpeed, runSpeed);
-        gait[10] = LeftHandSwing.Advance(result[10] + gait[8], delta);
-        gait[11] = RightHandSwing.Advance(result[11] + gait[9], delta);
-        gait[12] = 1 + .3 * gait[10]; // Subtle finger response to wrist flexion.
-        gait[13] = 1 + .3 * gait[11];
+        var leftForearm = result[2] + result[10] + gait[8];
+        var rightForearm = result[2] + result[11] + gait[9];
+        gait[10] = LeftHandSwing.Advance(leftForearm, delta);
+        gait[11] = RightHandSwing.Advance(rightForearm, delta);
+        LeftHandSwing.AdvanceFingers(leftForearm, delta, gait[12..15]);
+        RightHandSwing.AdvanceFingers(rightForearm, delta, gait[15..18]);
     }
 
     private static double Floor(double x, double z, double y, bool useVolume)

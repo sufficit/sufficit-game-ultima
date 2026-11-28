@@ -75,6 +75,28 @@ internal static class PlayerSupportChecks
             first is < 0 and > -.1 && second < first && Math.Abs(settled) < .001 && reversal is > 0 and < .1);
         wrist.Reset();
         check("Teleport clears residual wrist motion", wrist.Advance(0, .016) == 0);
+        Span<double> fingers = stackalloc double[3];
+        Span<double> peaks = stackalloc double[3];
+        Span<int> peakFrames = stackalloc int[3];
+        peaks.Clear();
+        peakFrames.Clear();
+        for (var frame = 0; frame < 90; frame++)
+        {
+            const double step = 1d / 60;
+            wrist.Advance(.3, step);
+            wrist.AdvanceFingers(.3, step, fingers);
+            for (var joint = 0; joint < fingers.Length; joint++)
+            {
+                var excursion = Math.Abs(fingers[joint]);
+                if (excursion <= peaks[joint]) continue;
+                peaks[joint] = excursion;
+                peakFrames[joint] = frame;
+            }
+        }
+        check("Finger motion reaches the base, middle and tip in sequence",
+            peaks[0] > peaks[1] && peaks[1] > peaks[2] && peaks[2] > .001 &&
+            peakFrames[0] < peakFrames[1] && peakFrames[1] < peakFrames[2]);
+        check("The whole hand settles after the forearm stops", fingers.ToArray().All(angle => Math.Abs(angle) < .001));
     }
 
     private static void CheckSkinHeight(Action<string, bool> check)

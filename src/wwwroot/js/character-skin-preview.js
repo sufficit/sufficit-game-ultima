@@ -21,8 +21,8 @@
 
     function bindFingers(BABYLON, skeleton, actor) {
         const digitCurls = [
-            ['index', [.12, .22, .09]], ['middle', [.16, .27, .12]],
-            ['ring', [.20, .32, .14]], ['pinky', [.25, .36, .16]], ['thumb', [.08, .13, .07]]
+            ['index', [.15, .25, .10]], ['middle', [.19, .29, .13]],
+            ['ring', [.23, .34, .15]], ['pinky', [.28, .38, .17]], ['thumb', [.08, .13, .07]]
         ];
         const joint = name => skeleton.bones.find(bone => bone.name === name)?.getTransformNode();
         const position = node => node.computeWorldMatrix(true).getTranslation();
@@ -34,6 +34,9 @@
             const palm = BABYLON.Vector3.Cross(across, middle).normalize();
             const inward = BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(index === 0 ? 1 : -1, 0, 0), actor);
             if (BABYLON.Vector3.Dot(palm, inward) < 0) palm.negateInPlace();
+            const center = position(joint('middle_02_' + side)).subtract(position(joint('middle_01_' + side)));
+            const planar = direction => direction.subtract(palm.scale(BABYLON.Vector3.Dot(direction, palm))).normalize();
+            const forward = planar(center);
             return digitCurls.flatMap(([digit, curls]) => {
                 const chain = curls.map((_, segment) => joint(digit + '_0' + (segment + 1) + '_' + side));
                 return chain.map((node, segment) => {
@@ -43,14 +46,27 @@
                     // Compute the curl axis in bone space, including the imported mirror transform.
                     const axis = BABYLON.Vector3.Cross(BABYLON.Vector3.TransformNormal(along, inverse),
                         BABYLON.Vector3.TransformNormal(palm, inverse)).normalize();
-                    return { node, axis, rest: node.rotationQuaternion.clone(), curl: curls[segment] };
+                    const rest = node.rotationQuaternion.clone();
+                    if (segment === 0 && digit !== 'thumb') {
+                        // Bring the fingers toward the middle finger within the palm plane.
+                        const direction = planar(along);
+                        const separation = Math.atan2(BABYLON.Vector3.Dot(palm, BABYLON.Vector3.Cross(direction, forward)),
+                            BABYLON.Vector3.Dot(direction, forward));
+                        const localPalm = BABYLON.Vector3.TransformNormal(palm, inverse).normalize();
+                        const handedness = inverse.determinant() < 0 ? -1 : 1;
+                        BABYLON.Quaternion.RotationAxisToRef(localPalm,
+                            handedness * Math.max(-.28, Math.min(.28, separation * .80)), delta);
+                        rest.multiplyInPlace(delta);
+                    }
+                    return { node, axis, rest, curl: curls[segment], channel: index * 3 + segment,
+                        response: digit === 'thumb' ? .38 : 1 };
                 });
             });
         });
-        return scales => {
-            for (let side = 0; side < hands.length; side++) {
-                for (const { node, axis, rest, curl } of hands[side]) {
-                    BABYLON.Quaternion.RotationAxisToRef(axis, curl * scales[side], delta);
+        return angles => {
+            for (const hand of hands) {
+                for (const { node, axis, rest, curl, channel, response } of hand) {
+                    BABYLON.Quaternion.RotationAxisToRef(axis, curl + angles[channel] * response, delta);
                     rest.multiplyToRef(delta, node.rotationQuaternion);
                 }
             }
@@ -186,7 +202,7 @@
                     // Preserve bind translations and scale. C# drives the rotation of each mapped joint.
                     desired.decompose(undefined, target.rotationQuaternion, undefined);
                 }
-                curlFingers(rig.skinMotion.curl);
+                curlFingers(rig.skinMotion.fingerAngles);
                 alignFeet(support, delta);
             };
         };

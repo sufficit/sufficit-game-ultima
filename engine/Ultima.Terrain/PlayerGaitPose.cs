@@ -2,7 +2,7 @@ namespace Ultima.Terrain;
 
 internal static class PlayerGaitPose
 {
-    internal const int ChannelCount = 14;
+    internal const int ChannelCount = 18;
 
     // These presentation channels follow the same phase as the foot cycle.
     // At phase zero the left foot supports the body. A quarter cycle later

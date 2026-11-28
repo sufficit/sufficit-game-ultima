@@ -29,6 +29,9 @@ and contact solving in C#, and validate the result on the existing game paths.
    Calibrate the imported arm rest pose against the motion comparison, add
    damped hand follow-through and relaxed finger curl, then re-record the
    profile and verify the published build.
+   Reduce the imported finger splay and drive each phalanx with its own
+   damped response to the preceding segment. Compare the hand in profile
+   and verify the browser regressions before publishing.
 4. [pending] Validate walking, stopping, a 180° turn, stepping over a low log,
    and walking on a slope with two different body profiles. Measure planted
    foot drift and frame cost against the current rig under the same conditions.
@@ -147,6 +150,14 @@ renderer paths and both body profiles passed wrist, finger and ankle checks.
 [Published build `a73b02f`](https://github.com/sufficit/sufficit-game-ultima/actions/runs/46099867470)
 passed all four browser runs and supplied the after footage for the comparison.
 [UFSC locomotion dataset](https://tecmidia.ufsc.br/en/locomotion-dataset/)
+
+The next pass brought the finger bases toward the middle finger's direction
+in the palm plane and increased their resting curl. The torso, shoulder and
+elbow pitch feed the damped wrist, and each finger segment follows the previous
+one with decreasing amplitude. A unit test verifies the ordered peaks and
+settling. Side-view sampling reduced the index-to-pinky distal span from
+1.30 to 1.09 times the base span. Both body profiles and both renderer paths
+passed the local regression scenario.
 
 Next action. Exercise the same retargeting on a controlled slope and low
 obstacle. Measure stance drift against the world and frame cost in both

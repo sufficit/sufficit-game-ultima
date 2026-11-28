@@ -37,8 +37,10 @@ internal static class SkinFootAlignment
                 const upper = elbow.subtract(position(joint('upperarm_' + side))).normalize();
                 const forearm = position(hand).subtract(elbow).normalize();
                 const bend = Math.acos(Math.max(-1, Math.min(1, BABYLON.Vector3.Dot(upper, forearm))));
+                const span = segment => BABYLON.Vector3.Distance(position(joint('index_' + segment + '_' + side)),
+                    position(joint('pinky_' + segment + '_' + side)));
                 return { bend, wrist: hand.rotationQuaternion.asArray(),
-                    finger: joint('index_02_' + side).rotationQuaternion.asArray() };
+                    finger: joint('index_02_' + side).rotationQuaternion.asArray(), spread: span('03') / span('01') };
             });
             return { x: player.position.x, z: player.position.z, yaw: player.rotation.y, feet, scale, hands, joints, headY, arms };
         }
@@ -115,14 +117,16 @@ internal static class SkinFootAlignment
         var elbowWalk = walk.Max(pose => pose.Arms.Max(arm => arm.Bend));
         var wristMotion = rest.Arms.Select((arm, i) => walk.Max(pose => AngleBetween(arm.Wrist, pose.Arms[i].Wrist))).ToArray();
         var fingerMotion = rest.Arms.Select((arm, i) => walk.Max(pose => AngleBetween(arm.Finger, pose.Arms[i].Finger))).ToArray();
+        var fingerSpread = poses.Max(pose => pose.Arms.Max(arm => arm.Spread));
         var evidence = new { build, mode = Mode, custom, rest.Scale, peak, heightError, lengthError, handTravel,
-            jointMotion, headRange, elbowRest, elbowWalk, wristMotion, fingerMotion };
+            jointMotion, headRange, elbowRest, elbowWalk, wristMotion, fingerMotion, fingerSpread };
         Check(levelTrail.Length >= 3 && headRange < .025, "The head stays steady across the level trail.", evidence);
         Check(handTravel.All(distance => distance > .10) && handSeparation.Min() < -.06 && handSeparation.Max() > .06,
             "Both hands swing in opposite phases of the stride.", evidence);
         Check(jointMotion.All(angle => angle > .025), "Pelvis, thorax, clavicles and elbows participate in the gait.", evidence);
         Check(elbowRest < .35 && elbowWalk < .63 && wristMotion.All(angle => angle > .10) &&
             fingerMotion.All(angle => angle is > .004 and < .04), "Relaxed arms show wrist lag and subtle finger motion.", evidence);
+        Check(fingerSpread < 1.15, "The relaxed fingers stay close together at rest and in motion.", evidence);
         Check(!custom || Math.Abs(rest.Scale * 1.6803 - 1.9) < .001, "The custom profile scaled the skin.", evidence);
         Check(peak < .005 && heightError < .005 && lengthError < .001,
             "The skin tracks both ankle targets and preserves leg lengths.", evidence);
@@ -157,5 +161,5 @@ internal static class SkinFootAlignment
     private sealed record Pose(double X, double Z, double Yaw, Foot[] Feet, double Scale, double[] Hands, double[][] Joints,
         double HeadY, Arm[] Arms);
     private sealed record Foot(double Error, double HeightDelta, double Femur, double Tibia);
-    private sealed record Arm(double Bend, double[] Wrist, double[] Finger);
+    private sealed record Arm(double Bend, double[] Wrist, double[] Finger, double Spread);
 }

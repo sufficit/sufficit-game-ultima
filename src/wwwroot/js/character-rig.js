@@ -260,8 +260,8 @@
                 rig.clavicles[side].rotation.z = frame[index + 7];
                 rig.elbows[side].rotation.x = frame[index + 8 + side];
                 rig.wrists[side].rotation.x = frame[index + 10 + side];
-                rig.skinMotion.curl[side] = frame[index + 12 + side];
             }
+            for (let joint = 0; joint < 6; joint++) rig.skinMotion.fingerAngles[joint] = frame[index + 12 + joint];
         }
 
         function mount(rig, modelId, protos) {

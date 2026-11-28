@@ -1840,7 +1840,7 @@
             .then(([, bytes]) => skin.load(BABYLON, scene, bytes, container => bind(container, sceneShadows, PLAYER_LAYER)))
             .then(update => {
                 terrain.UseNaturalGait();
-                rig.skinMotion = { yaw: 0, roll: 0, sway: 0, curl: [1, 1] };
+                rig.skinMotion = { yaw: 0, roll: 0, sway: 0, fingerAngles: new Float64Array(6) };
                 rig.skinPreview = update;
                 // The imported head already contains its own facial geometry.
                 rig.face.setEnabled(false);
