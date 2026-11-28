@@ -9,9 +9,12 @@ internal static class PlayerOutfitPosture
             const player = scene.getTransformNodeByName('player');
             const skin = scene.getTransformNodeByName('innerscene-player-preview');
             const rig = scene.skeletons.find(skeleton => skeleton.bones.length === 53);
-            const head = rig.bones.find(bone => bone.name === 'head').getTransformNode();
+            const joint = name => rig.bones.find(bone => bone.name === name).getTransformNode();
+            const head = joint('head').computeWorldMatrix(true).getTranslation();
+            const pelvis = joint('pelvis').computeWorldMatrix(true).getTranslation();
             return { x: player.position.x, y: player.position.y, z: player.position.z, pitch: skin.rotation.x,
-                headY: head.computeWorldMatrix(true).getTranslation().y };
+                headY: head.y, pelvisY: pelvis.y,
+                pelvisOffset: Math.hypot(pelvis.x - player.position.x, pelvis.z - player.position.z) };
         }
         """;
 
@@ -63,10 +66,13 @@ internal static class PlayerOutfitPosture
         Check(Distance(crawl, crawled) > .12, "The player can move while crawling.", new { crawl, crawled });
 
         await page.Keyboard.PressAsync("z");
-        await page.WaitForTimeoutAsync(350);
+        await WaitAsync(async () => (await SampleAsync(page)).Pitch < -1.55, "The player did not roll onto their back.");
         var lying = await SampleAsync(page);
         await MoveAsync(page);
-        Check(lying.Pitch > 1.45 && Distance(lying, await SampleAsync(page)) < .02, "The player lies in place.");
+        Check(Distance(lying, await SampleAsync(page)) < .02, "The player lies in place.");
+        Check(lying.PelvisOffset < .15 && lying.HeadY < idle.HeadY - 1 &&
+            Math.Abs(lying.HeadY - lying.PelvisY) < .25,
+            "The supine pose stays centered and low.", new { idle, lying });
 
         await page.Keyboard.PressAsync("f");
         await WaitAsync(async () => (await SampleAsync(page)) is { Pitch: < .1 } sitting && sitting.HeadY < idle.HeadY - .40,
@@ -81,7 +87,7 @@ internal static class PlayerOutfitPosture
         var restoredOutfit = await WaitForOutfitAsync(page);
         Check(outfit.SequenceEqual(restoredOutfit), "The same identity keeps its outfit after reload.");
         Check(errors.IsEmpty, "Browser errors during outfit and posture checks.", errors);
-        Log(new { build, mode = Mode, outfit, jumpHeight = apex - idle.Y, crawlDistance = Distance(crawl, crawled) });
+        Log(new { build, mode = Mode, outfit, jumpHeight = apex - idle.Y, crawlDistance = Distance(crawl, crawled), lying });
     }
 
     private static async Task<int[]> WaitForOutfitAsync(IPage page)
@@ -102,5 +108,5 @@ internal static class PlayerOutfitPosture
         await page.WaitForTimeoutAsync(300);
     }
 
-    private sealed record Pose(double X, double Y, double Z, double Pitch, double HeadY);
+    private sealed record Pose(double X, double Y, double Z, double Pitch, double HeadY, double PelvisY, double PelvisOffset);
 }

@@ -214,6 +214,7 @@
                 if (binding.forearmRest) binding.rest.multiplyToRef(BABYLON.Matrix.RotationX(binding.forearmRest), binding.rest);
             }
             const curlFingers = bindFingers(BABYLON, skeleton, rig.root.getWorldMatrix());
+            const restOnFloor = root.UltimaCharacterRestPose.bind(BABYLON, skeleton, visual, rig.root);
             const alignFeet = fitLegs(BABYLON, rig, visual, targets, solveLegs);
 
             // Let Babylon deform the display mesh. The procedural rig still provides all contacts and hitboxes.
@@ -230,9 +231,10 @@
                 shadows?.removeShadowCaster(mesh);
             }
             return function update(support, delta, posture, scarfAngle) {
-                const [, elevation, crouch, prone, sit, , tuck] = posture;
+                const [, elevation, crouch, prone, sit, , tuck, crawl] = posture;
                 visual.position.y = -rig.body.floorOffset;
                 visual.position.x = rig.skinMotion.sway;
+                visual.position.z = 0;
                 visual.rotation.x = 0;
                 const actorWorld = rig.root.computeWorldMatrix(true);
                 actorWorld.invertToRef(actorInverse);
@@ -255,10 +257,12 @@
                 curlFingers(rig.skinMotion.fingerAngles);
                 if (prone < .025 && sit < .025 && tuck < .025) alignFeet(support + elevation - crouch, delta);
                 if (prone || sit) {
-                    visual.rotation.x = prone * Math.PI / 2;
+                    const lying = Math.max(0, prone - crawl);
+                    visual.rotation.x = (crawl - lying) * Math.PI / 2;
                     const standingY = -rig.body.floorOffset;
                     const lowY = support - rig.root.position.y + .16 * visual.scaling.y;
-                    visual.position.y = standingY + (lowY - standingY) * prone - .60 * visual.scaling.y * sit;
+                    visual.position.y = standingY + (lowY - standingY) * crawl - .60 * visual.scaling.y * sit;
+                    restOnFloor(lying, support);
                 }
                 scarf?.(support, scarfAngle);
             };

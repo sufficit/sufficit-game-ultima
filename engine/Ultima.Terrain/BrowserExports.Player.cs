@@ -355,6 +355,8 @@ internal static partial class BrowserExports
         var gaitWeight = result[1] * (1 - Math.Sin(Math.PI * Math.Clamp(progress, 0, 1)));
         var gait = result[GaitChannelsStart..];
         PlayerGaitPose.Write(gait, result[0], gaitWeight, speed, _body.Height, walkSpeed, runSpeed);
+        if (naturalGait)
+            PlayerGaitPose.ApplyAuthoredWalk(result, gait, gaitWeight, speed, _body.Height, walkSpeed, runSpeed);
         var leftForearm = result[2] + result[10] + gait[8];
         var rightForearm = result[2] + result[11] + gait[9];
         gait[10] = LeftHandSwing.Advance(leftForearm, delta);

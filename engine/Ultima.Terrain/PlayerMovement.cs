@@ -6,7 +6,9 @@ internal sealed partial class PlayerMovement(double height, double kneeHeight, d
     internal const double RunSpeed = 6.5;
     internal bool NaturalGait { get; set; }
     internal double SpeedScale { get; set; } = 1;
-    internal double WalkingSpeed => NaturalGait ? 1.65 : WalkSpeed;
+    // Metres per second. Pair the dressed avatar's walking pace with its ground-locked stride
+    // to avoid a near-running step cadence at a normal walking input.
+    internal double WalkingSpeed => NaturalGait ? 1.50 : WalkSpeed;
     internal double RunningSpeed => NaturalGait ? 4.15 : RunSpeed;
     private readonly double _radius = radius;
     private readonly double _standingHeight = height;

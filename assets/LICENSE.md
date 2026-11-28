@@ -51,3 +51,15 @@ ortográficas foram convertidas em WebP sRGB de 256 × 256 para publicação.
 
 The [procedural humanoid reference](characters/README.md) is original Ultima
 work and uses the [repository MIT license](../LICENSE).
+
+## Authored humanoid motion
+
+The compact animation data in [PlayerAuthoredWalk.cs](../engine/Ultima.Terrain/PlayerAuthoredWalk.cs)
+and [character-rest-pose.js](../src/wwwroot/js/character-rest-pose.js) is adapted
+from the CC0 Universal Animation Library packs by Quaternius. The full source
+GLBs are development inputs and are absent from the web build.
+
+| Source pack and clip | Local source file SHA-256 | Adaptation |
+| --- | --- | --- |
+| Universal Animation Library Standard, `Walk_Loop` | `69591853d817488edaa8fd9bf8fc1d821eaeaf789f8627b3cd23b41c4ed67997` | Centered upper-body and pelvis curves sampled around the foot contact phase. |
+| Universal Animation Library 2 Standard, `LayToIdle` | `8cee20ab1bc55130092447e810e26df22dd2803eccc54f52137a7d54d7ab88a8` | Unit joint directions from the opening supine pose, reflected into the game axes. |
