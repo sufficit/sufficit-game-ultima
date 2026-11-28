@@ -24,7 +24,6 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
 - [Humanoid rig and skinned reference model](PLAN-HUMANOID-SKINNED-RIG.md).
-- [Authored humanoid locomotion](PLAN-AUTHORED-LOCOMOTION.md).
 - [LLM tool qualification](PLAN-LLM-TOOL-QUALIFICATION.md).
 
 As quatro frentes históricas estão registradas nas atividades de entrega.
@@ -73,6 +72,7 @@ as medições de cada entrega.
 - [Browser resource budget](activities/202611271032-browser-resource-budget.md).
 
 - [Default humanoid, outfits and player postures](activities/202611280022-player-outfits-postures.md)
+- [Authored humanoid walk and resting pose](activities/202611280917-authored-humanoid-locomotion.md)
 - [Humanoid rig diagram](activities/202611270857-humanoid-rig-diagram.md)
 - [Garden edits driven by model contracts](activities/202611270052-garden-model-contracts.md)
 - [Guardian native CPU tool pilot](activities/202611270028-guardian-cpu-tools.md)
