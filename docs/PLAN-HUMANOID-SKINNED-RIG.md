@@ -144,6 +144,8 @@ states per wrist respond to the forearm swing. The fingers use a progressive
 resting curl and a small wrist-dependent change. The new local recording
 measured about 13 degrees at rest and 17–30 degrees during walking. Both
 renderer paths and both body profiles passed wrist, finger and ankle checks.
+[Published build `a73b02f`](https://github.com/sufficit/sufficit-game-ultima/actions/runs/46099867470)
+passed all four browser runs and supplied the after footage for the comparison.
 [UFSC locomotion dataset](https://tecmidia.ufsc.br/en/locomotion-dataset/)
 
 Next action. Exercise the same retargeting on a controlled slope and low
