@@ -130,7 +130,21 @@ internal static class PlayerSupportChecks
 
     private static void CheckHandSwing(Action<string, bool> check)
     {
-        var wrist = new PlayerHandSwing();
+        var arm = new PlayerArmSwing();
+        const double neutralElbow = -.16, dt = 1d / 60;
+        var firstElbow = arm.AdvanceElbow(-.32, neutralElbow, 1, 1, dt);
+        var secondElbow = arm.AdvanceElbow(-.32, neutralElbow, 1, 1, dt);
+        double settledElbow = 0;
+        for (var frame = 0; frame < 90; frame++)
+            settledElbow = arm.AdvanceElbow(-.32, neutralElbow, 1, 1, dt);
+        var reversingElbow = arm.AdvanceElbow(.32, neutralElbow, 1, 1, dt);
+        check("The elbow extends behind a forward swing, flexes on reversal, and settles",
+            firstElbow > neutralElbow && secondElbow > firstElbow &&
+            Math.Abs(settledElbow - neutralElbow) < .001 && reversingElbow < neutralElbow);
+        arm.Reset();
+        check("An idle arm has no residual elbow swing", arm.AdvanceElbow(0, 0, 1, 0, dt) == 0);
+
+        var wrist = new PlayerArmSwing();
         var first = wrist.Advance(.3, 1d / 60);
         var second = wrist.Advance(.3, 1d / 60);
         double settled = 0;

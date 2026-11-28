@@ -62,4 +62,4 @@ GLBs are development inputs and are absent from the web build.
 | Source pack and clip | Local source file SHA-256 | Adaptation |
 | --- | --- | --- |
 | Universal Animation Library Standard, `Walk_Loop` | `69591853d817488edaa8fd9bf8fc1d821eaeaf789f8627b3cd23b41c4ed67997` | Centered upper-body and pelvis curves sampled around the foot contact phase. |
-| Universal Animation Library 2 Standard, `LayToIdle` | `8cee20ab1bc55130092447e810e26df22dd2803eccc54f52137a7d54d7ab88a8` | Unit joint directions from the opening supine pose, reflected into the game axes. |
+| Universal Animation Library 2 Standard, `LayToIdle` | `8cee20ab1bc55130092447e810e26df22dd2803eccc54f52137a7d54d7ab88a8` | Opening supine pose layout, refit to contact points on the dressed Innerscene mesh. |

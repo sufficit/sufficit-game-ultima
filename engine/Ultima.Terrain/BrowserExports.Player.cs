@@ -46,8 +46,8 @@ internal static partial class BrowserExports
         CameraObstacles.Set([], 0);
         PlayerFeet = new(body.LegLength / DefaultBody.LegLength, body.Build * body.Height / DefaultBody.Height);
         SkinHeight.Reset();
-        LeftHandSwing.Reset();
-        RightHandSwing.Reset();
+        LeftArmSwing.Reset();
+        RightArmSwing.Reset();
         Input.Clear();
         return JsonSerializer.Serialize(new PlayerBodyFrame(body, PlayerAnatomy.Create("humano", body.Height, body)),
             PlayerBodyJson.Default.PlayerBodyFrame);
@@ -58,8 +58,8 @@ internal static partial class BrowserExports
     {
         PlayerFeet.Reset();
         SkinHeight.Reset();
-        LeftHandSwing.Reset();
-        RightHandSwing.Reset();
+        LeftArmSwing.Reset();
+        RightArmSwing.Reset();
         _movement.ResetRecovery();
     }
 
@@ -356,13 +356,18 @@ internal static partial class BrowserExports
         var gait = result[GaitChannelsStart..];
         PlayerGaitPose.Write(gait, result[0], gaitWeight, speed, _body.Height, walkSpeed, runSpeed);
         if (naturalGait)
+        {
             PlayerGaitPose.ApplyAuthoredWalk(result, gait, gaitWeight, speed, _body.Height, walkSpeed, runSpeed);
+            var walking = 1 - PlayerPose.SmoothStep(walkSpeed, runSpeed, speed);
+            gait[8] = LeftArmSwing.AdvanceElbow(result[10], gait[8], walking, gaitWeight, delta);
+            gait[9] = RightArmSwing.AdvanceElbow(result[11], gait[9], walking, gaitWeight, delta);
+        }
         var leftForearm = result[2] + result[10] + gait[8];
         var rightForearm = result[2] + result[11] + gait[9];
-        gait[10] = LeftHandSwing.Advance(leftForearm, delta);
-        gait[11] = RightHandSwing.Advance(rightForearm, delta);
-        LeftHandSwing.AdvanceFingers(leftForearm, delta, gait[12..15]);
-        RightHandSwing.AdvanceFingers(rightForearm, delta, gait[15..18]);
+        gait[10] = LeftArmSwing.Advance(leftForearm, delta);
+        gait[11] = RightArmSwing.Advance(rightForearm, delta);
+        LeftArmSwing.AdvanceFingers(leftForearm, delta, gait[12..15]);
+        RightArmSwing.AdvanceFingers(rightForearm, delta, gait[15..18]);
     }
 
     private static double Floor(double x, double z, double y, bool useVolume)

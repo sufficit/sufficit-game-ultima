@@ -112,20 +112,26 @@ internal static class SkinFootAlignment
         var handTravel = Enumerable.Range(0, 2).Select(i => walk.Max(p => p.Hands[i]) - walk.Min(p => p.Hands[i])).ToArray();
         var jointMotion = rest.Joints.Select((joint, i) => walk.Max(pose => AngleBetween(joint, pose.Joints[i]))).ToArray();
         var handSeparation = walk.Select(pose => pose.Hands[0] - pose.Hands[1]).ToArray();
-        var levelTrail = walk.Where(pose => pose.Z is > .55 and < 1.80).ToArray();
+        // The opening samples cover the existing head-bob observation window;
+        // the longer stride capture also reaches both elbow extrema on tall avatars.
+        var levelTrail = walk.Take(12).Where(pose => pose.Z is > .55 and < 1.80).ToArray();
         var headRange = levelTrail.Length > 0 ? levelTrail.Max(pose => pose.HeadY) - levelTrail.Min(pose => pose.HeadY) : 0;
         var elbowRest = rest.Arms.Max(arm => arm.Bend);
         var elbowWalk = walk.Max(pose => pose.Arms.Max(arm => arm.Bend));
+        var elbowTravel = Enumerable.Range(0, 2)
+            .Select(i => walk.Max(pose => pose.Arms[i].Bend) - walk.Min(pose => pose.Arms[i].Bend)).ToArray();
         var wristMotion = rest.Arms.Select((arm, i) => walk.Max(pose => AngleBetween(arm.Wrist, pose.Arms[i].Wrist))).ToArray();
         var fingerMotion = rest.Arms.Select((arm, i) => walk.Max(pose => AngleBetween(arm.Finger, pose.Arms[i].Finger))).ToArray();
         var fingerSpread = poses.Max(pose => pose.Arms.Max(arm => arm.Spread));
         var wristOffset = rest.Arms.Max(arm => arm.Lateral) / rest.Scale;
         var evidence = new { build, mode = Mode, custom, rest.Scale, peak, heightError, lengthError, handTravel,
-            jointMotion, headRange, elbowRest, elbowWalk, wristMotion, fingerMotion, fingerSpread, wristOffset };
+            jointMotion, headRange, elbowRest, elbowWalk, elbowTravel, wristMotion, fingerMotion, fingerSpread, wristOffset };
         Check(levelTrail.Length >= 3 && headRange < .025, "The head stays steady across the level trail.", evidence);
         Check(handTravel.All(distance => distance > .10) && handSeparation.Min() < -.06 && handSeparation.Max() > .06,
             "Both hands swing in opposite phases of the stride.", evidence);
         Check(jointMotion.All(angle => angle > .025), "Pelvis, thorax, clavicles and elbows participate in the gait.", evidence);
+        Check(elbowTravel.All(angle => angle > .18),
+            "Both elbows flex and extend relative to the upper arms during the stride.", evidence);
         Check(elbowRest < .35 && elbowWalk < .63 && wristMotion.All(angle => angle > .10) &&
             fingerMotion.All(angle => angle is > .004 and < .04), "Relaxed arms show wrist lag and subtle finger motion.", evidence);
         Check(fingerSpread < 1.15, "The relaxed fingers stay close together at rest and in motion.", evidence);
@@ -139,7 +145,7 @@ internal static class SkinFootAlignment
 
     private static async Task<Pose[]> TravelAsync(IPage page, string key)
     {
-        var frames = new Pose[12];
+        var frames = new Pose[22];
         await page.Keyboard.DownAsync(key);
         try
         {

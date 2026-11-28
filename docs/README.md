@@ -24,6 +24,7 @@ enquanto houver pendências; ao concluir o escopo inteiro ele é convertido em
 
 - [Genius local no Ultima](PLAN-GENIUS-LOCAL.md) — integração da Guardiã com sessões e inferência local.
 - [Humanoid rig and skinned reference model](PLAN-HUMANOID-SKINNED-RIG.md).
+- [Relaxed player motion](PLAN-RELAXED-PLAYER-MOTION.md).
 - [LLM tool qualification](PLAN-LLM-TOOL-QUALIFICATION.md).
 
 As quatro frentes históricas estão registradas nas atividades de entrega.

@@ -3096,7 +3096,8 @@
         syncCharacterHitboxes();
         const skin = characterRigs.get(player)?.skinPreview;
         if (skin) skin(cameraFloor, delta, playerPosture,
-            modelStatus.outfit[3] ? terrain.AdvancePlayerAccessory(delta > 0 ? travelled / delta : 0, windLevel, player.rotation.y, delta) : 0);
+            modelStatus.outfit[3] ? terrain.AdvancePlayerAccessory(delta > 0 ? travelled / delta : 0, windLevel, player.rotation.y, delta) : 0,
+            cameraFloor - FOOT_GAP);
         applyCameraView(p);
         if (!authored) {
             checkNear();

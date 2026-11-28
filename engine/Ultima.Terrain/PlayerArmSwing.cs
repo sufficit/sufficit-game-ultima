@@ -1,9 +1,22 @@
 namespace Ultima.Terrain;
 
-internal sealed class PlayerHandSwing
+internal sealed class PlayerArmSwing
 {
+    private double _upperArm, _elbow;
     private double _forearm, _wrist;
     private double _hand, _base, _middle, _tip;
+
+    // Local flexion is negative around the rig's X axis. A slowly following
+    // upper-arm reference gives the forearm its own phase at the elbow.
+    internal double AdvanceElbow(double upperArm, double authoredFlexion, double walking, double weight, double delta)
+    {
+        var step = Math.Clamp(delta, 0, .05);
+        _upperArm = Damp(_upperArm, upperArm, 7, step);
+        var inertia = Math.Clamp((_upperArm - upperArm) * .92, -.24, .24);
+        _elbow = Damp(_elbow, inertia, 18, step);
+        var walkingFlexion = Math.Clamp(authoredFlexion + _elbow, -.42 * weight, -.025 * weight);
+        return authoredFlexion + (walkingFlexion - authoredFlexion) * walking;
+    }
 
     // Inertia opposes changes to the forearm angle. Two damped responses
     // model lag at the wrist and let the hand settle when the arm stops.
@@ -34,5 +47,5 @@ internal sealed class PlayerHandSwing
     private static double Damp(double value, double target, double rate, double step)
         => value + (target - value) * (1 - Math.Exp(-rate * step));
 
-    internal void Reset() => (_forearm, _wrist, _hand, _base, _middle, _tip) = (0, 0, 0, 0, 0, 0);
+    internal void Reset() => (_upperArm, _elbow, _forearm, _wrist, _hand, _base, _middle, _tip) = (0, 0, 0, 0, 0, 0, 0, 0);
 }

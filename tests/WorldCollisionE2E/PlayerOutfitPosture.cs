@@ -18,6 +18,36 @@ internal static class PlayerOutfitPosture
         }
         """;
 
+    private const string RestingSurfaceGaps = """
+        () => {
+            const scene = BABYLON.EngineStore.LastCreatedScene;
+            const actor = scene.getTransformNodeByName('player');
+            const rig = scene.skeletons.find(skeleton => skeleton.bones.length === 53);
+            const inverse = actor.computeWorldMatrix(true).clone().invert();
+            const point = new BABYLON.Vector3();
+            const gaps = Object.fromEntries(['head', 'back', 'hips', 'leftHand', 'rightHand', 'leftHeel', 'rightHeel']
+                .map(name => [name, Infinity]));
+            const consider = (name, y) => gaps[name] = Math.min(gaps[name], y + .03);
+            rig.prepare(true);
+            for (const mesh of scene.meshes.filter(mesh => mesh.skeleton === rig)) {
+                const positions = mesh.getPositionData(true);
+                const toActor = mesh.computeWorldMatrix(true).multiply(inverse);
+                for (const i of new Set(mesh.getIndices())) {
+                    BABYLON.Vector3.TransformCoordinatesFromFloatsToRef(
+                        positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2], toActor, point);
+                    const { x, y, z } = point;
+                    if (z < -.57) consider('head', y);
+                    if (Math.abs(x) < .17 && z > -.48 && z < -.28) consider('back', y);
+                    if (Math.abs(x) < .17 && Math.abs(z) < .14) consider('hips', y);
+                    if (z > -.09 && z < .19 && x < -.25) consider('leftHand', y);
+                    if (z > -.09 && z < .19 && x > .25) consider('rightHand', y);
+                    if (z > .77) consider(x < 0 ? 'leftHeel' : 'rightHeel', y);
+                }
+            }
+            return gaps;
+        }
+        """;
+
     internal static async Task RunAsync(IBrowser browser)
     {
         await using var context = await browser.NewContextAsync(new()
@@ -74,6 +104,10 @@ internal static class PlayerOutfitPosture
             Math.Abs(lying.HeadY - lying.PelvisY) < .25,
             "The supine pose stays centered and low.", new { idle, lying });
 
+        var gaps = await RenderAsync<Dictionary<string, double?>>(page, RestingSurfaceGaps);
+        Check(gaps.Count == 7 && gaps.Values.All(gap => gap is > -.025 and < .045),
+            "The skull, back, pelvis, hands and heels stay close to the floor.", gaps);
+
         await page.Keyboard.PressAsync("f");
         await WaitAsync(async () => (await SampleAsync(page)) is { Pitch: < .1 } sitting && sitting.HeadY < idle.HeadY - .40,
             "The player did not sit.");
@@ -87,7 +121,7 @@ internal static class PlayerOutfitPosture
         var restoredOutfit = await WaitForOutfitAsync(page);
         Check(outfit.SequenceEqual(restoredOutfit), "The same identity keeps its outfit after reload.");
         Check(errors.IsEmpty, "Browser errors during outfit and posture checks.", errors);
-        Log(new { build, mode = Mode, outfit, jumpHeight = apex - idle.Y, crawlDistance = Distance(crawl, crawled), lying });
+        Log(new { build, mode = Mode, outfit, jumpHeight = apex - idle.Y, crawlDistance = Distance(crawl, crawled), lying, gaps });
     }
 
     private static async Task<int[]> WaitForOutfitAsync(IPage page)
