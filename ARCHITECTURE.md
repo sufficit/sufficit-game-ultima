@@ -283,12 +283,11 @@ grava um registro no journal antes de compartilhar a nova revisão. O navegador
 aplica o mapa confirmado no mesmo turno. Falhas do provedor e planos inválidos
 preservam o mundo. [Contratos e exemplos](docs/USAGE-API-JARDIM.md)
 
-Turnos com um modelo local disponível passam pela biblioteca
-`Sufficit.AI.Genius.Embedded`. Ela retoma o contexto no IndexedDB pelo mundo,
-jogador e NPC. WebLLM e wllama recebem apenas a janela recente em uma chamada
-de interop. O Diário registra essas conversas no navegador, sem enfileirá-las
-para a telemetria. A API do mundo autoriza e grava os planos de edição.
-[Plano de integração e pacote](docs/PLAN-GENIUS-LOCAL.md)
+Local model turns use the `Sufficit.AI.Harness` library. The game owns the
+IndexedDB history, keyed by player and NPC. WebLLM and wllama receive the recent
+conversation window through browser interop. The Journal keeps these turns
+local, and the world API authorizes and persists garden edits.
+[Sufficit AI Harness](https://github.com/sufficit/sufficit-ai-harness)
 
 ## Relógio e clima
 

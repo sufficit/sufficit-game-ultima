@@ -4,7 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.JSInterop;
-using Sufficit.AI.Genius.Embedded;
+using Sufficit.AI.Harness;
 
 namespace Ultima.Browser;
 

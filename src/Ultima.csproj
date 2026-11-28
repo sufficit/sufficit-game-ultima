@@ -13,7 +13,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.15" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.15" PrivateAssets="all" />
-    <PackageReference Include="Sufficit.AI.Genius.Embedded" Version="[0.1.0-preview.1]" />
+    <PackageReference Include="Sufficit.AI.Harness" Version="[0.1.0]" />
     <PackageReference Include="Sufficit.Blazor.UI" Version="2.26.1102.2231" />
   </ItemGroup>
 
