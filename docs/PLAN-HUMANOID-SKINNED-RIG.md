@@ -161,6 +161,16 @@ passed the local regression scenario.
 All four runs also passed on [published build `52ac4e4`](https://github.com/sufficit/sufficit-game-ultima/actions/runs/46100686392),
 which supplied the after footage for the finger comparison.
 
+## Arm carriage and ankle follow-through
+
+An additional mirrored 0.075 radians of shoulder adduction moved each wrist
+3.2 cm inward in the default standing profile. During swing, the preview
+damps ankle pitch against a toe-down and heel-up target curve, limits rotation
+by foot clearance, and resets the swing contribution during support. The
+fixed-step check verifies delayed pitch, reversal and a stable planted foot.
+Both profiles and renderer paths passed the browser checks for resting wrist
+spacing, arm and finger motion, and ankle alignment.
+
 Next action. Exercise the same retargeting on a controlled slope and low
 obstacle. Measure stance drift against the world and frame cost in both
 renderers before considering the preview for the default avatar.

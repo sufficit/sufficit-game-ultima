@@ -6,11 +6,13 @@
             ['pelvis', rig.root], ['spine_01', rig.upper], ['spine_03', rig.chest], ['head', rig.head],
             ...rig.legs.flatMap((leg, index) => {
                 const side = index === 0 ? 'l' : 'r';
+                // Rest adduction is in actor space and mirrored across the body.
+                const armRest = index === 0 ? .575 : -.575;
                 return [
                     ['clavicle_' + side, rig.clavicles[index]],
-                    ['upperarm_' + side, rig.shoulders[index], index === 0 ? 0.5 : -0.5],
-                    ['lowerarm_' + side, rig.elbows[index], index === 0 ? 0.5 : -0.5, 0.59],
-                    ['hand_' + side, rig.wrists[index], index === 0 ? 0.5 : -0.5, 0.59],
+                    ['upperarm_' + side, rig.shoulders[index], armRest],
+                    ['lowerarm_' + side, rig.elbows[index], armRest, 0.59],
+                    ['hand_' + side, rig.wrists[index], armRest, 0.59],
                     ['thigh_' + side, leg.hip],
                     ['calf_' + side, leg.knee],
                     ['foot_' + side, leg.ankle]

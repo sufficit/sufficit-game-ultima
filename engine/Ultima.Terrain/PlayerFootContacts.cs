@@ -101,7 +101,18 @@ internal sealed partial class PlayerFootContacts(double strideScale = 1, double 
 
             contact.RecoveryLift = Math.Max(0, contact.RecoveryLift - delta * 0.6);
             var lift = feet[offset + 1] * gaitBlend + contact.ResumeLift * (1 - gaitBlend);
-            var pitch = feet[8 + i] * gaitBlend * (_aimed ? _travelForward : 1)
+            var swingPitch = feet[8 + i];
+            if (softSwing)
+            {
+                // The airborne foot follows with lag. Ground support and the
+                // clearance envelope take priority over residual ankle motion.
+                var limit = Math.Min(.26, feet[offset + 1] * 5);
+                var previousPitch = swing && !resuming && _ready ? contact.SwingPitch : 0;
+                contact.SwingPitch = swing ? Math.Clamp(previousPitch + (swingPitch - previousPitch) *
+                    (1 - Math.Exp(-24 * delta)), -limit, limit) : 0;
+                swingPitch = contact.SwingPitch;
+            }
+            var pitch = swingPitch * gaitBlend * (_aimed ? _travelForward : 1)
                 + contact.ResumePitch * (1 - gaitBlend);
             if (contact.RecoveryLift > lift)
             {
@@ -203,7 +214,7 @@ internal sealed partial class PlayerFootContacts(double strideScale = 1, double 
 
     private struct Contact
     {
-        internal double X, Z, Yaw, SwingStart, RecoveryLift, ResumeLift, ResumePitch;
+        internal double X, Z, Yaw, SwingStart, SwingPitch, RecoveryLift, ResumeLift, ResumePitch;
         internal Foot Last, RestStart;
         internal bool Swing;
     }

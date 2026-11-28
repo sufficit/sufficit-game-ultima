@@ -71,7 +71,8 @@ internal static class PlayerPose
             var lift = !swing ? 0 : softSwing ? arc * arc * Lerp(.065, .135, run) * weight
                 : arc * Lerp(.11, .17, run) * weight;
             // The sole rolls toward the toe at lift-off and toward the heel at landing.
-            output[8 + i] = swing ? Math.Sin(Math.Tau * t) * Math.Min(0.38, lift * 3) : 0;
+            var pitchLimit = softSwing ? Math.Min(.26, lift * 5) : Math.Min(.38, lift * 3);
+            output[8 + i] = swing ? Math.Sin(Math.Tau * t) * pitchLimit : 0;
             var localX = i == 0 ? -spacing : spacing;
             var offset = 4 * i;
             output[offset] = forward;

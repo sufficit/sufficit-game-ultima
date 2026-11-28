@@ -61,6 +61,40 @@ internal static class PlayerSupportChecks
         CheckGaitPose(check);
         CheckSkinHeight(check);
         CheckHandSwing(check);
+        CheckAnkleSwing(check);
+    }
+
+    private static void CheckAnkleSwing(Action<string, bool> check)
+    {
+        var contacts = new PlayerFootContacts();
+        Span<double> feet = stackalloc double[10];
+        Span<double> alignment = stackalloc double[4];
+        var highestPitch = 0d;
+        var lowestPitch = 0d;
+        var lagged = false;
+        var supportStill = true;
+        var wasPlanted = false;
+        var supportZ = 0d;
+        for (var frame = 0; frame < 140; frame++)
+        {
+            const double step = 1d / 120, pace = 1.65, spacing = .091, shoe = .06;
+            var distance = pace * step;
+            var phase = frame * distance * Math.Tau / contacts.Stride % Math.Tau;
+            contacts.Begin(0, frame * distance, 0, distance);
+            PlayerPose.FootTargets(feet, 0, phase, 1, pace, spacing, shoe, contacts.Stride, softSwing: true);
+            var target = feet[8];
+            contacts.Apply(feet, alignment, phase, spacing, shoe, step, softSwing: true);
+            highestPitch = Math.Max(highestPitch, feet[8]);
+            lowestPitch = Math.Min(lowestPitch, feet[8]);
+            lagged |= target > .12 && feet[8] < target - .02;
+            var planted = feet[1] == 0;
+            var worldZ = frame * distance + feet[3];
+            if (planted) supportStill &= feet[8] == 0 && (!wasPlanted || Math.Abs(worldZ - supportZ) < 1e-9);
+            wasPlanted = planted;
+            supportZ = worldZ;
+        }
+        check("Swing pitch lags the step and reverses before touchdown", lagged && highestPitch > .08 && lowestPitch < -.08);
+        check("A planted foot keeps its position and pitch during the ankle swing", supportStill);
     }
 
     private static void CheckHandSwing(Action<string, bool> check)
